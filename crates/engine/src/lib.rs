@@ -5047,6 +5047,53 @@ mod tests {
     }
 
     #[test]
+    fn pilot_roster_and_cap_bonus_40() {
+        use crate::reference::aircraft::{AircraftClass, CapType};
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Pilot, Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::Commonwealth, include_str!("../../../data/reference/aircraft/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(10, 10);
+        let mut cw = Sgsu::new(SquadronId(1), Nationality::Commonwealth, SquadronClass::Fighter, "252 Sqn", 5, Some(base));
+        cw.add_planes("Beaufighter Mk.IF", AircraftClass::Fighter, 6, 1);
+        g.sgsus.insert(SquadronId(1), cw);
+        for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+            grp.refitted = grp.count;
+            grp.ready = grp.count;
+        }
+
+        // §40.12 AssignPilot (Organization Phase): a rating-4 pilot; an invalid rating is rejected.
+        g.phase = Phase::Organization;
+        assert_eq!(g.apply(Command::AssignPilot { rating: 4, squadron: SquadronId(1) }), Ok(CommandOutcome::PilotAssigned));
+        assert_eq!(g.apply(Command::AssignPilot { rating: 5, squadron: SquadronId(1) }), Err(CommandError::InvalidPilotRating));
+        // §40.15/§40.16: the squadron's TacAir pilot bonus is its best flyable pilot Rating.
+        assert_eq!(g.squadron_pilot_bonus(SquadronId(1)), 4);
+
+        // A higher-rated pilot who is still grounded (§40.13/14/17) does not yet count.
+        let mut grounded = Pilot::new(6, Some(SquadronId(1)));
+        grounded.grounded_stages = 1;
+        g.pilots.push(grounded);
+        assert_eq!(g.squadron_pilot_bonus(SquadronId(1)), 4);
+
+        // §40.15: the pilot Rating flows into the CAP flight's TacAir.
+        g.phase = Phase::LandSupportAir;
+        assert_eq!(
+            g.apply(Command::DesignateCap { squadron: SquadronId(1), center: base, cap_type: CapType::Offensive, planes: 4 }),
+            Ok(CommandOutcome::CapDesignated { fighters: 4 })
+        );
+        assert_eq!(g.cap_patrols[0].flight.pilot, 4);
+
+        // The grounded rating-6 pilot becomes flyable after one Operations Stage (§40.13).
+        g.begin_operations_stage();
+        assert_eq!(g.squadron_pilot_bonus(SquadronId(1)), 6);
+    }
+
+    #[test]
     fn sgsu_upkeep_and_supply_35_14() {
         use crate::reference::squadron::SquadronClass;
         use crate::state::air::{Sgsu, SquadronId};

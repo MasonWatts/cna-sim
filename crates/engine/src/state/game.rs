@@ -658,6 +658,10 @@ pub struct GameState {
     /// Stage. Enemy missions entering an offensive patrol's coverage are intercepted (§40.26).
     #[serde(default)]
     pub cap_patrols: Vec<CapPatrol>,
+    /// The pilot roster (§40.1). Each pilot carries a Rating that adds to a plane's TacAir in
+    /// air-to-air combat (§40.15) and is assigned to a squadron (§40.12).
+    #[serde(default)]
+    pub pilots: Vec<crate::state::air::Pilot>,
     /// Replacement Points consumed (absorbed) so far, per side — for the §64.74 unused-
     /// replacement victory points.
     #[serde(default)]
@@ -805,6 +809,7 @@ impl GameState {
             pending_replacements: Vec::new(),
             production_orders: Vec::new(),
             cap_patrols: Vec::new(),
+            pilots: Vec::new(),
             replacements_used: std::collections::HashMap::new(),
             withdrawn: std::collections::HashMap::new(),
             withdrawal_banked: 0,
@@ -3895,6 +3900,18 @@ impl GameState {
             .sum()
     }
 
+    /// §40.15/§40.16: the pilot Rating a squadron's flight adds to its planes' TacAir in air-to-air
+    /// combat — the best Rating among the squadron's currently-flyable assigned pilots (§40.12),
+    /// or 0 if it has none (an unpiloted plane flies with a zero-rated pilot, §40.16).
+    pub fn squadron_pilot_bonus(&self, squadron: SquadronId) -> u32 {
+        self.pilots
+            .iter()
+            .filter(|p| p.squadron == Some(squadron) && p.may_fly())
+            .map(|p| p.rating)
+            .max()
+            .unwrap_or(0)
+    }
+
     /// §40.3: attempt a defensive scramble against a mission over `target` by planes of
     /// `bomber_side`. The first enemy fighter squadron within Scramble-Table range (§40.4) that
     /// has ready, scramble-capable planes rolls a d6; on success (§40.33) its ready fighters
@@ -3950,7 +3967,7 @@ impl GameState {
         if flown == 0 {
             return None;
         }
-        Some(Flight { count: flown, tacair, pilot: 0, maneuver })
+        Some(Flight { count: flown, tacair, pilot: self.squadron_pilot_bonus(id), maneuver })
     }
 
     /// The result of resolving a bombing mission (§39.0 procedure).
@@ -4682,6 +4699,10 @@ impl GameState {
         // §40.2: Combat Air Patrols last one Operations Stage — clear last stage's patrols (also
         // resetting the §40.27 per-stage interception allowance).
         self.cap_patrols.clear();
+        // §40.13/§40.14/§40.17: advance each pilot's reassignment/retraining/recovery countdown.
+        for p in self.pilots.iter_mut() {
+            p.advance_stage();
+        }
         // §35.14: each SGSU consumes its own upkeep (Fuel + Water per stage, Stores per turn).
         self.consume_sgsu_upkeep();
         // §30.16/§30.24/§30.25: per-stage ship upkeep — clear the once-per-stage fire flag and

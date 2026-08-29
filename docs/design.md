@@ -293,7 +293,7 @@ unused-replacement VP; §64.75 CW withdrawal VP; §64.76 band), with §64.71/§6
 including the one-full-turn objective-hold check. (The scenario-level §60.8 victory is not
 separately modeled.)
 
-### 8.3 Command boundary — ~49 commands, phase-gated
+### 8.3 Command boundary — ~50 commands, phase-gated
 `GameState::apply` covers land movement/combat, air, naval, logistics, and construction. Land:
 `MoveStep`/`FormationMove`, `Barrage`/`AntiArmor`/`CloseAssault`/`Retreat`, `React`,
 `MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply`, `PoisonWell`/`SweetenWell`.
@@ -303,10 +303,11 @@ Logistics/construction (Organization phase): `LoadTrucks`/`UnloadTrucks`, `Sipho
 `PlanProduction` (§20.66), `BlockHarbor`/`UnblockHarbor`, `Repair`. Naval: `PlanConvoy`/`BombConvoy`/
 `DeliverConvoy`/`ReconConvoyLane`, `AssignShip`/`RepairShip`, `ArtilleryBombardShip`/
 `SanGiorgioAttackShip`/`BombShip`/`OffShoreBombard`, `LayHarborMine`/`RemoveHarborMine`. Air:
-`AssignSquadronPlanes`, `ReadySquadron`/`ArmSquadron`/`RefitSquadron`, `DesignateCap` (§40.2),
-`Strafe` (§40.5), `FlySquadronMission`/`FlyBombingMission`/`FlyBombingMissionAt` (map-validated,
-§8.5)/`BombAirFacility`/`BombMaltaBase`, `DetermineMaltaAvailability`/`ConstructMaltaFacility`.
-Every command is gated to its Sequence-of-Play phase.
+`AssignSquadronPlanes`, `AssignPilot` (§40.12), `ReadySquadron`/`ArmSquadron`/`RefitSquadron`,
+`DesignateCap` (§40.2), `Strafe` (§40.5), `FlySquadronMission`/`FlyBombingMission`/
+`FlyBombingMissionAt` (map-validated, §8.5)/`BombAirFacility`/`BombMaltaBase`,
+`DetermineMaltaAvailability`/`ConstructMaltaFacility`. Every command is gated to its
+Sequence-of-Play phase.
 
 ### 8.4 Land combat & movement — complete for Phase 1
 Resolvers for **Anti-Armor** (§14), **Barrage** (§12.6), and **Close Assault** (§15). Close
@@ -349,9 +350,12 @@ within Scramble-Table range (§40.4) may scramble to intercept — the first eli
 d6 and, on success (§40.33), its ready fighters fly and intercept (`scramble_interception`). **Still
 not computed from the map:** multi-hex flight **path/ZOC routing** (so the §40.33 clear-path rule is
 not enforced) and fuel gating at execution; defensive-CAP engagement choice; land-unit air recon;
-transport/airdrop (§42.3/42.4); a real pilot roster with ace progression (CAP/scramble/strafing use
-a flat representative TacAir, no per-pilot rating); and Med-basing/Malta-commitment enforcement
-(§43/§44.41).
+transport/airdrop (§42.3/42.4); and Med-basing/Malta-commitment enforcement (§43/§44.41). A **pilot
+roster** exists (`AssignPilot`, §40.12): each squadron's best flyable pilot Rating (§40.15/§40.16)
+feeds into its CAP and scramble flights' TacAir, and reassignment/retraining/recovery lockouts
+(§40.13/14/17) tick each Operations Stage. Still deferred here: **ace progression** (§40.18 kill
+crediting — air-to-air does not yet attribute kills back to specific pilots) and per-plane (rather
+than per-flight best-pilot) rating.
 
 ### 8.6 Naval / convoy — abstract model implemented
 Ports (§55: efficiency, blocking §55.22, mining §55.27, San Giorgio §30.17), the Commonwealth

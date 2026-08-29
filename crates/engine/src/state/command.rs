@@ -320,6 +320,10 @@ pub enum Command {
         fort_level: u32,
         roll: u32,
     },
+    /// §40.12: assign a pilot of `rating` (0 or one of 1/2/3/4/6, §40.15) to a squadron's roster
+    /// (Organization Phase). The best flyable assigned pilot's Rating adds to the squadron's TacAir
+    /// in air-to-air combat.
+    AssignPilot { rating: u32, squadron: crate::state::air::SquadronId },
     /// §37/§41: fly a land-support bombing mission from the squadron's base hex to a `target` hex,
     /// validating flight range/distance (§37.12), mission day/night capability (§39.42), and the
     /// sandstorm/rainstorm grounding of the base or target (§37.22) against the map; computing
@@ -435,6 +439,8 @@ pub enum CommandOutcome {
     /// §40.5–40.8: a strafing mission resolved with Strafing-Table `result` (0–3); `effect`
     /// describes what it did to the target (e.g. dump percent destroyed, pipeline destroyed).
     Strafed { result: u32, effect: crate::state::game::StrafeEffect },
+    /// §40.12: a pilot was added to a squadron's roster.
+    PilotAssigned,
 }
 
 /// Why a command was rejected. The state is left unchanged on any error.
@@ -537,6 +543,8 @@ pub enum CommandError {
     WeatherGrounded,
     /// §39.42: no flying plane type may perform this bombing mission by day/night as required.
     MissionNotPermitted,
+    /// §40.15: a pilot Rating must be 0 or one of 1, 2, 3, 4, 6.
+    InvalidPilotRating,
     /// §38.36: no Stores Point is present at the squadron's base to pay for the refit attempt.
     InsufficientStores,
     /// §35.14: the SGSU lacks its own upkeep and may not repair (refit) its planes this stage.
@@ -909,6 +917,7 @@ impl GameState {
             Command::Strafe { squadron, target, strafe_target, planes, fort_level, roll } => {
                 self.cmd_strafe(squadron, target, strafe_target, planes, fort_level, roll)
             }
+            Command::AssignPilot { rating, squadron } => self.cmd_assign_pilot(rating, squadron),
             Command::FlyBombingMissionAt {
                 squadron, target, mission, planes, bombload_per_plane, night,
                 flak_destroy_roll, flak_abort_roll, bomb_roll,
@@ -1280,15 +1289,34 @@ impl GameState {
             return Err(CommandError::NoReadyPlanes);
         }
         let (tacair, maneuver) = rep.unwrap_or((0, 0));
+        let pilot = self.squadron_pilot_bonus(squadron);
         self.cap_patrols.push(CapPatrol {
             squadron,
             side,
             cap_type,
             center,
-            flight: Flight { count: flown, tacair, pilot: 0, maneuver },
+            flight: Flight { count: flown, tacair, pilot, maneuver },
             intercepts_used: 0,
         });
         Ok(CommandOutcome::CapDesignated { fighters: flown })
+    }
+
+    /// §40.12 AssignPilot: add a pilot of `rating` (0 or one of the §40.15 ratings) to a squadron's
+    /// roster (Organization Phase). The pilot is ready to fly.
+    fn cmd_assign_pilot(
+        &mut self,
+        rating: u32,
+        squadron: crate::state::air::SquadronId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::Organization)?;
+        if rating != 0 && !crate::rules::air::PILOT_RATINGS.contains(&rating) {
+            return Err(CommandError::InvalidPilotRating);
+        }
+        if !self.sgsus.contains_key(&squadron) {
+            return Err(CommandError::NoSuchSquadron);
+        }
+        self.pilots.push(crate::state::air::Pilot::new(rating, Some(squadron)));
+        Ok(CommandOutcome::PilotAssigned)
     }
 
     /// §40.5–40.8 Strafe: validate and resolve a strafing mission against the map, applying the
