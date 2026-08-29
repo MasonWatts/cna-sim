@@ -1335,7 +1335,13 @@ impl GameState {
         use crate::state::game::{Commodity, StrafeEffect, Weather};
         self.require_phase(Phase::LandSupportAir)?;
         // Only the target types with modeled state effects are supported for now.
-        if !matches!(strafe_target, StrafeTarget::SupplyDump | StrafeTarget::WaterPipeline) {
+        if !matches!(
+            strafe_target,
+            StrafeTarget::SupplyDump
+                | StrafeTarget::WaterPipeline
+                | StrafeTarget::Infantry
+                | StrafeTarget::GroundedAircraft
+        ) {
             return Err(CommandError::MissionNotPermitted);
         }
         let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
@@ -1406,6 +1412,16 @@ impl GameState {
                 } else {
                     StrafeEffect::None
                 }
+            }
+            StrafeTarget::Infantry => {
+                // §40.6: the result is the TOE Strength Points eliminated from an infantry unit.
+                let removed = self.strafe_infantry_loss(target, side, result);
+                if removed > 0 { StrafeEffect::InfantryEliminated { points: removed } } else { StrafeEffect::None }
+            }
+            StrafeTarget::GroundedAircraft => {
+                // §40.6: the result is the number of d6 to roll; their sum is the planes destroyed.
+                let planes = self.strafe_grounded_aircraft_loss(target, side, result);
+                if planes > 0 { StrafeEffect::GroundedAircraftDestroyed { planes } } else { StrafeEffect::None }
             }
             _ => StrafeEffect::None, // unreachable (guarded above)
         };

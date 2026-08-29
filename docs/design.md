@@ -343,9 +343,12 @@ bombing mission entering an enemy offensive patrol's coverage is intercepted, sp
 patrol's one interception per stage (§40.26/§40.27). Patrols reset each Operations Stage.
 The `Strafe` command (§40.5–40.8) flies a map-validated strafing mission and resolves it on the
 Strafing Table with the §40.8 column shift, applying the effect for **supply dumps** (§40.64, r×10%
-of each commodity destroyed) and **water pipelines** (§40.67, destroyed on r≥2); the other strafe
-target types (infantry, trucks, grounded aircraft, tanks, ports) are validated-but-rejected pending
-their loss models. **Scramble (§40.3):** when no CAP covers a bombing target, an enemy fighter base
+of each commodity destroyed), **water pipelines** (§40.67, destroyed on r≥2), **infantry** (§40.6,
+r TOE Strength Points eliminated from an enemy infantry unit in the hex), and **grounded aircraft**
+(§40.6, the result is the number of d6 rolled — their sum is planes destroyed from an enemy SGSU in
+the hex). The remaining strafe targets (trucks in convoy, first-line trucks, tanks, ports) are
+validated-but-rejected pending their loss models (truck-point/cargo allocation, §40.65 armor-
+protection damage, and the §40.66 port-into-bombing fold). **Scramble (§40.3):** when no CAP covers a bombing target, an enemy fighter base
 within Scramble-Table range (§40.4) may scramble to intercept — the first eligible squadron rolls a
 d6 and, on success (§40.33), its ready fighters fly and intercept (`scramble_interception`). **Still
 not computed from the map:** multi-hex flight **path/ZOC routing** (so the §40.33 clear-path rule is

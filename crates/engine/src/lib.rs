@@ -4980,15 +4980,87 @@ mod tests {
             other => panic!("unexpected: {other:?}"),
         }
 
-        // An unmodeled strafe target (infantry) is rejected.
+        // A still-unmodeled strafe target (trucks in convoy) is rejected.
         ready(&mut g);
         assert_eq!(
             g.apply(Command::Strafe {
-                squadron: SquadronId(1), target, strafe_target: StrafeTarget::Infantry,
+                squadron: SquadronId(1), target, strafe_target: StrafeTarget::TrucksInConvoy,
                 planes: 6, fort_level: 0, roll: 66,
             }),
             Err(CommandError::MissionNotPermitted)
         );
+    }
+
+    #[test]
+    fn strafe_infantry_and_grounded_aircraft_40_6() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::units::Side;
+        use crate::rules::air::StrafeTarget;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase, StrafeEffect};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        refs.load_aircraft_chart(Nationality::Commonwealth, include_str!("../../../data/reference/aircraft/commonwealth.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_strafing_table(include_str!("../../../data/reference/strafing-table.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(1, 1);
+        let target = HexCoord::new(3, 1);
+        // German strafer (Ju.88D has D capability).
+        let mut sq = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 26", 5, Some(base));
+        sq.add_planes("Ju.88D", AircraftClass::Bomber, 6, 1);
+        g.sgsus.insert(SquadronId(1), sq);
+        let ready = |g: &mut GameState| {
+            for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        };
+        ready(&mut g);
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+
+        // §40.6 Infantry: the result is TOE Strength Points eliminated from an enemy infantry unit.
+        let inf = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 5 });
+        g.unit_mut(inf).unwrap().location = Some(UnitLocation::OnMap(target));
+        match g.apply(Command::Strafe {
+            squadron: SquadronId(1), target, strafe_target: StrafeTarget::Infantry, planes: 6, fort_level: 0, roll: 66,
+        }) {
+            Ok(CommandOutcome::Strafed { result, effect }) => {
+                let removed = result.min(5);
+                if removed > 0 {
+                    assert_eq!(effect, StrafeEffect::InfantryEliminated { points: removed });
+                }
+                assert_eq!(g.unit(inf).unwrap().total_toe(), 5 - removed);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        // §40.6 Grounded Aircraft: the result is the number of d6 rolled; their sum is planes lost.
+        ready(&mut g);
+        let mut cw = Sgsu::new(SquadronId(2), Nationality::Commonwealth, SquadronClass::Fighter, "sitting duck", 5, Some(target));
+        cw.add_planes("Beaufighter Mk.IF", AircraftClass::Fighter, 12, 1);
+        g.sgsus.insert(SquadronId(2), cw);
+        let before = g.sgsus[&SquadronId(2)].plane_count();
+        match g.apply(Command::Strafe {
+            squadron: SquadronId(1), target, strafe_target: StrafeTarget::GroundedAircraft, planes: 6, fort_level: 0, roll: 66,
+        }) {
+            Ok(CommandOutcome::Strafed { effect, .. }) => {
+                let lost = before - g.sgsus[&SquadronId(2)].plane_count();
+                if lost > 0 {
+                    assert_eq!(effect, StrafeEffect::GroundedAircraftDestroyed { planes: lost });
+                } else {
+                    assert_eq!(effect, StrafeEffect::None);
+                }
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 
     #[test]

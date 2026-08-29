@@ -153,6 +153,11 @@ pub enum StrafeEffect {
     SupplyDumpDamaged { percent: u32 },
     /// §40.67: the target hex's water pipeline was destroyed.
     PipelineDestroyed,
+    /// §40.6: TOE Strength Points eliminated from an enemy infantry unit in the target hex.
+    InfantryEliminated { points: u32 },
+    /// §40.6: planes destroyed on the ground (the Strafing-Table result was the number of d6 to
+    /// roll; their sum is the planes lost).
+    GroundedAircraftDestroyed { planes: u32 },
 }
 
 /// A squadron flying Combat Air Patrol over `center` this Operations Stage (§40.2). Offensive CAP
@@ -3898,6 +3903,44 @@ impl GameState {
                 crate::rules::air::aa_points(u.total_toe(), rating)
             })
             .sum()
+    }
+
+    /// §40.6: eliminate up to `points` TOE Strength Points from the first enemy (non-`attacker_side`)
+    /// infantry unit in `hex` (a strafing result). Returns the points actually removed.
+    pub fn strafe_infantry_loss(&mut self, hex: HexCoord, attacker_side: Side, points: u32) -> u32 {
+        let victim = self.units.values().find_map(|u| {
+            if u.hex() != Some(hex) || u.nationality.side() == attacker_side {
+                return None;
+            }
+            let is_inf = self
+                .reference
+                .unit_characteristics
+                .get(&u.nationality)
+                .and_then(|m| m.get(&u.id_code))
+                .is_some_and(|uc| uc.unit_type.contains("Infantry"));
+            (is_inf && matches!(u.composition, Composition::Organic { .. })).then_some(u.id)
+        });
+        let Some(id) = victim else { return 0 };
+        match &mut self.units.get_mut(&id).unwrap().composition {
+            Composition::Organic { current_toe } => {
+                let removed = points.min(*current_toe);
+                *current_toe -= removed;
+                removed
+            }
+            _ => 0,
+        }
+    }
+
+    /// §40.6: strafe grounded aircraft — roll `dice` d6 and destroy their sum in planes from the
+    /// first enemy (non-`attacker_side`) SGSU in `hex`. Returns the planes destroyed.
+    pub fn strafe_grounded_aircraft_loss(&mut self, hex: HexCoord, attacker_side: Side, dice: u32) -> u32 {
+        let victim = self.sgsus.values().find_map(|s| {
+            (s.location == Some(hex) && s.nationality.side() != attacker_side && s.plane_count() > 0)
+                .then_some(s.id)
+        });
+        let Some(id) = victim else { return 0 };
+        let sum: u32 = (0..dice).map(|_| self.rng.d6() as u32).sum();
+        self.sgsus.get_mut(&id).map_or(0, |s| s.lose_planes(sum))
     }
 
     /// §40.15/§40.16: the pilot Rating a squadron's flight adds to its planes' TacAir in air-to-air
