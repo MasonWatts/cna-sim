@@ -293,7 +293,7 @@ unused-replacement VP; §64.75 CW withdrawal VP; §64.76 band), with §64.71/§6
 including the one-full-turn objective-hold check. (The scenario-level §60.8 victory is not
 separately modeled.)
 
-### 8.3 Command boundary — ~47 commands, phase-gated
+### 8.3 Command boundary — ~48 commands, phase-gated
 `GameState::apply` covers land movement/combat, air, naval, logistics, and construction. Land:
 `MoveStep`/`FormationMove`, `Barrage`/`AntiArmor`/`CloseAssault`/`Retreat`, `React`,
 `MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply`, `PoisonWell`/`SweetenWell`.
@@ -303,10 +303,10 @@ Logistics/construction (Organization phase): `LoadTrucks`/`UnloadTrucks`, `Sipho
 `PlanProduction` (§20.66), `BlockHarbor`/`UnblockHarbor`, `Repair`. Naval: `PlanConvoy`/`BombConvoy`/
 `DeliverConvoy`/`ReconConvoyLane`, `AssignShip`/`RepairShip`, `ArtilleryBombardShip`/
 `SanGiorgioAttackShip`/`BombShip`/`OffShoreBombard`, `LayHarborMine`/`RemoveHarborMine`. Air:
-`AssignSquadronPlanes`, `ReadySquadron`/`ArmSquadron`/`RefitSquadron`, `FlySquadronMission`/
-`FlyBombingMission`/`FlyBombingMissionAt` (map-validated, §8.5)/`BombAirFacility`/`BombMaltaBase`,
-`DetermineMaltaAvailability`/`ConstructMaltaFacility`. Every command is gated to its
-Sequence-of-Play phase.
+`AssignSquadronPlanes`, `ReadySquadron`/`ArmSquadron`/`RefitSquadron`, `DesignateCap` (§40.2),
+`FlySquadronMission`/`FlyBombingMission`/`FlyBombingMissionAt` (map-validated, §8.5)/
+`BombAirFacility`/`BombMaltaBase`, `DetermineMaltaAvailability`/`ConstructMaltaFacility`. Every
+command is gated to its Sequence-of-Play phase.
 
 ### 8.4 Land combat & movement — complete for Phase 1
 Resolvers for **Anti-Armor** (§14), **Barrage** (§12.6), and **Close Assault** (§15). Close
@@ -334,12 +334,17 @@ resolution (§45.4/45.5), and Malta availability/construction. **Map-based fligh
 `FlyBombingMissionAt` command flies a land-support bombing mission from the squadron's base hex to
 a target hex, validating flight **range/distance** (§37.12) against the aircraft chart, the
 day/night **mission capability** (§39.42), and the **sandstorm/rainstorm grounding** of the base
-or target (§37.22), and deriving the target's **flak** (§46) from the enemy AA units in the target
-hex (`hex_flak_points`) rather than a caller-supplied number. **Still not computed from the map:**
-CAP/scramble **interception** (the interceptor flight is still an explicit input, pending CAP
-designation state, §40.2), multi-hex flight **path/ZOC routing**, and fuel gating at execution;
-plus **scramble**, **strafing**, land-unit air recon, transport/airdrop (§42.3/42.4), a real pilot
-roster with ace progression, and Med-basing/Malta-commitment limit enforcement (§43/§44.41).
+or target (§37.22); deriving the target's **flak** (§46) from the enemy AA units in the target hex
+(`hex_flak_points`); and resolving **interception from map state** — `DesignateCap` puts a squadron
+on Combat Air Patrol (§40.2) over a hex (validating CAP capability §40.21, range, and weather), an
+offensive patrol of ≥3 fighters projects an air ZOC (§40.23, centre + six neighbours), and a
+bombing mission entering an enemy offensive patrol's coverage is intercepted, spending that
+patrol's one interception per stage (§40.26/§40.27). Patrols reset each Operations Stage.
+**Still not computed from the map:** multi-hex flight **path/ZOC routing** and fuel gating at
+execution; defensive-CAP engagement choice; plus **scramble**, **strafing**, land-unit air recon,
+transport/airdrop (§42.3/42.4), a real pilot roster with ace progression (CAP uses a flat
+representative TacAir/Maneuver, no per-pilot rating), and Med-basing/Malta-commitment limit
+enforcement (§43/§44.41).
 
 ### 8.6 Naval / convoy — abstract model implemented
 Ports (§55: efficiency, blocking §55.22, mining §55.27, San Giorgio §30.17), the Commonwealth

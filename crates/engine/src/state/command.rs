@@ -296,12 +296,23 @@ pub enum Command {
         bomb_roll: u32,
         night: bool,
     },
+    /// §40.2: fly `planes` fighters on Combat Air Patrol over `center` (Land Support Air Phase),
+    /// validating F (CAP) capability (§40.21), flight range to the patrolled hex (§37.12), and the
+    /// §37.22 weather grounding. The committed fighters fly (leave `ready`) and stand as a patrol
+    /// for the stage; an offensive patrol of ≥3 fighters projects an air ZOC (§40.23) and will
+    /// intercept enemy missions entering it (§40.26).
+    DesignateCap {
+        squadron: crate::state::air::SquadronId,
+        center: HexCoord,
+        cap_type: crate::reference::aircraft::CapType,
+        planes: u32,
+    },
     /// §37/§41: fly a land-support bombing mission from the squadron's base hex to a `target` hex,
     /// validating flight range/distance (§37.12), mission day/night capability (§39.42), and the
-    /// sandstorm/rainstorm grounding of the base or target (§37.22) against the map, and computing
-    /// target flak (§46) from the enemy AA units in the target hex — rather than taking flak as a
-    /// caller-supplied number. Interception is still an explicit input pending CAP designation
-    /// (§40.2). (Land Support Air Phase.)
+    /// sandstorm/rainstorm grounding of the base or target (§37.22) against the map; computing
+    /// target flak (§46) from the enemy AA units in the target hex; and resolving interception
+    /// (§40.26) against any enemy offensive CAP whose air ZOC covers the target — all from map
+    /// state rather than caller-supplied numbers. (Land Support Air Phase.)
     FlyBombingMissionAt {
         squadron: crate::state::air::SquadronId,
         target: HexCoord,
@@ -309,7 +320,6 @@ pub enum Command {
         planes: u32,
         bombload_per_plane: u32,
         night: bool,
-        interceptors: Option<crate::state::game::Flight>,
         flak_destroy_roll: u32,
         flak_abort_roll: u32,
         bomb_roll: u32,
@@ -407,6 +417,8 @@ pub enum CommandOutcome {
         class: crate::state::game::ReplacementClass,
         tonnage: u32,
     },
+    /// §40.2: a Combat Air Patrol was established — `fighters` planes flew to the patrolled hex.
+    CapDesignated { fighters: u32 },
 }
 
 /// Why a command was rejected. The state is left unchanged on any error.
@@ -875,11 +887,14 @@ impl GameState {
                 .map(CommandOutcome::BombingMission)
                 .ok_or(CommandError::NoSuchSquadron)
             }
+            Command::DesignateCap { squadron, center, cap_type, planes } => {
+                self.cmd_designate_cap(squadron, center, cap_type, planes)
+            }
             Command::FlyBombingMissionAt {
-                squadron, target, mission, planes, bombload_per_plane, night, interceptors,
+                squadron, target, mission, planes, bombload_per_plane, night,
                 flak_destroy_roll, flak_abort_roll, bomb_roll,
             } => self.cmd_fly_bombing_mission_at(
-                squadron, target, mission, planes, bombload_per_plane, night, interceptors,
+                squadron, target, mission, planes, bombload_per_plane, night,
                 flak_destroy_roll, flak_abort_roll, bomb_roll,
             ),
         }
@@ -1197,10 +1212,71 @@ impl GameState {
         Ok(CommandOutcome::ProductionPlanned { arrival_game_turn, class, tonnage })
     }
 
+    /// §40.2 DesignateCap: commit `planes` fighters of a located squadron to Combat Air Patrol over
+    /// `center`. Validates F (CAP) capability (§40.21), flight range to the patrolled hex (§37.12),
+    /// and §37.22 weather; the fighters fly (leave `ready`) and stand as a patrol for the stage.
+    fn cmd_designate_cap(
+        &mut self,
+        squadron: crate::state::air::SquadronId,
+        center: HexCoord,
+        cap_type: crate::reference::aircraft::CapType,
+        planes: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::state::game::{CapPatrol, Flight, Weather};
+        self.require_phase(Phase::LandSupportAir)?;
+        let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+        let base = sgsu.location.ok_or(CommandError::SquadronNotBased)?;
+        let side = sgsu.nationality.side();
+        let nationality = sgsu.nationality;
+
+        let grounded = |g: &Self, h: HexCoord| matches!(g.weather_at(h), Weather::Sandstorm | Weather::Rainstorm);
+        if grounded(self, base) || grounded(self, center) {
+            return Err(CommandError::WeatherGrounded);
+        }
+        // Shortest range among ready plane types, and a representative fighter's TacAir/Maneuver.
+        let chart = self.reference.aircraft_charts.get(&nationality);
+        let mut min_range = u32::MAX;
+        let mut rep: Option<(i32, i32)> = None;
+        let mut can_cap = false;
+        for g in sgsu.planes.iter().filter(|g| g.ready > 0) {
+            if let Some(ac) = chart.and_then(|c| c.get(&g.aircraft_type)) {
+                min_range = min_range.min(ac.max_range());
+                if crate::rules::air::can_fly_cap(&ac.missions) {
+                    can_cap = true;
+                    rep = rep.or_else(|| ac.loadouts.first().map(|l| (l.tac_air, l.maneuver)));
+                }
+            }
+        }
+        if min_range == u32::MAX {
+            return Err(CommandError::NoReadyPlanes);
+        }
+        if !can_cap {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        if !crate::rules::air::can_fly(min_range, base.distance(center), false) {
+            return Err(CommandError::TargetOutOfRange);
+        }
+        let flown = self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?.fly(planes);
+        if flown == 0 {
+            return Err(CommandError::NoReadyPlanes);
+        }
+        let (tacair, maneuver) = rep.unwrap_or((0, 0));
+        self.cap_patrols.push(CapPatrol {
+            squadron,
+            side,
+            cap_type,
+            center,
+            flight: Flight { count: flown, tacair, pilot: 0, maneuver },
+            intercepts_used: 0,
+        });
+        Ok(CommandOutcome::CapDesignated { fighters: flown })
+    }
+
     /// §37/§41 FlyBombingMissionAt: validate a land-support bombing mission against the map and
     /// resolve it. Enforces flight range (§37.12), day/night mission capability (§39.42), and the
     /// §37.22 sandstorm/rainstorm grounding of the base or target hex; derives the target's flak
-    /// (§46) from the enemy AA units present; then delegates to `resolve_bombing_mission`.
+    /// (§46) from the enemy AA units present; resolves interception (§40.26) against enemy offensive
+    /// CAP covering the target; then delegates to `resolve_bombing_mission`.
     #[allow(clippy::too_many_arguments)]
     fn cmd_fly_bombing_mission_at(
         &mut self,
@@ -1210,12 +1286,11 @@ impl GameState {
         planes: u32,
         bombload_per_plane: u32,
         night: bool,
-        interceptors: Option<crate::state::game::Flight>,
         flak_destroy_roll: u32,
         flak_abort_roll: u32,
         bomb_roll: u32,
     ) -> Result<CommandOutcome, CommandError> {
-        use crate::reference::aircraft::Mission;
+        use crate::reference::aircraft::{CapType, Mission};
         use crate::state::game::Weather;
         self.require_phase(Phase::LandSupportAir)?;
         let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
@@ -1255,6 +1330,22 @@ impl GameState {
         }
 
         let group = crate::rules::air::bombing_target_group(mission).ok_or(CommandError::NoTable)?;
+        // §40.26/§40.27: an enemy offensive CAP whose air ZOC covers the target intercepts (using
+        // its one interception this stage); pick the first eligible patrol and consume its intercept.
+        let enemy = nationality.side().opponent();
+        let interceptors = self
+            .cap_patrols
+            .iter()
+            .position(|p| {
+                p.side == enemy
+                    && matches!(p.cap_type, CapType::Offensive)
+                    && p.intercepts_used < crate::rules::air::OFFENSIVE_CAP_INTERCEPTS_PER_STAGE
+                    && p.covers(target)
+            })
+            .map(|i| {
+                self.cap_patrols[i].intercepts_used += 1;
+                self.cap_patrols[i].flight
+            });
         // §46: flak fired by the enemy AA units in the target hex.
         let flak_points = self.hex_flak_points(target, nationality.side());
         self.resolve_bombing_mission(

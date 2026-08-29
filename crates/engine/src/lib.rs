@@ -4806,7 +4806,6 @@ mod tests {
             planes: 12,
             bombload_per_plane: 20,
             night: false,
-            interceptors: None,
             flak_destroy_roll: 66,
             flak_abort_roll: 66,
             bomb_roll: 66,
@@ -4834,6 +4833,78 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[test]
+    fn cap_designation_and_interception_40() {
+        use crate::reference::aircraft::{AircraftClass, BombingMission, CapType};
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        refs.load_aircraft_chart(Nationality::Commonwealth, include_str!("../../../data/reference/aircraft/commonwealth.ron")).unwrap();
+        refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+        refs.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+        refs.load_air_to_air(include_str!("../../../data/reference/air-to-air.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+
+        let center = HexCoord::new(10, 10);
+        // Commonwealth CAP fighters (Beaufighter Mk.IF, range 117, CAP-capable) based at `center`.
+        let mut cw = Sgsu::new(SquadronId(1), Nationality::Commonwealth, SquadronClass::Fighter, "252 Sqn", 5, Some(center));
+        cw.add_planes("Beaufighter Mk.IF", AircraftClass::Fighter, 6, 1);
+        g.sgsus.insert(SquadronId(1), cw);
+        // German bombers (Ju.88D, range 118) based adjacent.
+        let mut ge = Sgsu::new(SquadronId(2), Nationality::German, SquadronClass::Bomber, "KG 26", 5, Some(HexCoord::new(11, 10)));
+        ge.add_planes("Ju.88D", AircraftClass::Bomber, 6, 1);
+        g.sgsus.insert(SquadronId(2), ge);
+        // Bring both squadrons' planes to ready (bypassing the maintenance economy for this test).
+        let ready_all = |g: &mut GameState, id: SquadronId| {
+            for grp in g.sgsus.get_mut(&id).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        };
+        ready_all(&mut g, SquadronId(1));
+        ready_all(&mut g, SquadronId(2));
+
+        let cap = Command::DesignateCap { squadron: SquadronId(1), center, cap_type: CapType::Offensive, planes: 4 };
+        // Wrong phase first.
+        assert_eq!(g.apply(cap.clone()), Err(CommandError::WrongPhase));
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+        // Designate an offensive CAP with 4 fighters → an air ZOC (§40.23).
+        assert_eq!(g.apply(cap), Ok(CommandOutcome::CapDesignated { fighters: 4 }));
+        assert_eq!(g.cap_patrols.len(), 1);
+        assert_eq!(g.cap_patrols[0].intercepts_used, 0);
+        assert_eq!(g.sgsus[&SquadronId(1)].ready_planes(), 2); // 6 - 4 flew to CAP
+
+        let bomb = |target: HexCoord| Command::FlyBombingMissionAt {
+            squadron: SquadronId(2), target, mission: BombingMission::Personnel,
+            planes: 6, bombload_per_plane: 20, night: false,
+            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+        };
+        // A target OUTSIDE the 7-hex air ZOC is not intercepted (§40.23).
+        let outside = HexCoord::new(14, 10); // 4 hexes from center
+        ready_all(&mut g, SquadronId(2));
+        assert!(matches!(g.apply(bomb(outside)), Ok(CommandOutcome::BombingMission(_))));
+        assert_eq!(g.cap_patrols[0].intercepts_used, 0);
+        // A target INSIDE the ZOC is intercepted — the patrol spends its one intercept (§40.27).
+        ready_all(&mut g, SquadronId(2));
+        assert!(matches!(g.apply(bomb(center)), Ok(CommandOutcome::BombingMission(_))));
+        assert_eq!(g.cap_patrols[0].intercepts_used, 1);
+        // A second mission into the ZOC finds no interception left this stage (§40.27).
+        ready_all(&mut g, SquadronId(2));
+        assert!(matches!(g.apply(bomb(center)), Ok(CommandOutcome::BombingMission(_))));
+        assert_eq!(g.cap_patrols[0].intercepts_used, 1);
+
+        // Patrols are cleared at the start of the next Operations Stage (§40.2).
+        g.begin_operations_stage();
+        assert!(g.cap_patrols.is_empty());
     }
 
     #[test]

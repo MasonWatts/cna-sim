@@ -129,7 +129,7 @@ pub struct BombingMissionOutcome {
 
 /// A body of fighters engaging in air-to-air combat (§45): its plane count and the per-plane
 /// combat ratings (TacAir, pilot Rating, and Maneuver).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Flight {
     pub count: u32,
     pub tacair: i32,
@@ -142,6 +142,37 @@ pub struct Flight {
 pub struct AirToAirOutcome {
     pub attacker_losses: u32,
     pub defender_losses: u32,
+}
+
+/// A squadron flying Combat Air Patrol over `center` this Operations Stage (§40.2). Offensive CAP
+/// with three or more fighters projects an air Zone of Control (`center` + its six neighbours,
+/// §40.23) and must engage enemy missions entering it (§40.26); it may intercept only one mission
+/// per stage (§40.27). Defensive CAP covers only `center` and may decline. `flight` is the
+/// committed fighters' combat strength (for the §45 air-to-air resolution).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapPatrol {
+    pub squadron: SquadronId,
+    pub side: Side,
+    pub cap_type: crate::reference::aircraft::CapType,
+    pub center: HexCoord,
+    pub flight: Flight,
+    /// §40.27: air-to-air interceptions already made this Operations Stage (offensive CAP caps at 1).
+    #[serde(default)]
+    pub intercepts_used: u32,
+}
+
+impl CapPatrol {
+    /// The hexes this patrol covers for interception (§40.23/§40.26): an offensive CAP of ≥3
+    /// fighters covers its air ZOC (centre + six neighbours), otherwise just the patrolled hex.
+    /// Defensive CAP covers only its own hex and (§40.26) is not counted for *automatic*
+    /// interception, so this is used for offensive patrols.
+    pub fn covers(&self, hex: HexCoord) -> bool {
+        if crate::rules::air::cap_has_air_zoc(self.cap_type, self.flight.count) {
+            crate::rules::air::air_zoc_hexes(self.center).contains(&hex)
+        } else {
+            self.center == hex
+        }
+    }
 }
 
 impl Commodities {
@@ -612,6 +643,10 @@ pub struct GameState {
     /// maxima across a game (§20.66 notes). Each records the Game-Turn it was planned.
     #[serde(default)]
     pub production_orders: Vec<ProductionOrder>,
+    /// Squadrons currently flying Combat Air Patrol (§40.2), reset at the start of each Operations
+    /// Stage. Enemy missions entering an offensive patrol's coverage are intercepted (§40.26).
+    #[serde(default)]
+    pub cap_patrols: Vec<CapPatrol>,
     /// Replacement Points consumed (absorbed) so far, per side — for the §64.74 unused-
     /// replacement victory points.
     #[serde(default)]
@@ -758,6 +793,7 @@ impl GameState {
             replacement_points: Vec::new(),
             pending_replacements: Vec::new(),
             production_orders: Vec::new(),
+            cap_patrols: Vec::new(),
             replacements_used: std::collections::HashMap::new(),
             withdrawn: std::collections::HashMap::new(),
             withdrawal_banked: 0,
@@ -4574,6 +4610,9 @@ impl GameState {
         // §24.11: the Construction Segment — advance projects by the just-completed stage (read
         // before CP is reset below, so the §24.12 no-CP-expended check sees that stage).
         self.advance_construction();
+        // §40.2: Combat Air Patrols last one Operations Stage — clear last stage's patrols (also
+        // resetting the §40.27 per-stage interception allowance).
+        self.cap_patrols.clear();
         // §35.14: each SGSU consumes its own upkeep (Fuel + Water per stage, Stores per turn).
         self.consume_sgsu_upkeep();
         // §30.16/§30.24/§30.25: per-stage ship upkeep — clear the once-per-stage fire flag and
