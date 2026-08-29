@@ -144,6 +144,17 @@ pub struct AirToAirOutcome {
     pub defender_losses: u32,
 }
 
+/// What a resolved strafing mission (§40.5–40.8) did to its target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StrafeEffect {
+    /// No effect (Strafing-Table result 0, or below the threshold for this target type).
+    None,
+    /// §40.64: this percentage of every commodity in the target's enemy Supply Dumps was destroyed.
+    SupplyDumpDamaged { percent: u32 },
+    /// §40.67: the target hex's water pipeline was destroyed.
+    PipelineDestroyed,
+}
+
 /// A squadron flying Combat Air Patrol over `center` this Operations Stage (§40.2). Offensive CAP
 /// with three or more fighters projects an air Zone of Control (`center` + its six neighbours,
 /// §40.23) and must engage enemy missions entering it (§40.26); it may intercept only one mission

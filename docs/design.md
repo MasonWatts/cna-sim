@@ -293,7 +293,7 @@ unused-replacement VP; §64.75 CW withdrawal VP; §64.76 band), with §64.71/§6
 including the one-full-turn objective-hold check. (The scenario-level §60.8 victory is not
 separately modeled.)
 
-### 8.3 Command boundary — ~48 commands, phase-gated
+### 8.3 Command boundary — ~49 commands, phase-gated
 `GameState::apply` covers land movement/combat, air, naval, logistics, and construction. Land:
 `MoveStep`/`FormationMove`, `Barrage`/`AntiArmor`/`CloseAssault`/`Retreat`, `React`,
 `MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply`, `PoisonWell`/`SweetenWell`.
@@ -304,9 +304,9 @@ Logistics/construction (Organization phase): `LoadTrucks`/`UnloadTrucks`, `Sipho
 `DeliverConvoy`/`ReconConvoyLane`, `AssignShip`/`RepairShip`, `ArtilleryBombardShip`/
 `SanGiorgioAttackShip`/`BombShip`/`OffShoreBombard`, `LayHarborMine`/`RemoveHarborMine`. Air:
 `AssignSquadronPlanes`, `ReadySquadron`/`ArmSquadron`/`RefitSquadron`, `DesignateCap` (§40.2),
-`FlySquadronMission`/`FlyBombingMission`/`FlyBombingMissionAt` (map-validated, §8.5)/
-`BombAirFacility`/`BombMaltaBase`, `DetermineMaltaAvailability`/`ConstructMaltaFacility`. Every
-command is gated to its Sequence-of-Play phase.
+`Strafe` (§40.5), `FlySquadronMission`/`FlyBombingMission`/`FlyBombingMissionAt` (map-validated,
+§8.5)/`BombAirFacility`/`BombMaltaBase`, `DetermineMaltaAvailability`/`ConstructMaltaFacility`.
+Every command is gated to its Sequence-of-Play phase.
 
 ### 8.4 Land combat & movement — complete for Phase 1
 Resolvers for **Anti-Armor** (§14), **Barrage** (§12.6), and **Close Assault** (§15). Close
@@ -340,11 +340,15 @@ on Combat Air Patrol (§40.2) over a hex (validating CAP capability §40.21, ran
 offensive patrol of ≥3 fighters projects an air ZOC (§40.23, centre + six neighbours), and a
 bombing mission entering an enemy offensive patrol's coverage is intercepted, spending that
 patrol's one interception per stage (§40.26/§40.27). Patrols reset each Operations Stage.
-**Still not computed from the map:** multi-hex flight **path/ZOC routing** and fuel gating at
-execution; defensive-CAP engagement choice; plus **scramble**, **strafing**, land-unit air recon,
-transport/airdrop (§42.3/42.4), a real pilot roster with ace progression (CAP uses a flat
-representative TacAir/Maneuver, no per-pilot rating), and Med-basing/Malta-commitment limit
-enforcement (§43/§44.41).
+The `Strafe` command (§40.5–40.8) flies a map-validated strafing mission and resolves it on the
+Strafing Table with the §40.8 column shift, applying the effect for **supply dumps** (§40.64, r×10%
+of each commodity destroyed) and **water pipelines** (§40.67, destroyed on r≥2); the other strafe
+target types (infantry, trucks, grounded aircraft, tanks, ports) are validated-but-rejected pending
+their loss models. **Still not computed from the map:** multi-hex flight **path/ZOC routing** and
+fuel gating at execution; defensive-CAP engagement choice; **scramble** interception; land-unit air
+recon; transport/airdrop (§42.3/42.4); a real pilot roster with ace progression (CAP/strafing use a
+flat representative TacAir, no per-pilot rating); and Med-basing/Malta-commitment enforcement
+(§43/§44.41).
 
 ### 8.6 Naval / convoy — abstract model implemented
 Ports (§55: efficiency, blocking §55.22, mining §55.27, San Giorgio §30.17), the Commonwealth

@@ -4908,6 +4908,90 @@ mod tests {
     }
 
     #[test]
+    fn strafe_supply_dump_and_pipeline_40() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::units::Side;
+        use crate::rules::air::StrafeTarget;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{Commodities, GameState, Phase, StrafeEffect};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::UnitLocation;
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        refs.load_strafing_table(include_str!("../../../data/reference/strafing-table.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(1, 1);
+        let target = HexCoord::new(3, 1);
+        // Ju.88D has D (strike) capability → may strafe (§40.51).
+        let mut sq = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 26", 5, Some(base));
+        sq.add_planes("Ju.88D", AircraftClass::Bomber, 6, 1);
+        g.sgsus.insert(SquadronId(1), sq);
+        let ready = |g: &mut GameState| {
+            for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        };
+        ready(&mut g);
+        let strafe_dump = Command::Strafe {
+            squadron: SquadronId(1), target, strafe_target: StrafeTarget::SupplyDump,
+            planes: 6, fort_level: 0, roll: 66,
+        };
+        // Wrong phase first.
+        assert_eq!(g.apply(strafe_dump.clone()), Err(CommandError::WrongPhase));
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+        // Enemy (Commonwealth) supply dump at the target, 100 of each commodity (placed now so the
+        // stage-advance evaporation above doesn't touch it).
+        g.add_supply_dump_full(UnitLocation::OnMap(target), Side::Commonwealth, Commodities { fuel: 100, ammo: 100, stores: 100, water: 100 });
+        // §40.64: result r destroys r*10% of every commodity in the dump.
+        match g.apply(strafe_dump) {
+            Ok(CommandOutcome::Strafed { result, effect }) => {
+                let pct = result * 10;
+                if pct > 0 {
+                    assert_eq!(effect, StrafeEffect::SupplyDumpDamaged { percent: pct });
+                } else {
+                    assert_eq!(effect, StrafeEffect::None);
+                }
+                assert_eq!(g.supply_dumps[0].supply.fuel, 100 - 100 * pct / 100);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        // §40.67: strafing a water pipeline destroys it on a result of 2 or 3.
+        ready(&mut g);
+        g.pipelines.insert(target);
+        match g.apply(Command::Strafe {
+            squadron: SquadronId(1), target, strafe_target: StrafeTarget::WaterPipeline,
+            planes: 6, fort_level: 0, roll: 66,
+        }) {
+            Ok(CommandOutcome::Strafed { result, effect }) => {
+                if result >= 2 {
+                    assert_eq!(effect, StrafeEffect::PipelineDestroyed);
+                    assert!(!g.pipelines.contains(&target));
+                } else {
+                    assert!(g.pipelines.contains(&target));
+                }
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        // An unmodeled strafe target (infantry) is rejected.
+        ready(&mut g);
+        assert_eq!(
+            g.apply(Command::Strafe {
+                squadron: SquadronId(1), target, strafe_target: StrafeTarget::Infantry,
+                planes: 6, fort_level: 0, roll: 66,
+            }),
+            Err(CommandError::MissionNotPermitted)
+        );
+    }
+
+    #[test]
     fn sgsu_upkeep_and_supply_35_14() {
         use crate::reference::squadron::SquadronClass;
         use crate::state::air::{Sgsu, SquadronId};

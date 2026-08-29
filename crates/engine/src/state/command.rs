@@ -307,6 +307,19 @@ pub enum Command {
         cap_type: crate::reference::aircraft::CapType,
         planes: u32,
     },
+    /// §40.5–40.8: fly `planes` on a strafing mission from the squadron's base to `target`,
+    /// validating strafing capability (§40.51), flight range (§37.12) and weather (§37.22), then
+    /// resolving on the Strafing Table with the §40.8 column shift for `strafe_target`/`fort_level`
+    /// and a 2d6 `roll` (encoded `10*d1+d2`). Applies the effect for supply dumps (§40.64) and water
+    /// pipelines (§40.67). (Land Support Air Phase.)
+    Strafe {
+        squadron: crate::state::air::SquadronId,
+        target: HexCoord,
+        strafe_target: crate::rules::air::StrafeTarget,
+        planes: u32,
+        fort_level: u32,
+        roll: u32,
+    },
     /// §37/§41: fly a land-support bombing mission from the squadron's base hex to a `target` hex,
     /// validating flight range/distance (§37.12), mission day/night capability (§39.42), and the
     /// sandstorm/rainstorm grounding of the base or target (§37.22) against the map; computing
@@ -419,6 +432,9 @@ pub enum CommandOutcome {
     },
     /// §40.2: a Combat Air Patrol was established — `fighters` planes flew to the patrolled hex.
     CapDesignated { fighters: u32 },
+    /// §40.5–40.8: a strafing mission resolved with Strafing-Table `result` (0–3); `effect`
+    /// describes what it did to the target (e.g. dump percent destroyed, pipeline destroyed).
+    Strafed { result: u32, effect: crate::state::game::StrafeEffect },
 }
 
 /// Why a command was rejected. The state is left unchanged on any error.
@@ -890,6 +906,9 @@ impl GameState {
             Command::DesignateCap { squadron, center, cap_type, planes } => {
                 self.cmd_designate_cap(squadron, center, cap_type, planes)
             }
+            Command::Strafe { squadron, target, strafe_target, planes, fort_level, roll } => {
+                self.cmd_strafe(squadron, target, strafe_target, planes, fort_level, roll)
+            }
             Command::FlyBombingMissionAt {
                 squadron, target, mission, planes, bombload_per_plane, night,
                 flak_destroy_roll, flak_abort_roll, bomb_roll,
@@ -1270,6 +1289,99 @@ impl GameState {
             intercepts_used: 0,
         });
         Ok(CommandOutcome::CapDesignated { fighters: flown })
+    }
+
+    /// §40.5–40.8 Strafe: validate and resolve a strafing mission against the map, applying the
+    /// effect for supply dumps (§40.64) and water pipelines (§40.67). Other target types (infantry,
+    /// trucks, grounded aircraft, tanks, ports) are not yet modeled and are rejected.
+    fn cmd_strafe(
+        &mut self,
+        squadron: crate::state::air::SquadronId,
+        target: HexCoord,
+        strafe_target: crate::rules::air::StrafeTarget,
+        planes: u32,
+        fort_level: u32,
+        roll: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::rules::air::StrafeTarget;
+        use crate::state::game::{Commodity, StrafeEffect, Weather};
+        self.require_phase(Phase::LandSupportAir)?;
+        // Only the target types with modeled state effects are supported for now.
+        if !matches!(strafe_target, StrafeTarget::SupplyDump | StrafeTarget::WaterPipeline) {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+        let base = sgsu.location.ok_or(CommandError::SquadronNotBased)?;
+        let side = sgsu.nationality.side();
+        let nationality = sgsu.nationality;
+
+        let grounded = |g: &Self, h: HexCoord| matches!(g.weather_at(h), Weather::Sandstorm | Weather::Rainstorm);
+        if grounded(self, base) || grounded(self, target) {
+            return Err(CommandError::WeatherGrounded);
+        }
+        // Shortest range and total strafing TacAir among ready, strafe-capable plane types.
+        let chart = self.reference.aircraft_charts.get(&nationality);
+        let mut min_range = u32::MAX;
+        let mut rep_tacair = 0i32;
+        let mut can_strafe = false;
+        for g in sgsu.planes.iter().filter(|g| g.ready > 0) {
+            if let Some(ac) = chart.and_then(|c| c.get(&g.aircraft_type)) {
+                min_range = min_range.min(ac.max_range());
+                if crate::rules::air::can_strafe(&ac.missions) {
+                    can_strafe = true;
+                    if rep_tacair == 0 {
+                        rep_tacair = ac.loadouts.first().map(|l| l.tac_air).unwrap_or(0);
+                    }
+                }
+            }
+        }
+        if min_range == u32::MAX {
+            return Err(CommandError::NoReadyPlanes);
+        }
+        if !can_strafe {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        if !crate::rules::air::can_fly(min_range, base.distance(target), false) {
+            return Err(CommandError::TargetOutOfRange);
+        }
+        let table = self.reference.strafing_table.as_ref().ok_or(CommandError::NoTable)?.clone();
+
+        let flown = self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?.fly(planes);
+        if flown == 0 {
+            return Err(CommandError::NoReadyPlanes);
+        }
+        let tacair = flown * rep_tacair.max(0) as u32;
+        let shift = crate::rules::air::strafe_column_shift(strafe_target, fort_level);
+        let result = table.result(tacair, shift, roll);
+
+        let effect = match strafe_target {
+            StrafeTarget::SupplyDump => {
+                let pct = crate::rules::air::supply_dump_percent_destroyed(result);
+                if pct > 0 {
+                    let enemy = side.opponent();
+                    for d in self.supply_dumps.iter_mut().filter(|d| {
+                        d.side == enemy && !d.dummy && d.location.hex() == Some(target)
+                    }) {
+                        for c in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
+                            let have = d.supply.get(c);
+                            *d.supply.get_mut(c) = have - have * pct / 100;
+                        }
+                    }
+                    StrafeEffect::SupplyDumpDamaged { percent: pct }
+                } else {
+                    StrafeEffect::None
+                }
+            }
+            StrafeTarget::WaterPipeline => {
+                if crate::rules::air::pipeline_destroyed_by_strafe(result) && self.destroy_pipeline(target) {
+                    StrafeEffect::PipelineDestroyed
+                } else {
+                    StrafeEffect::None
+                }
+            }
+            _ => StrafeEffect::None, // unreachable (guarded above)
+        };
+        Ok(CommandOutcome::Strafed { result, effect })
     }
 
     /// §37/§41 FlyBombingMissionAt: validate a land-support bombing mission against the map and
