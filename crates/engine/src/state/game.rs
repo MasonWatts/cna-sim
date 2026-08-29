@@ -3359,8 +3359,9 @@ impl GameState {
     /// Evaluate the §64.7 campaign victory: Geographical Occupation Points (§64.73) summed by
     /// side, then the §64.76 level from the point ratio. Occupation requires an in-supply
     /// combat unit (§64.73, via `city_holder`). The §64.71/§64.72 auto-wins are checked
-    /// separately by `campaign_auto_winner`. DEFERRED (need production): the §64.74
-    /// replacement / §64.75 withdrawal points.
+    /// separately by `campaign_auto_winner`. The §64.74 unused-replacement and §64.75 CW
+    /// withdrawal points are included below; note §64.74's allotment reads the production
+    /// charts (`replacement_vp`), which are not yet driven by a §20 production stage.
     pub fn evaluate_campaign_victory(&self) -> Option<CampaignResult> {
         let cv = self.reference.campaign_victory.as_ref()?;
         let mut axis = 0u32;

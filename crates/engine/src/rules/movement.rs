@@ -1,7 +1,10 @@
 //! Movement RULES (code) that consume terrain PARAMETERS (data).
 //!
-//! Intentionally small for now — it demonstrates the parameters-vs-rules boundary
-//! (design.md §3.8) before we build out the full movement system.
+//! This module is a thin, pure cost layer (per-hex enter cost, multi-feature hexside
+//! crossing cost, escarpment legality) exemplifying the parameters-vs-rules boundary
+//! (design.md §3.8). The stateful movement engine — CPA expenditure/Disorganization, ZOC,
+//! stacking, fuel/water gating, reaction, retreat, breakdown — lives in
+//! `GameState::move_counter` and the move commands (`crate::state::command`).
 
 use crate::reference::terrain::{Fixed, HexTerrain, MoveCost};
 use crate::reference::ReferenceData;

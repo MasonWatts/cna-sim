@@ -445,6 +445,23 @@ mod tests {
         assert_eq!(g.unblock_harbor("Benghazi", 1), None);
         assert_eq!(g.unblock_harbor("Benghazi", 2), Some((100, 50)));
         assert_eq!(g.ports["Benghazi"].efficiency, 3);
+
+        // BlockHarbor/UnblockHarbor are engineer actions gated to the Organization Phase.
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::Phase;
+        assert_eq!(
+            g.apply(Command::BlockHarbor { port: "Benghazi".into(), has_engineer: true }),
+            Err(CommandError::WrongPhase)
+        );
+        g.phase = Phase::Organization;
+        assert!(matches!(
+            g.apply(Command::BlockHarbor { port: "Benghazi".into(), has_engineer: true }),
+            Ok(_)
+        ));
+        assert!(matches!(
+            g.apply(Command::UnblockHarbor { port: "Benghazi".into(), engineers: 2 }),
+            Ok(_)
+        ));
     }
 
     #[test]

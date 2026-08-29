@@ -1,9 +1,10 @@
 //! The command boundary (design.md §3.3): all state mutations from players/AI/UI flow
 //! through `GameState::apply`, which validates legality and applies the effect.
 //!
-//! First command: a single-hex move. Multi-hex/continual movement is issued as repeated
-//! steps. ZOC, stacking limits, the CPA over-expenditure penalty, reaction, breakdown,
-//! and attached-unit movement are deferred to later increments.
+//! Multi-hex/continual movement is issued as repeated single-hex steps. The boundary now
+//! covers the full land turn (movement with ZOC, stacking, CPA over-expenditure, reaction,
+//! retreat, breakdown, and attached-unit movement; barrage/anti-armor/close assault) plus
+//! the air, naval, logistics, and construction commands — see the `Command` enum below.
 
 use crate::reference::crt::BarrageTargetClass;
 use crate::reference::terrain::{Fixed, MoveCost};
@@ -1041,16 +1042,19 @@ impl GameState {
         }
     }
 
-    /// §55.22 BlockHarbor.
+    /// §55.22 BlockHarbor: an engineer/demolition action, gated to the Organization Phase
+    /// like the other construction commands (BuildFortification/BuildRailroad/BuildRoad).
     fn cmd_block_harbor(&mut self, port: &str, has_engineer: bool) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::Organization)?;
         match self.block_harbor(port, has_engineer) {
             Some((ammo, stores)) => Ok(CommandOutcome::HarborAction { ammo, stores }),
             None => Err(CommandError::HarborActionFailed),
         }
     }
 
-    /// §55.26 UnblockHarbor.
+    /// §55.26 UnblockHarbor: an engineer action, gated to the Organization Phase (see BlockHarbor).
     fn cmd_unblock_harbor(&mut self, port: &str, engineers: u32) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::Organization)?;
         match self.unblock_harbor(port, engineers) {
             Some((ammo, stores)) => Ok(CommandOutcome::HarborAction { ammo, stores }),
             None => Err(CommandError::HarborActionFailed),
