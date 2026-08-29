@@ -1,8 +1,10 @@
 # Campaign for North Africa — Digital Simulation
 ## Project Design Document
 
-**Status:** Draft 2 — Phase 1 in progress (reference tier complete; state tier + combat underway)
-**Date:** 2026-07-07
+**Status:** Draft 3 — Phase 1 land engine complete; air, naval, and full-logistics
+systems substantially built (rules + reference tiers essentially complete, command/
+resolution layer partial). See §8 for the detailed status.
+**Date:** 2026-08-29
 **Scope of this document:** Project goals, guiding principles, phased roadmap, key
 decisions, and technology direction. Detailed data schemas/types are deliberately
 *out of scope here* and will follow as a separate document once this is settled.
@@ -170,13 +172,14 @@ Target: a legal, playable, machine-refereed simplified Land Game.
 - Combat: barrage, anti-armor, close assault, probes; the associated CRTs; morale &
   cohesion; forward/back gun positioning.
 - Sequence-of-Play state machine; initiative; weather.
-- **Abstract logistics** (rules §32): supply units, supply expenditure, motorization,
-  simplified convoys — the Land Game's built-in simple supply, not the full Logistics
-  Game.
+- ~~**Abstract logistics** (rules §32)~~ — **superseded by D15.** The §32 abstract mode
+  was dropped; the **full** Logistics Game (Fuel §49 / Ammo §50 / Stores §51 / Water §52,
+  real Trucks, convoys) is being built instead and is now largely implemented (§8.7).
 - Basic reinforcement/replacement arrival.
 
 **Deferred to later phases:**
-- Full Logistics Game (§§48–58), Air Game (§§33–47).
+- ~~Full Logistics Game (§§48–58), Air Game (§§33–47)~~ — **now substantially built ahead
+  of the original phasing** (D15; air, naval, and full-logistics status in §8.5–8.7).
 - Detailed naval fleet/coastal shipping/chariot raids (§30), desert raiders &
   commandos (§27), Rommel special rules (§31).
 - Full construction/engineers/minefields/fortifications (§§23–26) — partial first.
@@ -233,69 +236,142 @@ The detailed schemas are the next deliverable. At a high level the model compris
 
 ---
 
-## 8. Implementation Status / To Refine Next
+## 8. Implementation Status
+
+Settled foundations (no longer open):
 - ~~Confirm engine language~~ → **Rust** (D7).
 - ~~Reference data source/format~~ → external **RON** files; parameters-vs-rules
   boundary (D9, D10, §3.8).
-- Confirm the Phase-1 rules cut (§5) — anything to pull in or push out.
+- ~~Phase-1 rules cut~~ → the simplified Land Game is complete and implementation has
+  advanced well past the original Phase-1 boundary: the air, naval, and **full**
+  Logistics systems (D15, superseding the §32 abstract mode named in §5) are now
+  substantially built. §5's phasing is the original plan; this section is ground truth.
 
-**Reference tier — complete** (all with human-readable transcriptions in
-`docs/source-materials/` + load tests; see §9): Terrain Effects Chart; Unit
-Characteristics (Commonwealth/Italian/German); Tank & Gun / Weapons Systems
-(CW/It/Ge); Stacking Point Values (§9.4); and the combat tables — Anti-Armor Fire
-CRT (§14.6), Barrage CRT (§12.6), Close Assault CRT (§15.79), Morale Modifier Table
-(§17.4), Prisoners Captured (§15.89).
+The engine **builds clean and 269 tests pass** across the workspace (unit tests in each
+module plus integration tests in `lib.rs`). `cargo run --bin demo` narrates the three
+land-combat systems end to end. The layering is consistent throughout: **reference**
+(`reference/*.rs`, pure chart data from RON) → **rules** (`rules/*.rs`, pure stateless
+arithmetic/eligibility, no game state) → **state** (`state/*.rs`, mutable instances) →
+**command boundary** (`GameState::apply`, phase-gated `Command`/`CommandOutcome`/
+`CommandError`). Resolution wiring lives in `state/game.rs`.
 
-**State tier — in progress:** `Map` (hexes + directional hexsides), `Unit`
-(TOE-point composition + derived strengths), `GameState` with a **turn driver** that
-steps the full Land-Game Sequence of Play (§5.2: Initiative Determination → 3 Operations
-Stages, each = shared setup then Player A / Player B F–L phases, with per-stage CP reset),
-a seeded `Rng`, and the command/query boundary (`GameState::apply`). Movement
-(single-step, CPA/Disorganization, hexside costs, ZOC-to-ZOC prohibition, stacking
-limits) and Zones of Control queries are implemented.
+### 8.1 Reference tier — complete (land, air, naval, logistics)
+All chart data is transcribed, RON-backed, and load-tested (human-readable companions in
+`docs/source-materials/`; see §9). Beyond the original land charts (Terrain Effects; Unit
+Characteristics & Weapons Systems CW/It/Ge; Stacking Point Values §9.4; the combat CRTs —
+Anti-Armor §14.6, Barrage §12.6, Close Assault §15.79, Morale Modifier §17.4, Prisoners
+§15.89; Initiative Ratings §7.2), the reference tier now also carries the **air** charts
+(Aircraft Characteristics §4.44A; Refit §38.37; Scramble §40.4; Strafing §40.8; Air
+Bombardment §41.5; Mining-Harbor §41.39A; Air-to-Air §45.4/45.5; Anti-Aircraft §46.3/46.4;
+Air Recon §42.27; Malta availability/construction/commitment §44), the **naval** charts
+(Port Capacity §55.3; Shipping Lanes §56.18; Convoy Level & Capacity §56.4/56.5; Naval Recon
+§42.53), the **logistics** tables (ammo/fuel/water/stores rates, Truck Characteristics,
+Breakdown §21.38, Repair §22, Equivalent Weights §54.5), and the **production** charts (§20:
+German/Italian/CW production, Axis/CW truck production, CW infantry production, Replacement
+Conversion §20.3). All are deserialized and unit-tested; note that the production charts,
+though loaded, are not yet consulted by game logic (see §8.7).
 
-**Combat — Phase-1 complete for the three land-combat systems:** resolvers for
-**Anti-Armor** (§14), **Barrage** (§12.6), and **Close Assault** (§15). Close Assault
-models the differential (§15.26/§15.28) plus all four modifier systems — combined arms
-(§15.4), unit size (§15.5, incl. §15.54 zero-def loner), morale (§15.6/§17.2 with
-§6.27/§15.64c averaging, §17.23 clamp, §17.25/§17.26 Surrender, §17.28 Rommel), and
-terrain (§15.3) — then losses, prisoners (§15.89), and Engaged/In-Contact status. A
-scripted `demo` binary (`cargo run --bin demo`) narrates all three in sequence.
+### 8.2 Turn driver / Sequence of Play — implemented
+`GameState`'s turn driver (`advance_phase`) walks the full per-Game-Turn sequence, not just
+the shared setup + A/B blocks:
+- **Initiative Determination** (§7): d6 + Initiative Rating per side, ties re-roll, GT1
+  optionally predetermined; the Axis rating is state-derived (Rommel-on-map / any German).
+- **Pre-turn sequence** (once/turn): Strategic Air Designation → Malta Availability → Strategic
+  Mission Assignment → Malta Raid → Naval Convoy Schedule → Convoy Resolution.
+- **Three Operations Stages**, each: Weather → Naval Convoy Arrival → Organization →
+  Commonwealth Fleet → Land Support Air → then per-player {Reserve Designation, Movement &
+  Combat, Truck Convoy, Commonwealth Rail, Repair, Patrol}, with per-stage CP reset.
+- **Post-turn sequence**: Strategic Air Return → Aircraft Maintenance, then `game_turn += 1`.
 
-Remaining combat deferrals (each needs a subsystem or data, not just a rule):
-- **Fortification/minefield terrain shifts**: those are map *features* (not yet modeled);
-  base terrain and hexside shifts are in.
-- Minor: §15.35 two-terrain-hexside exception; multi-hex defenders.
+**Weather (§29)** is rolled per section (seasonal Weather Table + Foul Weather Location Table),
+with hot-weather fuel/water evaporation, sandstorm movement-cost doubling, and rainstorm well
+replenishment. The **declare-A-or-B choice** is a real command (`DeclareInitiativeOrder`),
+defaulting to initiative-player-first. **Victory** is implemented as the **§64.7 campaign
+victory** (geographical occupation points §64.73 requiring an in-supply combat unit; §64.74
+unused-replacement VP; §64.75 CW withdrawal VP; §64.76 band), with §64.71/§64.72 auto-win
+including the one-full-turn objective-hold check. (The scenario-level §60.8 victory is not
+separately modeled.)
 
-*(Retreat movement §15.82, reaction §8.5 with pinning §8.53b/§8.54, overrun §15.77, and gun
-vulnerability §15.84 — previously listed here as deferred — are now implemented.)*
+### 8.3 Command boundary — 45 commands, phase-gated
+`GameState::apply` covers land movement/combat, air, naval, logistics, and construction. Land:
+`MoveStep`/`FormationMove`, `Barrage`/`AntiArmor`/`CloseAssault`/`Retreat`, `React`,
+`MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply`, `PoisonWell`/`SweetenWell`.
+Logistics/construction (Organization phase): `LoadTrucks`/`UnloadTrucks`, `SiphonFuel`/
+`RefuelUnit`/`RearmUnit`, `BuildPipeline`/`BuildFortification`/`BuildRailroad`/`DemolishRailroad`/
+`BuildRoad`, `LayMinefield`/`ClearMinefield`, `WithdrawUnit`/`ReturnUnit`/`AbsorbReplacement`,
+`Repair`. Naval: `PlanConvoy`/`BombConvoy`/`DeliverConvoy`/`ReconConvoyLane`, `AssignShip`/
+`RepairShip`, `ArtilleryBombardShip`/`SanGiorgioAttackShip`/`BombShip`/`OffShoreBombard`,
+`BlockHarbor`/`UnblockHarbor` (note: these two are currently **ungated** — a likely oversight),
+`LayHarborMine`/`RemoveHarborMine`. Air: `AssignSquadronPlanes`, `ReadySquadron`/`ArmSquadron`/
+`RefitSquadron`, `FlySquadronMission`/`FlyBombingMission`/`BombAirFacility`/`BombMaltaBase`,
+`DetermineMaltaAvailability`/`ConstructMaltaFacility`.
 
-**Status (2026-07):** the Scenario-1 order of battle and the full map are in. All five map
-sections (A–E) are digitized, load-tested, and loaded together (~7,100 real hexes). OB
-formations deploy from the §4.44 charts via scenario `placements`, including **dispersed
-placement** (per-unit hex overrides, e.g. 7th Armoured's covering screen at its §60.41 hexes
-with the main body at D3612). A **reinforcement/arrival driver** brings a deployed formation's
-later-arriving units onto the map at their scheduled (game_turn, stage) — e.g. 4th Indian's
-1st Field Arty (GT3.3) and 7th Indian Bde (GT5) — attaching them to their on-map parent
-(§4.44 Organization at Arrival). Loaded OB: Italian Catanzaro/Marmarica/Cirene/Ariete,
-Commonwealth 4th Indian/7th Armoured (ids/weapons/parents/org-size all test-validated).
+### 8.4 Land combat & movement — complete for Phase 1
+Resolvers for **Anti-Armor** (§14), **Barrage** (§12.6), and **Close Assault** (§15). Close
+Assault models the differential (§15.26/§15.28) plus all four modifier systems — combined arms
+(§15.4), unit size (§15.5, incl. §15.54 zero-def loner), morale (§15.6/§17.2 with §6.27/§15.64c
+averaging, §17.23 clamp, §17.25/§17.26 Surrender, §17.28 Rommel), and terrain (§15.3) — then
+losses, prisoners (§15.89), Engaged/In-Contact status, overrun (§15.77), and gun vulnerability
+(§15.84). Barrage/Anti-Armor enforce adjacency (§12.31/§12.35 no LOS); Barrage applies the
+§12.33/§12.34 terrain column shift. **Movement**: CPA over-expenditure/Disorganization (§6.21),
+terrain & multi-feature hexside costs (§8.37) with escarpment rules (§8.42), continual movement
+(as repeated single-hex steps), ZOC-to-ZOC prohibition and leave-ZOC surcharge (§8.14/§8.15/
+§10.24), **reaction** (§8.5 with §8.54 pinning), **retreat** (§15.82), **breakdown** (§21),
+minefield entry (§26.2), and combat ammo/fuel/water gating. Combat deferrals: fortification/
+minefield *terrain shifts* (those features are not yet map-modeled), §15.35 two-terrain-hexside
+exception, multi-hex defenders, detailed anti-armor line-of-fire, and defensive-assault ammo
+(§50.14).
 
-**Deferred next:** whole-formation reinforcement *entry* (a formation not on-map at start,
-e.g. Ariete at GT18) needs a scenario entry-hex — the arrival driver handles formation-
-internal arrivals today. The **Naval Convoy Arrival Phase** is now in the stage sequence and
-is where reinforcements enter (§20.12); Fleet/convoy *resolution* and Rail movement remain
-deferred. Also deferred within the turn driver: the declare-A-or-B choice, the weather roll
-(§29) and its effects, victory conditions (§60.8), and abstract supply (§32). Remaining
-unit-data promotion (Italian border force, CW rear) is tracked separately (§4.44 OB pipeline,
-D14).
+### 8.5 Air game — rules & reference complete; resolution partial
+The §33–46 ruleset is present as a large, thoroughly-cited pure-rules layer (`rules/air.rs`)
+with matching placed state (`state/air.rs`: SGSU plane-readiness lifecycle, pilots, air
+facilities, Malta base). Working end-to-end through the command boundary: squadron maintenance
+(refit/ready/arm/fly with supply/stores gating), **bombing** of land/ship/facility/Malta/convoy
+targets resolved through CAP interception → flak → Air Bombardment CRT, **air-to-air** duel
+resolution (§45.4/45.5), and Malta availability/construction. **Not yet wired into game state:**
+map-based flight execution (range/path/ZOC-routing, fuel & sandstorm gating at execution — the
+interception flight is currently supplied by the caller, not computed from map positions),
+**scramble**, **strafing**, land-unit air recon, transport/airdrop (§42.3/42.4), a real pilot
+roster with ace progression, and Med-basing/Malta-commitment limit enforcement (§43/§44.41).
 
-The command boundary (`GameState::apply`) now covers movement **and** combat: `Barrage`,
-`AntiArmor`, and `CloseAssault` commands are gated to the Movement & Combat phase and
-return a `CommandOutcome` carrying the resolver result. Barrage and Anti-Armor enforce
-adjacency (§12.31 — artillery barrages an adjacent occupied hex; §12.35 confirms CNA has
-no artillery line-of-sight), and Close Assault enforces attacker adjacency (§15.23).
-Barrage applies the §12.33/§12.34 terrain column shift (defender-favorable, single best
-terrain). Detailed anti-armor line-of-fire and multi-hex targeting remain deferred.
+### 8.6 Naval / convoy — abstract model implemented
+Ports (§55: efficiency, blocking §55.22, mining §55.27, San Giorgio §30.17), the Commonwealth
+Fleet (§30: ships as gun-rating strength/damage, seaworthiness, repair cycle, at-sea/rest,
+bombardment), and the **convoy pipeline** (plan → bomb → deliver, one/lane/turn §56.12, tonnage
+from the Convoy Level Chart, survivors converted to supply points) all work end-to-end and are
+where reinforcements enter (Naval Convoy Arrival Phase). Consistent with the game's abstraction,
+there is **no sea-movement/interdiction/submarine model** — convoys are planned tonnages
+attacked only by air; the §42.53 size-class reveal is a rule helper not yet used by recon.
+
+### 8.7 Logistics (full game, D15) — increments 1–8 built; production (§20) is the gap
+The §32 abstract supply mode has been fully removed as D15 directed (only the coarse
+`unit_in_supply` dump-reachability proxy remains, as planned, pending §49/§50 presence rules).
+Implemented and tested: **(1)** commodities foundation (`Commodities{fuel,ammo,stores,water}`,
+`SupplyDump`, setup dump placement); **(2)** Fuel §49 (rates/capacity, movement draw from
+tanks→truck-cargo→dumps, siphon §49.17, evaporation §49.3/§29.34); **(3)** Ammo §50 (per-combat
+consumption gating all three land-combat commands, one-fire reserve rearm); **(4)** Stores §51 +
+the Stores Expenditure Stage (requirement draw, starvation attrition, half-rations, construction
+& air-refit consumption); **(5)** Water §52 + hot-weather §29.35 (wells with secret depletion,
+pipelines §52.2, the §52.6 Italian Pasta Rule, deprivation restrictions on move/combat);
+**(6)** Trucks (Light/Medium/Heavy chart, motorization §6.17, breakdown §21.38, field/facility
+repair §22); **(7)** supply transport/dumps + Commonwealth rail supply §54.3 and the two-leg
+strategic-supply trace for victory §64.71/72; **(8)** naval convoys §56 (see §8.6). **Not
+started in game logic — (9) Production §20:** the reference charts and RON data are complete and
+tested, but they are never consulted by state (the §20.3 Replacement Conversion chart is unused;
+the replacement pool/training/absorb flow exists but is not chart-driven), so parts of the
+§64.74/§64.75 VP still carry a "need production" note.
+
+### 8.8 Scenario, map & OB
+The Scenario-1 order of battle and the full map are in: all five map sections (A–E) digitized,
+load-tested, and loaded together (~7,100 real hexes). OB formations deploy from the §4.44 charts
+via scenario `placements`, including **dispersed placement** (per-unit hex overrides, e.g. 7th
+Armoured's §60.41 covering screen with the main body at D3612). Both reinforcement paths work:
+**formation-internal arrivals** (later-arriving units of an on-map formation attach to their
+on-map parent at their scheduled game_turn/stage) and **whole-formation entry** (a formation not
+on-map at start enters at a resolved entry hex or off-map node), both resolving at the Naval
+Convoy Arrival Phase. Loaded OB: Italian Catanzaro/Marmarica/Cirene/Ariete, Commonwealth 4th
+Indian/7th Armoured (ids/weapons/parents/org-size all test-validated). Remaining unit-data
+promotion (Italian border force, CW rear) is tracked separately (§4.44 OB pipeline, D14).
 
 ## 9. Source-Material Transcription Practice
 
