@@ -3826,6 +3826,28 @@ impl GameState {
         dmg
     }
 
+    /// §46.0/§46.11: total anti-aircraft points fired from `hex` at planes of `bomber_side` — the
+    /// sum over enemy (non-`bomber_side`) land units in the hex of TOE Strength × AA rating (no
+    /// divide-by-ten). Facility intrinsic AA (§36.18) is excluded here, as it fires only against
+    /// strafing / dive-bombing (§40.7), not level bombing.
+    pub fn hex_flak_points(&self, hex: HexCoord, bomber_side: Side) -> u32 {
+        self.units
+            .values()
+            .filter(|u| u.hex() == Some(hex) && u.nationality.side() != bomber_side)
+            .map(|u| {
+                let rating = self
+                    .reference
+                    .unit_characteristics
+                    .get(&u.nationality)
+                    .and_then(|m| m.get(&u.id_code))
+                    .and_then(|uc| uc.anti_air)
+                    .map(|r| r.value.max(0) as u32)
+                    .unwrap_or(0);
+                crate::rules::air::aa_points(u.total_toe(), rating)
+            })
+            .sum()
+    }
+
     /// The result of resolving a bombing mission (§39.0 procedure).
     pub fn resolve_bombing_mission(
         &mut self,

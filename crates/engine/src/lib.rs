@@ -4745,6 +4745,98 @@ mod tests {
     }
 
     #[test]
+    fn hex_flak_points_from_enemy_aa_46() {
+        use crate::reference::units::Side;
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_unit_characteristics(
+            Nationality::German,
+            include_str!("../../../data/reference/unit-characteristics/german.ron"),
+        )
+        .unwrap();
+        let mut g = GameState::new(refs, 1);
+        let hex = HexCoord::new(5, 5);
+        // German "p" infantry: AA rating 1 (§46.11 → TOE × 1). toe 4 → 4 flak points.
+        let u = g.spawn_unit(Nationality::German, "p", "flak", Composition::Organic { current_toe: 4 });
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(hex));
+
+        // To a Commonwealth bomber the German unit is enemy AA → 4 points.
+        assert_eq!(g.hex_flak_points(hex, Side::Commonwealth), 4);
+        // To an Axis bomber the same unit is friendly → no flak.
+        assert_eq!(g.hex_flak_points(hex, Side::Axis), 0);
+        // An empty hex has no flak.
+        assert_eq!(g.hex_flak_points(HexCoord::new(9, 9), Side::Commonwealth), 0);
+    }
+
+    #[test]
+    fn fly_bombing_mission_at_map_validation_37() {
+        use crate::reference::aircraft::{AircraftClass, BombingMission};
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, Weather};
+        use crate::state::map::{section_char_of_col, HexCoord};
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(
+            Nationality::German,
+            include_str!("../../../data/reference/aircraft/german.ron"),
+        )
+        .unwrap();
+        refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+        refs.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(1, 1);
+        // Ju.88D bomber: range 118, day Strike (bombing) capable.
+        let mut sq = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 26", 5, Some(base));
+        sq.add_planes("Ju.88D", AircraftClass::Bomber, 12, 1);
+        g.sgsus.insert(SquadronId(1), sq);
+        for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+            grp.refitted = grp.count;
+            grp.ready = grp.count;
+        }
+
+        let mission = |target: HexCoord| Command::FlyBombingMissionAt {
+            squadron: SquadronId(1),
+            target,
+            mission: BombingMission::Personnel,
+            planes: 12,
+            bombload_per_plane: 20,
+            night: false,
+            interceptors: None,
+            flak_destroy_roll: 66,
+            flak_abort_roll: 66,
+            bomb_roll: 66,
+        };
+        let near = HexCoord::new(3, 1); // distance 2 ≤ 118
+        let far = HexCoord::new(200, 1); // well beyond range 118
+
+        // Wrong phase.
+        assert_eq!(g.apply(mission(near)), Err(CommandError::WrongPhase));
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+        // Beyond one-way range (§37.12).
+        assert_eq!(g.apply(mission(far)), Err(CommandError::TargetOutOfRange));
+        // §37.22: a Sandstorm over the base grounds the flight.
+        g.weather_by_section.insert(section_char_of_col(base.col), Weather::Sandstorm);
+        assert_eq!(g.apply(mission(near)), Err(CommandError::WeatherGrounded));
+        g.weather_by_section.clear();
+        // In range, clear weather, no enemy AA at the target → all 12 bomb unopposed.
+        match g.apply(mission(near)) {
+            Ok(CommandOutcome::BombingMission(o)) => {
+                assert_eq!(o.flown, 12);
+                assert_eq!(o.destroyed + o.aborted, 0); // flak computed from the empty target = 0
+                assert_eq!(o.delivered_bomb_points, 12 * 20);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
     fn sgsu_upkeep_and_supply_35_14() {
         use crate::reference::squadron::SquadronClass;
         use crate::state::air::{Sgsu, SquadronId};

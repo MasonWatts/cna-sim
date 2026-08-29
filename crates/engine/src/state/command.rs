@@ -296,6 +296,24 @@ pub enum Command {
         bomb_roll: u32,
         night: bool,
     },
+    /// §37/§41: fly a land-support bombing mission from the squadron's base hex to a `target` hex,
+    /// validating flight range/distance (§37.12), mission day/night capability (§39.42), and the
+    /// sandstorm/rainstorm grounding of the base or target (§37.22) against the map, and computing
+    /// target flak (§46) from the enemy AA units in the target hex — rather than taking flak as a
+    /// caller-supplied number. Interception is still an explicit input pending CAP designation
+    /// (§40.2). (Land Support Air Phase.)
+    FlyBombingMissionAt {
+        squadron: crate::state::air::SquadronId,
+        target: HexCoord,
+        mission: crate::reference::aircraft::BombingMission,
+        planes: u32,
+        bombload_per_plane: u32,
+        night: bool,
+        interceptors: Option<crate::state::game::Flight>,
+        flak_destroy_roll: u32,
+        flak_abort_roll: u32,
+        bomb_roll: u32,
+    },
 }
 
 /// The result of successfully applying a [`Command`].
@@ -481,6 +499,16 @@ pub enum CommandError {
     /// §20.66: planning this order would exceed the item's per-period maximum (or the item is
     /// not yet available on this Game-Turn).
     ProductionRateExceeded,
+    /// §37: the squadron has no base hex (eliminated / in a pool) and cannot fly.
+    SquadronNotBased,
+    /// §37.16: the squadron has no ready planes to fly the mission.
+    NoReadyPlanes,
+    /// §37.12/§37.21: the target hex is beyond the flying planes' one-way range.
+    TargetOutOfRange,
+    /// §37.22: the base or target hex is under a Sandstorm/Rainstorm and flight is grounded.
+    WeatherGrounded,
+    /// §39.42: no flying plane type may perform this bombing mission by day/night as required.
+    MissionNotPermitted,
     /// §38.36: no Stores Point is present at the squadron's base to pay for the refit attempt.
     InsufficientStores,
     /// §35.14: the SGSU lacks its own upkeep and may not repair (refit) its planes this stage.
@@ -847,6 +875,13 @@ impl GameState {
                 .map(CommandOutcome::BombingMission)
                 .ok_or(CommandError::NoSuchSquadron)
             }
+            Command::FlyBombingMissionAt {
+                squadron, target, mission, planes, bombload_per_plane, night, interceptors,
+                flak_destroy_roll, flak_abort_roll, bomb_roll,
+            } => self.cmd_fly_bombing_mission_at(
+                squadron, target, mission, planes, bombload_per_plane, night, interceptors,
+                flak_destroy_roll, flak_abort_roll, bomb_roll,
+            ),
         }
     }
 
@@ -1160,6 +1195,74 @@ impl GameState {
             .and_then(|s| self.resolve_entry(&s));
         self.plan_replacement(class, count, arrival_game_turn, self.operations_stage as u32, location, None);
         Ok(CommandOutcome::ProductionPlanned { arrival_game_turn, class, tonnage })
+    }
+
+    /// §37/§41 FlyBombingMissionAt: validate a land-support bombing mission against the map and
+    /// resolve it. Enforces flight range (§37.12), day/night mission capability (§39.42), and the
+    /// §37.22 sandstorm/rainstorm grounding of the base or target hex; derives the target's flak
+    /// (§46) from the enemy AA units present; then delegates to `resolve_bombing_mission`.
+    #[allow(clippy::too_many_arguments)]
+    fn cmd_fly_bombing_mission_at(
+        &mut self,
+        squadron: crate::state::air::SquadronId,
+        target: HexCoord,
+        mission: crate::reference::aircraft::BombingMission,
+        planes: u32,
+        bombload_per_plane: u32,
+        night: bool,
+        interceptors: Option<crate::state::game::Flight>,
+        flak_destroy_roll: u32,
+        flak_abort_roll: u32,
+        bomb_roll: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::aircraft::Mission;
+        use crate::state::game::Weather;
+        self.require_phase(Phase::LandSupportAir)?;
+        let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+        let base = sgsu.location.ok_or(CommandError::SquadronNotBased)?;
+        let nationality = sgsu.nationality;
+
+        // §37.22: no flight into/out of a Sandstorm or Rainstorm hex.
+        let grounded = |g: &Self, h: HexCoord| matches!(g.weather_at(h), Weather::Sandstorm | Weather::Rainstorm);
+        if grounded(self, base) || grounded(self, target) {
+            return Err(CommandError::WeatherGrounded);
+        }
+
+        // §37.12: distance (hexes) may not exceed the shortest range among the flying plane types,
+        // and (§39.42) at least one flying type must be able to bomb by day/night as required.
+        let distance = base.distance(target);
+        let chart = self.reference.aircraft_charts.get(&nationality);
+        let mut min_range = u32::MAX;
+        let mut any_can_bomb = false;
+        for g in sgsu.planes.iter().filter(|g| g.ready > 0) {
+            if let Some(ac) = chart.and_then(|c| c.get(&g.aircraft_type)) {
+                min_range = min_range.min(ac.max_range());
+                if crate::rules::air::can_perform(&ac.missions, Mission::ConvoyLandBombing, night)
+                    || crate::rules::air::can_perform(&ac.missions, Mission::Strike, night)
+                {
+                    any_can_bomb = true;
+                }
+            }
+        }
+        if min_range == u32::MAX {
+            return Err(CommandError::NoReadyPlanes);
+        }
+        if !crate::rules::air::can_fly(min_range, distance, false) {
+            return Err(CommandError::TargetOutOfRange);
+        }
+        if !any_can_bomb {
+            return Err(CommandError::MissionNotPermitted);
+        }
+
+        let group = crate::rules::air::bombing_target_group(mission).ok_or(CommandError::NoTable)?;
+        // §46: flak fired by the enemy AA units in the target hex.
+        let flak_points = self.hex_flak_points(target, nationality.side());
+        self.resolve_bombing_mission(
+            squadron, planes, bombload_per_plane, group, interceptors,
+            flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, night,
+        )
+        .map(CommandOutcome::BombingMission)
+        .ok_or(CommandError::NoSuchSquadron)
     }
 
     /// §35.2 AssignSquadronPlanes: gated to the Organization Phase.
