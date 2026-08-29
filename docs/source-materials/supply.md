@@ -1,5 +1,11 @@
 # Abstract Logistics — Supply (Rules §32)
 
+> **SUPERSEDED (D15).** The §32 abstract supply mode has been dropped in favour of the full
+> Logistics Game (Fuel §49 / Ammo §50 / Stores §51 / Water §52; see design.md §8.7). This page is
+> kept as a historical transcription of the §32 rules; the "Implementation status" section below
+> describes code that has since been removed or replaced — in particular the §32.16
+> `unit_in_supply` trace no longer exists (replaced by the §64.73 `unit_supply_adequate` test).
+
 Human-readable digest of the Land-Game supply rules (played without the full Air/Logistics
 Games). Transcribed from the rulebook (2026-07-14).
 

@@ -2560,7 +2560,9 @@ mod tests {
         place(&mut g, Nationality::Commonwealth, "h", "A4827");
         place(&mut g, Nationality::Commonwealth, "h", "B5925");
         assert!(g.is_combat_unit(axis_unit)); // sanity: infantry is a combat unit
-        // §64.73: each occupying unit must be in supply — give each a co-located Supply Unit.
+        // §64.73: each occupying unit must be adequately supplied — give each a co-located Supply
+        // Unit with Stores for a week (Water is covered by the major-city hexes; leg infantry
+        // needs no Fuel/Ammo). toe 4 → 16 Stores required.
         for (side, hex) in [
             (Side::Axis, "C4807"),
             (Side::Axis, "C4321"),
@@ -2568,7 +2570,11 @@ mod tests {
             (Side::Commonwealth, "B5925"),
         ] {
             let c = HexId::parse(hex).unwrap().to_hex_coord();
-            g.add_supply_dump(UnitLocation::OnMap(c), side, 40, 60);
+            g.add_supply_dump_full(
+                UnitLocation::OnMap(c),
+                side,
+                crate::state::game::Commodities { fuel: 60, ammo: 40, stores: 100, water: 0 },
+            );
         }
 
         let r = g.evaluate_campaign_victory().unwrap();
@@ -2605,8 +2611,17 @@ mod tests {
 
         // §64.73: an out-of-supply combat unit does not occupy — no Occupation Points.
         assert_eq!(g.evaluate_campaign_victory().unwrap().axis_vp, 0);
-        // A co-located Supply Unit puts it in supply → it now occupies Tobruk (200 Axis VP).
+        // A dump with only Fuel/Ammo (no Stores) still fails the supply-adequacy test.
         g.add_supply_dump(UnitLocation::OnMap(tobruk), Side::Axis, 40, 60);
+        assert_eq!(g.evaluate_campaign_victory().unwrap().axis_vp, 0);
+        // A co-located Supply Unit with a week of Stores makes it adequately supplied → it now
+        // occupies Tobruk (200 Axis VP); Water is covered by the major-city hex.
+        g.supply_dumps.clear();
+        g.add_supply_dump_full(
+            UnitLocation::OnMap(tobruk),
+            Side::Axis,
+            crate::state::game::Commodities { fuel: 60, ammo: 40, stores: 100, water: 0 },
+        );
         assert_eq!(g.evaluate_campaign_victory().unwrap().axis_vp, 200);
     }
 
@@ -2625,10 +2640,10 @@ mod tests {
     }
 
     #[test]
-    fn unit_in_supply_traces_within_half_cpa() {
+    fn unit_supply_adequacy_64_73() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;
-        use crate::state::game::GameState;
+        use crate::state::game::{Commodities, GameState};
         use crate::state::map::HexCoord;
         use crate::state::unit::{Composition, UnitLocation};
 
@@ -2640,10 +2655,9 @@ mod tests {
         )
         .unwrap();
         let mut g = GameState::new(refs, 1);
-        for c in 0..6 {
-            g.map.set_hex(HexCoord::new(c, 0), HexTerrain::Clear);
-        }
         let a = HexCoord::new(0, 0);
+        g.map.set_hex(a, HexTerrain::Clear); // a plain hex — no Water source of its own
+        // "h" leg infantry, toe 5 → needs 20 Stores/week and 1 Water; no Fuel/Ammo (§50.2).
         let unit = g.spawn_unit(
             Nationality::Commonwealth,
             "h",
@@ -2651,20 +2665,40 @@ mod tests {
             Composition::Organic { current_toe: 5 },
         );
         g.unit_mut(unit).unwrap().location = Some(UnitLocation::OnMap(a));
-        // "h" infantry CPA 15 → range = 7.5 CP (75 tenths); Clear costs 2 CP (20 tenths)/hex.
 
-        assert!(!g.unit_in_supply(unit)); // no dumps
-        // A friendly dump 2 Clear hexes away (40 ≤ 75) supplies it.
-        g.add_supply_dump(UnitLocation::OnMap(HexCoord::new(2, 0)), Side::Commonwealth, 40, 60);
-        assert!(g.unit_in_supply(unit));
-        // A dump 5 hexes away (100 > 75) is out of range.
+        // No dump and no Water source → not adequately supplied.
+        assert!(!g.unit_supply_adequate(unit));
+        // A co-located dump short on Stores (10 < 20) still fails.
+        g.add_supply_dump_full(
+            UnitLocation::OnMap(a),
+            Side::Commonwealth,
+            Commodities { fuel: 0, ammo: 0, stores: 10, water: 5 },
+        );
+        assert!(!g.unit_supply_adequate(unit));
+        // A dump with a week of Stores (and Water) → adequate.
         g.supply_dumps.clear();
-        g.add_supply_dump(UnitLocation::OnMap(HexCoord::new(5, 0)), Side::Commonwealth, 40, 60);
-        assert!(!g.unit_in_supply(unit));
+        g.add_supply_dump_full(
+            UnitLocation::OnMap(a),
+            Side::Commonwealth,
+            Commodities { fuel: 0, ammo: 0, stores: 20, water: 1 },
+        );
+        assert!(g.unit_supply_adequate(unit));
+        // Enough Stores but no Water anywhere → fails on the Water leg.
+        g.supply_dumps.clear();
+        g.add_supply_dump_full(
+            UnitLocation::OnMap(a),
+            Side::Commonwealth,
+            Commodities { fuel: 0, ammo: 0, stores: 20, water: 0 },
+        );
+        assert!(!g.unit_supply_adequate(unit));
         // An enemy dump does not supply it.
         g.supply_dumps.clear();
-        g.add_supply_dump(UnitLocation::OnMap(HexCoord::new(2, 0)), Side::Axis, 40, 60);
-        assert!(!g.unit_in_supply(unit));
+        g.add_supply_dump_full(
+            UnitLocation::OnMap(a),
+            Side::Axis,
+            Commodities { fuel: 0, ammo: 0, stores: 20, water: 1 },
+        );
+        assert!(!g.unit_supply_adequate(unit));
     }
 
 

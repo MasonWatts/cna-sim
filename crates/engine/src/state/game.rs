@@ -3396,13 +3396,13 @@ impl GameState {
     }
 
     /// The side occupying a city hex for victory (§64.73): the first combat unit of at least
-    /// 1 TOE effectively there that is also **in supply** (§32.16) — the abstract-logistics
-    /// stand-in for the §64.73 requirement that the unit have Fuel/Ammo to fight and move
-    /// (Stores/Water are ignored per §32.11). `None` if no such unit is present.
+    /// 1 TOE effectively there that also passes the §64.73 supply-adequacy test (enough Stores/
+    /// Water for a week and Fuel/Ammo to move 20 CP and fire 3×, via `unit_supply_adequate`).
+    /// `None` if no such unit is present.
     fn city_holder(&self, coord: HexCoord) -> Option<Side> {
         self.units_in_hex(coord).into_iter().find_map(|id| {
             let u = self.units.get(&id)?;
-            (self.is_combat_unit(id) && u.total_toe() >= 1 && self.unit_in_supply(id))
+            (self.is_combat_unit(id) && u.total_toe() >= 1 && self.unit_supply_adequate(id))
                 .then(|| u.nationality.side())
         })
     }
@@ -3610,16 +3610,24 @@ impl GameState {
             .iter()
             .filter_map(|s| HexId::parse(s).map(|h| h.to_hex_coord()))
             .collect();
-        objs.iter().all(|&c| self.city_holder(c) == Some(Side::Axis))
-            && objs.iter().all(|&c| {
-                self.units_in_hex(c)
-                    .into_iter()
-                    .filter(|&id| {
-                        self.unit(id).is_some_and(|u| u.nationality.side() == Side::Axis)
-                            && self.is_combat_unit(id)
-                    })
-                    .all(|id| self.unit_strategic_supply_line(id, cv.axis_supply_mp as i32, &sources))
-            })
+        // §64.71 supply is the ≤90-MP strategic convoy line (not the §64.73 co-located commodity
+        // adequacy, which governs §64.73 scoring): every objective hex holds an Axis combat unit
+        // of ≥1 TOE, and every such unit can trace the line back to a source-supplied dump.
+        objs.iter().all(|&c| {
+            let occupants: Vec<UnitId> = self
+                .units_in_hex(c)
+                .into_iter()
+                .filter(|&id| {
+                    self.unit(id)
+                        .is_some_and(|u| u.nationality.side() == Side::Axis && u.total_toe() >= 1)
+                        && self.is_combat_unit(id)
+                })
+                .collect();
+            !occupants.is_empty()
+                && occupants
+                    .iter()
+                    .all(|&id| self.unit_strategic_supply_line(id, cv.axis_supply_mp as i32, &sources))
+        })
     }
 
     /// Maintain the §64.71 "held for one full Game-Turn" tracker. Called once per Game-Turn
@@ -3647,6 +3655,12 @@ impl GameState {
             },
             dummy: false,
         });
+    }
+
+    /// Add a (non-dummy) Supply Dump holding an explicit set of Commodities (Fuel/Ammo/Stores/
+    /// Water) — used where all four commodities matter, e.g. §64.73 supply-adequacy.
+    pub fn add_supply_dump_full(&mut self, location: UnitLocation, side: Side, supply: Commodities) {
+        self.supply_dumps.push(SupplyDump { location, side, supply, dummy: false });
     }
 
     /// Consume `amount` Stores Points from `side`'s (non-dummy) Supply Dumps in `hex` (an airfield
@@ -4011,100 +4025,56 @@ impl GameState {
         }
     }
 
-    /// Whether a unit's type is Infantry (for the §32.16 supply-trace mode).
-    fn unit_is_infantry(&self, id: UnitId) -> bool {
-        self.units
-            .get(&id)
-            .and_then(|u| {
-                self.reference
-                    .unit_characteristics
-                    .get(&u.nationality)
-                    .and_then(|m| m.get(&u.id_code))
-            })
-            .is_some_and(|uc| uc.unit_type.contains("Infantry"))
-    }
-
-    /// Whether a combat unit is in supply (§32.16): a friendly Supply Unit lies within half
-    /// the unit's CPA, traced as medium truck (or infantry for non-motorized infantry), never
-    /// through impassable terrain or an enemy ZOC unoccupied by a friendly unit. Off-map units
-    /// (in the §8.87/8.88 Tripoli boxes) are always in supply.
-    pub fn unit_in_supply(&self, id: UnitId) -> bool {
-        if self
-            .units
-            .get(&id)
-            .and_then(|u| u.location.as_ref())
-            .is_some_and(|l| l.off_map_node().is_some())
-        {
-            return true; // the boxes are unlimited Supply Dumps (§8.88)
+    /// §64.73 supply-adequacy — whether a combat unit has enough of each commodity available at
+    /// its hex to keep occupying it at game end: **Stores** and **Water** for a week, **Fuel** to
+    /// move 20 CP, and **Ammo** to fire 3×. "Available" is the unit's own on-hand supply plus what
+    /// it can draw at its hex — friendly non-dummy Supply Dumps for Fuel/Ammo/Stores, and a Water
+    /// source (well/oasis/major city/connected pipeline) for Water. Off-map units in the
+    /// Tripoli/Tunisia boxes are always adequately supplied (§8.88). This replaces the former
+    /// §32.16 half-CPA dump-reachability proxy now that §49/§50/§51/§52 commodities are modeled.
+    pub fn unit_supply_adequate(&self, id: UnitId) -> bool {
+        let Some(u) = self.units.get(&id) else {
+            return false;
+        };
+        // The Tripoli/Tunisia boxes are unlimited Supply Dumps (§8.88).
+        if u.location.as_ref().is_some_and(|l| l.off_map_node().is_some()) {
+            return true;
         }
-        self.reachable_dump(id, |_| true).is_some()
-    }
-
-    /// Index of the nearest friendly Supply Unit reachable within half the unit's CPA and
-    /// matching `pred` (§32.16 trace), or `None`. On-map units only.
-    fn reachable_dump(&self, id: UnitId, pred: impl Fn(&SupplyDump) -> bool) -> Option<usize> {
-        use std::cmp::Reverse;
-        use std::collections::{BinaryHeap, HashMap};
-
-        let u = self.units.get(&id)?;
+        let Some(hex) = u.hex() else {
+            return false;
+        };
         let side = u.nationality.side();
-        let start = self.effective_hex(id)?;
-        let cpa = self.unit_cpa(id)?;
-        let range = cpa * 5; // half the CPA, in tenths
+        // Friendly, non-dummy dump commodities co-located with the unit (§49/§50/§51/§52 draw).
+        let (dump_fuel, dump_ammo, dump_stores, dump_water) = self
+            .supply_dumps
+            .iter()
+            .filter(|d| d.side == side && !d.dummy && d.location.hex() == Some(hex))
+            .fold((0u32, 0u32, 0u32, 0u32), |(f, a, s, w), d| {
+                (f + d.supply.fuel, a + d.supply.ammo, s + d.supply.stores, w + d.supply.water)
+            });
 
-        // Friendly matching dumps by hex (first index wins).
-        let mut dump_at: HashMap<HexCoord, usize> = HashMap::new();
-        for (i, d) in self.supply_dumps.iter().enumerate() {
-            if d.side == side && !d.dummy && pred(d) {
-                if let Some(h) = d.location.hex() {
-                    dump_at.entry(h).or_insert(i);
-                }
-            }
+        // Fuel to move 20 CP (200 tenths), §49.13: tanks + truck-cargo (§49.18) + dumps. Zero for
+        // leg infantry (no fuel users).
+        let fuel_need = self.unit_move_fuel_cost(id, 200);
+        if u.fuel + u.truck_cargo.fuel + dump_fuel < fuel_need {
+            return false;
         }
-        if let Some(&i) = dump_at.get(&start) {
-            return Some(i);
+        // Ammo to fire 3× (§50.14): onboard reserve + dumps. Zero for plain rifle infantry (§50.2).
+        let ammo_need = 3 * self.unit_combat_ammo_cost(id, CombatAction::CloseAssault);
+        if u.ammo + dump_ammo < ammo_need {
+            return false;
         }
-        let mode = if self.unit_is_infantry(id) && !self.unit_is_motorized(id) {
-            MoveMode::NonMotorized
-        } else {
-            MoveMode::Motorized
-        };
-        let enemy = side.opponent();
-        let friendly_occupies = |hex: HexCoord| {
-            self.units_in_hex(hex)
-                .into_iter()
-                .any(|x| self.unit(x).is_some_and(|xu| xu.nationality.side() == side))
-        };
-        let mut best: HashMap<HexCoord, i32> = HashMap::new();
-        let mut pq: BinaryHeap<Reverse<(i32, HexCoord)>> = BinaryHeap::new();
-        best.insert(start, 0);
-        pq.push(Reverse((0, start)));
-        while let Some(Reverse((cost, h))) = pq.pop() {
-            if cost > range {
-                break;
-            }
-            if cost > *best.get(&h).unwrap_or(&i32::MAX) {
-                continue;
-            }
-            if let Some(&i) = dump_at.get(&h) {
-                return Some(i);
-            }
-            for nb in self.map.neighbors(h) {
-                if self.hex_in_zoc_of(nb, enemy) && !friendly_occupies(nb) {
-                    continue;
-                }
-                let step = match step_cost(&self.reference, &self.map, h, nb, mode) {
-                    Some(MoveCost::Cost(f)) => f.0,
-                    _ => continue,
-                };
-                let nc = cost + step;
-                if nc <= range && nc < *best.get(&nb).unwrap_or(&i32::MAX) {
-                    best.insert(nb, nc);
-                    pq.push(Reverse((nc, nb)));
-                }
-            }
+        // Stores for a week (§51.11/13): units carry no field Stores, so this is the hex's dumps.
+        if dump_stores < self.unit_stores_requirement(id) {
+            return false;
         }
-        None
+        // Water for a week (§52.4): a Water source at the hex (well/oasis/city/pipeline), else
+        // enough carried on hand plus what co-located dumps hold.
+        let water_need = self.unit_water_requirement(id, true);
+        if self.hex_water_source_for(hex, side).is_none() && u.water + dump_water < water_need {
+            return false;
+        }
+        true
     }
 
     /// Whether any hex satisfying `target` is reachable from `start` within `max_cost` tenths

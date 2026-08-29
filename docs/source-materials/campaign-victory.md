@@ -73,10 +73,14 @@ to the Commonwealth total in `evaluate_campaign_victory`.
   a friendly non-dummy dump →any truck route→ a source) and `campaign_auto_winner()` in
   game.rs, with the parameters in `campaign-victory.ron` (sources / axis_objective /
   axis_supply_mp 90 / cw_check_mp 60 / cw_check_from_turn 35).
-- **§64.73 supply-adequacy (implemented):** occupation now requires the combat unit to be
-  **in supply** (§32.16) — the abstract-logistics stand-in for "enough Fuel/Ammo to fire 3×
-  and move 20 CP" (Stores/Water are ignored per §32.11). `city_holder` enforces it, so an
-  out-of-supply unit does not occupy for VP.
+- **§64.73 supply-adequacy (implemented):** occupation requires the combat unit to pass the real
+  commodity-adequacy test `unit_supply_adequate` — at its hex it must have **Stores and Water for
+  a week and Fuel/Ammo to move 20 CP and fire 3×**, counting its on-hand supply plus co-located
+  friendly (non-dummy) Supply Dumps, with Water also satisfied by a well/oasis/major-city/pipeline
+  source at the hex. `city_holder` enforces it, so an under-supplied unit does not occupy for VP.
+  (This replaced the earlier coarse §32.16 half-CPA dump-reachability stand-in once §49/§50/§51/§52
+  commodities were modeled.) Interpretation notes: "fire 3×" = 3× the unit's Close-Assault ammo
+  cost (0 for plain rifle infantry per §50.2); leg infantry needs no Fuel.
 - **§64.71 full-turn hold (implemented):** the Axis auto-win requires the objective+supply
   condition to hold continuously for one full Game-Turn. `axis_objective_held_since` records
   the Game-Turn it was first satisfied (via `update_victory_hold`, called once per turn at
@@ -84,8 +88,8 @@ to the Commonwealth total in `evaluate_campaign_victory`.
   Axis win only when the condition still holds and `game_turn > held_since`.
 
 ## Implementation status
-Implemented: §64.73 occupation-point scoring (by presence of a combat unit ≥1 TOE) and the
-§64.76 level from the point ratio (`GameState::evaluate_campaign_victory`).
-Deferred (need other systems): the §64.73 **supply-adequacy** test and the §64.71/§64.72
-**auto-wins** (supply §32), and §64.74/§64.75 **replacement/withdrawal** VP (production/
-withdrawal). Occupation is currently *presence*, not yet supplied presence.
+Implemented: §64.73 occupation-point scoring (a combat unit ≥1 TOE that passes the
+`unit_supply_adequate` commodity-adequacy test — *supplied* presence, not bare presence), the
+§64.76 level from the point ratio, the §64.71/§64.72 auto-wins (via the ≤90/≤60-MP strategic
+convoy line), and the §64.74/§64.75 replacement/withdrawal VP — all in
+`GameState::evaluate_campaign_victory` / `campaign_auto_winner`. Nothing here is deferred.
