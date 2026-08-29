@@ -1445,7 +1445,7 @@ impl GameState {
         // §40.26/§40.27: an enemy offensive CAP whose air ZOC covers the target intercepts (using
         // its one interception this stage); pick the first eligible patrol and consume its intercept.
         let enemy = nationality.side().opponent();
-        let interceptors = self
+        let mut interceptors = self
             .cap_patrols
             .iter()
             .position(|p| {
@@ -1458,6 +1458,10 @@ impl GameState {
                 self.cap_patrols[i].intercepts_used += 1;
                 self.cap_patrols[i].flight
             });
+        // §40.3: with no CAP covering the target, an enemy fighter base may scramble to intercept.
+        if interceptors.is_none() {
+            interceptors = self.scramble_interception(target, nationality.side(), night);
+        }
         // §46: flak fired by the enemy AA units in the target hex.
         let flak_points = self.hex_flak_points(target, nationality.side());
         self.resolve_bombing_mission(

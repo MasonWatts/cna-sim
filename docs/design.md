@@ -344,10 +344,13 @@ The `Strafe` command (§40.5–40.8) flies a map-validated strafing mission and 
 Strafing Table with the §40.8 column shift, applying the effect for **supply dumps** (§40.64, r×10%
 of each commodity destroyed) and **water pipelines** (§40.67, destroyed on r≥2); the other strafe
 target types (infantry, trucks, grounded aircraft, tanks, ports) are validated-but-rejected pending
-their loss models. **Still not computed from the map:** multi-hex flight **path/ZOC routing** and
-fuel gating at execution; defensive-CAP engagement choice; **scramble** interception; land-unit air
-recon; transport/airdrop (§42.3/42.4); a real pilot roster with ace progression (CAP/strafing use a
-flat representative TacAir, no per-pilot rating); and Med-basing/Malta-commitment enforcement
+their loss models. **Scramble (§40.3):** when no CAP covers a bombing target, an enemy fighter base
+within Scramble-Table range (§40.4) may scramble to intercept — the first eligible squadron rolls a
+d6 and, on success (§40.33), its ready fighters fly and intercept (`scramble_interception`). **Still
+not computed from the map:** multi-hex flight **path/ZOC routing** (so the §40.33 clear-path rule is
+not enforced) and fuel gating at execution; defensive-CAP engagement choice; land-unit air recon;
+transport/airdrop (§42.3/42.4); a real pilot roster with ace progression (CAP/scramble/strafing use
+a flat representative TacAir, no per-pilot rating); and Med-basing/Malta-commitment enforcement
 (§43/§44.41).
 
 ### 8.6 Naval / convoy — abstract model implemented

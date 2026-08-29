@@ -3895,6 +3895,64 @@ impl GameState {
             .sum()
     }
 
+    /// §40.3: attempt a defensive scramble against a mission over `target` by planes of
+    /// `bomber_side`. The first enemy fighter squadron within Scramble-Table range (§40.4) that
+    /// has ready, scramble-capable planes rolls a d6; on success (§40.33) its ready fighters
+    /// scramble (fly) and return as an intercepting [`Flight`]. `None` if no squadron scrambles.
+    /// (The §40.33 clear-path requirement is not yet enforced — flight paths are not modeled.)
+    pub fn scramble_interception(&mut self, target: HexCoord, bomber_side: Side, night: bool) -> Option<Flight> {
+        let table = self.reference.scramble_table.clone()?;
+        let enemy = bomber_side.opponent();
+        // First eligible enemy fighter squadron: within scramble range, with a ready scramble-capable type.
+        let mut chosen: Option<(SquadronId, u32)> = None;
+        for s in self.sgsus.values() {
+            if s.nationality.side() != enemy {
+                continue;
+            }
+            let Some(base) = s.location else { continue };
+            let dist = base.distance(target);
+            if table.success_die_max(dist).is_none() {
+                continue;
+            }
+            let chart = self.reference.aircraft_charts.get(&s.nationality);
+            let capable = s.planes.iter().any(|g| {
+                g.ready > 0
+                    && chart
+                        .and_then(|c| c.get(&g.aircraft_type))
+                        .is_some_and(|ac| crate::rules::air::can_scramble(&ac.missions, night))
+            });
+            if capable {
+                chosen = Some((s.id, dist));
+                break;
+            }
+        }
+        let (id, dist) = chosen?;
+        // §40.33: roll a d6; scramble succeeds if it is within the distance threshold.
+        let die = self.rng.d6() as u32;
+        if !table.scramble_succeeds(dist, die) {
+            return None;
+        }
+        // Representative TacAir/Maneuver from a ready scramble-capable type, and the ready count.
+        let (tacair, maneuver, ready) = {
+            let s = self.sgsus.get(&id)?;
+            let chart = self.reference.aircraft_charts.get(&s.nationality);
+            let rep = s
+                .planes
+                .iter()
+                .filter(|g| g.ready > 0)
+                .find_map(|g| chart.and_then(|c| c.get(&g.aircraft_type)))
+                .and_then(|ac| ac.loadouts.first())
+                .map(|l| (l.tac_air, l.maneuver))
+                .unwrap_or((0, 0));
+            (rep.0, rep.1, s.ready_planes())
+        };
+        let flown = self.sgsus.get_mut(&id)?.fly(ready);
+        if flown == 0 {
+            return None;
+        }
+        Some(Flight { count: flown, tacair, pilot: 0, maneuver })
+    }
+
     /// The result of resolving a bombing mission (§39.0 procedure).
     pub fn resolve_bombing_mission(
         &mut self,

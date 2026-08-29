@@ -4992,6 +4992,61 @@ mod tests {
     }
 
     #[test]
+    fn scramble_interception_40_3() {
+        use crate::reference::aircraft::{AircraftClass, BombingMission};
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let build = |cw_base: HexCoord| -> GameState {
+            let mut refs = ReferenceData::new();
+            refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+            refs.load_aircraft_chart(Nationality::Commonwealth, include_str!("../../../data/reference/aircraft/commonwealth.ron")).unwrap();
+            refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+            refs.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+            refs.load_air_to_air(include_str!("../../../data/reference/air-to-air.ron")).unwrap();
+            refs.load_scramble_table(include_str!("../../../data/reference/scramble-table.ron")).unwrap();
+            let mut g = GameState::new(refs, 1);
+            // German bombers based adjacent to the target.
+            let mut ge = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 26", 5, Some(HexCoord::new(11, 10)));
+            ge.add_planes("Ju.88D", AircraftClass::Bomber, 6, 1);
+            g.sgsus.insert(SquadronId(1), ge);
+            // Commonwealth scramble-capable fighters (Beaufighter Mk.IF, scramble: Day).
+            let mut cw = Sgsu::new(SquadronId(2), Nationality::Commonwealth, SquadronClass::Fighter, "252 Sqn", 5, Some(cw_base));
+            cw.add_planes("Beaufighter Mk.IF", AircraftClass::Fighter, 4, 1);
+            g.sgsus.insert(SquadronId(2), cw);
+            for id in [SquadronId(1), SquadronId(2)] {
+                for grp in g.sgsus.get_mut(&id).unwrap().planes.iter_mut() {
+                    grp.refitted = grp.count;
+                    grp.ready = grp.count;
+                }
+            }
+            while g.phase != Phase::LandSupportAir {
+                g.advance_phase();
+            }
+            g
+        };
+        let target = HexCoord::new(10, 10);
+        let bomb = Command::FlyBombingMissionAt {
+            squadron: SquadronId(1), target, mission: BombingMission::Personnel,
+            planes: 6, bombload_per_plane: 20, night: false,
+            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+        };
+
+        // CW fighters based AT the target (distance 0 → Scramble Table success on any d6, §40.4).
+        let mut g = build(target);
+        assert!(matches!(g.apply(bomb.clone()), Ok(CommandOutcome::BombingMission(_))));
+        assert_eq!(g.sgsus[&SquadronId(2)].ready_planes(), 0, "the fighters scrambled to intercept");
+
+        // CW fighters based far outside Scramble Table range (>15 hexes) cannot scramble.
+        let mut g = build(HexCoord::new(60, 10));
+        assert!(matches!(g.apply(bomb), Ok(CommandOutcome::BombingMission(_))));
+        assert_eq!(g.sgsus[&SquadronId(2)].ready_planes(), 4, "too far to scramble");
+    }
+
+    #[test]
     fn sgsu_upkeep_and_supply_35_14() {
         use crate::reference::squadron::SquadronClass;
         use crate::state::air::{Sgsu, SquadronId};
