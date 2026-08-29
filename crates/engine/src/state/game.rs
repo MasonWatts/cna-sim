@@ -3901,23 +3901,40 @@ impl GameState {
     }
 
     /// §40.15/§40.16: the pilot Rating a squadron's flight adds to its planes' TacAir in air-to-air
-    /// combat — the best Rating among the squadron's currently-flyable assigned pilots (§40.12),
-    /// or 0 if it has none (an unpiloted plane flies with a zero-rated pilot, §40.16).
+    /// combat — the best *effective* Rating among the squadron's currently-flyable assigned pilots
+    /// (§40.12), or 0 if it has none (an unpiloted plane flies with a zero-rated pilot, §40.16).
+    /// A pilot's effective Rating is the greater of his assigned Rating and his §40.18 ace Rating
+    /// earned from kills.
     pub fn squadron_pilot_bonus(&self, squadron: SquadronId) -> u32 {
         self.pilots
             .iter()
             .filter(|p| p.squadron == Some(squadron) && p.may_fly())
-            .map(|p| p.rating)
+            .map(|p| p.rating.max(crate::rules::air::ace_rating_from_kills(p.kills)))
             .max()
             .unwrap_or(0)
+    }
+
+    /// §40.18: credit `kills` air-to-air kills to a squadron's flying pilot — the same best pilot
+    /// that flew the interception (`squadron_pilot_bonus`). A squadron with only zero-rated,
+    /// untracked pilots (§40.16) has no pilot to credit, so the kills are dropped.
+    pub fn credit_pilot_kills(&mut self, squadron: SquadronId, kills: u32) {
+        if let Some(p) = self
+            .pilots
+            .iter_mut()
+            .filter(|p| p.squadron == Some(squadron) && p.may_fly())
+            .max_by_key(|p| p.rating.max(crate::rules::air::ace_rating_from_kills(p.kills)))
+        {
+            p.kills += kills;
+        }
     }
 
     /// §40.3: attempt a defensive scramble against a mission over `target` by planes of
     /// `bomber_side`. The first enemy fighter squadron within Scramble-Table range (§40.4) that
     /// has ready, scramble-capable planes rolls a d6; on success (§40.33) its ready fighters
-    /// scramble (fly) and return as an intercepting [`Flight`]. `None` if no squadron scrambles.
-    /// (The §40.33 clear-path requirement is not yet enforced — flight paths are not modeled.)
-    pub fn scramble_interception(&mut self, target: HexCoord, bomber_side: Side, night: bool) -> Option<Flight> {
+    /// scramble (fly) and return as the scrambling squadron and its intercepting [`Flight`]. `None`
+    /// if no squadron scrambles. (The §40.33 clear-path requirement is not yet enforced — flight
+    /// paths are not modeled.)
+    pub fn scramble_interception(&mut self, target: HexCoord, bomber_side: Side, night: bool) -> Option<(SquadronId, Flight)> {
         let table = self.reference.scramble_table.clone()?;
         let enemy = bomber_side.opponent();
         // First eligible enemy fighter squadron: within scramble range, with a ready scramble-capable type.
@@ -3967,7 +3984,7 @@ impl GameState {
         if flown == 0 {
             return None;
         }
-        Some(Flight { count: flown, tacair, pilot: self.squadron_pilot_bonus(id), maneuver })
+        Some((id, Flight { count: flown, tacair, pilot: self.squadron_pilot_bonus(id), maneuver }))
     }
 
     /// The result of resolving a bombing mission (§39.0 procedure).

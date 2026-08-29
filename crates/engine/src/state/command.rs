@@ -1473,31 +1473,40 @@ impl GameState {
         // §40.26/§40.27: an enemy offensive CAP whose air ZOC covers the target intercepts (using
         // its one interception this stage); pick the first eligible patrol and consume its intercept.
         let enemy = nationality.side().opponent();
-        let mut interceptors = self
-            .cap_patrols
-            .iter()
-            .position(|p| {
-                p.side == enemy
-                    && matches!(p.cap_type, CapType::Offensive)
-                    && p.intercepts_used < crate::rules::air::OFFENSIVE_CAP_INTERCEPTS_PER_STAGE
-                    && p.covers(target)
-            })
-            .map(|i| {
-                self.cap_patrols[i].intercepts_used += 1;
-                self.cap_patrols[i].flight
-            });
+        let mut interceptors = None;
+        let mut interceptor_sq = None;
+        if let Some(i) = self.cap_patrols.iter().position(|p| {
+            p.side == enemy
+                && matches!(p.cap_type, CapType::Offensive)
+                && p.intercepts_used < crate::rules::air::OFFENSIVE_CAP_INTERCEPTS_PER_STAGE
+                && p.covers(target)
+        }) {
+            self.cap_patrols[i].intercepts_used += 1;
+            interceptor_sq = Some(self.cap_patrols[i].squadron);
+            interceptors = Some(self.cap_patrols[i].flight);
+        }
         // §40.3: with no CAP covering the target, an enemy fighter base may scramble to intercept.
         if interceptors.is_none() {
-            interceptors = self.scramble_interception(target, nationality.side(), night);
+            if let Some((sq, fl)) = self.scramble_interception(target, nationality.side(), night) {
+                interceptor_sq = Some(sq);
+                interceptors = Some(fl);
+            }
         }
         // §46: flak fired by the enemy AA units in the target hex.
         let flak_points = self.hex_flak_points(target, nationality.side());
-        self.resolve_bombing_mission(
-            squadron, planes, bombload_per_plane, group, interceptors,
-            flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, night,
-        )
-        .map(CommandOutcome::BombingMission)
-        .ok_or(CommandError::NoSuchSquadron)
+        let outcome = self
+            .resolve_bombing_mission(
+                squadron, planes, bombload_per_plane, group, interceptors,
+                flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, night,
+            )
+            .ok_or(CommandError::NoSuchSquadron)?;
+        // §40.18: credit the intercepting squadron's pilot with the bombers it shot down.
+        if let Some(sq) = interceptor_sq {
+            if outcome.intercepted > 0 {
+                self.credit_pilot_kills(sq, outcome.intercepted);
+            }
+        }
+        Ok(CommandOutcome::BombingMission(outcome))
     }
 
     /// §35.2 AssignSquadronPlanes: gated to the Organization Phase.

@@ -5094,6 +5094,28 @@ mod tests {
     }
 
     #[test]
+    fn ace_progression_40_18() {
+        use crate::state::air::{Pilot, SquadronId};
+        use crate::state::game::GameState;
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        let sq = SquadronId(1);
+        // A zero-rated pilot earns one Rating per five kills (§40.18).
+        g.pilots.push(Pilot::new(0, Some(sq)));
+        assert_eq!(g.squadron_pilot_bonus(sq), 0);
+        g.credit_pilot_kills(sq, 5);
+        assert_eq!(g.squadron_pilot_bonus(sq), 1); // 5 kills → ace Rating 1
+        g.credit_pilot_kills(sq, 5);
+        assert_eq!(g.squadron_pilot_bonus(sq), 2); // 10 kills → 2
+
+        // A pilot's assigned Rating floors his effective Rating; kills credit the best flyer.
+        g.pilots.push(Pilot::new(4, Some(sq)));
+        assert_eq!(g.squadron_pilot_bonus(sq), 4); // best of {ace 2, assigned 4}
+        g.credit_pilot_kills(sq, 25); // goes to the rating-4 pilot → 25 kills → ace 5 > 4
+        assert_eq!(g.squadron_pilot_bonus(sq), 5);
+    }
+
+    #[test]
     fn sgsu_upkeep_and_supply_35_14() {
         use crate::reference::squadron::SquadronClass;
         use crate::state::air::{Sgsu, SquadronId};

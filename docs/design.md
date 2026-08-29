@@ -351,11 +351,14 @@ d6 and, on success (§40.33), its ready fighters fly and intercept (`scramble_in
 not computed from the map:** multi-hex flight **path/ZOC routing** (so the §40.33 clear-path rule is
 not enforced) and fuel gating at execution; defensive-CAP engagement choice; land-unit air recon;
 transport/airdrop (§42.3/42.4); and Med-basing/Malta-commitment enforcement (§43/§44.41). A **pilot
-roster** exists (`AssignPilot`, §40.12): each squadron's best flyable pilot Rating (§40.15/§40.16)
-feeds into its CAP and scramble flights' TacAir, and reassignment/retraining/recovery lockouts
-(§40.13/14/17) tick each Operations Stage. Still deferred here: **ace progression** (§40.18 kill
-crediting — air-to-air does not yet attribute kills back to specific pilots) and per-plane (rather
-than per-flight best-pilot) rating.
+roster** (`AssignPilot`, §40.12) is modeled: each squadron's best flyable pilot Rating
+(§40.15/§40.16) feeds into its CAP and scramble flights' TacAir; reassignment/retraining/recovery
+lockouts (§40.13/14/17) tick each Operations Stage; and **ace progression** (§40.18) is in — a
+bombing interception credits the intercepting squadron's pilot with the bombers it downs, and a
+pilot's effective Rating is the greater of his assigned Rating and his earned ace Rating (1 per 5
+kills). Still deferred: per-plane (rather than per-flight best-pilot) rating, and crediting kills
+from the caller-supplied `FlyBombingMission`/`BombShip` paths (only the map-based
+`FlyBombingMissionAt` interception credits pilots).
 
 ### 8.6 Naval / convoy — abstract model implemented
 Ports (§55: efficiency, blocking §55.22, mining §55.27, San Giorgio §30.17), the Commonwealth
