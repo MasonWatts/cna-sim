@@ -1,0 +1,1031 @@
+===== PAGE 147 =====
+# Formation: 132nd "Ariete" Divisione Corazzata (Armored) (a)
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.186, 0.201, 0.215]
+## Tree
+Ariete (132nd) Div HQE  (Ariete)  ID=d | 1 ×M13/40 | arr 1/18
+    132 Regt Corazzata HQ  (132 RC) [b]  ID=d | 1 xM13/40 | arr 1/18
+        VII(M) Tank Bn  (VII(M))  7 × M13/40 | arr 1/18
+        VH(M) Tank Bn  (VIII(M))  7xMI3/40 | arr 1/18
+        IX(M) Tank Bn  (IX(M))  7 XM13/40 | arr 1/18
+    8th Bersaglieri Regt HQ  (8Brs)  N | arr 1/18
+        3rd Bersaglieri Mitrg Bn  (3/8 Brs)  ID=n | N | arr 1/18
+        Sth BersaglieriMitrg Bn  (5/8 Brs)  arr 1/18
+        12th Bersaglieri Mitrg Bn  (12/8 Brs)  N | arr 1/18
+    2nd Anti-tank Bn  (2)  ID=99 | 6 × 47/32 | arr 1/18
+    RECo 'Nizza Cavalleria'  (NizCav)  ID=WW | N | arr 1/18
+    132nd Artillery Regt  (132) [d]  ID=kk | 3 x 75/27 Gun, 3 x 75/18 Gun- Howitzer, 3 x 105/28 Gun 6x Light AA | arr 1/18
+    I(L) Tank Bn  (I(L))  arr 1/18
+    II(L) Tank Bn  (HI(L)) [e]  arr 1/18
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ariete (132nd) Div HQE	Ariete	d	1 ×M13/40	1/18		
+1	132 Regt Corazzata HQ	132 RC	d	1 xM13/40	1/18	b	Ariete (132nd) Div HQE
+2	VII(M) Tank Bn	VII(M)		7 × M13/40	1/18		132 Regt Corazzata HQ
+2	VH(M) Tank Bn	VIII(M)		7xMI3/40	1/18		132 Regt Corazzata HQ
+2	IX(M) Tank Bn	IX(M)		7 XM13/40	1/18		132 Regt Corazzata HQ
+1	8th Bersaglieri Regt HQ	8Brs		N	1/18		Ariete (132nd) Div HQE
+2	3rd Bersaglieri Mitrg Bn	3/8 Brs	n	N	1/18		8th Bersaglieri Regt HQ
+2	Sth BersaglieriMitrg Bn	5/8 Brs			1/18		8th Bersaglieri Regt HQ
+2	12th Bersaglieri Mitrg Bn	12/8 Brs		N	1/18		8th Bersaglieri Regt HQ
+1	2nd Anti-tank Bn	2	99	6 × 47/32	1/18		Ariete (132nd) Div HQE
+1	RECo 'Nizza Cavalleria'	NizCav	WW	N	1/18		Ariete (132nd) Div HQE
+1	132nd Artillery Regt	132	kk	3 x 75/27 Gun, 3 x 75/18 Gun- Howitzer, 3 x 105/28 Gun 6x Light AA	1/18	d	Ariete (132nd) Div HQE
+1	I(L) Tank Bn	I(L)			1/18		Ariete (132nd) Div HQE
+1	II(L) Tank Bn	HI(L)			1/18	e	Ariete (132nd) Div HQE
+
+===== PAGE 148 =====
+# Formation: 133rd "Littorio"' Divisione Corazzata (Armored) (a)
+# Basic Morale: 0
+# indent levels (unit-x centers): [0.175, 0.188, 0.203]
+## Tree
+Littorio (133rd) Div HQT  (Littorio)  ID=d | 1×L6/40 | arr 3/62
+    133rd Regt Corazzata HQ  (133 RC)  ID=d | 1x L6/40 | arr 3/62
+        X(M) Tank Bn  (X(M))  5XM13/40, 2xM14/41 | arr 3/62
+        XI(M) Tank Bn  (XI(M))  ID=1 | 7XM14/41 | arr 3/62
+        XII(M) Tank Bn  (XII(M))  4 XM13/40, 3 × M14/41 | arr 3/62
+    12th Bersaglieri Regt HQ  (12 Brs) [b]  N | arr 3/62
+        23rd Bersaglieri Mtr Bn  (23/12 Brs)  N | arr 3/62
+        36th Bersaglieri Mtr Bn  (36/12 Brs)  N | arr 3/62
+    RECo 'Lanceria di Novara' 3rd Articelere Regt  (LancNov)  ID=VV | N | arr 3/62
+        21st Artillery Bn  (21/3)  ID=kk | 3 x 100/17 Howitzer, 6 × Light AA
+        V Articelere Bn  (V/3) [d]  2x Semovente 75/18 SP Gun
+        VI Articelere Bn  (VI/3) [d]  2 x Semovente 75/18 SP Gun
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Littorio (133rd) Div HQT	Littorio	d	1×L6/40	3/62		
+1	133rd Regt Corazzata HQ	133 RC	d	1x L6/40	3/62		Littorio (133rd) Div HQT
+2	X(M) Tank Bn	X(M)		5XM13/40, 2xM14/41	3/62		133rd Regt Corazzata HQ
+2	XI(M) Tank Bn	XI(M)	1	7XM14/41	3/62		133rd Regt Corazzata HQ
+2	XII(M) Tank Bn	XII(M)		4 XM13/40, 3 × M14/41	3/62		133rd Regt Corazzata HQ
+1	12th Bersaglieri Regt HQ	12 Brs		N	3/62	b	Littorio (133rd) Div HQT
+2	23rd Bersaglieri Mtr Bn	23/12 Brs		N	3/62		12th Bersaglieri Regt HQ
+2	36th Bersaglieri Mtr Bn	36/12 Brs		N	3/62		12th Bersaglieri Regt HQ
+1	RECo 'Lanceria di Novara' 3rd Articelere Regt	LancNov	VV	N	3/62		Littorio (133rd) Div HQT
+2	21st Artillery Bn	21/3	kk	3 x 100/17 Howitzer, 6 × Light AA			RECo 'Lanceria di Novara' 3rd Articelere Regt
+2	V Articelere Bn	V/3		2x Semovente 75/18 SP Gun		d	RECo 'Lanceria di Novara' 3rd Articelere Regt
+2	VI Articelere Bn	VI/3		2 x Semovente 75/18 SP Gun		d	RECo 'Lanceria di Novara' 3rd Articelere Regt
+
+# Formation: 1st Libyan Infantry Division (Sibille)
+# Basic Morale: - 2
+# indent levels (unit-x centers): [0.18, 0.196, 0.21]
+## Tree
+1st Libyan Infantry HQ'  (1 Libyan)  ID=b
+    1st Libyan Regt HQ  (1Libyan)  ID=h | 1 x 65/17 Gun | arr D
+        VIII Libyan Bn  (VIII/1L)  ID=X | N
+        IX Libyan Bn  (IX/1L)  N | arr D
+        X Libyan Bn  (X/IL)  N | arr D
+    2nd Libyan Regt HQ  (2 Libyan)  ID=h | 1× 65/17 Gun | arr D
+        XI Libyan Bn  (XI/2L)  arr D
+        XII Libyan Bn  (XII/2L)  N | arr D
+        XIII Libyan Bn  (XHI/2L)  N | arr D
+    Ist Libyan Artillery Regt  (1 Libyan)  ID=j] | 6x 75/27 Gun | arr D
+    Ist Libyan Anti-tank Coy  (1 Lıbyan)  2 x 47/32 Gun | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	1st Libyan Infantry HQ'	1 Libyan	b				
+1	1st Libyan Regt HQ	1Libyan	h	1 x 65/17 Gun	D		1st Libyan Infantry HQ'
+2	VIII Libyan Bn	VIII/1L	X	N			1st Libyan Regt HQ
+2	IX Libyan Bn	IX/1L		N	D		1st Libyan Regt HQ
+2	X Libyan Bn	X/IL		N	D		1st Libyan Regt HQ
+1	2nd Libyan Regt HQ	2 Libyan	h	1× 65/17 Gun	D		1st Libyan Infantry HQ'
+2	XI Libyan Bn	XI/2L			D		2nd Libyan Regt HQ
+2	XII Libyan Bn	XII/2L		N	D		2nd Libyan Regt HQ
+2	XIII Libyan Bn	XHI/2L		N	D		2nd Libyan Regt HQ
+1	Ist Libyan Artillery Regt	1 Libyan	j]	6x 75/27 Gun	D		1st Libyan Infantry HQ'
+1	Ist Libyan Anti-tank Coy	1 Lıbyan		2 x 47/32 Gun	D		1st Libyan Infantry HQ'
+
+# Formation: 2nd Libyan (Pescatori) Infantry Division
+# Basic Morale: - 2
+# indent levels (unit-x centers): [0.184, 0.197, 0.213]
+## Tree
+2nd Libyan Infantry HOE  (2 Libyan)  N | arr D
+    3rd Libyan Regt HQ  (3 Libyan)  ID=h | 1 x 65/17 | arr D
+        Il Libyan Bn  (1/3L)  N | arr D
+        VI Libyan Bn  (VI/3L)  N | arr D
+        VII Libyan Bn  (VII/3L)  N | arr D
+    4th Libyan Regt HO  (4 Libyan)  ID=h | 1x 65/17 Gun | arr D
+        XIV Libyan Bn  (XIV/4L)  N | arr D
+        XV Libyan Bn  (XV/4L)  N | arr D
+        XVI Libyan Bn  (XVI/4L)  N | arr D
+    2nd Libyan Artillery Regt  (2 Libyan)  ID=jj | 9x 75/27 Gun, 3 x 100/17 Howitzer | arr D
+    IX(L) Tank Bn  (IX(L)) [a]  arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	2nd Libyan Infantry HOE	2 Libyan		N	D		
+1	3rd Libyan Regt HQ	3 Libyan	h	1 x 65/17	D		2nd Libyan Infantry HOE
+2	Il Libyan Bn	1/3L		N	D		3rd Libyan Regt HQ
+2	VI Libyan Bn	VI/3L		N	D		3rd Libyan Regt HQ
+2	VII Libyan Bn	VII/3L		N	D		3rd Libyan Regt HQ
+1	4th Libyan Regt HO	4 Libyan	h	1x 65/17 Gun	D		2nd Libyan Infantry HOE
+2	XIV Libyan Bn	XIV/4L		N	D		4th Libyan Regt HO
+2	XV Libyan Bn	XV/4L		N	D		4th Libyan Regt HO
+2	XVI Libyan Bn	XVI/4L		N	D		4th Libyan Regt HO
+1	2nd Libyan Artillery Regt	2 Libyan	jj	9x 75/27 Gun, 3 x 100/17 Howitzer	D		2nd Libyan Infantry HOE
+1	IX(L) Tank Bn	IX(L)			D	a	2nd Libyan Infantry HOE
+
+===== PAGE 149 =====
+# Formation: The Libyan Tamk Command (Babini Gruppo Corazzato) (a)
+# Basic Morale: 0
+# indent levels (unit-x centers): [0.19, 0.203, 0.218]
+## Tree
+Libyan Tank Command HQ  (LTC)  ID=d | 1 XM11/39 | arr D
+    Aresca (1st) Regt HQ  (Aresca)  ID=d | 1XCV33 | arr D
+        XXI(L) Tank Bn  (XXI(L))  ID=k | 9x CV33 | arr D
+        LXI(L) Tank Bn  (LXII(L)) [b]  ID=k | 9X CV33 | arr D
+        LXIII(L) Tank Bn  (LXII(L))  9XCV33 | arr D
+        I(M) Tank Bn  (((M)) [b]  7 x M11/39 | arr D
+    Trivioli (2nd) Regt HQ  (Trvli)  ID=d | 1XCV33 | arr D
+        IX(L) Tank Bn  (IX(L)) [b]  ID=k | 9× CV33 | arr D
+        XX(L) Tank Bn  (XX(L))  ID=k | 9 × CV33 | arr D
+        LX(L) Tank Bn  (LX(L))  ID=k | 9x CV33
+        LXI(L) Tank Bn  (LXI(L))  ID=k | 9 x CV33 | arr D
+        ITM Lank Bn  (1I(M)) [b]  7 x M11/39 | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Libyan Tank Command HQ	LTC	d	1 XM11/39	D		
+1	Aresca (1st) Regt HQ	Aresca	d	1XCV33	D		Libyan Tank Command HQ
+2	XXI(L) Tank Bn	XXI(L)	k	9x CV33	D		Aresca (1st) Regt HQ
+2	LXI(L) Tank Bn	LXII(L)	k	9X CV33	D	b	Aresca (1st) Regt HQ
+2	LXIII(L) Tank Bn	LXII(L)		9XCV33	D		Aresca (1st) Regt HQ
+2	I(M) Tank Bn	((M)		7 x M11/39	D	b	Aresca (1st) Regt HQ
+1	Trivioli (2nd) Regt HQ	Trvli	d	1XCV33	D		Libyan Tank Command HQ
+2	IX(L) Tank Bn	IX(L)	k	9× CV33	D	b	Trivioli (2nd) Regt HQ
+2	XX(L) Tank Bn	XX(L)	k	9 × CV33	D		Trivioli (2nd) Regt HQ
+2	LX(L) Tank Bn	LX(L)	k	9x CV33			Trivioli (2nd) Regt HQ
+2	LXI(L) Tank Bn	LXI(L)	k	9 x CV33	D		Trivioli (2nd) Regt HQ
+2	ITM Lank Bn	1I(M)		7 x M11/39	D	b	Trivioli (2nd) Regt HQ
+
+# Formation: 16th "Pistoia" Divison (Semi-motorized)
+# Basic Morale: - 1
+# indent levels (unit-x centers): [0.186, 0.201, 0.215]
+## Tree
+16th Pistoia Div HO  (16 Pist)  ID=b | N | arr 2/92
+    35th Fanteria Regt HQ  (35)  ID=h | 1 x 65/17 Gun | arr 2/92
+        1/35 Infantry Bn  (1/35)  ID=u | N | arr 2/92
+        11/35 Infantry Bn  (11/35)  N | arr 2/92
+        111/35 Infantry Bn  (111/35)  N | arr 2/92
+    36th Fanteria Regt HQ  (36)  ID=h | 1 x 65/17 Gun | arr 2/92
+        1/36 Infantry Bn  (1/36)  N | arr 2/92
+        II/36 Infantry Bn  (11/36)  N | arr 2/92
+        H11/36 Infantry Bn  (111/36)  ID=Ц | N | arr 2/92
+    30th Artillery Regt  (30)  ID=kk | 3× 75/27 Gun, 3 × 100/17 Howitzer, 3x Heavy AA | arr 2/92
+    16th Engineer Bn  (16)  ID=bbb | N | arr 2/92
+    57th Bersaglieri Mitrg Coy  (57 Brs)  ID=n | N | arr 2/99
+    IIl Monferrato Squadrone  (IIl Monf)  ID=VV | U@4 | arr 2/92
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	16th Pistoia Div HO	16 Pist	b	N	2/92		
+1	35th Fanteria Regt HQ	35	h	1 x 65/17 Gun	2/92		16th Pistoia Div HO
+2	1/35 Infantry Bn	1/35	u	N	2/92		35th Fanteria Regt HQ
+2	11/35 Infantry Bn	11/35		N	2/92		35th Fanteria Regt HQ
+2	111/35 Infantry Bn	111/35		N	2/92		35th Fanteria Regt HQ
+1	36th Fanteria Regt HQ	36	h	1 x 65/17 Gun	2/92		16th Pistoia Div HO
+2	1/36 Infantry Bn	1/36		N	2/92		36th Fanteria Regt HQ
+2	II/36 Infantry Bn	11/36		N	2/92		36th Fanteria Regt HQ
+2	H11/36 Infantry Bn	111/36	Ц	N	2/92		36th Fanteria Regt HQ
+1	30th Artillery Regt	30	kk	3× 75/27 Gun, 3 × 100/17 Howitzer, 3x Heavy AA	2/92		16th Pistoia Div HO
+1	16th Engineer Bn	16	bbb	N	2/92		16th Pistoia Div HO
+1	57th Bersaglieri Mitrg Coy	57 Brs	n	N	2/99		16th Pistoia Div HO
+1	IIl Monferrato Squadrone	IIl Monf	VV	U@4	2/92		16th Pistoia Div HO
+
+# Formation: 60th "Sabratha' Division (Semi-motorized)
+# Basic Morale: - 1
+# indent levels (unit-x centers): [0.19, 0.204, 0.219]
+## Tree
+60th Sabratha Div HQ  (60 Sab)  ID=b | N | arr 1/12
+    85th Infantry Regt HQ  (85)  ID=h | 1 x 65/17 Gun | arr 1/12
+        I/85 Infantry Bn  (1/85)  N | arr 1/12
+        LL/85 Intantry Bn  (11/85)  N | arr 1/12
+        I1/85 Infantry Bn  (III/85)  N | arr 1/12
+    86th Infantry Regt HQ  (86)  ID=h | 1 x 65/17 Gun | arr 1/12
+        1/86 Infantry Bn  (1/86)  N | arr 1/12
+        1/86 Infantry Bn  (11/86)  N | arr 1/12
+        III/86 Infantry Bn  (IIl/86)  N | arr 1/12
+    60th Machinegun Bn  (60)  ID=bb | N | arr 1/12
+    60th Anti-tank Coy  (60)  ID=Ir | 2x47/32 Gun | arr 1/12
+    42nd Artillery Regt  (42)  ID=kk | 6x 75/27 Gun, 3 x 100/17 Howitzer, 3x Heavy AA | arr 1/12
+    60th Engineer Bn  (60)  ID=bbb | N | arr 1/12
+    60th Bersaglieri Mitrg Coy  (60 Brs)  ID=aaa | N | arr 1/12
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	60th Sabratha Div HQ	60 Sab	b	N	1/12		
+1	85th Infantry Regt HQ	85	h	1 x 65/17 Gun	1/12		60th Sabratha Div HQ
+2	I/85 Infantry Bn	1/85		N	1/12		85th Infantry Regt HQ
+2	LL/85 Intantry Bn	11/85		N	1/12		85th Infantry Regt HQ
+2	I1/85 Infantry Bn	III/85		N	1/12		85th Infantry Regt HQ
+1	86th Infantry Regt HQ	86	h	1 x 65/17 Gun	1/12		60th Sabratha Div HQ
+2	1/86 Infantry Bn	1/86		N	1/12		86th Infantry Regt HQ
+2	1/86 Infantry Bn	11/86		N	1/12		86th Infantry Regt HQ
+2	III/86 Infantry Bn	IIl/86		N	1/12		86th Infantry Regt HQ
+1	60th Machinegun Bn	60	bb	N	1/12		60th Sabratha Div HQ
+1	60th Anti-tank Coy	60	Ir	2x47/32 Gun	1/12		60th Sabratha Div HQ
+1	42nd Artillery Regt	42	kk	6x 75/27 Gun, 3 x 100/17 Howitzer, 3x Heavy AA	1/12		60th Sabratha Div HQ
+1	60th Engineer Bn	60	bbb	N	1/12		60th Sabratha Div HQ
+1	60th Bersaglieri Mitrg Coy	60 Brs	aaa	N	1/12		60th Sabratha Div HQ
+
+===== PAGE 150 =====
+# Formation: Gruppo Maletti (a)
+# Basic Morale: - 2
+# indent levels (unit-x centers): [0.169, 0.187, 0.201]
+## Tree
+Maletti Div HQ  (Maletti)  ID=b | N | arr D
+    I Libyan Mtr Regt HQ  (1 LbMt)  ID=f | N
+        I Libyan Mtr Bn  (I/1LbM)  N
+        III Libyan Mtr Bn  (II/1LbM)  ID=W | N
+        V Libyan Mtr Bn  (/1LbM)  ID=W | N | arr D
+    Sth Libyan Regt HQ  (5 Libyan)  ID=f | N
+        XVII Libyan Bn  (XVII/SL)  N
+        XIX Libyan Bn  (XIX/5L)  
+    Sahariano Camel Regt HQ  (Sno)  ID=f | N
+        1 Sahariano Camel Bn  (1Sno/Sno)  ID=ZZ | N
+        2 Sahariano Camel Bn  (2Sno/Sno)  N
+        3 Sahariano Camel Bn  (3Sno/Sno)  ID=ZZ | N | arr D
+    Ist Maletti ArtilleryBn  (1 Maletti)  ID=mm | 3 x 75/27 Gun
+    2nd Maletti Artillery Bn  (2 Maletti)  ID=mm | 2×75/18 Gun-Howitzer | arr D
+    II(M) Tank Bn  (II(M))  arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Maletti Div HQ	Maletti	b	N	D		
+1	I Libyan Mtr Regt HQ	1 LbMt	f	N			Maletti Div HQ
+2	I Libyan Mtr Bn	I/1LbM		N			I Libyan Mtr Regt HQ
+2	III Libyan Mtr Bn	II/1LbM	W	N			I Libyan Mtr Regt HQ
+2	V Libyan Mtr Bn	/1LbM	W	N	D		I Libyan Mtr Regt HQ
+1	Sth Libyan Regt HQ	5 Libyan	f	N			Maletti Div HQ
+2	XVII Libyan Bn	XVII/SL		N			Sth Libyan Regt HQ
+2	XIX Libyan Bn	XIX/5L					Sth Libyan Regt HQ
+1	Sahariano Camel Regt HQ	Sno	f	N			Maletti Div HQ
+2	1 Sahariano Camel Bn	1Sno/Sno	ZZ	N			Sahariano Camel Regt HQ
+2	2 Sahariano Camel Bn	2Sno/Sno		N			Sahariano Camel Regt HQ
+2	3 Sahariano Camel Bn	3Sno/Sno	ZZ	N	D		Sahariano Camel Regt HQ
+1	Ist Maletti ArtilleryBn	1 Maletti	mm	3 x 75/27 Gun			Maletti Div HQ
+1	2nd Maletti Artillery Bn	2 Maletti	mm	2×75/18 Gun-Howitzer	D		Maletti Div HQ
+1	II(M) Tank Bn	II(M)			D		Maletti Div HQ
+
+# Formation: 17th "Pavia" Division (Semi-motorized)
+# Basic Morale: - 1
+# indent levels (unit-x centers): [0.167, 0.182, 0.195]
+## Tree
+17th Pavia Div HQ  (17 Pav)  N | arr 2/22
+    27th Infantry Regt HQ  (27*)  ID=h | 1 x 65/17 Gun | arr 2/22
+        1/27 Infantry Bn  (1/27)  N | arr 2/22
+        I1/27Infantry Bn  (11/27)  N | arr 2/22
+        III/27 Infantry Bn  (ШI/27)  N | arr 2/22
+    28th Infantry Regt HQ  (28)  ID=h | 1 X 65/17 Gun | arr 2/22
+        I/28 Infantry Bn  (1/28)  N | arr 2/22
+        11/28 Infantry Bn  (11/28)  N | arr 2/22
+        III/28 Infantry Bn  (Ш/28)  N | arr 2/22
+    17th Machinegun Bn  (17)  ID=bb | N | arr 2/22
+    17th Anti-tank Coy  (17)  ID=Ir | 2×47/32 Gun | arr • 2/22
+    26th Artillery Regt  (26)  ID=kk | 6 x 75/27 Gun, 3 x 100/17 Howitzer, 2x Heavy AA | arr 2/22
+    17th Engineer Bn  (17)  ID=bbb | N | arr 2/22
+    9th CCNN Legion HQ  (9 CCNN)  arr 2/22
+        59th CCNN Bn  (59) [a]  arr 2/22
+        60th CCNN Bn  (60) [a]  arr 2/22
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	17th Pavia Div HQ	17 Pav		N	2/22		
+1	27th Infantry Regt HQ	27*	h	1 x 65/17 Gun	2/22		17th Pavia Div HQ
+2	1/27 Infantry Bn	1/27		N	2/22		27th Infantry Regt HQ
+2	I1/27Infantry Bn	11/27		N	2/22		27th Infantry Regt HQ
+2	III/27 Infantry Bn	ШI/27		N	2/22		27th Infantry Regt HQ
+1	28th Infantry Regt HQ	28	h	1 X 65/17 Gun	2/22		17th Pavia Div HQ
+2	I/28 Infantry Bn	1/28		N	2/22		28th Infantry Regt HQ
+2	11/28 Infantry Bn	11/28		N	2/22		28th Infantry Regt HQ
+2	III/28 Infantry Bn	Ш/28		N	2/22		28th Infantry Regt HQ
+1	17th Machinegun Bn	17	bb	N	2/22		17th Pavia Div HQ
+1	17th Anti-tank Coy	17	Ir	2×47/32 Gun	• 2/22		17th Pavia Div HQ
+1	26th Artillery Regt	26	kk	6 x 75/27 Gun, 3 x 100/17 Howitzer, 2x Heavy AA	2/22		17th Pavia Div HQ
+1	17th Engineer Bn	17	bbb	N	2/22		17th Pavia Div HQ
+1	9th CCNN Legion HQ	9 CCNN			2/22		17th Pavia Div HQ
+2	59th CCNN Bn	59			2/22	a	9th CCNN Legion HQ
+2	60th CCNN Bn	60			2/22	a	9th CCNN Legion HQ
+
+===== PAGE 151 =====
+# Formation: 25th "Bologna" Division (Semi-motorized)
+# Basic Morale: - 1
+# indent levels (unit-x centers): [0.19, 0.203, 0.218]
+## Tree
+25th Bologna Div HQ  (25 Bol)  N | arr 1/24
+    39th Infantry Regt HQ  (39)  ID=h | 1 x 65/17 Gun | arr 1/24
+        1/39 Infantry Bn  (1/39)  N | arr 1/24
+        I1/39 Infantry Bn  (11/39)  N | arr 1/24
+        IlI/39 Infantry Bn  (II/39)  N | arr 1/24
+    40th Infantry Regt HQ  (40)  ID=h | 1 x 65/17 Gun | arr 1/24
+        1/40 Infantry Bn  (1/40)  N | arr 1/24
+        11/40 Infantry Bn  (11/40)  N | arr 1/24
+        III/40 Infantry Bn  (III/40)  N | arr 1/24
+    25th Machinegun Bn  (25)  ID=bb | N | arr 1/24
+    25th Anti-tank Coy  (25)  ID=rr | 2×47/32 Gun | arr 1/24
+    10th Artillery Regt  (10)  ID=kk | 6x 75/27 Gun, 3 x 100/17 Howitzer, 2X Heavy AA | arr 1/24
+    25th Engineer Bn  (25)  ID=bbb | N | arr 1/24
+    32nd CCNN Bn  (32) [a]  arr 1/24
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	25th Bologna Div HQ	25 Bol		N	1/24		
+1	39th Infantry Regt HQ	39	h	1 x 65/17 Gun	1/24		25th Bologna Div HQ
+2	1/39 Infantry Bn	1/39		N	1/24		39th Infantry Regt HQ
+2	I1/39 Infantry Bn	11/39		N	1/24		39th Infantry Regt HQ
+2	IlI/39 Infantry Bn	II/39		N	1/24		39th Infantry Regt HQ
+1	40th Infantry Regt HQ	40	h	1 x 65/17 Gun	1/24		25th Bologna Div HQ
+2	1/40 Infantry Bn	1/40		N	1/24		40th Infantry Regt HQ
+2	11/40 Infantry Bn	11/40		N	1/24		40th Infantry Regt HQ
+2	III/40 Infantry Bn	III/40		N	1/24		40th Infantry Regt HQ
+1	25th Machinegun Bn	25	bb	N	1/24		25th Bologna Div HQ
+1	25th Anti-tank Coy	25	rr	2×47/32 Gun	1/24		25th Bologna Div HQ
+1	10th Artillery Regt	10	kk	6x 75/27 Gun, 3 x 100/17 Howitzer, 2X Heavy AA	1/24		25th Bologna Div HQ
+1	25th Engineer Bn	25	bbb	N	1/24		25th Bologna Div HQ
+1	32nd CCNN Bn	32			1/24	a	25th Bologna Div HQ
+
+# Formation: 101st "Trieste" Division Fanteria Motorizzate (a)
+# Basic Morale: 0
+# indent levels (unit-x centers): [0.186, 0.202, 0.216]
+## Tree
+101st Trieste Div HQ  (101 Tst)  ID=b | N | arr 3/50
+    65th Regt Mtr HQ  (65)  2 x 65/17 Gun | arr 3/50
+        1/65 Bn  (1/65) [b]  N | arr 3/50
+        I1/65  (11/65) [b]  N | arr 3/50
+        II/65 Heavy Wpns Bn  (П11/65)  N | arr 3/50
+    66th Regt Mtr HQ  (66)  2× 65/17 Gun | arr 3/50
+        1/66 Bn  (I/66) [b]  ID=u | N | arr 3/50
+        I1/66 Bn  (I1/66)  N | arr 3/50
+        111/66 Bn  (111/66) [b]  N | arr 3/50
+        IV/66 Support Coy  (IV/66)  ID=ff | arr 3/50
+    9th Bersaglieri Regt HQ  (9 Brs)  ID=C | arr 3/50
+        28th Bersaglieri Mtr Bn  (28/9Brs)  N | arr 3/50
+        30th Bersaglieri Mtr Bn  (30/9Brs)  arr 3/50
+        32nd Bersaglieri Mitrg Bn  (32/9Brs)  arr 3/50
+        40th Heavy Wpns Bn  (40/9 Brs)  N | arr 3/50
+    101st Heavy Wpns Bn  (101) [d]  N | arr 3/50
+    21st Artillery Regt  (21)  ID=ji | 6 x 75/27 Gun, 3 x 100/17 Howitzer, 3 x 105/28 Gun | arr 3/50
+    21st Anti-air Gruppo  (21)  ID=tt | 6X Light AA | arr 3/50
+    8th Armored Bersaglieri Bn  (8 ArmBr)  ID=VV | N | arr 2/70
+    101st Engineer Bn  (101)  ID=bbb | N | arr 3/50
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	101st Trieste Div HQ	101 Tst	b	N	3/50		
+1	65th Regt Mtr HQ	65		2 x 65/17 Gun	3/50		101st Trieste Div HQ
+2	1/65 Bn	1/65		N	3/50	b	65th Regt Mtr HQ
+2	I1/65	11/65		N	3/50	b	65th Regt Mtr HQ
+2	II/65 Heavy Wpns Bn	П11/65		N	3/50		65th Regt Mtr HQ
+1	66th Regt Mtr HQ	66		2× 65/17 Gun	3/50		101st Trieste Div HQ
+2	1/66 Bn	I/66	u	N	3/50	b	66th Regt Mtr HQ
+2	I1/66 Bn	I1/66		N	3/50		66th Regt Mtr HQ
+2	111/66 Bn	111/66		N	3/50	b	66th Regt Mtr HQ
+2	IV/66 Support Coy	IV/66	ff		3/50		66th Regt Mtr HQ
+1	9th Bersaglieri Regt HQ	9 Brs	C		3/50		101st Trieste Div HQ
+2	28th Bersaglieri Mtr Bn	28/9Brs		N	3/50		9th Bersaglieri Regt HQ
+2	30th Bersaglieri Mtr Bn	30/9Brs			3/50		9th Bersaglieri Regt HQ
+2	32nd Bersaglieri Mitrg Bn	32/9Brs			3/50		9th Bersaglieri Regt HQ
+2	40th Heavy Wpns Bn	40/9 Brs		N	3/50		9th Bersaglieri Regt HQ
+1	101st Heavy Wpns Bn	101		N	3/50	d	101st Trieste Div HQ
+1	21st Artillery Regt	21	ji	6 x 75/27 Gun, 3 x 100/17 Howitzer, 3 x 105/28 Gun	3/50		101st Trieste Div HQ
+1	21st Anti-air Gruppo	21	tt	6X Light AA	3/50		101st Trieste Div HQ
+1	8th Armored Bersaglieri Bn	8 ArmBr	VV	N	2/70		101st Trieste Div HQ
+1	101st Engineer Bn	101	bbb	N	3/50		101st Trieste Div HQ
+
+===== PAGE 152 =====
+# Formation: 55th 'Savona'" Division (Semi-motorized)
+# Basic Morale: -1
+# indent levels (unit-x centers): [0.175, 0.19, 0.205]
+## Tree
+55th Savona Div HQ  (55 Sav)  N | arr 1/25
+    15th Infantry Regt HQ  (15)  ID=h | 1 x 65/17 Gun | arr 1/25
+        I/15 Infantry Bn  (I/15)  N | arr 1/25
+        Il/15 Infantry Bn  (11/15)  ID=U | N | arr 1/25
+        ПII/15 Infantry Bn  (Ш/15)  N | arr 1/25
+    16th Infantry Regt HQ  (16)  ID=h | 1 x 65/17 Gun | arr 1/25
+        I/16 Infantry Bn  (I/16)  N | arr 1/25
+        II/16 Infantry Bn  (11/16)  N | arr 1/25
+        IIl/16 Infantry Bn  (I1I/16)  arr 1/25
+    55th Machinegun Bn  (55)  ID=bb | N | arr 1/25
+    55th Anti-tank Coy  (55)  2×47/32 Gun | arr 1/25
+    12th Artillery Regt  (12)  ID=kk | 6X 75/18 Gun-Howitzer, 3 x 100/17 Howitzer, 2X Heavy AA | arr 1/25
+    55th Engineer Bn  (55)  ID=bbb | N | arr 1/25
+    7th CCNN Legion HQ  (7 CCNN) [a]  arr 1/25
+        7th CCNN Bn  (7) [a]  arr 1/25
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	55th Savona Div HQ	55 Sav		N	1/25		
+1	15th Infantry Regt HQ	15	h	1 x 65/17 Gun	1/25		55th Savona Div HQ
+2	I/15 Infantry Bn	I/15		N	1/25		15th Infantry Regt HQ
+2	Il/15 Infantry Bn	11/15	U	N	1/25		15th Infantry Regt HQ
+2	ПII/15 Infantry Bn	Ш/15		N	1/25		15th Infantry Regt HQ
+1	16th Infantry Regt HQ	16	h	1 x 65/17 Gun	1/25		55th Savona Div HQ
+2	I/16 Infantry Bn	I/16		N	1/25		16th Infantry Regt HQ
+2	II/16 Infantry Bn	11/16		N	1/25		16th Infantry Regt HQ
+2	IIl/16 Infantry Bn	I1I/16			1/25		16th Infantry Regt HQ
+1	55th Machinegun Bn	55	bb	N	1/25		55th Savona Div HQ
+1	55th Anti-tank Coy	55		2×47/32 Gun	1/25		55th Savona Div HQ
+1	12th Artillery Regt	12	kk	6X 75/18 Gun-Howitzer, 3 x 100/17 Howitzer, 2X Heavy AA	1/25		55th Savona Div HQ
+1	55th Engineer Bn	55	bbb	N	1/25		55th Savona Div HQ
+1	7th CCNN Legion HQ	7 CCNN			1/25	a	55th Savona Div HQ
+2	7th CCNN Bn	7			1/25	a	7th CCNN Legion HQ
+
+# Formation: 27th «Brescia' Division (Semi-motorized)
+# Basic Morale: - 1
+# indent levels (unit-x centers): [0.179, 0.194, 0.208]
+## Tree
+27 Brescia Div HQ  (27 Bre)  N | arr 2/21
+    19th Infantry Regt HQ  (19)  ID=h | 1 X 65/17 Gun | arr 2/21
+        1/19 Infantry Bn  (1/19)  N | arr 2/21
+        II/19 Infantry Bn  (II/19)  N | arr 2/21
+        ПIl/19 Infantry Bn  (Ш/19)  N | arr 2/21
+    20th Infantry Regt HQ  (20)  1 x 65/17 Gun | arr 2/21
+        1/20 Infantry Bn  (1/20)  N | arr 2/21
+        II/20 Infantry Bn  (11/20)  N | arr 2/21
+        II/20 Infantry Bn  (П11/20)  ID=u | N | arr 2/21
+    27th Machinegun Bn  (27)  ID=bb | N | arr 2/21
+    27th Anti-tank Coy  (27)  ID=TT | 2 x 47/32 Gun | arr 2/21
+    57th Artillery Regt  (57)  ID=kk | 6×75/18 Gun-Howitzer, 3 × 100/17 Howitzer, 2× Heavy AA | arr 2/21
+    27th Engineer Bn  (27)  ID=bbb | N | arr 2/21
+    33rd CCNN Bn  (33)  arr 2/21
+    56th CCNN Bn  (56)  arr 2/21
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	27 Brescia Div HQ	27 Bre		N	2/21		
+1	19th Infantry Regt HQ	19	h	1 X 65/17 Gun	2/21		27 Brescia Div HQ
+2	1/19 Infantry Bn	1/19		N	2/21		19th Infantry Regt HQ
+2	II/19 Infantry Bn	II/19		N	2/21		19th Infantry Regt HQ
+2	ПIl/19 Infantry Bn	Ш/19		N	2/21		19th Infantry Regt HQ
+1	20th Infantry Regt HQ	20		1 x 65/17 Gun	2/21		27 Brescia Div HQ
+2	1/20 Infantry Bn	1/20		N	2/21		20th Infantry Regt HQ
+2	II/20 Infantry Bn	11/20		N	2/21		20th Infantry Regt HQ
+2	II/20 Infantry Bn	П11/20	u	N	2/21		20th Infantry Regt HQ
+1	27th Machinegun Bn	27	bb	N	2/21		27 Brescia Div HQ
+1	27th Anti-tank Coy	27	TT	2 x 47/32 Gun	2/21		27 Brescia Div HQ
+1	57th Artillery Regt	57	kk	6×75/18 Gun-Howitzer, 3 × 100/17 Howitzer, 2× Heavy AA	2/21		27 Brescia Div HQ
+1	27th Engineer Bn	27	bbb	N	2/21		27 Brescia Div HQ
+1	33rd CCNN Bn	33			2/21		27 Brescia Div HQ
+1	56th CCNN Bn	56			2/21		27 Brescia Div HQ
+
+===== PAGE 153 =====
+# Formation: 64th *Catanzaro' Division (Semi-motorized)
+# Basic Morale: - 1
+# indent levels (unit-x centers): [0.192, 0.204, 0.219]
+## Tree
+64th Catanzaro Div HQ  (64 Cat)  ID=b | N | arr D
+    141st Infantry Regt HQ  (141)  ID=h | 1 x 65/17 Gun | arr D
+        I/141 Infantry Bn  (1/141)  N | arr D
+        Il/141 Infantry Bn  (11/141)  N | arr D
+        III/141 Infantry Ba  (Ш1/141)  N | arr D
+    142nd Infantry Regt HQ  (142)  ID=h | 1 x 65/17 Gun | arr D
+        I/142 Infantry Bn  (1/142)  N | arr D
+        I1/142 Infantry Bn  (11/142)  N | arr D
+        III/142 Infantry Bn  (111/142)  ID=u | N | arr D
+    64th Machinegun Bn  (64)  ID=bb | N | arr D
+    64th Anti-tank Coy  (64)  2 X 47/32 Gun | arr D
+    203rd Artillery Regt  (203)  ID=kk | 6 x 75/18 Gun-Howitzer, 3x 105/28 Gun, 3 X Light AA | arr D
+    64th Engineer Bn  (64)  ID=bbb | N | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	64th Catanzaro Div HQ	64 Cat	b	N	D		
+1	141st Infantry Regt HQ	141	h	1 x 65/17 Gun	D		64th Catanzaro Div HQ
+2	I/141 Infantry Bn	1/141		N	D		141st Infantry Regt HQ
+2	Il/141 Infantry Bn	11/141		N	D		141st Infantry Regt HQ
+2	III/141 Infantry Ba	Ш1/141		N	D		141st Infantry Regt HQ
+1	142nd Infantry Regt HQ	142	h	1 x 65/17 Gun	D		64th Catanzaro Div HQ
+2	I/142 Infantry Bn	1/142		N	D		142nd Infantry Regt HQ
+2	I1/142 Infantry Bn	11/142		N	D		142nd Infantry Regt HQ
+2	III/142 Infantry Bn	111/142	u	N	D		142nd Infantry Regt HQ
+1	64th Machinegun Bn	64	bb	N	D		64th Catanzaro Div HQ
+1	64th Anti-tank Coy	64		2 X 47/32 Gun	D		64th Catanzaro Div HQ
+1	203rd Artillery Regt	203	kk	6 x 75/18 Gun-Howitzer, 3x 105/28 Gun, 3 X Light AA	D		64th Catanzaro Div HQ
+1	64th Engineer Bn	64	bbb	N	D		64th Catanzaro Div HQ
+
+# Formation: 102nd 'Trento" Divisione Fanteria Motorizzate (a)
+# Basic Morale: 0
+# indent levels (unit-x centers): [0.189, 0.205, 0.218]
+## Tree
+102nd Trento Div HQ  (102 Trn)  N | arr 1/21
+    61st Regt Mtr HQ  (61)  2 X 65/17 Gun | arr 1/21
+        1/61 Bn  (I/61) [b]  N | arr 1/21
+        11/61 Bn  (11/61) [b]  N | arr 1/21
+        HI/61  (I11/61)  ID=u | N | arr 1/21
+    62nd Regt Mtr HQ  (62)  2 × 65/17 Gun | arr 1/21
+        1/62 Bn  (1/62) [b]  N | arr 1/21
+        1I/62 Bn  (I1/62) [b]  N | arr 1/21
+        II1/62 Bn  (H1/62) [b]  arr 1/21
+    7th Bersaglieri Regt HQ  (7Brs)  arr 1/21
+        8th Bersaglieri Mitrg Bn  (8/7Brs)  arr 1/21
+        10th Bersaglieri Mtr Bn  (10/7 Brs)  N | arr 1/21
+        11th Bersaglieri Mtr Bn  (11/7 Brs)  arr 1/21
+    551st Machinegun Bn  (551)  ID=bb | N | arr 1/21
+    102nd Anti-tank Bn  (102)  ID=99 | 8 x 47/32 Gun | arr 1/21
+46th Artillery Regt  (46)  ID=jj | 6× 75/27 Gun, 3 × 100/17 Howitzer | arr 1/21
+    5ist Engineer Bn  (51)  ID=bbb | N | arr 1/21
+    102nd Anti-aircraft Bn  (102)  ID=SS | 8X Light AA | arr 1/21
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	102nd Trento Div HQ	102 Trn		N	1/21		
+1	61st Regt Mtr HQ	61		2 X 65/17 Gun	1/21		102nd Trento Div HQ
+2	1/61 Bn	I/61		N	1/21	b	61st Regt Mtr HQ
+2	11/61 Bn	11/61		N	1/21	b	61st Regt Mtr HQ
+2	HI/61	I11/61	u	N	1/21		61st Regt Mtr HQ
+1	62nd Regt Mtr HQ	62		2 × 65/17 Gun	1/21		102nd Trento Div HQ
+2	1/62 Bn	1/62		N	1/21	b	62nd Regt Mtr HQ
+2	1I/62 Bn	I1/62		N	1/21	b	62nd Regt Mtr HQ
+2	II1/62 Bn	H1/62			1/21	b	62nd Regt Mtr HQ
+1	7th Bersaglieri Regt HQ	7Brs			1/21		102nd Trento Div HQ
+2	8th Bersaglieri Mitrg Bn	8/7Brs			1/21		7th Bersaglieri Regt HQ
+2	10th Bersaglieri Mtr Bn	10/7 Brs		N	1/21		7th Bersaglieri Regt HQ
+2	11th Bersaglieri Mtr Bn	11/7 Brs			1/21		7th Bersaglieri Regt HQ
+1	551st Machinegun Bn	551	bb	N	1/21		102nd Trento Div HQ
+1	102nd Anti-tank Bn	102	99	8 x 47/32 Gun	1/21		102nd Trento Div HQ
+0	46th Artillery Regt	46	jj	6× 75/27 Gun, 3 × 100/17 Howitzer	1/21		
+1	5ist Engineer Bn	51	bbb	N	1/21		46th Artillery Regt
+1	102nd Anti-aircraft Bn	102	SS	8X Light AA	1/21		46th Artillery Regt
+
+===== PAGE 154 =====
+# Formation: 136th 'Giovani Fascisti" Divisione Fanteria
+# Basic Morale: -3
+# indent levels (unit-x centers): [0.182, 0.196, 0.211]
+## Tree
+136th Giovani Fascisti Div HOE  (136GGFF)  ID=b | N | arr 1/97
+    136th Fanteria Regt HQ  (136)  ID=h | 1 x 65/17 Gun | arr 1/97
+        1/136 Infantry Bn  (1/136)  N | arr 1/97
+        11/136 Infantry Bn  (11/136)  N | arr 1/97
+        III/136 Heavy Wpns Bn  (Ill/136)  N | arr 1/97
+    136th Artiglieria Regt  (136)  ID=kk | 6x 75/27 Gun, 2x 100/17 Howitzer, 3x Heavy AA | arr 1/97
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	136th Giovani Fascisti Div HOE	136GGFF	b	N	1/97		
+1	136th Fanteria Regt HQ	136	h	1 x 65/17 Gun	1/97		136th Giovani Fascisti Div HOE
+2	1/136 Infantry Bn	1/136		N	1/97		136th Fanteria Regt HQ
+2	11/136 Infantry Bn	11/136		N	1/97		136th Fanteria Regt HQ
+2	III/136 Heavy Wpns Bn	Ill/136		N	1/97		136th Fanteria Regt HQ
+1	136th Artiglieria Regt	136	kk	6x 75/27 Gun, 2x 100/17 Howitzer, 3x Heavy AA	1/97		136th Giovani Fascisti Div HOE
+
+# Formation: 185th "Folgore" Division (a)
+# Basic Morale: + I
+# indent levels (unit-x centers): [0.182, 0.2, 0.212]
+## Tree
+185th Folgore Div HO  (185 Folg)  ID=b | arr 2/94
+    186th Airborne Regt HQ  (186)  ID=h | 1 X 47/32 Gun | arr 2/94
+        V/186 Bn  (V/186)  ID=V | arr 2/94
+        VI/186 Bn  (VI/186)  N | arr 2/94
+        VII/186 Bn  (VII/186)  arr 2/94
+    187th Airborne Regt HQ  (187)  1X 47/32 Gun | arr 2/94
+        I1/ 187 Bn  (11/187)  N | arr 2/94
+        IV/187 Bn  (IV/187)  N | arr 2/94
+        IX/187 Bn  (IX/187)  N | arr 2/94
+    185th Artigliera Regt  (185)  ID=kk | 6X ParaArt, 3 X 75/46 AA Gun | arr 2/94
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	185th Folgore Div HO	185 Folg	b		2/94		
+1	186th Airborne Regt HQ	186	h	1 X 47/32 Gun	2/94		185th Folgore Div HO
+2	V/186 Bn	V/186	V		2/94		186th Airborne Regt HQ
+2	VI/186 Bn	VI/186		N	2/94		186th Airborne Regt HQ
+2	VII/186 Bn	VII/186			2/94		186th Airborne Regt HQ
+1	187th Airborne Regt HQ	187		1X 47/32 Gun	2/94		185th Folgore Div HO
+2	I1/ 187 Bn	11/187		N	2/94		187th Airborne Regt HQ
+2	IV/187 Bn	IV/187		N	2/94		187th Airborne Regt HQ
+2	IX/187 Bn	IX/187		N	2/94		187th Airborne Regt HQ
+1	185th Artigliera Regt	185	kk	6X ParaArt, 3 X 75/46 AA Gun	2/94		185th Folgore Div HO
+
+# Formation: Raggruppamento Esplorante del Corpo Di Manovra (a)
+# Basic Morale: - 1
+# indent levels (unit-x centers): [0.186, 0.202]
+## Tree
+RECAM HQ  (RECAM)  1xvV | arr 1/45
+    R. Gessi PAI Bn  (PAI)  ID=VV | N | arr 1/45
+    I/Santamaria Machinegun Coy  (I/Snta)  ID=CC | N | arr 1/45
+    RECAM Artiglierie Regt  (RECAM)  6 x 65/17 Gun | arr 1/45
+    31 Guastatori Engineer Bn  (31 Guast)  ID=bbb | N | arr 1/45
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	RECAM HQ	RECAM		1xvV	1/45		
+1	R. Gessi PAI Bn	PAI	VV	N	1/45		RECAM HQ
+1	I/Santamaria Machinegun Coy	I/Snta	CC	N	1/45		RECAM HQ
+1	RECAM Artiglierie Regt	RECAM		6 x 65/17 Gun	1/45		RECAM HQ
+1	31 Guastatori Engineer Bn	31 Guast	bbb	N	1/45		RECAM HQ
+
+# Formation: The Saharan Detachment
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.19, 0.204]
+## Tree
+Saharan Detachment HQ  (Sahara)  ID=b | N | arr D
+    1 Saharan/Libyan Bn  (1Sah/L)  N | arr D
+    2 Saharan/Libyan Bn  (2 Sah/L)  N | arr D
+    Sahara Machinegun Bn  (Sahara)  ID=Z | N | arr D
+    Sahara Mtr Machinegun Coy  (SahMtr)  ID=hh | N | arr D
+    Saharan Artillery Battery  (Sahara)  ID=mm | 3 × 65/17 Gun, 2x Light AA | arr D
+    Meharisiti Camel Cavalry  (Mhrsti)  ID=УУ | U@2 | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Saharan Detachment HQ	Sahara	b	N	D		
+1	1 Saharan/Libyan Bn	1Sah/L		N	D		Saharan Detachment HQ
+1	2 Saharan/Libyan Bn	2 Sah/L		N	D		Saharan Detachment HQ
+1	Sahara Machinegun Bn	Sahara	Z	N	D		Saharan Detachment HQ
+1	Sahara Mtr Machinegun Coy	SahMtr	hh	N	D		Saharan Detachment HQ
+1	Saharan Artillery Battery	Sahara	mm	3 × 65/17 Gun, 2x Light AA	D		Saharan Detachment HQ
+1	Meharisiti Camel Cavalry	Mhrsti	УУ	U@2	D		Saharan Detachment HQ
+
+===== PAGE 155 =====
+# Formation: Benghazi Garrison (Hex: A4827) (a)
+# Basic Morale: - 3
+# indent levels (unit-x centers): [0.185]
+## Tree
+Il Libyan Coastal Defense Bn  (IILibCD)  ID=x | N | arr D
+VII Coastal Defense Arty/AA Group  (VIICD)  ID=tt | 6X'I Light AA | arr D
+XX Corps Artillery Regt  (XXCp)  6x 100/17 Howitzer | arr D
+VIll/Il Engineer. Bn  (VHI/II)  ID=bb | N | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Il Libyan Coastal Defense Bn	IILibCD	x	N	D		
+0	VII Coastal Defense Arty/AA Group	VIICD	tt	6X'I Light AA	D		
+0	XX Corps Artillery Regt	XXCp		6x 100/17 Howitzer	D		
+0	VIll/Il Engineer. Bn	VHI/II	bb	N	D		
+
+# Formation: The Tobruk Garrison (Hex: C4807)
+# Basic Morale: - 3
+# indent levels (unit-x centers): [0.189, 0.203]
+## Tree
+3ist Gaf S di C HO  (31 GaF)  ID=f | N | arr D
+    I/31 Gaf S di C Bn  ()  N | arr D
+    HI/31 Gaf S di C Bn  ()  N N | arr D
+    III/31 Gaf S di C Bn  ()  arr D
+32nd Gaf S di C HOE  (32 GaF)  ID=f | arr D
+    I/32 Gaf S di C Bn  ()  N | arr D
+    11/32 Gaf S di C Bn  ()  arr D
+    III/32 Gaf S di C Bn  ()  N | arr D
+Marine Regimental HO  (Marines)  arr D
+    Ist Marine Bn  (1)  arr D
+    2nd Marine Bn  (2)  arr D
+    3rd Marine Bn  (3)  arr D
+XXXI Libyan Coast Def Bn 31 Gaf S di C Artiglieri  (XXXILib)  N | arr D
+    Sth Artiglieri Regt  (V)  ID=mm | 2x 100/17 Howitzer | arr D
+    6th Artiglieri Regt  (VI)  ID=mm | 2×149mm Vichy French Gun | arr D
+    7th Artiglieri Regt  (VII)  ID=mm | 2 x 149/13 Howitzer | arr D
+Tobruk Coastal Defense Arty  () [b]  
+    Ist Tobruk CD Arty Group  (1/TbrkCD)  ID=pp | 2x 149/13 Howitzer | arr D
+    2nd Tobruk CD Arty Group  (2/TbrkCD)  ID=pP | 6 X (4) 100/17 Howitzer, 6x'I' Light AA | arr D
+    3rd Tobruk CD Arty Group 3/TbrkCD  ()  ID=pp | 4 x 75/18 Gun-Howitzer, 8x T Light AA | arr D
+    4th Tobruk CD Arty Group  (4/TbrkCD)  ID=PP | 6 X (2) 105/28 Gun, 4X'I Heavy AA | arr D
+    5th Tobruk CD Arty Group 5/TbrkCD  ()  ID=pp | 6x (2) 149/13 Howitzer, 2X 1 Heavy AA | arr D
+    Tobruk Light AA Bn  (TbrkLt)  ID=SS | 8X'I' Light AA | arr D
+The San Giorgio  (San Giorgio)  
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	3ist Gaf S di C HO	31 GaF	f	N	D		
+1	I/31 Gaf S di C Bn			N	D		3ist Gaf S di C HO
+1	HI/31 Gaf S di C Bn			N N	D		3ist Gaf S di C HO
+1	III/31 Gaf S di C Bn				D		3ist Gaf S di C HO
+0	32nd Gaf S di C HOE	32 GaF	f		D		
+1	I/32 Gaf S di C Bn			N	D		32nd Gaf S di C HOE
+1	11/32 Gaf S di C Bn				D		32nd Gaf S di C HOE
+1	III/32 Gaf S di C Bn			N	D		32nd Gaf S di C HOE
+0	Marine Regimental HO	Marines			D		
+1	Ist Marine Bn	1			D		Marine Regimental HO
+1	2nd Marine Bn	2			D		Marine Regimental HO
+1	3rd Marine Bn	3			D		Marine Regimental HO
+0	XXXI Libyan Coast Def Bn 31 Gaf S di C Artiglieri	XXXILib		N	D		
+1	Sth Artiglieri Regt	V	mm	2x 100/17 Howitzer	D		XXXI Libyan Coast Def Bn 31 Gaf S di C Artiglieri
+1	6th Artiglieri Regt	VI	mm	2×149mm Vichy French Gun	D		XXXI Libyan Coast Def Bn 31 Gaf S di C Artiglieri
+1	7th Artiglieri Regt	VII	mm	2 x 149/13 Howitzer	D		XXXI Libyan Coast Def Bn 31 Gaf S di C Artiglieri
+0	Tobruk Coastal Defense Arty					b	
+1	Ist Tobruk CD Arty Group	1/TbrkCD	pp	2x 149/13 Howitzer	D		Tobruk Coastal Defense Arty
+1	2nd Tobruk CD Arty Group	2/TbrkCD	pP	6 X (4) 100/17 Howitzer, 6x'I' Light AA	D		Tobruk Coastal Defense Arty
+1	3rd Tobruk CD Arty Group 3/TbrkCD		pp	4 x 75/18 Gun-Howitzer, 8x T Light AA	D		Tobruk Coastal Defense Arty
+1	4th Tobruk CD Arty Group	4/TbrkCD	PP	6 X (2) 105/28 Gun, 4X'I Heavy AA	D		Tobruk Coastal Defense Arty
+1	5th Tobruk CD Arty Group 5/TbrkCD		pp	6x (2) 149/13 Howitzer, 2X 1 Heavy AA	D		Tobruk Coastal Defense Arty
+1	Tobruk Light AA Bn	TbrkLt	SS	8X'I' Light AA	D		Tobruk Coastal Defense Arty
+0	The San Giorgio	San Giorgio					
+
+===== PAGE 156 =====
+# Formation: Bardia Garrison (Hex: C4321)
+# Basic Morale: -3
+# indent levels (unit-x centers): [0.179, 0.193]
+## Tree
+30th Gaf. S. di C.HOE  (32GaF)  N | arr D
+    I/30 Gaf. S. di C. Bn  (I)  N | arr D
+    11/30 Gaf. S. di C. Bn  (II)  N | arr D
+    III/30 Gaf. S. di C. Bn  (I1I)  N | arr D
+VEC Machinegun Bn  (VEC)  ID=aa | N | arr D
+30 Gaf Antitank Bn  (30)  6×47/32 Gun | arr D
+30 Gaf S di C Artiglieri  () [b]  
+    8th Gaf S di CArty Regt  (VIII)  4 x 100/17 Howitzer | arr D
+    9th Gaf S di C Arty Regt  (IX)  ID=11 | 4X 100/17 Howitzer, 2x75/27 Gun | arr D
+    10th Gaf S di C Arty Regt V Coastal Defense Arty  (X)  ID=11 | 4 x 105/28 Gun, 3 x 100/17 Howitzer | arr D
+Group  (V CD)  ID=PP | 1 x75/27 Gun 1 x 100/17 Howitzer, 1 x 105/28 Gun | arr D
+    XVII Anti-air Group  (XVII)  8 Light AA
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	30th Gaf. S. di C.HOE	32GaF		N	D		
+1	I/30 Gaf. S. di C. Bn	I		N	D		30th Gaf. S. di C.HOE
+1	11/30 Gaf. S. di C. Bn	II		N	D		30th Gaf. S. di C.HOE
+1	III/30 Gaf. S. di C. Bn	I1I		N	D		30th Gaf. S. di C.HOE
+0	VEC Machinegun Bn	VEC	aa	N	D		
+0	30 Gaf Antitank Bn	30		6×47/32 Gun	D		
+0	30 Gaf S di C Artiglieri					b	
+1	8th Gaf S di CArty Regt	VIII		4 x 100/17 Howitzer	D		30 Gaf S di C Artiglieri
+1	9th Gaf S di C Arty Regt	IX	11	4X 100/17 Howitzer, 2x75/27 Gun	D		30 Gaf S di C Artiglieri
+1	10th Gaf S di C Arty Regt V Coastal Defense Arty	X	11	4 x 105/28 Gun, 3 x 100/17 Howitzer	D		30 Gaf S di C Artiglieri
+0	Group	V CD	PP	1 x75/27 Gun 1 x 100/17 Howitzer, 1 x 105/28 Gun	D		
+1	XVII Anti-air Group	XVII		8 Light AA			Group
+
+# Formation: Derna Garrison (Hex: B5925)
+# Basic Morale: -3
+# indent levels (unit-x centers): [0.178]
+## Tree
+54th Territorial Inf. Regt  (54 Ter)  ID=m | N | arr D
+IV Coastal Def Arty Group  (IV CD)  ID=PP | 5 × 75/18 Gun Howitzer | arr D
+VI Coastal Def ArtyGroup  (VICD) [b]  2 x 75/18 Gun-Howitzer | arr D
+XV Coastal Def AA Group  (XV CD)  ID=tt | 6X Light AA | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	54th Territorial Inf. Regt	54 Ter	m	N	D		
+0	IV Coastal Def Arty Group	IV CD	PP	5 × 75/18 Gun Howitzer	D		
+0	VI Coastal Def ArtyGroup	VICD		2 x 75/18 Gun-Howitzer	D	b	
+0	XV Coastal Def AA Group	XV CD	tt	6X Light AA	D		
+
+===== PAGE 157 =====
+# Formation: Giariabub Oasis Complex Garrison (Hex: C 1014)
+# Basie Morale: O
+# indent levels (unit-x centers): [0.184]
+## Tree
+Giariabub Oasis Mtr MG Bn  (Grbub)  ID=hh | N | arr D
+Ciariabub Oasis Infantry Bn  (Grbub)  ID=88 | N | arr D
+Giariabub Oasis MG Bn  (Grbub)  U@4 | arr D
+Giariabub Oasis Anti-tank Соу  (Grbub)  247/32 Gun | arr D
+Giariabub Oasis Artillery Bty  (Grbub)  ID=mm | 1 65/17 Gun | arr D
+Giariabub Oasis Anti-Air Bty  (Grbub)  ID=uu | 3 Light AA | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Giariabub Oasis Mtr MG Bn	Grbub	hh	N	D		
+0	Ciariabub Oasis Infantry Bn	Grbub	88	N	D		
+0	Giariabub Oasis MG Bn	Grbub		U@4	D		
+0	Giariabub Oasis Anti-tank Соу	Grbub		247/32 Gun	D		
+0	Giariabub Oasis Artillery Bty	Grbub	mm	1 65/17 Gun	D		
+0	Giariabub Oasis Anti-Air Bty	Grbub	uu	3 Light AA	D		
+
+# Formation: Minor Garrison Units (a)
+# Basic Morale: -3
+# indent levels (unit-x centers): [0.186]
+## Tree
+Sceferzen Oasis Garrison Bn  (Sctzrn)  ID=dd | arr D
+Fort Maddalenna Garrison Bn  (FtMad)  ID=q | U@2 | arr D
+EGUG Garrison Bn  (EGUG)  ID=ee | N | arr D
+Benina AA Battery  (Benina)  ID=uu | 2x Light AA | arr D
+Mechili Garrison Bn  (Mechili)  U@2 | arr D
+Soluch Garrison AT Coy  (Soluch)  ID=rr | 2X47/32 Gun | arr D
+Soluch Garrison ARty Regt  (Soluch)  ID=ji | 12 x 100/17 Howitzer | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Sceferzen Oasis Garrison Bn	Sctzrn	dd		D		
+0	Fort Maddalenna Garrison Bn	FtMad	q	U@2	D		
+0	EGUG Garrison Bn	EGUG	ee	N	D		
+0	Benina AA Battery	Benina	uu	2x Light AA	D		
+0	Mechili Garrison Bn	Mechili		U@2	D		
+0	Soluch Garrison AT Coy	Soluch	rr	2X47/32 Gun	D		
+0	Soluch Garrison ARty Regt	Soluch	ji	12 x 100/17 Howitzer	D		
+
+# Formation: Unassigned Armored Units
+# Basic Morale: O
+# indent levels (unit-x centers): [0.185]
+## Tree
+I(L) Tank Bn  (I(L)) [a]  4 CV 33 | arr 1/18
+II(L) Tank Bn  (H(L))  4 CV 33 | arr 1/18
+III(M) Tank Bn  (II(M)) [b]  7M 13/40 | arr 1/55
+IV(M) Tank Bn  (IV(M))  7 M 13/40 | arr 2/90
+V(M)TankBn  (V(M)) [b]  7 M 13/40 | arr 3/13
+XI(M) Tank Bn  (XIII(M)) [d]  7 M 14/41 | arr 1/92
+XXI(M) Tank Bn  (XXI(M)) [b]  7 M 13/40 | arr 3/17
+LI(M) Tank Bn  (LI(M))  7 M 13/40 | arr 3/71
+LII(M) Tank Bn  (LII(M))  7 M13/40 | arr 3/55
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	I(L) Tank Bn	I(L)		4 CV 33	1/18	a	
+0	II(L) Tank Bn	H(L)		4 CV 33	1/18		
+0	III(M) Tank Bn	II(M)		7M 13/40	1/55	b	
+0	IV(M) Tank Bn	IV(M)		7 M 13/40	2/90		
+0	V(M)TankBn	V(M)		7 M 13/40	3/13	b	
+0	XI(M) Tank Bn	XIII(M)		7 M 14/41	1/92	d	
+0	XXI(M) Tank Bn	XXI(M)		7 M 13/40	3/17	b	
+0	LI(M) Tank Bn	LI(M)		7 M 13/40	3/71		
+0	LII(M) Tank Bn	LII(M)		7 M13/40	3/55		
+
+===== PAGE 158 =====
+# Formation: Assigned Units without a Parent Formation (a)
+# Basic Morale: As listed in the Notes Column
+# indent levels (unit-x centers): [0.174]
+## Tree
+XXXII Libyan Bn  (XXXII Lib) [b(-2)]  N N | arr D
+XXXIV Libyan Bn  (XXXIV Lib) [b(-2)]  N | arr 2/12
+XXXV Libyan Bn  (XXXV Lib) [b(-2)]  N | arr 2/15
+2/87 Fanterie Bn  (I1/87) [c(O)]  arr 2/15
+1/78 Fanterie Bn  (1/78) [d(-3)]  N | arr 3/94
+III/133 Fanterie Bn  (ШI/133) [e(-2)]  N | arr 2/97
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	XXXII Libyan Bn	XXXII Lib		N N	D	b(-2)	
+0	XXXIV Libyan Bn	XXXIV Lib		N	2/12	b(-2)	
+0	XXXV Libyan Bn	XXXV Lib		N	2/15	b(-2)	
+0	2/87 Fanterie Bn	I1/87			2/15	c(O)	
+0	1/78 Fanterie Bn	1/78		N	3/94	d(-3)	
+0	III/133 Fanterie Bn	ШI/133		N	2/97	e(-2)	
+
+# Formation: Unassigned Infantry and Reconnaissance Units
+# Basic Morale: Aslisted in the Notes column
+# indent levels (unit-x centers): [0.181, 0.195]
+## Tree
+    16th Bersaglieri Mtr Bn  (16 Brs) [(+1)]  N | arr 1/11
+    34th Bersaglieri Mtr Bn  (34 Brs) [(+1)]  N | arr 1/11
+    35th Bersaglieri Mtr Bn  (35 Brs) [(+1)]  ID=t | N | arr 1/11
+22nd Bersaglieri Mitrg Coy  (22 Brs) [(+1)]  ID=aaa | N | arr 1/10
+5th Desert Patrol  (5 DPtl) [a(O)]  ID=XX | N | arr 3/62
+23rd Desert Patrol  (23. DPtl) [a(0)]  ID=XX | N | arr 3/62
+Libyan Parachute Regt HQ  (Libyan) [b(-2)]  ID=f | N | arr D
+    Ist Libyan Parachute Bn  (1 LibPar) [b(-2)]  ID=x | N | arr D
+    Ist Carabinieri (CCRR) Bn  (1CCRR) [b(-2]  N | arr D
+4th Fanterie Mtr Regt  (4/10 Army) [c(-1)]  N N N | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+1	16th Bersaglieri Mtr Bn	16 Brs		N	1/11	(+1)	
+1	34th Bersaglieri Mtr Bn	34 Brs		N	1/11	(+1)	
+1	35th Bersaglieri Mtr Bn	35 Brs	t	N	1/11	(+1)	
+0	22nd Bersaglieri Mitrg Coy	22 Brs	aaa	N	1/10	(+1)	
+0	5th Desert Patrol	5 DPtl	XX	N	3/62	a(O)	
+0	23rd Desert Patrol	23. DPtl	XX	N	3/62	a(0)	
+0	Libyan Parachute Regt HQ	Libyan	f	N	D	b(-2)	
+1	Ist Libyan Parachute Bn	1 LibPar	x	N	D	b(-2)	Libyan Parachute Regt HQ
+1	Ist Carabinieri (CCRR) Bn	1CCRR		N	D	b(-2	Libyan Parachute Regt HQ
+0	4th Fanterie Mtr Regt	4/10 Army		N N N	D	c(-1)	
+
+===== PAGE 159 =====
+# Formation: Unassigned Gun Units
+# Basic Morale: As listed in the Notes Column
+# indent levels (unit-x centers): [0.167, 0.181, 0.196]
+## Tree
+    6th Gaf S di C Arty Regt  (6 GaF) [(-2)]  ID=mm | 3 x 75/27 Gun | arr D
+    16th Gaf S di CArty Regt  (16 GaF) [(-2)]  ID=mm | 2 x 75/18 Gun-Howtizer
+    22nd Gaf S di C Arty Regt  (22 GaF) [(-2)]  ID=mm | 3×75/27 Gun | arr D
+    42nd Gaf S di CArty Regt  (42 GaF) [(-2)]  ID=mm | 4x 100/17 Howitzer | arr D
+    350th Gaf S di C Arty Regt  (350 GaF) [(-2)]  ID=mm | 2 X 105/28 Gun | arr D
+    131st Artiglieri Bn  (131) [(-1)]  ID=mm | 2x 100/17 Howtizer | arr D
+    147th Artiglieri Bn  (147) [(-1)]  ID=mm | 2X75/27 Gun | arr D
+    DLIV Articelere Bn  (DLIV) [a(O)]  ID=mm | 2x 75/18 SP Gun | arr 3/71
+    DLVI Articelere Bn  (DLVI) [a(0)]  ID=mm | 2x75/18 SP Gun | arr 3/71
+    Sth Bn, Ist Artiglieri  (5/1) [(-1)]  4 x 75/27 Gun
+    2nd Bn, 24th Artiglieri  (2/24) [(-1)]  ID=mm | 3×75/27 Gun
+    1 Articelere Regt  (1 Artc) [b(0)]  ID=11 | 4.x 15/27 Gun, 4 x 100/17 Howtizer | arr 1/55
+    Il Articelere Regt  (2 Artc) [(0)]  ID=1l | 4x 75/27 Gun, 3 × 100/17 Howitzer | arr 1/55
+    Ist Artillery Ragruppamento  () [c-1)]  
+        Ist Bn, 1 Arty Rgppmnto  (1/1AR)  ID=mmn | 3 x 75/27 Gun | arr D
+        2nd Bn, 1 Arty Rgppmnto  (2/1AR)  ID=mm | 3 X 75/18 Gun-Howitzer | arr D
+        3rd Bn, 1 Arty Rgppmnto  (3/1AR)  ID=mm | 3 x 105/28 Gun | arr D
+        4th Bn, 1 Arty Rgppmnto  (4/1AR)  ID=mm | 3 × 100/17 Howitzer | arr D
+    2nd Artillery Ragruppamento  () [c(=1)]  
+        Ist Bn, 2 Arty Rgppmnto  (1/2AR)  ID=mm | 3 x 75/27 Gun | arr 1/26
+        2nd Bn, 2 Arty Rgppmnto  (2/2AR)  ID=mm | 3 ×75/18 Gun-Howitzer | arr 1/26
+        3rd Bn, 2 Arty Rgppmnto  (3/2AR)  ID=mm | 3 x 100/17 Howitzer | arr 1/26
+        4th Bn, 2 Arty Rgppmnto  (4/2AR)  ID=mm | 3×105/28 Gun | arr 1/26
+X Corps Artillery Regt  (x Cр) [d(-2)]  ID=kk | 4 x 100/17 Howitzer
+    XXI Corps Artillery Regt  (XXI CP) [(0)]  ID=kk | 3X75/27 Gun, 6 X 100/17 Howitzer, 3x Light AA | arr D
+    XXII Corps Artillery Regt  (XXII Cр) [(0)]  ID=kk | 9x 100/17 Howitzer, 3 x Light AA
+    XXIII Corps Artillery Regt  (XXIII Cp) [(0)]  ID=kk | 9× 100/17 Howitzer, 3 × Light AA | arr D
+    XXV Corps Artillery Regt  (XXV Cp)  ID=kk | 9 x 105/28 Gun, 3 x Light AA | arr 2/9
+    XXVI Corps Artillery Regt  (XXVI Cp) [(0)]  ID=kk | 9× 75/27 Gun, 3 × Light AA | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+1	6th Gaf S di C Arty Regt	6 GaF	mm	3 x 75/27 Gun	D	(-2)	
+1	16th Gaf S di CArty Regt	16 GaF	mm	2 x 75/18 Gun-Howtizer		(-2)	
+1	22nd Gaf S di C Arty Regt	22 GaF	mm	3×75/27 Gun	D	(-2)	
+1	42nd Gaf S di CArty Regt	42 GaF	mm	4x 100/17 Howitzer	D	(-2)	
+1	350th Gaf S di C Arty Regt	350 GaF	mm	2 X 105/28 Gun	D	(-2)	
+1	131st Artiglieri Bn	131	mm	2x 100/17 Howtizer	D	(-1)	
+1	147th Artiglieri Bn	147	mm	2X75/27 Gun	D	(-1)	
+1	DLIV Articelere Bn	DLIV	mm	2x 75/18 SP Gun	3/71	a(O)	
+1	DLVI Articelere Bn	DLVI	mm	2x75/18 SP Gun	3/71	a(0)	
+1	Sth Bn, Ist Artiglieri	5/1		4 x 75/27 Gun		(-1)	
+1	2nd Bn, 24th Artiglieri	2/24	mm	3×75/27 Gun		(-1)	
+1	1 Articelere Regt	1 Artc	11	4.x 15/27 Gun, 4 x 100/17 Howtizer	1/55	b(0)	
+1	Il Articelere Regt	2 Artc	1l	4x 75/27 Gun, 3 × 100/17 Howitzer	1/55	(0)	
+1	Ist Artillery Ragruppamento					c-1)	
+2	Ist Bn, 1 Arty Rgppmnto	1/1AR	mmn	3 x 75/27 Gun	D		Ist Artillery Ragruppamento
+2	2nd Bn, 1 Arty Rgppmnto	2/1AR	mm	3 X 75/18 Gun-Howitzer	D		Ist Artillery Ragruppamento
+2	3rd Bn, 1 Arty Rgppmnto	3/1AR	mm	3 x 105/28 Gun	D		Ist Artillery Ragruppamento
+2	4th Bn, 1 Arty Rgppmnto	4/1AR	mm	3 × 100/17 Howitzer	D		Ist Artillery Ragruppamento
+1	2nd Artillery Ragruppamento					c(=1)	
+2	Ist Bn, 2 Arty Rgppmnto	1/2AR	mm	3 x 75/27 Gun	1/26		2nd Artillery Ragruppamento
+2	2nd Bn, 2 Arty Rgppmnto	2/2AR	mm	3 ×75/18 Gun-Howitzer	1/26		2nd Artillery Ragruppamento
+2	3rd Bn, 2 Arty Rgppmnto	3/2AR	mm	3 x 100/17 Howitzer	1/26		2nd Artillery Ragruppamento
+2	4th Bn, 2 Arty Rgppmnto	4/2AR	mm	3×105/28 Gun	1/26		2nd Artillery Ragruppamento
+0	X Corps Artillery Regt	x Cр	kk	4 x 100/17 Howitzer		d(-2)	
+1	XXI Corps Artillery Regt	XXI CP	kk	3X75/27 Gun, 6 X 100/17 Howitzer, 3x Light AA	D	(0)	X Corps Artillery Regt
+1	XXII Corps Artillery Regt	XXII Cр	kk	9x 100/17 Howitzer, 3 x Light AA		(0)	X Corps Artillery Regt
+1	XXIII Corps Artillery Regt	XXIII Cp	kk	9× 100/17 Howitzer, 3 × Light AA	D	(0)	X Corps Artillery Regt
+1	XXV Corps Artillery Regt	XXV Cp	kk	9 x 105/28 Gun, 3 x Light AA	2/9		X Corps Artillery Regt
+1	XXVI Corps Artillery Regt	XXVI Cp	kk	9× 75/27 Gun, 3 × Light AA	D	(0)	X Corps Artillery Regt
+
+# Formation: 2nd CCNN ("28th October") Division
+# Basic Morale: 0
+# indent levels (unit-x centers): [0.179, 0.193, 0.209]
+## Tree
+2nd CCNN Div HQ  (2 CCNN)  ID=g | N | arr D
+    238th Legion HQ  (238 Lgn)  ID=g | 1 x 65/17 Gun | arr D
+        138th Infantry Bn  (138)  N | arr D
+        140th Infantry Bn  (140)  ID=X | N | arr D
+        145th Infantry Bn  (145)  N | arr D
+    231st Legion HQ  (231 Lgn)  ID=g | 1 x 65/17 Gun | arr D
+        131st Infantry Bn  (131)  ID=X | N | arr D
+        132nd Infantry Bn  (132)  N | arr D
+        135th Infantry.Bn  (135)  N | arr D
+    202nd Machinegun Bn  (202)  ID=bb | N | arr D
+    202nd Artillery Regt  (202)  ID=kk | 3 × 75/18 Gun-Howitzer, 6 × 100/17 Howitzer, 2 x Heavy AA | arr D
+    202nd Engineer Bn  (202)  ID=bbb | N | arr D
+    202nd Bersaglieri Mitrg Coy  (202 Brs)  ID=aaa | N | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	2nd CCNN Div HQ	2 CCNN	g	N	D		
+1	238th Legion HQ	238 Lgn	g	1 x 65/17 Gun	D		2nd CCNN Div HQ
+2	138th Infantry Bn	138		N	D		238th Legion HQ
+2	140th Infantry Bn	140	X	N	D		238th Legion HQ
+2	145th Infantry Bn	145		N	D		238th Legion HQ
+1	231st Legion HQ	231 Lgn	g	1 x 65/17 Gun	D		2nd CCNN Div HQ
+2	131st Infantry Bn	131	X	N	D		231st Legion HQ
+2	132nd Infantry Bn	132		N	D		231st Legion HQ
+2	135th Infantry.Bn	135		N	D		231st Legion HQ
+1	202nd Machinegun Bn	202	bb	N	D		2nd CCNN Div HQ
+1	202nd Artillery Regt	202	kk	3 × 75/18 Gun-Howitzer, 6 × 100/17 Howitzer, 2 x Heavy AA	D		2nd CCNN Div HQ
+1	202nd Engineer Bn	202	bbb	N	D		2nd CCNN Div HQ
+1	202nd Bersaglieri Mitrg Coy	202 Brs	aaa	N	D		2nd CCNN Div HQ
+
+===== PAGE 160 =====
+# Formation: Ist CCNN (23rd March") Division
+# Basic Morale: 0
+# indent levels (unit-x centers): [0.18, 0.198, 0.212]
+## Tree
+Ist CCNN Diy HQ  (1CCNN)  
+    219th Legion HQ  (219 Lgn)  1 x 65/17 Gun | arr D
+        129th Infantry Bn  (129)  
+        133rd Infantry Bn  (133)  N | arr D
+        146th Infantry Bn  (146)  arr D-
+    233rd Legion HQ  (233 Lgn)  ID=g | 1 X 65/17 Gun | arr D
+        114th Infantry Bn  (114)  N | arr D
+        116th Infantry Bn  (116)  ID=x | N | arr D
+        118th Infantry Bn  (118)  arr D.
+    201st Machinegun Bn  (201)  ID=bb | N | arr D
+    201st Artillery Regt  (201)  ID=kk | 6 x 75/27 Gun, 3 x 100/17 Howitzer, 2x Heavy AA | arr D
+    201st Engineer Bn  (201)  ID=bbb | N | arr D
+    201st Bersaglieri Miitrg Coy  (201 Brs)  ID=aда | arr D.
+    I(M) Tank Battalion  (I(M))  arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ist CCNN Diy HQ	1CCNN					
+1	219th Legion HQ	219 Lgn		1 x 65/17 Gun	D		Ist CCNN Diy HQ
+2	129th Infantry Bn	129					219th Legion HQ
+2	133rd Infantry Bn	133		N	D		219th Legion HQ
+2	146th Infantry Bn	146			D-		219th Legion HQ
+1	233rd Legion HQ	233 Lgn	g	1 X 65/17 Gun	D		Ist CCNN Diy HQ
+2	114th Infantry Bn	114		N	D		233rd Legion HQ
+2	116th Infantry Bn	116	x	N	D		233rd Legion HQ
+2	118th Infantry Bn	118			D.		233rd Legion HQ
+1	201st Machinegun Bn	201	bb	N	D		Ist CCNN Diy HQ
+1	201st Artillery Regt	201	kk	6 x 75/27 Gun, 3 x 100/17 Howitzer, 2x Heavy AA	D		Ist CCNN Diy HQ
+1	201st Engineer Bn	201	bbb	N	D		Ist CCNN Diy HQ
+1	201st Bersaglieri Miitrg Coy	201 Brs	aда		D.		Ist CCNN Diy HQ
+1	I(M) Tank Battalion	I(M)			D		Ist CCNN Diy HQ
+
+# Formation: 3rd CCNN (*21st April") Division (a)
+# Basic Morale: - 2
+# indent levels (unit-x centers): [0.185, 0.198]
+## Tree
+250th Legion HQ  (250 Lgn) [b]  ID=g | N | arr D
+    81st Infantry Bn  (81)  ID=X
+    156th Infantry Bn  (156)  N | arr D
+    158th Infantry Bn  (158)  arr D.
+203rd Machinegun Bn  (203)  ID=bb | N | arr D
+214th Artillery Regt  (214)  ID=kk | 6 x 75/18 Gun-Howitzer, 3 x 100/17 Howitzer N | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	250th Legion HQ	250 Lgn	g	N	D	b	
+1	81st Infantry Bn	81	X				250th Legion HQ
+1	156th Infantry Bn	156		N	D		250th Legion HQ
+1	158th Infantry Bn	158			D.		250th Legion HQ
+0	203rd Machinegun Bn	203	bb	N	D		
+0	214th Artillery Regt	214	kk	6 x 75/18 Gun-Howitzer, 3 x 100/17 Howitzer N	D		
+
+===== PAGE 161 =====
+# Formation: 4th CCNN(3 January") Division
+# Basic Morale: 0
+# indent levels (unit-x centers): [0.18, 0.196, 0.211]
+## Tree
+4th CCNN Div HQ  (4 CCNN)  ID=b | N
+    240th Legion HQ  (240 Lgn)  ID=h | 1 x 65/17 Gun | arr D
+        70th Infantry Bn  (70)  ID=x
+        119th Infantry Bn  (119)  N | arr D
+        176th Infantry Bn  (176)  N | arr D
+    270th Legion HQ  (270 Lgn)  1 x 65/17 Gun | arr D
+        3rdInfantry Bn.  ()  N
+        17th Infantry Bn  ()  ID=X. | arr D
+        170th Infantry Bn  (170)  N | arr D
+    204th Machinegun Bn  (204)  ID=bb | N | arr D
+    204th Artillery Regt  (204)  ID=kk | 6 x 75/18 Gun-Howitzer, 3 x 105/28 Gun, 2 x Heavy AA | arr D-
+    204th Engineer Bn  (204)  ID=bbb | N | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	4th CCNN Div HQ	4 CCNN	b	N			
+1	240th Legion HQ	240 Lgn	h	1 x 65/17 Gun	D		4th CCNN Div HQ
+2	70th Infantry Bn	70	x				240th Legion HQ
+2	119th Infantry Bn	119		N	D		240th Legion HQ
+2	176th Infantry Bn	176		N	D		240th Legion HQ
+1	270th Legion HQ	270 Lgn		1 x 65/17 Gun	D		4th CCNN Div HQ
+2	3rdInfantry Bn.			N			270th Legion HQ
+2	17th Infantry Bn		X.		D		270th Legion HQ
+2	170th Infantry Bn	170		N	D		270th Legion HQ
+1	204th Machinegun Bn	204	bb	N	D		4th CCNN Div HQ
+1	204th Artillery Regt	204	kk	6 x 75/18 Gun-Howitzer, 3 x 105/28 Gun, 2 x Heavy AA	D-		4th CCNN Div HQ
+1	204th Engineer Bn	204	bbb	N	D		4th CCNN Div HQ
+
+# Formation: Unassigned Blackshirt Units (a)
+# Basic Morale: 0
+# indent levels (unit-x centers): [0.18, 0.194]
+## Tree
+7th CCNN Legion HQ  (7 CCNN)  ID=b | N | arr 1/25
+    7th CCNN Bn  (7) [b]  N | arr 1/25
+9th CCNN Legion HQ  (9 CCNN)  ID=h | 1 X 65/17 Gun | arr 2/22
+    59th CCNN Bn  (59)  arr 2/22
+    60th CCNN Bn  (60)  N | arr 2/22
+32nd CCNN Bn  (32) [d]  ID=x | arr 1/24
+33rd CCNN Bn  (33)  N | arr 2/21
+56th CCNN Bn  (56) [e]  ID=X | arr 2/21
+140th CCNN Bn  (140)  N | arr 3/13
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	7th CCNN Legion HQ	7 CCNN	b	N	1/25		
+1	7th CCNN Bn	7		N	1/25	b	7th CCNN Legion HQ
+0	9th CCNN Legion HQ	9 CCNN	h	1 X 65/17 Gun	2/22		
+1	59th CCNN Bn	59			2/22		9th CCNN Legion HQ
+1	60th CCNN Bn	60		N	2/22		9th CCNN Legion HQ
+0	32nd CCNN Bn	32	x		1/24	d	
+0	33rd CCNN Bn	33		N	2/21		
+0	56th CCNN Bn	56	X		2/21	e	
+0	140th CCNN Bn	140		N	3/13		
+

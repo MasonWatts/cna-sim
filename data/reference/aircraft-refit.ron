@@ -1,0 +1,15 @@
+// Aircraft Refit Table (§38.37 chart; §38.34/§38.39 rules). Transcribed from the printed chart.
+//
+// B. "By Squadron" (default method, §38.34): a modified one-die roll gives the percentage of the
+// squadron's planes successfully refitted (round fractions up). Indexed by modified roll 1..=9:
+//   1 -> 100, 2 -> 80, 3 -> 70, 4 -> 60, 5 -> 50, 6 & 7 -> 40, 8 & 9 -> 33.
+//   Rolls are clamped into [1, 9]; §38.35 modifiers (German SGSU +1, Italian +2, wrong-squadron
+//   +1, cumulative) push the roll higher and thus the percentage lower.
+//
+// A. "By Plane" (optional method, §38.39): roll 2d6 per plane; the plane refits if the total is
+// within the nationality's range (2 through the listed maximum). +2 to the roll if the plane is
+// not assigned to the SGSU attempting the refit.
+(
+    by_squadron: [100, 80, 70, 60, 50, 40, 40, 33, 33],
+    by_plane_max: (commonwealth: 8, german: 7, italian: 6),
+)

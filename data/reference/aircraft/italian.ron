@@ -1,0 +1,28 @@
+// Italian Aircraft Characteristics (§4.44b, PDF p.144). Fighters (F S R D) + Bombers/Flying Boats/
+// Transports/Recon (D R B Transport). TacAir parenthesized on the bomber chart => no_air_to_air.
+// Bomb "x/Ty" => bombload x + torpedo y. Mission symbols: No=`.` Day=`!` Night=`N` etc.
+{
+    // --- Fighters & Fighter-Bombers ---
+    "C.R.32":        ( class: FighterBomber, loadouts: [ (range: 42, tac_air: 3, maneuver: 25, bombload: 1, fuel: 1) ], missions: (cap: Day, scramble: Day, strike: Day), manufacturer: "Fiat" ),
+    "C.R.42 Falco":  ( class: Fighter, loadouts: [ (range: 43, tac_air: 3, maneuver: 28, fuel: 1) ], missions: (cap: Night, scramble: Day), manufacturer: "Fiat" ),
+    "C.R.42AS Falco": ( class: FighterBomber, loadouts: [ (range: 41, tac_air: 3, maneuver: 27, bombload: 1, fuel: 1) ], missions: (cap: Day, scramble: Day, strike: Day), manufacturer: "Fiat" ),
+    "C.200 Saetta":  ( class: Fighter, loadouts: [ (range: 40, tac_air: 2, maneuver: 33, fuel: 1) ], missions: (cap: Day, scramble: Day, strike: Day), manufacturer: "Macchi" ),
+    "C.202 Folgore": ( class: FighterBomber, loadouts: [ (range: 47, tac_air: 2, maneuver: 35, bombload: 1, fuel: 1) ], missions: (cap: Day, scramble: Day, strike: Day), manufacturer: "Macchi" ),
+    "G.50 Freccia":  ( class: Fighter, loadouts: [ (range: 57, tac_air: 3, maneuver: 25, fuel: 1) ], missions: (cap: Day, scramble: Day), manufacturer: "Fiat" ),
+    "Re.2000 Falco I":  ( class: Fighter, loadouts: [ (range: 47, tac_air: 2, maneuver: 34, fuel: 2) ], missions: (cap: Day, scramble: Day), manufacturer: "Reggiane" ),
+    "Re.2001 Falco II": ( class: Fighter, loadouts: [ (range: 42, tac_air: 3, maneuver: 35, fuel: 3) ], missions: (cap: Day, scramble: Day), manufacturer: "Reggiane" ),
+
+    // --- Bombers, Flying Boats, Transports, Reconnaissance ---
+    "Ba 65":         ( class: Bomber, loadouts: [ (range: 55, tac_air: 4, no_air_to_air: true, maneuver: 18, bombload: 10, fuel: 2) ], missions: (strike: Day), manufacturer: "Breda" ),
+    "Ba 88 Lince":   ( class: Bomber, loadouts: [ (range: 92, tac_air: 4, no_air_to_air: true, maneuver: 16, bombload: 11, fuel: 3) ], missions: (convoy_land_bombing: Day), manufacturer: "Breda" ),
+    "B.R.20 Cicogna": ( class: Bomber, loadouts: [ (range: 145, tac_air: 2, no_air_to_air: true, maneuver: 17, bombload: 17, fuel: 3) ], missions: (convoy_land_bombing: Night), manufacturer: "Fiat" ),
+    "Ca 309 Ghibli": ( class: Bomber, loadouts: [ (range: 84, tac_air: 2, no_air_to_air: true, maneuver: 9, bombload: 4, fuel: 2) ], missions: (recon: Day, convoy_land_bombing: Day, transport: Day), manufacturer: "Caproni", notes: ["transports 0 or 1/2 TOE"] ),
+    "Ca 311":        ( class: Bomber, loadouts: [ (range: 108, tac_air: 2, no_air_to_air: true, maneuver: 10, bombload: 4, fuel: 2) ], missions: (recon: Day, convoy_land_bombing: Day), manufacturer: "Caproni" ),
+    "Cant Z.501 Gabbiano": ( class: FlyingBoat, loadouts: [ (range: 130, tac_air: 2, no_air_to_air: true, maneuver: 7, bombload: 7, fuel: 2) ], missions: (recon: Day, convoy_land_bombing: Day), manufacturer: "CRDA" ),
+    "Cant Z.506B Airone/35": ( class: FlyingBoat, loadouts: [ (range: 0, tac_air: 3, no_air_to_air: true, maneuver: 14, bombload: 11, torpedo: 8, fuel: 3) ], missions: (recon: Day, convoy_land_bombing: Day), manufacturer: "CRDA", notes: ["Range cell blank on the printed chart — verify"] ),
+    "Cant Z.1007bis Alcione": ( class: Bomber, loadouts: [ (range: 120, tac_air: 3, no_air_to_air: true, maneuver: 23, bombload: 15, torpedo: 10, fuel: 4) ], missions: (convoy_land_bombing: Day), manufacturer: "CRDA" ),
+    "Ro 37bis":      ( class: Bomber, loadouts: [ (range: 93, tac_air: 2, no_air_to_air: true, maneuver: 20, bombload: 2, fuel: 2) ], missions: (recon: Day, convoy_land_bombing: Day), manufacturer: "IMAM" ),
+    "S.M.79 Sparviero": ( class: Bomber, loadouts: [ (range: 120, tac_air: 4, no_air_to_air: true, maneuver: 19, bombload: 12, torpedo: 6, fuel: 3) ], missions: (convoy_land_bombing: Day), manufacturer: "Savoia-Marchetti" ),
+    "S.M.81 Pipistrello": ( class: Bomber, loadouts: [ (range: 90, tac_air: 5, no_air_to_air: true, maneuver: 14, bombload: 11, fuel: 3) ], missions: (recon: Day, convoy_land_bombing: Night, transport: Day), manufacturer: "Savoia-Marchetti", notes: ["transports 1 TOE or 2 1/2 tons"] ),
+    "S.M.84":        ( class: Bomber, loadouts: [ (range: 101, tac_air: 4, no_air_to_air: true, maneuver: 16, bombload: 22, torpedo: 14, fuel: 4) ], missions: (convoy_land_bombing: Day), manufacturer: "Savoia-Marchetti" ),
+}

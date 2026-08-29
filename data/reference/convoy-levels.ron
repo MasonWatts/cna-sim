@@ -1,0 +1,25 @@
+// Axis Naval Convoy Level Chart (§56.4) + Capacity Table (§56.5). The Level Chart gives the convoy
+// Level letter (A–G) for each month/year; the Capacity Table converts a Level + die roll to the
+// tonnage the Axis may ship: Capacity = Fixed + Variable × die roll, rounded UP to the nearest
+// 1,000 tons (§56.5). Verified: Level E, die 4 = 11,000 + 2,500×4 = 21,000 t (the §56.21 example).
+//
+// TRANSCRIPTION STATUS: the Capacity Table (all levels A–G) and the full 1940–1942 schedule are
+// transcribed. 1940 begins Sep (campaign start, GT1) with Sep–Dec = B; 1942 Jan–Dec = C B B G F A
+// F B D A G C (read from the physical chart, as those two rows would not OCR reliably).
+// `schedule` months are Jan..Dec; None = no value (before campaign start).
+(
+    capacity: {
+        "A": (fixed: 6000,  variable: 1000),
+        "B": (fixed: 7000,  variable: 1500),
+        "C": (fixed: 10000, variable: 1500),
+        "D": (fixed: 11000, variable: 2000),
+        "E": (fixed: 11000, variable: 2500),
+        "F": (fixed: 15000, variable: 2000),
+        "G": (fixed: 32000, variable: 3000),
+    },
+    schedule: {
+        1940: [None, None, None, None, None, None, None, None, Some("B"), Some("B"), Some("B"), Some("B")],
+        1941: [Some("B"), Some("E"), Some("F"), Some("E"), Some("D"), Some("G"), Some("C"), Some("E"), Some("C"), Some("D"), Some("E"), Some("A")],
+        1942: [Some("C"), Some("B"), Some("B"), Some("G"), Some("F"), Some("A"), Some("F"), Some("B"), Some("D"), Some("A"), Some("G"), Some("C")],
+    },
+)

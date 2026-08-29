@@ -1,0 +1,60 @@
+// data/reference/unit-characteristics/german.ron
+//
+// German Unit Characteristics Chart (rules §4.46c) — DATA.
+// Human-readable companion: docs/source-materials/unit-characteristics-german.md
+//
+// Map keyed by ID code -> UnitCharacteristics. Absent rating = "-"/not-applicable, or
+// (for HQ/weapon-holding codes) derived from the weapons systems held.
+// German modifiers: '*' on an HQ = eligible for anti-tank augmentation (Case 19.8) -> in
+// notes; '**' = retains CPA -> retains_regardless; '+' = motorized_capable; '‡' = armor
+// only when truck-transported (halftracks) -> in notes.
+{
+    // --- Headquarters ---
+    "a": ( unit_type: "Headquarters", cpa: (value: 60) ),
+    "b": ( unit_type: "Headquarters", cpa: (value: 30), max_toe: Some((value: 1, parenthesized: true)), assignments: [(weapon_kind: Tank, max_count: 1)], notes: ["HQ eligible for anti-tank augmentation (Case 19.8)"] ),
+    "c": ( unit_type: "Headquarters", cpa: (value: 30, retains_regardless: true), max_toe: Some((value: 1, parenthesized: true)), assignments: [(weapon_kind: Tank, max_count: 1)] ),
+    "d": ( unit_type: "Headquarters", cpa: (value: 30, retains_regardless: true), max_toe: Some((value: 1)), assignments: [(weapon_kind: Artillery, max_count: 1)] ),
+    "e": ( unit_type: "Headquarters", cpa: (value: 30), close_assault: Some((off: (value: 0), def: (value: 1, parenthesized: true))), max_toe: Some((value: 3)), notes: ["HQ eligible for anti-tank augmentation (Case 19.8)"] ),
+    "f": ( unit_type: "Headquarters", cpa: (value: 25), max_toe: Some((value: 1)), assignments: [(weapon_kind: Artillery, max_count: 1)], notes: ["assigns a paradropable artillery TOE point"] ),
+
+    // --- Tank Bn-Equivalent ---
+    "g": ( unit_type: "Tank Bn-Equivalent", cpa: (value: 25), max_toe: Some((value: 15)), assignments: [(weapon_kind: Tank, max_count: 15)] ),
+
+    // --- Infantry Bn-Equivalent ---
+    "h": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10), close_assault: Some((off: (value: 3), def: (value: 5))), max_toe: Some((value: 7)) ),
+    "j": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10, motorized_capable: true), anti_armor: Some((value: 1)), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 2), def: (value: 2))), max_toe: Some((value: 7)), notes: ["armor protection only when truck-transported (halftracks, Case 14.88)"] ),
+    "k": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10, motorized_capable: true), close_assault: Some((off: (value: 2), def: (value: 2))), max_toe: Some((value: 7)) ),
+    "l": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10), close_assault: Some((off: (value: 1), def: (value: 2))), max_toe: Some((value: 7)) ),
+    "m": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10, motorized_capable: true), close_assault: Some((off: (value: 2), def: (value: 2))), max_toe: Some((value: 4)) ),
+    "n": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 8, motorized_capable: true), close_assault: Some((off: (value: 4), def: (value: 6))), max_toe: Some((value: 9)) ),
+    "p": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 8, motorized_capable: true), anti_air: Some((value: 1)), anti_armor: Some((value: 1)), close_assault: Some((off: (value: 5), def: (value: 7))), max_toe: Some((value: 4)) ),
+    "q": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 8, motorized_capable: true), anti_armor: Some((value: 1)), close_assault: Some((off: (value: 4), def: (value: 6))), max_toe: Some((value: 4)) ),
+    "r": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 25), close_assault: Some((off: (value: 1), def: (value: 1))), max_toe: Some((value: 1)) ),
+    "s": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10), close_assault: Some((off: (value: 2), def: (value: 2))), max_toe: Some((value: 2)) ),
+    "t": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 8), anti_air: Some((value: 1)), close_assault: Some((off: (value: 5), def: (value: 7))), max_toe: Some((value: 1)) ),
+
+    // --- Artillery ---
+    "u": ( unit_type: "Artillery Bn-Equivalent", cpa: (value: 20), max_toe: Some((value: 6)), assignments: [(weapon_kind: Artillery, max_count: 6)] ),
+    "v": ( unit_type: "Artillery Bn-Equivalent", cpa: (value: 20), max_toe: Some((value: 3)), assignments: [(weapon_kind: Artillery, max_count: 3)] ),
+    "w": ( unit_type: "Artillery Coy-Equivalent", cpa: (value: 20), max_toe: Some((value: 1)), assignments: [(weapon_kind: Artillery, max_count: 1)] ),
+
+    // --- Anti-tank ---
+    "x": ( unit_type: "Anti-tank Bn-Equivalent", cpa: (value: 20), max_toe: Some((value: 8)), assignments: [(weapon_kind: AntiTank, max_count: 8)] ),
+    "y": ( unit_type: "Anti-tank Bn-Equivalent", cpa: (value: 20), max_toe: Some((value: 12)), assignments: [(weapon_kind: LightAntiAir, max_count: 12)] ),
+
+    // --- Light Anti-air ---
+    "z": ( unit_type: "Light Anti-air Bn-Equivalent", cpa: (value: 15, retains_regardless: true), max_toe: Some((value: 6)), assignments: [(weapon_kind: LightAntiAir, max_count: 3), (weapon_kind: Artillery, max_count: 3)] ),
+    "aa": ( unit_type: "Light Anti-air Bn-Equivalent", cpa: (value: 15), max_toe: Some((value: 6)), assignments: [(weapon_kind: LightAntiAir, max_count: 6)] ),
+    "bb": ( unit_type: "Light Anti-air Bn-Equivalent", cpa: (value: 15), max_toe: Some((value: 4)), assignments: [(weapon_kind: HeavyAntiAir, max_count: 4)] ),
+
+    // --- Heavy Anti-air ---
+    "cc": ( unit_type: "Heavy Anti-air", cpa: (value: 15), max_toe: Some((value: 4)), assignments: [(weapon_kind: HeavyAntiAir, max_count: 4)] ),
+    "dd": ( unit_type: "Heavy Anti-air Bn-Equivalent", cpa: (value: 15), max_toe: Some((value: 2)), assignments: [(weapon_kind: HeavyAntiAir, max_count: 2)] ),
+
+    // --- Reconnaissance ---
+    "ee": ( unit_type: "Reconnaissance Bn-Equivalent", cpa: (value: 45), close_assault: Some((off: (value: 3), def: (value: 3))), max_toe: Some((value: 8)), notes: ["BAR 1 Left"] ),
+    "ff": ( unit_type: "Reconnaissance Bn-Equivalent", cpa: (value: 45), close_assault: Some((off: (value: 3), def: (value: 2))), max_toe: Some((value: 8)), notes: ["BAR 1 Left; may be upgraded from 1/39 (Case 20.5)"] ),
+
+    // --- Engineer ---
+    "gg": ( unit_type: "Engineer Bn/Coy-Equivalent", cpa: (value: 25), close_assault: Some((off: (value: 0), def: (value: 1, parenthesized: true))), max_toe: Some((value: 1, parenthesized: true)) ),
+}

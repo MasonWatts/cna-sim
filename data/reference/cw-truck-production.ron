@@ -1,0 +1,17 @@
+// Commonwealth Truck Production Table (§20.78A). Roll a d6 per truck type; the value is Truck
+// Points produced (arriving four Game-Turns later at Alexandria; ≤25% of total trucks per GT).
+// Two eras: GT 1–30, and GT 31–107 (increased US Lend-Lease). Rows are indexed by die 1–6.
+// Transcription in docs/source-materials/replacements.md.
+(
+    late_from_gt: 31,
+    early: (
+        light:  [0, 2, 3, 4, 4, 5],
+        medium: [10, 12, 15, 15, 18, 20],
+        heavy:  [0, 0, 2, 3, 3, 4],
+    ),
+    late: (
+        light:  [3, 5, 9, 11, 13, 14],
+        medium: [30, 38, 44, 48, 55, 60],
+        heavy:  [3, 4, 6, 8, 10, 13],
+    ),
+)

@@ -1,0 +1,34 @@
+// Strafing Table (§40.8). Roll 2d6 read as an ordered pair (11..66, encoded 10*d1+d2 which is
+// monotonic with the dice order) cross-referenced against the strafing planes' total TacAir Points
+// (§40.61: pilot ratings are NOT added — those apply only to air-to-air). Each column covers a
+// TacAir band up to `tacair_max` (last column 46+ is open-ended). `r1`/`r2`/`r3` give the smallest
+// roll yielding result 1/2/3; None = unreachable in that column; a roll below `r1` yields 0.
+//
+// Transcribed rows (result: per-column roll range):
+//   0: 1-5 11..63 | 6-10 11..56 | 11-15 11..53 | 16-20 11..46 | 21-25 11..42 | 26-30 11..34
+//      | 31-35 11..25 | 36-40 11..16 | 41-45 - | 46+ -
+//   1: 64..66 | 61..66 | 54..65 | 51..64 | 43..63 | 35..62 | 26..61 | 21..56 | 11..55 | 11..46
+//   2: - | - | 66 | 65..66 | 64..66 | 63..66 | 62..66 | 61..66 | 56..65 | 51..64
+//   3: - | - | - | - | - | - | - | - | 66 | 65..66
+//
+// Result meaning is per target type (§40.6): Infantry -> TOE Strength Points eliminated; Trucks ->
+// Truck Points (+cargo) eliminated; Supply Dump -> result x10% destroyed; Grounded Aircraft ->
+// number of dice to roll (sum = planes destroyed); Armor -> number of dice (sum = min Armour
+// Protection Points removed); Pipeline -> a result of 2 or 3 destroys it.
+//
+// Column shifts (§40.8 notes): +1 right for Trucks-in-Convoy; +1 right for a Supply Dump;
+// Infantry -1 left in Fort Level 0/1, -2 left in Fort Level 2; Armor -1 left in Fort Level 2.
+(
+    columns: [
+        (tacair_max: 5,          r1: Some(64), r2: None,     r3: None),
+        (tacair_max: 10,         r1: Some(61), r2: None,     r3: None),
+        (tacair_max: 15,         r1: Some(54), r2: Some(66), r3: None),
+        (tacair_max: 20,         r1: Some(51), r2: Some(65), r3: None),
+        (tacair_max: 25,         r1: Some(43), r2: Some(64), r3: None),
+        (tacair_max: 30,         r1: Some(35), r2: Some(63), r3: None),
+        (tacair_max: 35,         r1: Some(26), r2: Some(62), r3: None),
+        (tacair_max: 40,         r1: Some(21), r2: Some(61), r3: None),
+        (tacair_max: 45,         r1: Some(11), r2: Some(56), r3: Some(66)),
+        (tacair_max: 4294967295, r1: Some(11), r2: Some(51), r3: Some(65)),
+    ],
+)

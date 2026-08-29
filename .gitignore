@@ -1,0 +1,13 @@
+# Rust build artifacts
+/target/
+**/target/
+
+# Backup / editor files
+**/*.rs.bk
+*.swp
+
+# macOS
+.DS_Store
+
+# Large source materials (kept locally, not in git; see docs/source-materials/)
+*.pdf

@@ -1,0 +1,24 @@
+// German Aircraft Characteristics (§4.44c, PDF p.144 fighters + p.145 bombers). Fighters (F S R D)
+// + Bombers/Flying Boats/Transports/Recon (D R B Transport). TacAir parenthesized => no_air_to_air.
+// `*` (Bf.110, Ju.88C) = Night-Scramble only (NightScrambleOnly). Ar.196 is a flying boat (note).
+{
+    // --- Fighters & Fighter-Bombers ---
+    "Bf.109E": ( class: Fighter, loadouts: [ (range: 41, tac_air: 6, maneuver: 34, fuel: 1) ], missions: (cap: Day, scramble: Day, strike: Day), manufacturer: "Messerschmitt" ),
+    "Bf.109F": ( class: Fighter, loadouts: [ (range: 44, tac_air: 6, maneuver: 39, fuel: 1) ], missions: (cap: Day, scramble: Day), manufacturer: "Messerschmitt" ),
+    "Bf.109G": ( class: Fighter, loadouts: [ (range: 53, tac_air: 8, maneuver: 36, fuel: 1) ], missions: (cap: Day, scramble: Day), manufacturer: "Messerschmitt" ),
+    "Bf.110":  ( class: FighterBomber, loadouts: [
+        (range: 70, tac_air: 5, maneuver: 32, fuel: 1),
+        (range: 57, tac_air: 5, no_air_to_air: true, maneuver: 28, bombload: 5, fuel: 1),
+    ], missions: (cap: Night, scramble: NightScrambleOnly, strike: Day, convoy_land_bombing: Day), manufacturer: "Messerschmitt" ),
+    "Ju.88c":  ( class: Fighter, loadouts: [ (range: 140, tac_air: 6, maneuver: 30, fuel: 2) ], missions: (cap: Night, scramble: NightScrambleOnly), manufacturer: "Junkers" ),
+
+    // --- Bombers, Flying Boats, Transports, Reconnaissance ---
+    "Ar.196":  ( class: FlyingBoat, loadouts: [ (range: 60, tac_air: 3, no_air_to_air: true, maneuver: 10, bombload: 1, fuel: 1) ], missions: (recon: Day, convoy_land_bombing: Day), manufacturer: "Arado" ),
+    "Fw.200 C": ( class: Bomber, loadouts: [ (range: 205, tac_air: 5, no_air_to_air: true, maneuver: 21, bombload: 14, fuel: 3) ], missions: (strike: Day, recon: Day), manufacturer: "Focke Wulf" ),
+    "He.111":  ( class: Bomber, loadouts: [ (range: 112, tac_air: 6, no_air_to_air: true, maneuver: 22, bombload: 27, fuel: 3) ], missions: (strike: Night), manufacturer: "Heinkel" ),
+    "Hs.126":  ( class: Bomber, loadouts: [ (range: 45, tac_air: 2, no_air_to_air: true, maneuver: 14, bombload: 2, fuel: 1) ], missions: (strike: Day, recon: Day), manufacturer: "Henschel" ),
+    "Ju.52/3m": ( class: Transport, loadouts: [ (range: 72, tac_air: 2, no_air_to_air: true, maneuver: 8, fuel: 2) ], missions: (transport: Day), manufacturer: "Junkers", notes: ["transports 1 TOE or 2 1/2 tons"] ),
+    "Ju.87B":  ( class: DiveBomber, loadouts: [ (range: 36, tac_air: 3, no_air_to_air: true, maneuver: 25, bombload: 5, fuel: 1) ], missions: (strike: Day), manufacturer: "Junkers" ),
+    "Ju.87D":  ( class: DiveBomber, loadouts: [ (range: 62, tac_air: 4, no_air_to_air: true, maneuver: 22, bombload: 20, fuel: 2) ], missions: (strike: Day), manufacturer: "Junkers" ),
+    "Ju.88D":  ( class: Bomber, loadouts: [ (range: 118, tac_air: 5, no_air_to_air: true, maneuver: 25, bombload: 33, fuel: 2) ], missions: (strike: Day, recon: Day), manufacturer: "Junkers" ),
+}

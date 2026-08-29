@@ -1,0 +1,31 @@
+// German Production Chart (§20.66) — German Replacement Point availability. `total` = lifetime
+// points; `max` = max per period (period: GameTurn default, TwoWeeks for the "*" note, Month for
+// the "†" note); `first_gt` = first Game-Turn plannable (arrives two Game-Turns later); `tonnage`
+// = Axis Naval Convoy tons per point. Transcription in docs/source-materials/replacements.md.
+(
+    items: [
+        (item: "Infantry",        total: 400, max: 12, first_gt: 38, tonnage: 30),
+        (item: "Armed Recce",     total: 25,  max: 2,  first_gt: 47, tonnage: 80,  period: TwoWeeks),
+        (item: "Light AA",        total: 40,  max: 2,  first_gt: 59, tonnage: 13),
+        (item: "Heavy AA",        total: 10,  max: 1,  first_gt: 59, tonnage: 65,  period: Month),
+        (item: "7.5cm IG18",      total: 20,  max: 1,  first_gt: 45, tonnage: 5),
+        (item: "10.5cm K18",      total: 40,  max: 1,  first_gt: 45, tonnage: 66),
+        (item: "15cm sFH18",      total: 10,  max: 1,  first_gt: 45, tonnage: 65),
+        (item: "15cm sIG33",      total: 5,   max: 1,  first_gt: 45, tonnage: 18),
+        (item: "15cm K18",        total: 18,  max: 1,  first_gt: 45, tonnage: 150),
+        (item: "17cm K18",        total: 5,   max: 1,  first_gt: 65, tonnage: 206, period: Month),
+        (item: "21cm Mrs.18",     total: 5,   max: 1,  first_gt: 60, tonnage: 197, period: Month),
+        (item: "SP 10.5cm",       total: 3,   max: 3,  first_gt: 63, tonnage: 120, period: Month),
+        (item: "5cm Pak38",       total: 25,  max: 1,  first_gt: 45, tonnage: 12),
+        (item: "2.8cm s.Pz.B.41", total: 15,  max: 1,  first_gt: 45, tonnage: 5),
+        (item: "7.62cm Pak(R)",   total: 22,  max: 1,  first_gt: 64, tonnage: 15),
+        (item: "Marder III",      total: 9,   max: 1,  first_gt: 64, tonnage: 132, period: Month),
+        (item: "PzII",            total: 5,   max: 1,  first_gt: 41, tonnage: 135),
+        (item: "PzIII E",         total: 38,  max: 5,  first_gt: 53, tonnage: 190),
+        (item: "PzIII H",         total: 31,  max: 5,  first_gt: 53, tonnage: 200),
+        (item: "PzIII J Special", total: 17,  max: 2,  first_gt: 76, tonnage: 220),
+        (item: "PzIV D",          total: 18,  max: 1,  first_gt: 59, tonnage: 215),
+        (item: "PzIV E",          total: 15,  max: 1,  first_gt: 59, tonnage: 220),
+        (item: "PzIV F2 Special", total: 7,   max: 1,  first_gt: 81, tonnage: 235, period: TwoWeeks),
+    ],
+)

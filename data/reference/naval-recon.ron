@@ -1,0 +1,10 @@
+// Air Reconnaissance of Axis Naval Convoys Table (§42.53). The number of Commonwealth recon planes
+// assigned to a shipping lane gives a Respond value; a 2d6 roll (encoded 10*d1+d2) <= that value
+// forces the Axis to reveal whether a convoy is in the lane and, if so, its size class. Indexed by
+// number of planes (1..7, and 8+): respond[min(planes,8)-1].
+//
+// Convoy size classes (with deliberately overlapping tonnage ranges, so the Axis may choose):
+//   Small = 5,000 tons or less; Medium = 3,000 to 10,000 tons; Large = 7,000+ tons.
+(
+    respond: [12, 14, 22, 32, 43, 53, 62, 66],
+)

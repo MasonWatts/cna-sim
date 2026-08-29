@@ -1,0 +1,16 @@
+// Axis Naval Convoy Air Distance Chart (§56.18). The six shipping lanes (§56.11), each with its
+// origin and destination port, and the distance in hexes from each Rally Point to the lane. A plane
+// flying a mission to a lane must have Range >= (its air facility -> a Rally Point) + (that Rally
+// Point -> the lane) (§42.52). Rally points Sicily/Italy/Crete are boxes and Malta is any Malta hex;
+// Benghazi/Derna/Tobruk are North African cities. `None` = no distance listed (lane 1 from Crete).
+// Lanes 4 and 5 originate from Greece and are unavailable before GT 34 (§56.14).
+(
+    lanes: [
+        (nr: 1, origin: "West Sicily", destination: "Bizerta",  sicily: Some(20), italy: Some(56),  crete: None,      malta: Some(42),  benghazi: Some(126), derna: Some(145), tobruk: Some(165)),
+        (nr: 2, origin: "West Sicily", destination: "Tripoli",  sicily: Some(45), italy: Some(82),  crete: Some(134), malta: Some(35),  benghazi: Some(100), derna: Some(135), tobruk: Some(160)),
+        (nr: 3, origin: "Italy",       destination: "Benghazi", sicily: Some(41), italy: Some(79),  crete: Some(80),  malta: Some(50),  benghazi: Some(51),  derna: Some(57),  tobruk: Some(80)),
+        (nr: 4, origin: "Greece",      destination: "Benghazi", sicily: Some(83), italy: Some(117), crete: Some(38),  malta: Some(80),  benghazi: Some(27),  derna: Some(22),  tobruk: Some(42)),
+        (nr: 5, origin: "Greece",      destination: "Tobruk",   sicily: Some(96), italy: Some(137), crete: Some(28),  malta: Some(125), benghazi: Some(44),  derna: Some(18),  tobruk: Some(26)),
+        (nr: 6, origin: "Italy",       destination: "Tobruk",   sicily: Some(57), italy: Some(101), crete: Some(62),  malta: Some(70),  benghazi: Some(39),  derna: Some(38),  tobruk: Some(60)),
+    ],
+)

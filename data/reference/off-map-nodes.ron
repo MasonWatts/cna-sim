@@ -1,0 +1,18 @@
+// Off-map Tripoli/Tunisia land-movement complex (§8.8, §8.89). Authoritative machine values;
+// transcription + provenance in docs/source-materials/off-map-tripoli-tunisia.md.
+//
+// A linear Axis-only chain. `nodes` are ordered map-side -> inland; each node's `leg` is the
+// per-leg cost (Operations Stages) to the next node CLOSER to the map (the previous entry;
+// the first node's leg is to the map junction). StageCost tiers: CPA >=25 / 15-20 / <15.
+(
+    map_junction: "A2802", // §8.85: units start here to go off-map / debark here
+    // §8.85 road string-out: entering units fill these consecutive coast-road hexes in order
+    // (closest to the Tripolitania box first), overflowing to the next when a hex is full.
+    entry_road: ["A2802", "A2703", "A2704", "A2604", "A2505", "A2405"],
+    nodes: [
+        (name: "Tripolitania", aa_points: 10, port: None,             garrison: None,       leg: (cpa_high: 1, cpa_mid: 1, cpa_low: 3)),
+        (name: "Tripoli",      aa_points: 26, port: Some("Tripoli"),  garrison: Some("Axis"), leg: (cpa_high: 1, cpa_mid: 1, cpa_low: 3)),
+        (name: "Gabes",        aa_points: 10, port: None,             garrison: None,       leg: (cpa_high: 1, cpa_mid: 1, cpa_low: 3)),
+        (name: "Tunis",        aa_points: 15, port: Some("Bizerta"),  garrison: None,       leg: (cpa_high: 1, cpa_mid: 2, cpa_low: 5)),
+    ],
+)

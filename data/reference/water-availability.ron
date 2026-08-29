@@ -1,0 +1,10 @@
+// Water Availability Table (§52.7). Water Points drawn from a Town (village) or Bir (desert)
+// well by a d6; `*_deplete_check` lists the die results marked "*" — roll again secretly, and a
+// '1' Depletes that well. Major Cities and Oases are unlimited and never deplete (handled in
+// code, not listed here). Transcription in docs/source-materials/water.md.
+(
+    town: [100, 150, 200, 300, 350, 500],
+    bir:  [50, 100, 150, 200, 300, 400],
+    town_deplete_check: [5, 6],
+    bir_deplete_check: [4, 5, 6],
+)

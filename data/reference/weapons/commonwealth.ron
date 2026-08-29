@@ -1,0 +1,51 @@
+// data/reference/weapons/commonwealth.ron
+//
+// Commonwealth Tank & Gun Characteristics Chart (rules §4.47) — DATA.
+// Human-readable companion: docs/source-materials/tank-gun-characteristics-commonwealth.md
+//
+// Map keyed by weapon-system name -> WeaponsSystem. Absent rating = "-"/not-applicable.
+// `kind` is the weapon category (Tank/Artillery/AntiTank/LightAntiAir/HeavyAntiAir/
+// Reconnaissance), used for combined arms (§15.4) and barrage class (§12.6).
+// breakdown_adjustment (BAR): positive = Right shift, negative = Left, Some(0) = none,
+// omitted/None = not applicable (towed guns not subject to breakdown).
+{
+    // --- Tank Weapon Systems ---
+    "A9 Cruiser":      ( kind: Tank, cpa: Some(25), anti_air: Some((value: 1)), anti_armor: Some((value: 3)), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 3), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(1) ),
+    "A10 Cruiser":     ( kind: Tank, cpa: Some(15), anti_air: Some((value: 1)), anti_armor: Some((value: 3)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 3), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(1) ),
+    "A13 Cruiser":     ( kind: Tank, cpa: Some(30), anti_air: Some((value: 0)), anti_armor: Some((value: 3)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 2), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(1) ),
+    "Churchill II":    ( kind: Tank, cpa: Some(15), anti_armor: Some((value: 6)), armor_protection: Some((value: 7)), close_assault: Some((off: (value: 5), def: (value: 6))), fuel_rate: Some(7), breakdown_adjustment: Some(0) ),
+    "Crusader Mk.I":   ( kind: Tank, cpa: Some(25), anti_armor: Some((value: 3)), armor_protection: Some((value: 3)), close_assault: Some((off: (value: 3), def: (value: 4))), fuel_rate: Some(3), breakdown_adjustment: Some(1) ),
+    "Crusader Mk.II":  ( kind: Tank, cpa: Some(25), anti_armor: Some((value: 3)), armor_protection: Some((value: 4)), close_assault: Some((off: (value: 4), def: (value: 4))), fuel_rate: Some(3), breakdown_adjustment: Some(1) ),
+    "Crusader Mk.III": ( kind: Tank, cpa: Some(25), anti_armor: Some((value: 6)), armor_protection: Some((value: 4)), close_assault: Some((off: (value: 4), def: (value: 5))), fuel_rate: Some(3), breakdown_adjustment: Some(1) ),
+    "Grant M3":        ( kind: Tank, cpa: Some(20), anti_armor: Some((value: 7)), armor_protection: Some((value: 4)), close_assault: Some((off: (value: 6), def: (value: 5))), fuel_rate: Some(7), breakdown_adjustment: Some(0), notes: ["US tank"] ),
+    "Mark VI Light":   ( kind: Tank, cpa: Some(35), anti_air: Some((value: 1)), anti_armor: Some((value: 0)), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 2), def: (value: 2))), fuel_rate: Some(1), breakdown_adjustment: Some(0) ),
+    "Matilda Mk.II":   ( kind: Tank, cpa: Some(15), anti_armor: Some((value: 3)), armor_protection: Some((value: 6)), close_assault: Some((off: (value: 3), def: (value: 4))), fuel_rate: Some(3), breakdown_adjustment: Some(1) ),
+    "Sherman":         ( kind: Tank, cpa: Some(20), anti_air: Some((value: 1)), anti_armor: Some((value: 6)), armor_protection: Some((value: 6)), close_assault: Some((off: (value: 5), def: (value: 5))), fuel_rate: Some(6), breakdown_adjustment: Some(0), notes: ["US tank"] ),
+    "Stuart M3":       ( kind: Tank, cpa: Some(35), anti_air: Some((value: 1)), anti_armor: Some((value: 4)), armor_protection: Some((value: 3)), close_assault: Some((off: (value: 4), def: (value: 4))), fuel_rate: Some(4), breakdown_adjustment: Some(0), notes: ["US tank"] ),
+    "Valentine Mk.II": ( kind: Tank, cpa: Some(15), anti_air: Some((value: 0)), anti_armor: Some((value: 3)), armor_protection: Some((value: 5)), close_assault: Some((off: (value: 3), def: (value: 4))), fuel_rate: Some(3), breakdown_adjustment: Some(0) ),
+    "Scorpion":        ( kind: Tank, cpa: Some(25), anti_air: Some((value: 0)), armor_protection: Some((value: 7)), close_assault: Some((off: (value: 0), def: (value: 2, parenthesized: true))), fuel_rate: Some(3), breakdown_adjustment: Some(-1), notes: ["mineclearing (Valentine-based; treated as engineer unit)"] ),
+
+    // --- Artillery ---
+    "18-pounder Gun":     ( kind: Artillery, cpa: Some(15), barrage: Some((value: 7)), anti_armor: Some((value: 2, parenthesized: true)), vulnerability: Some((value: 4)), close_assault: Some((off: (value: 0), def: (value: 1))), fuel_rate: Some(1) ),
+    "18/25-pounder Gun":  ( kind: Artillery, cpa: Some(15), barrage: Some((value: 8)), anti_armor: Some((value: 2)), vulnerability: Some((value: 5)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "25-pounder Gun":     ( kind: Artillery, cpa: Some(15), barrage: Some((value: 8)), anti_armor: Some((value: 5)), vulnerability: Some((value: 6)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "4.5\" Gun":          ( kind: Artillery, cpa: Some(15), barrage: Some((value: 11)), anti_armor: Some((value: 1)), vulnerability: Some((value: 9)), close_assault: Some((off: (value: 1), def: (value: 0))), fuel_rate: Some(1) ),
+    "5.5\" Gun/Howitzer": ( kind: Artillery, cpa: Some(15), barrage: Some((value: 15)), anti_armor: Some((value: 1)), vulnerability: Some((value: 7)), close_assault: Some((off: (value: 1), def: (value: 0))), fuel_rate: Some(1) ),
+    "60-pounder Gun":     ( kind: Artillery, cpa: Some(15), barrage: Some((value: 12)), anti_armor: Some((value: 1)), vulnerability: Some((value: 7)), close_assault: Some((off: (value: 1), def: (value: 0))), fuel_rate: Some(1) ),
+    "SP 25-pounder Gun":  ( kind: Artillery, cpa: Some(15), barrage: Some((value: 8)), anti_armor: Some((value: 4)), vulnerability: Some((value: 3)), armor_protection: Some((value: 5)), close_assault: Some((off: (value: 2), def: (value: 1))), fuel_rate: Some(3), breakdown_adjustment: Some(2), notes: ["self-propelled (\"Bishop\")"] ),
+    "3.7\" Howitzer":     ( kind: Artillery, cpa: Some(15), barrage: Some((value: 7)), anti_armor: Some((value: 0)), vulnerability: Some((value: 3)), close_assault: Some((off: (value: 0), def: (value: 0))), fuel_rate: Some(1) ),
+    "4.5\" Howitzer":     ( kind: Artillery, cpa: Some(15), barrage: Some((value: 9)), anti_armor: Some((value: 0)), vulnerability: Some((value: 3)), close_assault: Some((off: (value: 1), def: (value: 0))), fuel_rate: Some(1) ),
+    "6\" Howitzer":       ( kind: Artillery, cpa: Some(15), barrage: Some((value: 15)), anti_armor: Some((value: 1)), vulnerability: Some((value: 5)), close_assault: Some((off: (value: 1), def: (value: 0))), fuel_rate: Some(1) ),
+    "155mm Howitzer":     ( kind: Artillery, cpa: Some(15), barrage: Some((value: 15)), anti_armor: Some((value: 1)), vulnerability: Some((value: 6)), close_assault: Some((off: (value: 1), def: (value: 0))), fuel_rate: Some(1) ),
+    "105mm SP Howitzer":  ( kind: Artillery, cpa: Some(20), anti_air: Some((value: 1)), barrage: Some((value: 9)), anti_armor: Some((value: 2)), vulnerability: Some((value: 4)), armor_protection: Some((value: 4)), close_assault: Some((off: (value: 2), def: (value: 3))), fuel_rate: Some(3), breakdown_adjustment: Some(0), notes: ["self-propelled (\"Priest\")"] ),
+
+    // --- Anti-tank ---
+    "2-pounder":      ( kind: AntiTank, cpa: Some(15), anti_armor: Some((value: 4)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "6-pounder":      ( kind: AntiTank, cpa: Some(15), anti_armor: Some((value: 7)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "17-pounder":     ( kind: AntiTank, cpa: Some(15), anti_armor: Some((value: 13)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "SP 6-pounder":   ( kind: AntiTank, cpa: Some(20), anti_armor: Some((value: 7)), vulnerability: Some((value: 2)), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 2), def: (value: 2))), fuel_rate: Some(1), breakdown_adjustment: Some(-1), notes: ["self-propelled (\"Deacon\")"] ),
+
+    // --- Anti-air ---
+    "Light AA (Bofors 40mm)": ( kind: LightAntiAir, cpa: Some(15), anti_air: Some((value: 1)), anti_armor: Some((value: 1, parenthesized: true)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1, parenthesized: true), def: (value: 1, parenthesized: true))), fuel_rate: Some(1) ),
+    "Heavy AA (3.7\")":       ( kind: HeavyAntiAir, cpa: Some(15), anti_air: Some((value: 4)), anti_armor: Some((value: 7, parenthesized: true)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1, parenthesized: true), def: (value: 1, parenthesized: true))), fuel_rate: Some(1) ),
+}

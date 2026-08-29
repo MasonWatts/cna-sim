@@ -1,0 +1,35 @@
+// Axis Malta Availability Table (§44.42). Rows are a 2d6 roll (2..12), columns are the four Axis
+// Malta Availability Levels I–IV (§44.23). Each cell is (map_percent, strategic_percent):
+//   - map_percent (left of the slash): the percentage of each type of IN-PLAY Axis plane based on
+//     Italy/Sicily that may join the raid (§44.25/44.27).
+//   - strategic_percent (right of the slash): a percentage of those same Italy/Sicily counts giving
+//     the number of NOT-in-play strategic planes of each type that may be added (round down; 200 =
+//     double). These planes never take losses (§44.28).
+//   None = "na": no forces available for the strategic bombardment of Malta this Game-Turn.
+// Index: rows[roll-2][level-1]. Validated: Level III, roll 6 = 50/100 (the §44.27 example).
+(
+    rows: [
+        // 2
+        [Some((10, 30)),  Some((100, 200)), None,             Some((50, 100))],
+        // 3
+        [Some((50, 50)),  Some((10, 10)),   Some((100, 100)), Some((100, 200))],
+        // 4
+        [None,            Some((100, 100)), Some((10, 20)),   Some((100, 100))],
+        // 5
+        [Some((25, 25)),  Some((50, 50)),   Some((100, 200)), Some((100, 300))],
+        // 6
+        [Some((25, 25)),  Some((10, 10)),   Some((50, 100)),  Some((100, 100))],
+        // 7
+        [None,            Some((25, 50)),   Some((100, 100)), Some((100, 200))],
+        // 8
+        [Some((10, 10)),  None,             Some((50, 50)),   Some((100, 100))],
+        // 9
+        [Some((50, 25)),  Some((25, 25)),   Some((25, 50)),   Some((50, 50))],
+        // 10
+        [None,            Some((50, 100)),  Some((25, 25)),   Some((100, 200))],
+        // 11
+        [Some((25, 50)),  Some((100, 100)), Some((100, 300)), Some((100, 300))],
+        // 12
+        [Some((10, 20)),  Some((10, 20)),   Some((100, 200)), Some((25, 75))],
+    ],
+)

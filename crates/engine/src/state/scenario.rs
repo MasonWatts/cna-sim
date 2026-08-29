@@ -1,0 +1,521 @@
+//! Scenario setup: load an initial order of battle (units + starting hexes) and the
+//! turn/initiative state into a `GameState` from a RON file.
+//!
+//! First cut (design.md Option A): places the units at their hexes with simplified
+//! compositions. Full division org (attachments), trucks, air, and supply are deferred.
+
+use serde::Deserialize;
+
+use crate::reference::ob::{Arrival, ObComposition, Toe};
+use crate::reference::units::{Nationality, Side};
+use crate::state::game::{Commodities, GameState, PendingArrival, PendingDumpChoice, SupplyDump};
+use crate::state::game::FacilityKind;
+use crate::state::map::{HexCoord, HexId};
+use crate::state::unit::{Composition, OrgSize, TruckPoints, UnitId, UnitLocation, WeaponGroup};
+
+/// Error loading a scenario.
+#[derive(Debug)]
+pub enum ScenarioError {
+    Ron(ron::error::SpannedError),
+    BadHex(String),
+    /// An `attached_to`/`assigned_to` referenced a unit name that isn't in the scenario.
+    UnknownParent(String),
+    /// A placement failed to deploy from the Order of Battle.
+    Deploy(DeployError),
+}
+
+/// Error deploying an OB formation.
+#[derive(Debug, PartialEq, Eq)]
+pub enum DeployError {
+    NoOrderOfBattle(Nationality),
+    NoFormation(String),
+    BadHex(String),
+    /// A reinforcement has no entry hex: no per-unit override and no nationality entry
+    /// point in the reference data (§20.14–20.15) — e.g. Axis/Tripoli before off-map nodes.
+    NoEntryPoint(Nationality),
+}
+
+impl GameState {
+    /// Instantiate an Order-of-Battle formation onto the map at `hex`: spawn its
+    /// *deployed* units (reinforcements with a later `Arrival` are left for the schedule),
+    /// rebuild the parent hierarchy (attached to the counter above), place the top-level
+    /// counter(s) at `hex`, and set morale (current = arrival value, reference = Basic).
+    /// Returns the spawned unit ids. (§4.44 → game state.)
+    pub fn deploy_formation(
+        &mut self,
+        nationality: Nationality,
+        formation_name: &str,
+        hex: HexCoord,
+    ) -> Result<Vec<UnitId>, DeployError> {
+        self.deploy_formation_dispersed(nationality, formation_name, hex, &std::collections::HashMap::new())
+    }
+
+    /// Deploy an OB formation, optionally dispersing named units to their own hexes.
+    /// `unit_hexes` maps a unit's name to the hex it deploys at; such a unit is placed
+    /// there and NOT co-located-attached to its parent, but remains organically assigned
+    /// to the formation (so formation CPA / command still apply). Units absent from the
+    /// map deploy concentrated at `hex` as usual.
+    pub fn deploy_formation_dispersed(
+        &mut self,
+        nationality: Nationality,
+        formation_name: &str,
+        hex: HexCoord,
+        unit_hexes: &std::collections::HashMap<String, HexCoord>,
+    ) -> Result<Vec<UnitId>, DeployError> {
+        // Deploy the units on the map at the start of the game (Arrival::Deployed).
+        let ids = self.deploy_ob_units(nationality, formation_name, UnitLocation::OnMap(hex), unit_hexes, |a| {
+            matches!(a, Arrival::Deployed)
+        })?;
+        // Register the formation's later-arriving units as pending reinforcements, reusing
+        // this placement's hex + dispersion so they rejoin the formation on arrival.
+        self.register_pending_arrivals(nationality, formation_name, UnitLocation::OnMap(hex), unit_hexes);
+        Ok(ids)
+    }
+
+    /// Register a formation's later-arriving (`Arrival::Turn`) units as pending
+    /// reinforcements — one entry per distinct (game_turn, stage) — reusing `entry` + dispersion.
+    fn register_pending_arrivals(
+        &mut self,
+        nationality: Nationality,
+        formation_name: &str,
+        entry: UnitLocation,
+        unit_hexes: &std::collections::HashMap<String, HexCoord>,
+    ) {
+        let mut times = std::collections::BTreeSet::new();
+        if let Some(form) = self
+            .reference
+            .orders_of_battle
+            .get(&nationality)
+            .and_then(|ob| ob.formation(formation_name))
+        {
+            for u in &form.units {
+                if let Arrival::Turn { game_turn, stage } = u.arrival {
+                    times.insert((game_turn as u32, stage));
+                }
+            }
+        }
+        for (game_turn, stage) in times {
+            self.pending_arrivals.push(PendingArrival {
+                nationality,
+                formation: formation_name.to_string(),
+                entry: entry.clone(),
+                unit_hexes: unit_hexes.iter().map(|(k, v)| (k.clone(), *v)).collect(),
+                game_turn,
+                stage,
+            });
+        }
+    }
+
+    /// Register a whole-formation reinforcement (§20): none of its units are on the map at
+    /// start; they enter at `entry` on their scheduled (game_turn, stage) via the arrival
+    /// driver, building the formation's hierarchy there.
+    pub fn register_reinforcement(
+        &mut self,
+        nationality: Nationality,
+        formation_name: &str,
+        entry: UnitLocation,
+        unit_hexes: &std::collections::HashMap<String, HexCoord>,
+    ) -> Result<(), DeployError> {
+        self.reference
+            .orders_of_battle
+            .get(&nationality)
+            .ok_or(DeployError::NoOrderOfBattle(nationality))?
+            .formation(formation_name)
+            .ok_or_else(|| DeployError::NoFormation(formation_name.to_string()))?;
+        self.register_pending_arrivals(nationality, formation_name, entry, unit_hexes);
+        Ok(())
+    }
+
+    /// Spawn + place the units of an OB formation whose `Arrival` satisfies `arrives`.
+    /// Parents are resolved among units spawned this pass, then among units already on the
+    /// map — so scheduled reinforcements attach to their already-deployed parent. Used for
+    /// both the initial deploy (Deployed units) and scheduled arrivals (a given turn/stage).
+    pub(crate) fn deploy_ob_units(
+        &mut self,
+        nationality: Nationality,
+        formation_name: &str,
+        entry: UnitLocation,
+        unit_hexes: &std::collections::HashMap<String, HexCoord>,
+        arrives: impl Fn(&Arrival) -> bool,
+    ) -> Result<Vec<UnitId>, DeployError> {
+        use std::collections::HashMap;
+
+        let form = self
+            .reference
+            .orders_of_battle
+            .get(&nationality)
+            .ok_or(DeployError::NoOrderOfBattle(nationality))?
+            .formation(formation_name)
+            .ok_or_else(|| DeployError::NoFormation(formation_name.to_string()))?
+            .clone();
+
+        let arrival_morale = form.arrival_morale.unwrap_or(form.basic_morale);
+        let mut by_name: HashMap<&str, UnitId> = HashMap::new();
+        let mut ids = Vec::new();
+
+        // Pass 1: spawn the units whose arrival matches.
+        for u in &form.units {
+            if !arrives(&u.arrival) {
+                continue;
+            }
+            let placeholder = match &u.comp {
+                ObComposition::Organic(_) => Composition::Organic { current_toe: 0 },
+                ObComposition::Weapons(groups) => Composition::Weapons {
+                    groups: groups
+                        .iter()
+                        .map(|(system, count)| WeaponGroup { system: system.clone(), count: *count })
+                        .collect(),
+                },
+            };
+            let id = self.spawn_unit(nationality, u.id.clone(), u.name.clone(), placeholder);
+            {
+                let unit = self.unit_mut(id).expect("just spawned");
+                unit.org_size = u.org_size;
+                unit.basic_morale = arrival_morale;
+                unit.basic_morale_reference = form.basic_morale;
+                unit.is_hq = u.parent.is_empty() && u.name.contains("HQ");
+            }
+            // Resolve Organic TOE now that characteristics are known.
+            if let ObComposition::Organic(toe) = &u.comp {
+                let n = match toe {
+                    Toe::Normal => self.unit_max_toe(id).unwrap_or(0),
+                    Toe::Under(x) | Toe::Over(x) => *x,
+                };
+                if let Some(unit) = self.unit_mut(id) {
+                    unit.composition = Composition::Organic { current_toe: n };
+                }
+            }
+            by_name.insert(&u.name, id);
+            ids.push(id);
+        }
+
+        // Pass 2: place top-level counters at `entry` (on-map hex or off-map node); attach
+        // sub-units up the chain. A unit with a per-unit hex override deploys dispersed at
+        // its own hex (assigned but not co-located; on-map only). Parents may be from this
+        // pass or already on the map (arrivals).
+        for u in &form.units {
+            let Some(&id) = by_name.get(u.name.as_str()) else {
+                continue;
+            };
+            if u.parent.is_empty() {
+                let loc = match unit_hexes.get(&u.name) {
+                    Some(&h) => UnitLocation::OnMap(h),
+                    None => entry.clone(),
+                };
+                self.unit_mut(id).expect("spawned").location = Some(loc);
+                continue;
+            }
+            let parent = by_name
+                .get(u.parent.as_str())
+                .copied()
+                .or_else(|| self.units.values().find(|x| x.name == u.parent).map(|x| x.id));
+            if let Some(&own) = unit_hexes.get(&u.name) {
+                let unit = self.unit_mut(id).expect("spawned");
+                unit.location = Some(UnitLocation::OnMap(own));
+                if !u.attached {
+                    unit.assigned_parent = parent;
+                }
+            } else if let Some(p) = parent {
+                let unit = self.unit_mut(id).expect("spawned");
+                unit.attached_parent = Some(p); // co-located; effective_hex follows up
+                if !u.attached {
+                    unit.assigned_parent = Some(p); // organically assigned (§19.1)
+                }
+            } else {
+                // Parent not on the map (unexpected for internal arrivals): stand at `entry`.
+                self.unit_mut(id).expect("spawned").location = Some(entry.clone());
+            }
+        }
+        Ok(ids)
+    }
+}
+
+
+fn default_turn() -> u32 {
+    1
+}
+
+#[derive(Deserialize)]
+struct ScenarioData {
+    #[allow(dead_code)]
+    name: String,
+    #[serde(default = "default_turn")]
+    game_turn: u32,
+    #[serde(default)]
+    first_turn_initiative: Option<Side>,
+    #[serde(default)]
+    rommel_on_map: bool,
+    /// Formations deployed from the Order of Battle (§4.44) at a hex.
+    #[serde(default)]
+    placements: Vec<Placement>,
+    /// Individually-listed units (flat), for forces not yet in the OB.
+    #[serde(default)]
+    units: Vec<ScenarioUnit>,
+    /// Whole-formation reinforcements (§20): not on the map at start; they enter at their
+    /// nationality's entry point (or an explicit `hex` override) on their OB arrival turn.
+    #[serde(default)]
+    reinforcements: Vec<Reinforcement>,
+    /// Initial Supply Units (§32.1) placed at setup, at a hex label or off-map node.
+    #[serde(default)]
+    supply_dumps: Vec<SupplyDumpSpec>,
+    /// Player-choice Supply Unit groups (§59.51 / §60.92): location decided later, validated
+    /// against a constraint. Loaded into `GameState::pending_dump_choices`.
+    #[serde(default)]
+    supply_dump_choices: Vec<PendingDumpChoice>,
+    /// Repair Facilities present at start (§22.3 / §60.31 / §60.44).
+    #[serde(default)]
+    repair_facilities: Vec<FacilitySpec>,
+    /// Fortifications placed at setup (§61.6 / §63.7x): hex label + level (1 or 2).
+    #[serde(default)]
+    fortifications: Vec<FortSpec>,
+}
+
+/// A fortification placed at setup: hex label + level.
+#[derive(Deserialize)]
+struct FortSpec {
+    at: String,
+    level: u8,
+}
+
+/// A Repair Facility placed at setup: hex label + Temporary/Major.
+#[derive(Deserialize)]
+struct FacilitySpec {
+    at: String,
+    kind: FacilityKind,
+}
+
+#[derive(Deserialize)]
+struct Reinforcement {
+    nationality: Nationality,
+    formation: String,
+    /// Explicit entry hex (§20.14 exceptions, e.g. Alexandria). Omitted = the nationality
+    /// reinforcement entry point (§20.14–20.15) from the reference data.
+    #[serde(default)]
+    hex: Option<String>,
+    #[serde(default)]
+    unit_hexes: Vec<(String, String)>,
+}
+
+/// An initial Supply Unit (§32.1) placed at setup. `at` is a hex label (e.g. "C4807") or an
+/// off-map node name (e.g. "Tripoli"). `count` places several identical dumps at one location
+/// (§32.14 limits: ≤5 in a Major City, ≤3 elsewhere, unlimited in the Tripoli/Tunisia boxes).
+#[derive(Deserialize)]
+struct SupplyDumpSpec {
+    side: Side,
+    at: String,
+    #[serde(default = "default_dump_ammo")]
+    ammo: u32,
+    #[serde(default = "default_dump_fuel")]
+    fuel: u32,
+    #[serde(default)]
+    stores: u32,
+    #[serde(default)]
+    water: u32,
+    #[serde(default = "one_dump")]
+    count: u32,
+    /// A dummy Supply Unit (§32.18) — no real supplies; removed on discovery.
+    #[serde(default)]
+    dummy: bool,
+}
+
+fn default_dump_ammo() -> u32 {
+    40
+}
+fn default_dump_fuel() -> u32 {
+    60
+}
+fn one_dump() -> u32 {
+    1
+}
+#[derive(Deserialize)]
+struct Placement {
+    nationality: Nationality,
+    formation: String,
+    hex: String,
+    /// Per-unit hex overrides for a dispersed formation (e.g. a covering screen). A named
+    /// unit is placed at its own hex and detached from the stack, but stays organically
+    /// assigned to the formation (§6.15 CPA / command). Units not listed use `hex`.
+    #[serde(default)]
+    unit_hexes: Vec<(String, String)>,
+}
+
+#[derive(Deserialize)]
+struct ScenarioUnit {
+    nationality: Nationality,
+    id_code: String,
+    name: String,
+    #[serde(default)]
+    org_size: OrgSize,
+    /// Whether this counter is an HQ with a parenthesized Stacking Point value (§9.12).
+    #[serde(default)]
+    is_hq: bool,
+    /// Starting hex label, e.g. `"C3920"`. Empty for attached units (they are represented
+    /// by their parent's counter — no own location).
+    #[serde(default)]
+    hex: String,
+    composition: Composition,
+    #[serde(default)]
+    basic_morale: i32,
+    #[serde(default)]
+    cohesion: i32,
+    /// Name of the parent this unit is *attached* to (co-located, §19.1). Empty = none.
+    #[serde(default)]
+    attached_to: String,
+    /// Name of the parent this unit is *assigned* to (organizational, §19.1). Empty = none.
+    #[serde(default)]
+    assigned_to: String,
+    /// First-line Truck Points attached at setup (§53.11 / §60.31/60.41).
+    #[serde(default)]
+    trucks: TruckPoints,
+}
+
+impl GameState {
+    /// Load a scenario RON: sets the turn/initiative state, spawns each unit (at its
+    /// starting hex, unless it is attached and therefore represented by its parent), then
+    /// resolves attachment/assignment links by unit name. Existing units are left in place
+    /// (call on a fresh `GameState`).
+    pub fn load_scenario(&mut self, ron_str: &str) -> Result<(), ScenarioError> {
+        use std::collections::HashMap;
+
+        let data: ScenarioData = ron::from_str(ron_str).map_err(ScenarioError::Ron)?;
+        self.game_turn = data.game_turn;
+        self.first_turn_initiative = data.first_turn_initiative;
+        self.rommel_on_map = data.rommel_on_map;
+
+        // Pass 1: spawn every unit and record its name -> id.
+        let mut by_name: HashMap<&str, crate::state::unit::UnitId> = HashMap::new();
+        for u in &data.units {
+            let id = self.spawn_unit(
+                u.nationality,
+                u.id_code.clone(),
+                u.name.clone(),
+                u.composition.clone(),
+            );
+            let unit = self.unit_mut(id).expect("just spawned");
+            unit.org_size = u.org_size;
+            unit.is_hq = u.is_hq;
+            unit.basic_morale = u.basic_morale;
+            unit.cohesion = u.cohesion;
+            unit.trucks = u.trucks;
+            // A unit with its own hex gets a location; attached units (no hex) stay
+            // locationless and are placed via their parent's counter (effective_hex).
+            if !u.hex.is_empty() {
+                let coord = HexId::parse(&u.hex)
+                    .ok_or_else(|| ScenarioError::BadHex(u.hex.clone()))?
+                    .to_hex_coord();
+                self.unit_mut(id).expect("just spawned").location = Some(crate::state::unit::UnitLocation::OnMap(coord));
+            }
+            by_name.insert(&u.name, id);
+        }
+
+        // Pass 2: resolve attachment/assignment links (parents referenced by name).
+        for u in &data.units {
+            let id = by_name[u.name.as_str()];
+            if !u.attached_to.is_empty() {
+                let parent = *by_name
+                    .get(u.attached_to.as_str())
+                    .ok_or_else(|| ScenarioError::UnknownParent(u.attached_to.clone()))?;
+                self.unit_mut(id).expect("spawned in pass 1").attached_parent = Some(parent);
+            }
+            if !u.assigned_to.is_empty() {
+                let parent = *by_name
+                    .get(u.assigned_to.as_str())
+                    .ok_or_else(|| ScenarioError::UnknownParent(u.assigned_to.clone()))?;
+                self.unit_mut(id).expect("spawned in pass 1").assigned_parent = Some(parent);
+            }
+        }
+
+        // Deploy OB formations (§4.44) at their hexes.
+        for p in &data.placements {
+            let coord = HexId::parse(&p.hex)
+                .ok_or_else(|| ScenarioError::BadHex(p.hex.clone()))?
+                .to_hex_coord();
+            let mut unit_hexes = std::collections::HashMap::new();
+            for (name, h) in &p.unit_hexes {
+                let c = HexId::parse(h)
+                    .ok_or_else(|| ScenarioError::BadHex(h.clone()))?
+                    .to_hex_coord();
+                unit_hexes.insert(name.clone(), c);
+            }
+            self.deploy_formation_dispersed(p.nationality, &p.formation, coord, &unit_hexes)
+                .map_err(ScenarioError::Deploy)?;
+        }
+        // Whole-formation reinforcements (§20): register them to enter at their nationality
+        // entry point (or an explicit override) on their OB arrival turn.
+        for r in &data.reinforcements {
+            let entry_str = r
+                .hex
+                .clone()
+                .or_else(|| self.reference.reinforcement_entry_hex(r.nationality).map(str::to_string))
+                .ok_or(ScenarioError::Deploy(DeployError::NoEntryPoint(r.nationality)))?;
+            let entry = self
+                .resolve_entry(&entry_str)
+                .ok_or_else(|| ScenarioError::BadHex(entry_str.clone()))?;
+            let mut unit_hexes = std::collections::HashMap::new();
+            for (name, h) in &r.unit_hexes {
+                let c = HexId::parse(h)
+                    .ok_or_else(|| ScenarioError::BadHex(h.clone()))?
+                    .to_hex_coord();
+                unit_hexes.insert(name.clone(), c);
+            }
+            self.register_reinforcement(r.nationality, &r.formation, entry, &unit_hexes)
+                .map_err(ScenarioError::Deploy)?;
+        }
+        // Initial Supply Units (§32.1).
+        for d in &data.supply_dumps {
+            let loc = self
+                .resolve_entry(&d.at)
+                .ok_or_else(|| ScenarioError::BadHex(d.at.clone()))?;
+            for _ in 0..d.count {
+                self.supply_dumps.push(SupplyDump {
+                    location: loc.clone(),
+                    side: d.side,
+                    supply: Commodities {
+                        fuel: d.fuel,
+                        ammo: d.ammo,
+                        stores: d.stores,
+                        water: d.water,
+                    },
+                    dummy: d.dummy,
+                });
+            }
+        }
+        // Player-choice Supply Units (§59.51 / §60.92): stored unplaced for a later decision.
+        self.pending_dump_choices
+            .extend(data.supply_dump_choices.into_iter());
+        // Repair Facilities (§22.3).
+        for f in &data.repair_facilities {
+            let coord = HexId::parse(&f.at)
+                .ok_or_else(|| ScenarioError::BadHex(f.at.clone()))?
+                .to_hex_coord();
+            self.repair_facilities.insert(coord, f.kind);
+        }
+        for f in &data.fortifications {
+            let coord = HexId::parse(&f.at)
+                .ok_or_else(|| ScenarioError::BadHex(f.at.clone()))?
+                .to_hex_coord();
+            // Keep the strongest if a hex is listed more than once.
+            let e = self.fortifications.entry(coord).or_insert(0);
+            *e = (*e).max(f.level);
+        }
+        Ok(())
+    }
+
+    /// Resolve a reinforcement entry string to a `UnitLocation`: an on-map hex-id (e.g.
+    /// "E1430"), or the name of an off-map node in the §8.8 complex (e.g. "Tripoli").
+    fn resolve_entry(&self, s: &str) -> Option<UnitLocation> {
+        if let Some(h) = HexId::parse(s) {
+            return Some(UnitLocation::OnMap(h.to_hex_coord()));
+        }
+        if self
+            .reference
+            .off_map
+            .as_ref()
+            .and_then(|net| net.node(s))
+            .is_some()
+        {
+            return Some(UnitLocation::OffMap { node: s.to_string(), transit: 0, toward_map: true });
+        }
+        None
+    }
+}

@@ -1,0 +1,33 @@
+// Commonwealth Production Chart (§20.78C). `total` = lifetime replacement points; `max` = max per
+// Game-Turn; `first_gt`/`last_gt` = first/last plannable Game-Turn ("Nr/Nr" dates). No convoy
+// tonnage (Commonwealth production lands at Alexandria). NOTE: this chart's symbol legend is the
+// REVERSE of §20.66 — here `*` = per Month, `†` = per Two Weeks (period set accordingly below).
+// Transcription in docs/source-materials/replacements.md.
+(
+    items: [
+        (item: "Armored Recce",     total: 90,  max: 2, first_gt: 3),
+        (item: "Light AA",          total: 75,  max: 1, first_gt: 7),
+        (item: "Heavy AA",          total: 15,  max: 1, first_gt: 11, period: Month),
+        (item: "25-pounders",       total: 250, max: 4, first_gt: 11),
+        (item: "4.5\" Guns",        total: 25,  max: 3, first_gt: 76),
+        (item: "5.5\" Howitzers",   total: 12,  max: 1, first_gt: 83),
+        (item: "155mm Howitzers",   total: 6,   max: 1, first_gt: 51, last_gt: Some(59)),
+        (item: "2-pounders",        total: 60,  max: 5, first_gt: 5,  last_gt: Some(86), period: Month),
+        (item: "6-pounders",        total: 80,  max: 5, first_gt: 75),
+        (item: "SP 6-pounders",     total: 7,   max: 3, first_gt: 76),
+        (item: "17-pounders",       total: 6,   max: 3, first_gt: 103),
+        (item: "Mark VI Light",     total: 15,  max: 3, first_gt: 3,  last_gt: Some(38), period: Month),
+        (item: "A9 Cruiser",        total: 8,   max: 2, first_gt: 3,  last_gt: Some(38), period: Month),
+        (item: "A10 Cruiser",       total: 10,  max: 3, first_gt: 3,  last_gt: Some(38), period: Month),
+        (item: "A13 Cruiser",       total: 8,   max: 2, first_gt: 9,  last_gt: Some(38), period: Month),
+        (item: "Crusader Mk I",     total: 35,  max: 5, first_gt: 31, last_gt: Some(76), period: Month),
+        (item: "Crusader Mk II",    total: 30,  max: 5, first_gt: 41, last_gt: Some(78), period: Month),
+        (item: "Crusader Mk III",   total: 18,  max: 6, first_gt: 88, period: TwoWeeks),
+        (item: "Matilda",           total: 25,  max: 2, first_gt: 9,  last_gt: Some(74), period: Month),
+        (item: "Valentine",         total: 20,  max: 3, first_gt: 39, period: Month),
+        (item: "Stuart",            total: 44,  max: 10, first_gt: 35, last_gt: Some(54), period: Month),
+        (item: "Grant",             total: 56,  max: 8, first_gt: 66, period: Month),
+        (item: "Sherman",           total: 62,  max: 12, first_gt: 89),
+        (item: "Churchill",         total: 1,   max: 1, first_gt: 90),
+    ],
+)

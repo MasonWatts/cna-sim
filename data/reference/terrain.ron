@@ -1,0 +1,45 @@
+// data/reference/terrain.ron
+//
+// Terrain Effects Chart (rules §8.37) — DATA (see design.md §3.8 / D9).
+// Human-readable companion & provenance: docs/source-materials/terrain-effects-chart.md
+//
+// Costs are Capability Points: Cost(n); Prohibited = "P"; EntireCpa = "+CPA".
+// Combat shifts: Shift(-n) = n columns LEFT (favors defender, "L"); Shift(n) = RIGHT
+// (favors attacker, "R"); NoShift = blank; Prohibited = that fire may not occur.
+// `notes` are chart footnote numbers whose rules are enforced in code.
+(
+    terrain: {
+        Clear:           ( enter: ( non_mot: Cost(2), mot: Cost(2) ), breakdown: 4,  barrage: NoShift,   anti_armor: NoShift,   close_assault: NoShift,   stacking_limit: Some(6), notes: [] ),
+        SandGravel:      ( enter: ( non_mot: Cost(2), mot: Cost(2) ), breakdown: 6,  barrage: NoShift,   anti_armor: NoShift,   close_assault: NoShift,   stacking_limit: Some(6), notes: [] ),
+        SaltMarsh:       ( enter: ( non_mot: Cost(3), mot: Cost(2) ), breakdown: 6,  barrage: NoShift,   anti_armor: NoShift,   close_assault: Shift(1),  stacking_limit: Some(6), notes: [2] ),
+        HeavyVegetation: ( enter: ( non_mot: Cost(3), mot: Cost(3) ), breakdown: 3,  barrage: NoShift,   anti_armor: Shift(-1), close_assault: Shift(-1), stacking_limit: Some(6), notes: [] ),
+        Rough:           ( enter: ( non_mot: Cost(3), mot: Cost(4) ), breakdown: 8,  barrage: Shift(-1), anti_armor: Shift(-1), close_assault: Shift(-2), stacking_limit: Some(6), notes: [] ),
+        Mountain:        ( enter: ( non_mot: Cost(4), mot: Cost(6) ), breakdown: 12, barrage: Shift(-2), anti_armor: Shift(-2), close_assault: Shift(-3), stacking_limit: Some(3), notes: [] ),
+        Delta:           ( enter: ( non_mot: Cost(2), mot: Cost(4) ), breakdown: 2,  barrage: NoShift,   anti_armor: NoShift,   close_assault: NoShift,   stacking_limit: Some(6), notes: [] ),
+        Desert:          ( enter: ( non_mot: Cost(3), mot: Cost(4) ), breakdown: 24, barrage: NoShift,   anti_armor: NoShift,   close_assault: NoShift,   stacking_limit: Some(6), notes: [3] ),
+        // Major City combat adjustment is "See Fortifications" — the shifts come from the
+        // city's fortification level (Alexandria/Cairo = L3, others = L2; footnotes 4 & 12),
+        // applied via the fortification feature in code, not stored here.
+        MajorCity:       ( enter: ( non_mot: Cost(1), mot: Cost(0.5) ), breakdown: 0.5, barrage: NoShift, anti_armor: NoShift, close_assault: NoShift, stacking_limit: Some(8), notes: [4] ),
+        // Swamp: enter only on road/railroad (enforced in code).
+        Swamp:           ( enter: ( non_mot: Prohibited, mot: Prohibited ), breakdown: 0, barrage: NoShift, anti_armor: NoShift, close_assault: NoShift, stacking_limit: Some(6), notes: [] ),
+        Sea:             ( enter: ( non_mot: Prohibited, mot: Prohibited ), breakdown: 0, barrage: NoShift, anti_armor: NoShift, close_assault: NoShift, stacking_limit: None,    notes: [] ),
+    },
+    hexsides: {
+        Wadi:           ( cross: ( non_mot: Cost(1), mot: Cost(4) ),      breakdown: 8,   anti_armor: NoShift,   close_assault: Shift(-1), blocks_zoc: false, notes: [10] ),
+        Ridge:          ( cross: ( non_mot: Cost(2), mot: Cost(4) ),      breakdown: 0,   anti_armor: Shift(-2), close_assault: Shift(-2), blocks_zoc: false, notes: [] ),
+        UpSlope:        ( cross: ( non_mot: Cost(2), mot: Cost(4) ),      breakdown: 0,   anti_armor: Shift(-1), close_assault: Shift(-2), blocks_zoc: false, notes: [] ),
+        DownSlope:      ( cross: ( non_mot: Cost(1), mot: Cost(2) ),      breakdown: 2,   anti_armor: Shift(-1), close_assault: Shift(1),  blocks_zoc: false, notes: [] ),
+        UpEscarpment:   ( cross: ( non_mot: Cost(6), mot: Prohibited ),   breakdown: 0,   anti_armor: Prohibited, close_assault: Shift(-3), blocks_zoc: true, notes: [] ),
+        DownEscarpment: ( cross: ( non_mot: Cost(4), mot: Cost(8) ),      breakdown: 6,   anti_armor: Shift(-2), close_assault: Shift(1),  blocks_zoc: true,  notes: [9] ),
+        MajorRiver:     ( cross: ( non_mot: Cost(8), mot: Prohibited ),   breakdown: 0,   anti_armor: NoShift,   close_assault: Shift(-6), blocks_zoc: true,  notes: [11] ),
+        MinorRiver:     ( cross: ( non_mot: Cost(3), mot: Cost(6) ),      breakdown: 1,   anti_armor: NoShift,   close_assault: Shift(-2), blocks_zoc: false, notes: [] ),
+        // Road/Track: "along-move" overlay — cost replaces hex terrain cost (code rule).
+        Road:           ( cross: ( non_mot: Cost(1), mot: Cost(0.5) ),    breakdown: 0.5, anti_armor: NoShift,   close_assault: NoShift,   blocks_zoc: false, notes: [6] ),
+        Track:          ( cross: ( non_mot: Cost(1), mot: Cost(1) ),      breakdown: 0,   anti_armor: NoShift,   close_assault: NoShift,   blocks_zoc: false, notes: [8] ),
+        Railroad:       ( cross: ( non_mot: Cost(0), mot: Cost(0) ),      breakdown: 0,   anti_armor: NoShift,   close_assault: NoShift,   blocks_zoc: false, notes: [] ),
+        // §24.67: unbuilt track serves no function until built — fully inert.
+        UnfinishedRailroad: ( cross: ( non_mot: Cost(0), mot: Cost(0) ),  breakdown: 0,   anti_armor: NoShift,   close_assault: NoShift,   blocks_zoc: false, notes: [] ),
+        Lake:           ( cross: ( non_mot: Prohibited, mot: Prohibited ), breakdown: 0,  anti_armor: NoShift,   close_assault: NoShift,   blocks_zoc: true,  notes: [] ),
+    },
+)

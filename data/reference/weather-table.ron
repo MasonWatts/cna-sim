@@ -1,0 +1,24 @@
+// Weather Table (§29.61) + Foul Weather Location Table (§29.7). Authoritative machine values;
+// transcription + provenance in docs/source-materials/weather-tables.md.
+//
+// `seasons`: per §29.61 season row, ordered (max_roll, weather) thresholds over the two-dice
+//   sequential value (larger die × 10 + smaller, 11..=66; §12.42). The weather is the first
+//   entry whose max_roll >= the roll.
+// `foul_location`: §29.7, one die (1..6) -> the map-section letters a sandstorm/rainstorm hits;
+//   unaffected sections are Normal.
+(
+    seasons: {
+        Spring: [(42, Normal), (55, Hot),       (64, Sandstorm), (66, Rainstorm)],
+        Summer: [(23, Normal), (55, Hot),       (66, Sandstorm)],
+        Fall:   [(35, Normal), (54, Hot),       (61, Sandstorm), (66, Rainstorm)],
+        Winter: [(52, Normal), (66, Rainstorm)],
+    },
+    foul_location: [
+        ["A", "B"],
+        ["C", "D"],
+        ["D", "E"],
+        ["B", "C"],
+        ["B", "D"],
+        ["B", "C", "D"],
+    ],
+)

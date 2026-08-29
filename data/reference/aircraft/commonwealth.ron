@@ -1,0 +1,111 @@
+// Commonwealth Aircraft Characteristics (§4.44A). FIGHTERS & FIGHTER-BOMBERS from PDF p.112.
+// (Bombers/recon/transport/flying-boats from p.113 are added in a follow-up.)
+// Mission symbols: No=`.`  Day=`!`  Night=`N`  DayStrafeArmor=`A`  StrafeOnly=`S`  NightScrambleOnly=`0`.
+// Ratings (range/tac_air/maneuver/bomb/fuel) are transcribed exactly; `*` range = drop tanks.
+// NOTE: CAP is read from the chart; scramble/recon/strike dots are a best reading and warrant a
+// verification pass against the printed chart.
+{
+    "Beaufighter Mk.IF":  ( class: Fighter, loadouts: [ (range: 117, tac_air: 11, maneuver: 30, fuel: 3) ], missions: (cap: Night, scramble: Day), manufacturer: "Bristol" ),
+    "Beaufighter Mk.VIF": ( class: Fighter, loadouts: [ (range: 135, tac_air: 12, maneuver: 31, fuel: 3) ], missions: (cap: Night, scramble: Day), manufacturer: "Bristol" ),
+    "Blenheim Mk.IVF":    ( class: Fighter, loadouts: [ (range: 146, tac_air: 5,  maneuver: 30, fuel: 3) ], missions: (cap: Night, scramble: NightScrambleOnly), manufacturer: "Bristol" ),
+    "Fulmar Mk.II":       ( class: Fighter, loadouts: [ (range: 74,  tac_air: 4,  maneuver: 29, fuel: 1) ], missions: (cap: Night, scramble: Day), manufacturer: "Fairey" ),
+    "Gladiator Mk.II":    ( class: Fighter, loadouts: [ (range: 44,  tac_air: 2,  maneuver: 27, fuel: 1) ], missions: (cap: Day, scramble: Day), manufacturer: "Gloster" ),
+    "Hurricane Mk.I":     ( class: Fighter, loadouts: [ (range: 52,  tac_air: 4,  maneuver: 32, fuel: 1) ], missions: (cap: Day, scramble: Day), manufacturer: "Hawker" ),
+    "Hurricane Mk.IIA": ( class: FighterBomber, loadouts: [
+        (range: 88, drop_tanks: true, tac_air: 4, maneuver: 25, fuel: 2),
+        (range: 44, tac_air: 4, maneuver: 36, fuel: 1),
+        (range: 39, tac_air: 4, maneuver: 33, bombload: 2, fuel: 1),
+    ], missions: (cap: Day, scramble: Day, strike: Day), manufacturer: "Hawker" ),
+    "Hurricane Mk.IIB": ( class: FighterBomber, loadouts: [
+        (range: 88, drop_tanks: true, tac_air: 6, maneuver: 25, fuel: 2),
+        (range: 44, tac_air: 6, maneuver: 36, fuel: 1),
+        (range: 39, tac_air: 6, maneuver: 32, bombload: 4, fuel: 1),
+    ], missions: (cap: Day, scramble: Day, strike: Day), manufacturer: "Hawker" ),
+    "Hurricane Mk.IIC": ( class: FighterBomber, loadouts: [
+        (range: 86, drop_tanks: true, tac_air: 8, maneuver: 25, fuel: 2),
+        (range: 43, tac_air: 8, maneuver: 36, fuel: 1),
+        (range: 38, tac_air: 8, maneuver: 30, bombload: 6, fuel: 1),
+    ], missions: (cap: Day, scramble: Day, strike: Day), manufacturer: "Hawker" ),
+    "Hurricane Mk.IID": ( class: Fighter, loadouts: [
+        (range: 90, drop_tanks: true, tac_air: 8, maneuver: 25, fuel: 2),
+        (range: 45, tac_air: 8, maneuver: 33, fuel: 1),
+    ], missions: (cap: DayStrafeArmor, scramble: Day), manufacturer: "Hawker" ),
+    "P-40 Kittyhawk I": ( class: FighterBomber, loadouts: [
+        (range: 94, drop_tanks: true, tac_air: 4, maneuver: 31, fuel: 2),
+        (range: 71, tac_air: 4, maneuver: 33, fuel: 1),
+        (range: 60, tac_air: 4, maneuver: 29, bombload: 2, fuel: 1),
+    ], missions: (cap: Day, scramble: Day, strike: Day), manufacturer: "Curtis" ),
+    "P-40 Kittyhawk II": ( class: FighterBomber, loadouts: [
+        (range: 95, drop_tanks: true, tac_air: 6, maneuver: 31, fuel: 2),
+        (range: 72, tac_air: 6, maneuver: 33, fuel: 1),
+        (range: 63, tac_air: 6, maneuver: 30, bombload: 2, fuel: 1),
+    ], missions: (cap: Day, scramble: Day, strike: Day), manufacturer: "Curtis" ),
+    "P-40 Kittyhawk III": ( class: FighterBomber, loadouts: [
+        (range: 92, drop_tanks: true, tac_air: 6, maneuver: 30, fuel: 2),
+        (range: 68, tac_air: 6, maneuver: 32, fuel: 1),
+        (range: 60, tac_air: 6, maneuver: 29, bombload: 2, fuel: 1),
+    ], missions: (cap: Day, scramble: Day, strike: Day), manufacturer: "Curtis" ),
+    "Sea Gladiator":  ( class: Fighter, loadouts: [ (range: 38, tac_air: 2, maneuver: 27, fuel: 1) ], missions: (cap: Day, scramble: Day), manufacturer: "Gloster" ),
+    "Skua Mk.II":     ( class: DiveBomber, loadouts: [ (range: 76, tac_air: 3, maneuver: 18, bombload: 4, fuel: 1) ], missions: (cap: Day, strike: Day), manufacturer: "Blackburn" ),
+    "Spitfire Mk.VB": ( class: Fighter, loadouts: [ (range: 39, tac_air: 6, maneuver: 40, fuel: 1) ], missions: (cap: Day, scramble: Day), manufacturer: "Supermarine" ),
+    "Spitfire Mk.VC": ( class: Fighter, loadouts: [
+        (range: 59, drop_tanks: true, tac_air: 8, maneuver: 37, fuel: 2),
+        (range: 43, tac_air: 8, maneuver: 42, fuel: 1),
+    ], missions: (cap: Day, scramble: Day), manufacturer: "Supermarine" ),
+    "P-40 Tomahawk": ( class: Fighter, loadouts: [
+        (range: 75, drop_tanks: true, tac_air: 2, maneuver: 27, fuel: 2),
+        (range: 62, tac_air: 2, maneuver: 32, fuel: 1),
+    ], missions: (cap: Day, scramble: Day), manufacturer: "Curtis" ),
+    "F4F Wildcat":  ( class: Fighter, loadouts: [ (range: 70, tac_air: 8, maneuver: 34, fuel: 1) ], missions: (cap: Day), manufacturer: "Grumman", notes: ["Martlet I"] ),
+    "C.714":        ( class: Fighter, loadouts: [ (range: 49, tac_air: 2, maneuver: 30, fuel: 1) ], missions: (cap: Day), manufacturer: "Caudron", notes: ["French"] ),
+    "D.520":        ( class: Fighter, loadouts: [ (range: 56, tac_air: 4, maneuver: 37, fuel: 1) ], missions: (cap: Day), manufacturer: "Dewoitine", notes: ["French"] ),
+    "MS406":        ( class: Fighter, loadouts: [ (range: 45, tac_air: 4, maneuver: 32, fuel: 1) ], missions: (cap: Day, scramble: Day), manufacturer: "Morane-Saulnier", notes: ["French"] ),
+
+    // --- Bombers, Flying Boats, Transports, Reconnaissance (p.113). TacAir parenthesized on the
+    // chart => no_air_to_air. Bomb "x/Ty" => bombload x + torpedo y. ** transfer range noted. ---
+    "Albacore":       ( class: Bomber, loadouts: [ (range: 71, tac_air: 2, no_air_to_air: true, maneuver: 6, bombload: 8, torpedo: 8, fuel: 2) ], missions: (convoy_land_bombing: Night), manufacturer: "Fairey", notes: ["Night Land Support or Axis Naval Convoy Bombing only"] ),
+    "Anson Mk.I":     ( class: Bomber, loadouts: [ (range: 71, tac_air: 2, no_air_to_air: true, maneuver: 20, bombload: 2, fuel: 2) ], missions: (recon: Day, convoy_land_bombing: Day), manufacturer: "Avro" ),
+    "B-17/D Flying Fortress": ( class: Bomber, loadouts: [
+        (range: 275, no_air_to_air: true, tac_air: 5, maneuver: 29, fuel: 5),
+        (range: 186, no_air_to_air: true, tac_air: 5, maneuver: 27, bombload: 37, fuel: 4),
+    ], missions: (convoy_land_bombing: Day), manufacturer: "Boeing", notes: ["275 is the transfer range (**)"] ),
+    "B-24/PB4y Liberator III": ( class: Bomber, loadouts: [ (range: 208, tac_air: 5, no_air_to_air: true, maneuver: 23, bombload: 64, fuel: 7) ], missions: (convoy_land_bombing: Day), manufacturer: "Consolidated" ),
+    "B-25 Mitchell II": ( class: Bomber, loadouts: [ (range: 125, tac_air: 6, no_air_to_air: true, maneuver: 25, bombload: 14, fuel: 4) ], missions: (convoy_land_bombing: Day), manufacturer: "North American" ),
+    "B-26 Marauder": ( class: Bomber, loadouts: [
+        (range: 170, no_air_to_air: true, tac_air: 4, maneuver: 28, fuel: 5),
+        (range: 46, no_air_to_air: true, tac_air: 4, maneuver: 25, bombload: 25, fuel: 5),
+    ], missions: (convoy_land_bombing: Day), manufacturer: "Martin", notes: ["170 is the transfer range (**)"] ),
+    "A-30 Baltimore I": ( class: Bomber, loadouts: [ (range: 101, tac_air: 6, no_air_to_air: true, maneuver: 22, bombload: 10, fuel: 3) ], missions: (convoy_land_bombing: Day), manufacturer: "Glenn Martin" ),
+    "Beaufort Mk.I": ( class: Bomber, loadouts: [ (range: 144, tac_air: 2, no_air_to_air: true, maneuver: 24, torpedo: 8, fuel: 1) ], missions: (convoy_land_bombing: Day), manufacturer: "Bristol" ),
+    "Blenheim Mk.I": ( class: Bomber, loadouts: [ (range: 101, tac_air: 1, no_air_to_air: true, maneuver: 22, bombload: 5, fuel: 2) ], missions: (convoy_land_bombing: Day), manufacturer: "Bristol" ),
+    "Blenheim Mk.IV": ( class: Bomber, loadouts: [ (range: 131, tac_air: 3, no_air_to_air: true, maneuver: 21, bombload: 6, fuel: 3) ], missions: (convoy_land_bombing: Day), manufacturer: "Bristol" ),
+    "Bombay Mk.I": ( class: Bomber, loadouts: [
+        (range: 203, no_air_to_air: true, tac_air: 1, maneuver: 6, fuel: 2),
+        (range: 88, no_air_to_air: true, tac_air: 1, maneuver: 5, bombload: 10, fuel: 2),
+    ], missions: (convoy_land_bombing: Day, transport: Day), manufacturer: "Bristol", notes: ["transports 1 TOE or 10 tons; 203 transfer range (**)"] ),
+    "Boston Mk.III": ( class: Bomber, loadouts: [ (range: 102, tac_air: 5, no_air_to_air: true, maneuver: 23, bombload: 10, fuel: 3) ], missions: (convoy_land_bombing: Day), manufacturer: "Douglas" ),
+    "Halifax Mk.II": ( class: Bomber, loadouts: [
+        (range: 194, no_air_to_air: true, tac_air: 5, maneuver: 27, bombload: 7, fuel: 6),
+        (range: 62, no_air_to_air: true, tac_air: 5, maneuver: 26, bombload: 65, fuel: 6),
+    ], missions: (convoy_land_bombing: Day), manufacturer: "Handley-Page" ),
+    "A-28 Hudson": ( class: Bomber, loadouts: [ (range: 145, tac_air: 3, no_air_to_air: true, maneuver: 8, fuel: 2) ], missions: (convoy_land_bombing: Day, transport: Day), manufacturer: "Lockheed", notes: ["transports 1 TOE or 10 tons"] ),
+    "Lysander Mk.I": ( class: Reconnaissance, loadouts: [ (range: 60, tac_air: 2, no_air_to_air: true, maneuver: 20, fuel: 1) ], missions: (recon: Day, strike: StrafeOnly), manufacturer: "Westland" ),
+    "167 Maryland": ( class: Bomber, loadouts: [ (range: 76, tac_air: 3, no_air_to_air: true, maneuver: 20, bombload: 9, fuel: 3) ], missions: (recon: Day, convoy_land_bombing: Day), manufacturer: "Glenn Martin" ),
+    "63.11": ( class: Bomber, loadouts: [ (range: 75, tac_air: 5, no_air_to_air: true, maneuver: 26, fuel: 1) ], missions: (convoy_land_bombing: Day), manufacturer: "Potez", notes: ["French"] ),
+    "Sunderland": ( class: FlyingBoat, loadouts: [
+        (range: 238, no_air_to_air: true, tac_air: 5, maneuver: 7, fuel: 4),
+        (range: 176, no_air_to_air: true, tac_air: 5, maneuver: 11, bombload: 9, fuel: 4),
+    ], missions: (recon: Day), manufacturer: "Short" ),
+    "Swordfish Mk.I": ( class: Bomber, loadouts: [ (range: 48, tac_air: 1, no_air_to_air: true, maneuver: 7, torpedo: 8, fuel: 1) ], missions: (convoy_land_bombing: Day), manufacturer: "Fairey", notes: ["biplane"] ),
+    "Tiger Moth Mk.II": ( class: Reconnaissance, loadouts: [ (range: 27, tac_air: 0, maneuver: 14, fuel: 1) ], missions: (recon: Day), manufacturer: "de Haviland" ),
+    "Valentia": ( class: Transport, loadouts: [ (range: 31, tac_air: 0, maneuver: 1, bombload: 10, fuel: 1) ], missions: (transport: Day, convoy_land_bombing: Day), manufacturer: "", notes: ["transports 1/4 TOE or 5 tons; biplane"] ),
+    "Wellington Mk.I": ( class: Bomber, loadouts: [
+        (range: 229, no_air_to_air: true, tac_air: 3, maneuver: 20, bombload: 5, fuel: 4),
+        (range: 108, no_air_to_air: true, tac_air: 3, maneuver: 18, bombload: 23, fuel: 4),
+    ], missions: (convoy_land_bombing: Night), manufacturer: "Vickers" ),
+    "Wellington Mk.IV": ( class: Bomber, loadouts: [
+        (range: 220, no_air_to_air: true, tac_air: 3, maneuver: 23, bombload: 6, fuel: 5),
+        (range: 157, no_air_to_air: true, tac_air: 3, maneuver: 19, bombload: 17, fuel: 5),
+        (range: 126, no_air_to_air: true, tac_air: 3, maneuver: 18, bombload: 23, fuel: 5),
+    ], missions: (convoy_land_bombing: Night), manufacturer: "Vickers" ),
+}

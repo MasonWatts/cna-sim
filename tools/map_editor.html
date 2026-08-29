@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CNA Map Hex Editor</title>
+<style>
+  html, body { margin:0; height:100%; font-family:system-ui,sans-serif; background:#1e1e1e; color:#eee; }
+  #app { display:flex; height:100vh; }
+  #side { width:250px; padding:10px; box-sizing:border-box; overflow-y:auto; background:#262626; border-right:1px solid #444; }
+  #stage { flex:1; position:relative; overflow:hidden; }
+  canvas { display:block; background:#333; cursor:crosshair; }
+  h2 { font-size:14px; margin:10px 0 6px; color:#9cf; }
+  .pal button { display:block; width:100%; text-align:left; margin:2px 0; padding:5px 8px; border:1px solid #555;
+                border-radius:4px; background:#333; color:#eee; cursor:pointer; font-size:13px; }
+  .pal button.sel { outline:2px solid #fff; }
+  .sw { display:inline-block; width:12px; height:12px; border:1px solid #000; margin-right:6px; vertical-align:middle; }
+  .mode button { width:50%; padding:6px; background:#333; color:#eee; border:1px solid #567; cursor:pointer; }
+  .mode button.sel { background:#356; }
+  .row { margin:6px 0; font-size:12px; }
+  input[type=range]{ width:100%; }
+  button.act { width:100%; margin:3px 0; padding:6px; background:#345; color:#fff; border:1px solid #567; border-radius:4px; cursor:pointer; }
+  #status { font-size:11px; color:#aaa; margin-top:8px; white-space:pre-line; }
+  textarea { width:100%; height:110px; font-size:10px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="side">
+    <h2>Map</h2>
+    <input type="file" id="imgFile" accept="image/*" />
+    <div class="row">Section: <input id="section" value="E" size="2" maxlength="1" /></div>
+
+    <h2>Layer</h2>
+    <div class="mode"><button id="mTerr" class="sel">Terrain</button><button id="mFeat">Feature</button><button id="mEdge">Edge</button></div>
+
+    <h2>Brush</h2>
+    <div class="pal" id="pal"></div>
+
+    <h2>Brush size</h2>
+    <div class="row"><input type="range" id="brush" min="1" max="4" value="1" /> <span id="brushv">1</span> hex</div>
+
+    <h2>Actions</h2>
+    <button class="act" id="auto">Auto-classify terrain</button>
+    <button class="act" id="export">Export RON</button>
+    <button class="act" id="import">Import…</button>
+    <input type="file" id="importFile" accept=".ron,.json,.txt" style="display:none" />
+    <button class="act" id="reset">Clear all</button>
+    <div class="row"><label><input type="checkbox" id="showdots" checked /> show dots</label></div>
+    <div id="status"></div>
+    <textarea id="out" placeholder="Export output appears here"></textarea>
+  </div>
+  <div id="stage"><canvas id="cv"></canvas></div>
+</div>
+<script>
+// ---- Per-section grid calibration (from the na_map-00N.jpg scans) ----
+// B–E share one calibration; section A's scan is offset (only X0/Y0_BOTTOM differ).
+const CALIB = {
+  A: {X0:212, Y0_BOTTOM:296, DCOL:94.5, DROW:323.5},
+  B: {X0:102, Y0_BOTTOM:311, DCOL:94.5, DROW:323.5},
+  C: {X0:102, Y0_BOTTOM:311, DCOL:94.5, DROW:323.5},
+  D: {X0:102, Y0_BOTTOM:311, DCOL:94.5, DROW:323.5},
+  E: {X0:102, Y0_BOTTOM:311, DCOL:94.5, DROW:323.5},
+};
+const PARITY="evenup";
+const MAXCOL=90, MAXROW=40;
+let X0, Y0_BOTTOM, DCOL, DROW, HALF;
+function applyCalibration(sec){
+  const c = CALIB[(sec||"C").toUpperCase()] || CALIB.C;
+  X0=c.X0; Y0_BOTTOM=c.Y0_BOTTOM; DCOL=c.DCOL; DROW=c.DROW; HALF=DROW/2;
+}
+applyCalibration(document.getElementById("section").value);
+
+const TERRAINS = [
+  {k:"1", name:"Clear",           dot:"#efe9b0", ref:[240,238,180]},
+  {k:"2", name:"Desert",          dot:"#e0b020", ref:[224,176,24]},
+  {k:"3", name:"SandGravel",      dot:"#d8c890", ref:[216,200,144]},
+  {k:"4", name:"Rough",           dot:"#8f7030", ref:[185,145,55]},
+  {k:"5", name:"Mountain",        dot:"#5c4020", ref:[120,90,40]},
+  {k:"6", name:"HeavyVegetation", dot:"#4a7a3a", ref:[90,130,60]},
+  {k:"7", name:"SaltMarsh",       dot:"#5aa0a0", ref:[120,170,170]},
+  {k:"8", name:"Delta",           dot:"#3a6a8a", ref:[90,140,180]},
+  {k:"9", name:"Swamp",           dot:"#2f5a5a", ref:[70,110,110]},
+  {k:"0", name:"Sea",             dot:"#2f6fb0", ref:[80,150,200]},
+  {k:"c", name:"MajorCity",       dot:"#c04070", ref:[190,80,110]},
+  {k:"x", name:"Invalid",         dot:"#000000", auto:false},
+];
+// Features layered on top of terrain. "None" erases.
+const FEATURES = [
+  {k:"o", name:"Oasis",   dot:"#20e060"},
+  {k:"g", name:"Village", dot:"#f0e030"},
+  {k:"b", name:"Bir",     dot:"#f08020"},
+  {k:"p", name:"Port",    dot:"#e040e0"},
+  {k:"n", name:"None",    dot:"#000000"},
+];
+const UNCLASS="#888";
+
+// Hexside/edge features (§8.37). "None" erases the edge.
+const EDGES = [
+  {k:"R", name:"Road",       dot:"#d8b048"},
+  {k:"T", name:"Track",      dot:"#a88858"},
+  {k:"L", name:"Railroad",   dot:"#101010"},
+  {k:"U", name:"UnfinishedRoad",     dot:"#c8b080"},
+  {k:"J", name:"UnfinishedRailroad", dot:"#606060"},
+  {k:"v", name:"MinorRiver", dot:"#4aa0e0"},
+  {k:"V", name:"MajorRiver", dot:"#1f60c8"},
+  {k:"w", name:"Wadi",       dot:"#b06838"},
+  {k:"i", name:"Ridge",      dot:"#8f6a28"},
+  {k:"s", name:"Slope",      dot:"#b0b060"},
+  {k:"e", name:"Escarpment", dot:"#e06820"},
+  {k:"a", name:"Lake",       dot:"#3078b8"},
+  {k:"n", name:"None",       dot:"#000000"},
+];
+
+let mode="terrain";
+let brushTerrain="Clear", brushFeature="Oasis", brushEdge="Road";
+const terr={}, feat={};   // "RRCC" -> name
+const edge={};            // "idA|idB" (sorted) -> {a, b, feats:[{kind, up}]}
+let img=null, imgW=0, imgH=0, hexes=[];
+const hexById={};         // id -> hex
+let edgeList=[];          // adjacency: {a, b, mx, my}
+
+function hexCenter(col,row){
+  const x=X0+(col-1)*DCOL;
+  let yb=Y0_BOTTOM+(row-1)*DROW; if(PARITY==="evenup"&&col%2===0) yb+=HALF;
+  return {x, y:imgH-yb};
+}
+function label(col,row){ const cc=Math.floor((col+1)/2); const rr=col%2===1?2*row-1:2*row;
+  return String(rr).padStart(2,"0")+String(cc).padStart(2,"0"); }
+function allHexes(){ const o=[]; for(let c=1;c<=MAXCOL;c++)for(let r=1;r<=MAXROW;r++){
+  const p=hexCenter(c,r); if(p.x>=0&&p.x<imgW&&p.y>=0&&p.y<imgH) o.push({c,r,x:p.x,y:p.y,id:label(c,r)});} return o; }
+
+// Build the id->hex index and the adjacency edge list. Adjacency MUST match the engine's HexId
+// math (even-r offset, pointy-top), so we derive each hex's 6 neighbours by id via cube coords —
+// NOT by pixel proximity, which disagrees with game adjacency at column/parity boundaries.
+let snapMax=60; // max click distance (image px) that still snaps to an edge
+function idToRC(id){ return [parseInt(id.slice(0,2),10), parseInt(id.slice(2,4),10)]; } // [rr,cc]
+function toCube(cc,rr){ const z=rr, x=cc-((rr+(rr&1))>>1); return [x,-x-z,z]; }
+function fromCube(x,z){ const rr=z, cc=x+((z+(z&1))>>1); return [rr,cc]; }
+const CUBE=[[1,-1,0],[1,0,-1],[0,1,-1],[-1,1,0],[-1,0,1],[0,-1,1]];
+function neighborIds(id){ const [rr,cc]=idToRC(id); const [x,,z]=toCube(cc,rr);
+  return CUBE.map(([dx,,dz])=>{ const [nr,nc]=fromCube(x+dx,z+dz);
+    return String(nr).padStart(2,"0")+String(nc).padStart(2,"0"); }); }
+function buildHexIndex(){
+  for(const k in hexById) delete hexById[k];
+  for(const h of hexes) hexById[h.id]=h;
+  edgeList=[]; const seen=new Set(); const nn=[];
+  for(const A of hexes){
+    for(const nid of neighborIds(A.id)){ const B=hexById[nid]; if(!B) continue;
+      const key=[A.id,B.id].sort().join("|"); if(seen.has(key)) continue; seen.add(key);
+      nn.push(Math.hypot(A.x-B.x,A.y-B.y));
+      edgeList.push({a:A,b:B,mx:(A.x+B.x)/2,my:(A.y+B.y)/2});
+    }
+  }
+  nn.sort((a,b)=>a-b);
+  const med=nn.length?nn[nn.length>>1]:120;
+  snapMax=med*0.75; // any click within a hex reaches its nearest edge midpoint
+}
+
+// ---- View ----
+let scale=0.15,panX=0,panY=0;
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+function resize(){ cv.width=document.getElementById("stage").clientWidth; cv.height=window.innerHeight; draw(); }
+window.addEventListener("resize",resize);
+function toImg(sx,sy){ return {x:(sx-panX)/scale, y:(sy-panY)/scale}; }
+
+function draw(){
+  ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height); if(!img) return;
+  ctx.setTransform(scale,0,0,scale,panX,panY); ctx.drawImage(img,0,0);
+  if(!document.getElementById("showdots").checked) return;
+  for(const h of hexes){
+    const t=terr[h.id];
+    const tc = t ? (TERRAINS.find(x=>x.name===t)||{}).dot : UNCLASS;
+    ctx.beginPath(); ctx.arc(h.x,h.y,50,0,7); ctx.fillStyle=tc; ctx.globalAlpha=t?0.75:0.35; ctx.fill();
+    ctx.globalAlpha=1; ctx.lineWidth=1/scale; ctx.strokeStyle="#000"; ctx.stroke();
+    const fs=feat[h.id];
+    if(fs&&fs.length){
+      const gap=42, startX=h.x-(fs.length-1)*gap/2;
+      fs.forEach((fn,i)=>{ const fc=(FEATURES.find(x=>x.name===fn)||{}).dot;
+        ctx.beginPath(); ctx.arc(startX+i*gap,h.y,18,0,7); ctx.fillStyle=fc; ctx.globalAlpha=0.95; ctx.fill();
+        ctx.globalAlpha=1; ctx.lineWidth=3/scale; ctx.strokeStyle="#fff"; ctx.stroke(); });
+    }
+  }
+  // Hexside edges: each feature drawn as a colored segment across the shared border, with
+  // parallel copies offset along the border when an edge carries several features.
+  for(const key in edge){
+    const e=edge[key]; const A=hexById[e.a], B=hexById[e.b]; if(!A||!B) continue;
+    const mx=(A.x+B.x)/2, my=(A.y+B.y)/2, dx=B.x-A.x, dy=B.y-A.y, len=Math.hypot(dx,dy)||1;
+    const px=-dy/len, py=dx/len, ax=dx/len, ay=dy/len, half=DCOL*0.34, n=e.feats.length;
+    e.feats.forEach((f,i)=>{
+      const col=(EDGES.find(x=>x.name===f.kind)||{}).dot||"#fff";
+      const off=(i-(n-1)/2)*12;
+      const ox=ax*off, oy=ay*off;
+      ctx.beginPath(); ctx.moveTo(mx-px*half+ox,my-py*half+oy); ctx.lineTo(mx+px*half+ox,my+py*half+oy);
+      ctx.strokeStyle=col; ctx.lineWidth=8/scale; ctx.stroke();
+      if(f.kind==="Slope"||f.kind==="Escarpment"){ const up=(f.up===A.id)?A:B; const down=(up===A)?B:A;
+        // §8.35: contours ("stem") on the DOWN side.
+        ctx.beginPath(); ctx.moveTo(mx+ox,my+oy); ctx.lineTo((mx+down.x)/2,(my+down.y)/2);
+        ctx.strokeStyle=col; ctx.lineWidth=4/scale; ctx.stroke(); }
+    });
+  }
+}
+
+function paintAt(ix,iy){
+  if(mode==="edge"){ paintEdge(ix,iy); return; }
+  const bs=parseInt(document.getElementById("brush").value);
+  let n=0;
+  for(const h of hexes){
+    const d=Math.hypot(h.x-ix,h.y-iy);
+    if(bs===1 ? d<DCOL*0.55 : d<DCOL*(bs-0.5)){
+      if(mode==="terrain") terr[h.id]=brushTerrain;
+      else {
+        if(brushFeature==="None") delete feat[h.id];
+        else { const s=feat[h.id]||(feat[h.id]=[]); if(!s.includes(brushFeature)) s.push(brushFeature); }
+      }
+      n++;
+    }
+  }
+  if(n) draw();
+}
+
+// Assign (or erase) the hexside nearest the click. For directional kinds the "up" side is
+// whichever hex the click was closer to (click on the high side of the edge).
+function paintEdge(ix,iy){
+  let best=null,bd=1e9;
+  for(const e of edgeList){ const d=Math.hypot(e.mx-ix,e.my-iy); if(d<bd){bd=d;best=e;} }
+  if(!best || bd>snapMax) return;
+  const key=[best.a.id,best.b.id].sort().join("|");
+  if(brushEdge==="None"){ delete edge[key]; }
+  else {
+    // §8.35: for Slope/Escarpment the splash contours are on the DOWN side. Click the down
+    // (contour) side to match the printed map; the "up" (high) side is the opposite hex.
+    const nearId=(Math.hypot(best.a.x-ix,best.a.y-iy)<=Math.hypot(best.b.x-ix,best.b.y-iy))?best.a.id:best.b.id;
+    const up=(nearId===best.a.id)?best.b.id:best.a.id;
+    const e=edge[key]||(edge[key]={a:best.a.id, b:best.b.id, feats:[]});
+    const ex=e.feats.find(f=>f.kind===brushEdge);
+    if(ex) ex.up=up; else e.feats.push({kind:brushEdge, up});
+  }
+  draw(); status(brushEdge==="None"?`erased edge ${best.a.id}|${best.b.id}`:`${brushEdge} on ${best.a.id}|${best.b.id}`);
+}
+
+let painting=false,panning=false,lx=0,ly=0;
+cv.addEventListener("mousedown",e=>{ if(e.button===1||e.button===2||e.shiftKey){panning=true;lx=e.clientX;ly=e.clientY;}
+  else {painting=true; const p=toImg(e.offsetX,e.offsetY); paintAt(p.x,p.y);} });
+cv.addEventListener("mousemove",e=>{ if(panning){panX+=e.clientX-lx;panY+=e.clientY-ly;lx=e.clientX;ly=e.clientY;draw();}
+  else if(painting){const p=toImg(e.offsetX,e.offsetY);paintAt(p.x,p.y);} });
+window.addEventListener("mouseup",()=>{painting=false;panning=false;});
+cv.addEventListener("contextmenu",e=>e.preventDefault());
+cv.addEventListener("wheel",e=>{ e.preventDefault(); const f=e.deltaY<0?1.1:1/1.1; const p=toImg(e.offsetX,e.offsetY);
+  scale*=f; panX=e.offsetX-p.x*scale; panY=e.offsetY-p.y*scale; draw(); },{passive:false});
+
+// ---- Palette / mode ----
+const palDiv=document.getElementById("pal");
+function activePal(){ return mode==="terrain"?TERRAINS:(mode==="feature"?FEATURES:EDGES); }
+function activeBrush(){ return mode==="terrain"?brushTerrain:(mode==="feature"?brushFeature:brushEdge); }
+function setBrush(name){ if(mode==="terrain") brushTerrain=name; else if(mode==="feature") brushFeature=name; else brushEdge=name; buildPalette(); }
+function buildPalette(){
+  palDiv.innerHTML="";
+  for(const t of activePal()){
+    const b=document.createElement("button");
+    b.innerHTML=`<span class="sw" style="background:${t.dot}"></span>${t.name} <small>[${t.k}]</small>`;
+    b.onclick=()=>setBrush(t.name);
+    if(t.name===activeBrush()) b.classList.add("sel");
+    palDiv.appendChild(b);
+  }
+}
+function setMode(m){ mode=m;
+  document.getElementById("mTerr").classList.toggle("sel",m==="terrain");
+  document.getElementById("mFeat").classList.toggle("sel",m==="feature");
+  document.getElementById("mEdge").classList.toggle("sel",m==="edge");
+  buildPalette(); }
+document.getElementById("mTerr").onclick=()=>setMode("terrain");
+document.getElementById("mFeat").onclick=()=>setMode("feature");
+document.getElementById("mEdge").onclick=()=>setMode("edge");
+document.addEventListener("keydown",e=>{ if(e.key==="m"){setMode(mode==="terrain"?"feature":(mode==="feature"?"edge":"terrain"));return;}
+  const t=activePal().find(x=>x.k===e.key); if(t) setBrush(t.name); });
+
+// ---- Auto-classify (terrain only) ----
+document.getElementById("auto").onclick=()=>{
+  if(!img) return;
+  const oc=document.createElement("canvas"); oc.width=imgW; oc.height=imgH;
+  const octx=oc.getContext("2d",{willReadFrequently:true}); octx.drawImage(img,0,0);
+  let n=0;
+  for(const h of hexes){
+    const d=octx.getImageData(Math.round(h.x),Math.round(h.y),1,1).data;
+    let best=null,bd=1e9;
+    for(const t of TERRAINS){ if(t.auto===false||!t.ref) continue;
+      const dd=(d[0]-t.ref[0])**2+(d[1]-t.ref[1])**2+(d[2]-t.ref[2])**2; if(dd<bd){bd=dd;best=t;} }
+    if(best){terr[h.id]=best.name;n++;}
+  }
+  status(`auto-classified ${n} hexes`); draw();
+};
+
+// ---- Export / import ----
+document.getElementById("export").onclick=()=>{
+  const sec=(document.getElementById("section").value||"C").toUpperCase();
+  const ids=[...new Set([...Object.keys(terr),...Object.keys(feat)])].sort();
+  let s=`// CNA section ${sec} — RRCC -> (terrain, feature) (from map_editor.html)\n(\n  section: "${sec}",\n  hexes: {\n`;
+  for(const id of ids){ const t=terr[id]||"Clear"; const fs=feat[id]||[]; s+=`    "${id}": (terrain: ${t}, features: [${fs.join(", ")}]),\n`; }
+  s+="  },\n";
+  const ekeys=Object.keys(edge).sort();
+  let nfeat=0;
+  if(ekeys.length){
+    s+="  hexsides: [\n";
+    for(const key of ekeys){ const e=edge[key];
+      for(const f of e.feats){
+        const up=(f.kind==="Slope"||f.kind==="Escarpment")?`, up: Some("${f.up}")`:"";
+        s+=`    (a: "${e.a}", b: "${e.b}", kind: ${f.kind}${up}),\n`;
+        nfeat++;
+      }
+    }
+    s+="  ],\n";
+  }
+  s+=")\n";
+  document.getElementById("out").value=s;
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([s],{type:"text/plain"}));
+  a.download=`section-${sec}.ron`; a.click(); status(`exported ${ids.length} hexes, ${nfeat} edge features`);
+};
+document.getElementById("import").onclick=()=>document.getElementById("importFile").click();
+document.getElementById("importFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return;
+  f.text().then(txt=>{
+    let n=0, m;
+    const listRe=/"(\d{4})":\s*\(\s*terrain:\s*(\w+),\s*features:\s*\[([^\]]*)\]\s*\)/g;
+    while((m=listRe.exec(txt))){ terr[m[1]]=m[2];
+      const fs=m[3].split(",").map(x=>x.trim()).filter(x=>x&&x!=="None");
+      if(fs.length) feat[m[1]]=fs; else delete feat[m[1]]; n++; }
+    if(n===0){ const singRe=/"(\d{4})":\s*\(\s*terrain:\s*(\w+),\s*feature:\s*(\w+)\s*\)/g;
+      while((m=singRe.exec(txt))){ terr[m[1]]=m[2]; if(m[3]&&m[3]!=="None") feat[m[1]]=[m[3]]; n++; } }
+    if(n===0){ const flat=/"(\d{4})":\s*(\w+)\s*,/g; while((m=flat.exec(txt))){ terr[m[1]]=m[2]; n++; } }
+    // Hexsides
+    const edgeRe=/\(a:\s*"([A-Z]?\d{4})",\s*b:\s*"([A-Z]?\d{4})",\s*kind:\s*(\w+)(?:,\s*up:\s*Some\("([A-Z]?\d{4})"\))?\s*\)/g;
+    let ne=0; while((m=edgeRe.exec(txt))){ const key=[m[1],m[2]].sort().join("|");
+      const e=edge[key]||(edge[key]={a:m[1], b:m[2], feats:[]});
+      e.feats.push({kind:m[3], up:m[4]||m[1]}); ne++; }
+    status(`imported ${n} hexes, ${ne} edge features`); draw();
+  });
+};
+document.getElementById("reset").onclick=()=>{ for(const k in terr)delete terr[k]; for(const k in feat)delete feat[k]; for(const k in edge)delete edge[k]; draw(); status("cleared"); };
+document.getElementById("brush").oninput=e=>document.getElementById("brushv").textContent=e.target.value;
+document.getElementById("section").oninput=e=>{
+  applyCalibration(e.target.value);
+  if(img){ hexes=allHexes(); buildHexIndex(); draw(); status(`recalibrated for section ${e.target.value.toUpperCase()}`); }
+};
+document.getElementById("showdots").onchange=draw;
+function status(s){ document.getElementById("status").textContent=`${s}\nterrain: ${Object.keys(terr).length}  features: ${Object.keys(feat).length}  edge features: ${Object.values(edge).reduce((a,e)=>a+e.feats.length,0)}\nhexes total: ${hexes.length}`; }
+
+document.getElementById("imgFile").onchange=e=>{ const f=e.target.files[0]; if(!f) return;
+  const im=new Image(); im.onload=()=>{ img=im; imgW=im.naturalWidth; imgH=im.naturalHeight; hexes=allHexes(); buildHexIndex();
+    const sw=document.getElementById("stage").clientWidth, sh=window.innerHeight;
+    scale=Math.min(sw/imgW,sh/imgH); panX=0;panY=0; status("image loaded"); draw(); };
+  im.src=URL.createObjectURL(f); };
+
+buildPalette(); resize();
+</script>
+</body>
+</html>

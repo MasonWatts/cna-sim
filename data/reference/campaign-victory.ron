@@ -1,0 +1,36 @@
+// Campaign Victory Conditions (§64.7). Authoritative machine values; transcription +
+// provenance in docs/source-materials/campaign-victory.md.
+//
+// `cities`: §64.73 Geographical Occupation Points — occupying a city with a combat unit
+//   (>=1 TOE) awards the listed VP to that side.
+// `levels`: §64.76 victory levels by the point ratio (most:least), as ordered
+//   (max_ratio_pct, level) bands; a ratio above the last band is a Smashing Victory.
+//   NB: the printed fractions OCR'd unclearly — CONFIRM these thresholds.
+(
+    cities: [
+        (hex: "C4807", name: "Tobruk",       axis: 200, cw: 100),
+        (hex: "C4321", name: "Bardia",       axis: 100, cw:  50),
+        (hex: "D3714", name: "Mersa Matruh", axis: 100, cw:  10),
+        (hex: "A4827", name: "Benghazi",     axis:  75, cw: 100),
+        (hex: "C4131", name: "Sidi Barrani", axis:  50, cw:  10),
+        (hex: "B5925", name: "Derna",        axis:  25, cw:  50),
+        (hex: "C4021", name: "Sollum",       axis:  25, cw:  10),
+        (hex: "C0127", name: "Siwa",         axis:  20, cw:  10),
+        (hex: "C1014", name: "Giarabub",     axis:  15, cw:  10),
+        (hex: "B0513", name: "Jalo",         axis:  10, cw:  20),
+    ],
+    levels: [
+        (max_ratio_pct: 100, level: "Draw"),
+        (max_ratio_pct: 150, level: "Marginal Victory"),
+        (max_ratio_pct: 250, level: "Decisive Victory"),
+    ],
+    // §64.71/§64.72 automatic-victory supply-line parameters.
+    // sources: hexes counting as "Tobruk or Tripoli" — Tobruk (C4807) and the Tripoli off-map
+    //   road's on-map entry (A2802, the western coast-road junction from the §8.8 complex).
+    // axis_objective: all hexes of Alexandria (E3613, E3714) and Cairo (E1430) (§60.41).
+    sources: ["C4807", "A2802"],
+    axis_objective: ["E3613", "E3714", "E1430"],
+    axis_supply_mp: 90,
+    cw_check_mp: 60,
+    cw_check_from_turn: 35,
+)

@@ -1,0 +1,357 @@
+===== PAGE 162 =====
+# Formation: 5th Light ("Leichte") Panzer Division (Later the 2Ist Panzer Division)
+# Basic Morale: + 2
+# indent levels (unit-x centers): [0.17, 0.185, 0.201]
+## Tree
+5th Light Panzer Div HQ  (5 Le)  1xPzlI | arr 3/21
+21st Panzer Div HQ  (21) [b]  (b) | arr 2/58
+    Sth Panzer Regt HQ  ()  1xPzl1 | arr 2/21
+        I/5 Panzer Bn  (1/5)  1xPzI, 4XPzII, 1xPzIIIE, 7xPzIIIH, 1x PzIVD | arr 1/22
+        11/5 Panzer Bn  (11/5)  5 X P211, 6x PzlIH, 2 x PzIVD, 1xPZIVE | arr 2/22
+    2nd Machinegewehr Bn  (2)  N | arr 2/24
+    8th Machinegewehr Bn  (8)  N | arr 1/26
+    39th Panzerjaeger Bn  (39)  5×3.7cm, 3× 5cm | arr 1/21
+    605th SP Panzerjaeger Bn  (605)  ID=У | 3 x Pzjg1 | arr 3/22
+    1/75 Artillery Bn  (1/75) [d]  ID=V | 3 × 10.5cm Med Gun | arr 1/23
+    1/33 Flak Bn  (1/33)  ID=bb | 6x Light AA | arr 3/22
+    606 Flak Bn  (606)  4X Heavy AA | arr 2/22
+    3rd Aufklarungs Bn  (3)  ID=ff | N | arr 1/21
+    200th Pioneer Bn  (200)  ID=gg | N | arr 2/21
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	5th Light Panzer Div HQ	5 Le		1xPzlI	3/21		
+0	21st Panzer Div HQ	21		(b)	2/58	b	
+1	Sth Panzer Regt HQ			1xPzl1	2/21		21st Panzer Div HQ
+2	I/5 Panzer Bn	1/5		1xPzI, 4XPzII, 1xPzIIIE, 7xPzIIIH, 1x PzIVD	1/22		Sth Panzer Regt HQ
+2	11/5 Panzer Bn	11/5		5 X P211, 6x PzlIH, 2 x PzIVD, 1xPZIVE	2/22		Sth Panzer Regt HQ
+1	2nd Machinegewehr Bn	2		N	2/24		21st Panzer Div HQ
+1	8th Machinegewehr Bn	8		N	1/26		21st Panzer Div HQ
+1	39th Panzerjaeger Bn	39		5×3.7cm, 3× 5cm	1/21		21st Panzer Div HQ
+1	605th SP Panzerjaeger Bn	605	У	3 x Pzjg1	3/22		21st Panzer Div HQ
+1	1/75 Artillery Bn	1/75	V	3 × 10.5cm Med Gun	1/23	d	21st Panzer Div HQ
+1	1/33 Flak Bn	1/33	bb	6x Light AA	3/22		21st Panzer Div HQ
+1	606 Flak Bn	606		4X Heavy AA	2/22		21st Panzer Div HQ
+1	3rd Aufklarungs Bn	3	ff	N	1/21		21st Panzer Div HQ
+1	200th Pioneer Bn	200	gg	N	2/21		21st Panzer Div HQ
+
+# Formation: Sonderverband 288
+# Basic Morale: +1
+# indent levels (unit-x centers): [0.169, 0.183]
+## Tree
+Sonderverband 288 HQ  (288 Son)  ID=e | N | arr 2/76
+    2/288 Gebergs Inf Bn  (2) [b]  ID=m | U@3 | arr 2/76
+    3/288 SchwInf Bn  (3)  N | arr 2/76
+    4/288 Machinegewehr  (4)  ID=q | N | arr 2/76
+    288 Panzerjaeger Bn  (288)  2x5cm | arr 2/76
+    288 Pioneer Coy  (288) [Notes]  ID=gg | N | arr 2/76
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Sonderverband 288 HQ	288 Son	e	N	2/76		
+1	2/288 Gebergs Inf Bn	2	m	U@3	2/76	b	Sonderverband 288 HQ
+1	3/288 SchwInf Bn	3		N	2/76		Sonderverband 288 HQ
+1	4/288 Machinegewehr	4	q	N	2/76		Sonderverband 288 HQ
+1	288 Panzerjaeger Bn	288		2x5cm	2/76		Sonderverband 288 HQ
+1	288 Pioneer Coy	288	gg	N	2/76	Notes	Sonderverband 288 HQ
+
+===== PAGE 163 =====
+# Formation: 15th Panzer Division
+# Basic Morale: + 2
+# indent levels (unit-x centers): [0.18, 0.19, 0.211, 0.235]
+## Tree
+    15th Panzer Div HQ.  (15)  ID=c | 1xPzІПH | arr 3/29
+        8th Panzer Regiment HO  (8)  1x PzШ1Н | arr 2/31
+        1/8 Panzer Bn  (1/8)  ID=f | 4×PzII, 8× PzIIIH,2×PzIVE | arr 2/31
+        I1/8 Panzer Bn  (П1/8)  4XPZII, 7XPZIIH, 4x PAVD | arr 1/32
+        200th Schutzen Regt HQ  (200)  ID=b | N | arr 2/27
+        15th Kradschutzen Bn  (15/200)  ID=g | N | arr 2/27
+. 15th Schutzen Bde HQ  (15)  ID=b | N | arr 1/28
+        104th Schutzen Regt HQ  (104)  ID=d | 1x7.5cm Lt Inf Gun | arr 1/28
+            I/104 Schutzen Bn  (1/104)  N | arr 1/28
+            II/104 Schutzen Bn  (11/104)  ID=j | N | arr 1/29
+        115th Schutzen Regt HQ  (115)  ID=d | 1x7.5cm Lt Inf Gun | arr 1/30
+            1/115 Schutzen Bn  (1/115)  N | arr 1/30
+            II/115 Schutzen Bn  (II/115)  N | arr 1/30
+        33rd Panzerjaeger Bn  (33)  5 x 3.7cm, 3 x 5cm | arr 3/24
+        33rd Artillery Regt  (33)  2×15cm Med Inf Gun | arr 1/33
+        1/115 Artillery Bn  (1/115)  4x 7.5cm Lt Inf Gun | arr 2/30
+        140th Artillery Regt  (140)  3 × 15cm Gun | arr 2/34
+        33rd Aufkiarungs Bn  (33)  ID=ee | N | arr 3/28
+        33rd Pioneer Bn  (33)  ID=gg | N | arr 1/28
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+1	15th Panzer Div HQ.	15	c	1xPzІПH	3/29		
+2	8th Panzer Regiment HO	8		1x PzШ1Н	2/31		15th Panzer Div HQ.
+2	1/8 Panzer Bn	1/8	f	4×PzII, 8× PzIIIH,2×PzIVE	2/31		15th Panzer Div HQ.
+2	I1/8 Panzer Bn	П1/8		4XPZII, 7XPZIIH, 4x PAVD	1/32		15th Panzer Div HQ.
+2	200th Schutzen Regt HQ	200	b	N	2/27		15th Panzer Div HQ.
+2	15th Kradschutzen Bn	15/200	g	N	2/27		15th Panzer Div HQ.
+0	. 15th Schutzen Bde HQ	15	b	N	1/28		
+2	104th Schutzen Regt HQ	104	d	1x7.5cm Lt Inf Gun	1/28		. 15th Schutzen Bde HQ
+3	I/104 Schutzen Bn	1/104		N	1/28		104th Schutzen Regt HQ
+3	II/104 Schutzen Bn	11/104	j	N	1/29		104th Schutzen Regt HQ
+2	115th Schutzen Regt HQ	115	d	1x7.5cm Lt Inf Gun	1/30		. 15th Schutzen Bde HQ
+3	1/115 Schutzen Bn	1/115		N	1/30		115th Schutzen Regt HQ
+3	II/115 Schutzen Bn	II/115		N	1/30		115th Schutzen Regt HQ
+2	33rd Panzerjaeger Bn	33		5 x 3.7cm, 3 x 5cm	3/24		. 15th Schutzen Bde HQ
+2	33rd Artillery Regt	33		2×15cm Med Inf Gun	1/33		. 15th Schutzen Bde HQ
+2	1/115 Artillery Bn	1/115		4x 7.5cm Lt Inf Gun	2/30		. 15th Schutzen Bde HQ
+2	140th Artillery Regt	140		3 × 15cm Gun	2/34		. 15th Schutzen Bde HQ
+2	33rd Aufkiarungs Bn	33	ee	N	3/28		. 15th Schutzen Bde HQ
+2	33rd Pioneer Bn	33	gg	N	1/28		. 15th Schutzen Bde HQ
+
+# Formation: 300th Oasis Battalion (a)
+# Basic Morale: 0
+# indent levels (unit-x centers): [0.195]
+## Tree
+Ist Oasis Koy  (-)  N | arr 1/25
+2nd Oasis Koy  (2)  N | arr 1/25
+3rd Oasis Koy  (3)  N | arr 2/25
+4th Oasis Koy  (4)  N | arr 1/27
+5th Oasis Koy  (5)  N | arr 2/29
+6th Oasis Koy  (6)  N | arr 2/30
+7th Oasis Koy  (7)  N | arr 2/30
+8th Oasis Koy  ()  N | arr 2/31
+9th Oasis Koy  (9)  N | arr 2/31
+10th Oasis Koy  (10)  arr 3/33
+Hith Oasis Koy  (11)  arr 3/34
+12th Oasis Koy  (12)  arr 2/35
+13th Oasis Koy  (13)  arr 1/39
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ist Oasis Koy	-		N	1/25		
+0	2nd Oasis Koy	2		N	1/25		
+0	3rd Oasis Koy	3		N	2/25		
+0	4th Oasis Koy	4		N	1/27		
+0	5th Oasis Koy	5		N	2/29		
+0	6th Oasis Koy	6		N	2/30		
+0	7th Oasis Koy	7		N	2/30		
+0	8th Oasis Koy			N	2/31		
+0	9th Oasis Koy	9		N	2/31		
+0	10th Oasis Koy	10			3/33		
+0	Hith Oasis Koy	11			3/34		
+0	12th Oasis Koy	12			2/35		
+0	13th Oasis Koy	13			1/39		
+
+===== PAGE 164 =====
+# Formation: 164th Light Afrika Division
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.175, 0.19, 0.203]
+## Tree
+164th Light Div HQ  (164 Le)  ID=b | N | arr 1/93
+    125th PnzrGrndr Regt HQ  (125)  N | arr 3/93
+        1/125 PnzrGrndrBn  (1/125)  ID=k | N | arr 3/93
+        II/125 PnzrGrndr Bn  (II/125)  N | arr 3/93
+        I11/125 PnzrGrndr Bn  (1H/125)  N | arr 3/93
+    382nd PnzrGrndr Regt HQ  (382)  N | arr 1/94
+        I/382 PnzrGrndr Bn  (1/382)  0@8 | arr 1/94
+        II/382 PnzrGrndr Bn  (II/382)  ID=k | 0@8 | arr 1/94
+        1L1/382 PnzrGrndr Bn  (111/382)  ID=k | 008 | arr 1/94
+    433rd PnzrGrndr Regt HQ  (433)  N | arr 3/95
+        I/433 PnzrGrndr Bn  (1/433)  ID=k | N | arr 3795
+        11/433 PnzrGrndr Bn  (I1/433)  N | arr 3/95
+        I11/433 PnzrGrndr Bn  (I/433)  ID=k | N | arr 3/95
+    165th Aufklarungs Bn  (164)  ID=ff | N | arr 2/94
+    609 Flak Bn  (609)  ID=bb | 6X Light AA | arr 1/93
+    220th Artillery Regt HQ  (220)  ID=b | N | arr 1/95
+        1/220 Artillery Bn  (1/220)  ID=u | 6 x 10.5cm Med Gun | arr 1/95
+        11/220 Artillery Bn  (11/220)  2× 15cm Med Field Howitzer | arr 1/95
+        111/220 Artillery Bn  (II1/ 220)  6 x 10.5cm Lt Field Howitzer | arr 1/95
+        IV/220 Artillery Bn  (IV/220)  6× 15cm Gun | arr 1/95
+    200th Pioneer Bn  (200)  ID=88 | N | arr 3/93
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	164th Light Div HQ	164 Le	b	N	1/93		
+1	125th PnzrGrndr Regt HQ	125		N	3/93		164th Light Div HQ
+2	1/125 PnzrGrndrBn	1/125	k	N	3/93		125th PnzrGrndr Regt HQ
+2	II/125 PnzrGrndr Bn	II/125		N	3/93		125th PnzrGrndr Regt HQ
+2	I11/125 PnzrGrndr Bn	1H/125		N	3/93		125th PnzrGrndr Regt HQ
+1	382nd PnzrGrndr Regt HQ	382		N	1/94		164th Light Div HQ
+2	I/382 PnzrGrndr Bn	1/382		0@8	1/94		382nd PnzrGrndr Regt HQ
+2	II/382 PnzrGrndr Bn	II/382	k	0@8	1/94		382nd PnzrGrndr Regt HQ
+2	1L1/382 PnzrGrndr Bn	111/382	k	008	1/94		382nd PnzrGrndr Regt HQ
+1	433rd PnzrGrndr Regt HQ	433		N	3/95		164th Light Div HQ
+2	I/433 PnzrGrndr Bn	1/433	k	N	3795		433rd PnzrGrndr Regt HQ
+2	11/433 PnzrGrndr Bn	I1/433		N	3/95		433rd PnzrGrndr Regt HQ
+2	I11/433 PnzrGrndr Bn	I/433	k	N	3/95		433rd PnzrGrndr Regt HQ
+1	165th Aufklarungs Bn	164	ff	N	2/94		164th Light Div HQ
+1	609 Flak Bn	609	bb	6X Light AA	1/93		164th Light Div HQ
+1	220th Artillery Regt HQ	220	b	N	1/95		164th Light Div HQ
+2	1/220 Artillery Bn	1/220	u	6 x 10.5cm Med Gun	1/95		220th Artillery Regt HQ
+2	11/220 Artillery Bn	11/220		2× 15cm Med Field Howitzer	1/95		220th Artillery Regt HQ
+2	111/220 Artillery Bn	II1/ 220		6 x 10.5cm Lt Field Howitzer	1/95		220th Artillery Regt HQ
+2	IV/220 Artillery Bn	IV/220		6× 15cm Gun	1/95		220th Artillery Regt HQ
+1	200th Pioneer Bn	200	88	N	3/93		164th Light Div HQ
+
+# Formation: Fallschirmjaeger-Brigade Ramcke (a)
+# Basic Morale: + 2
+# indent levels (unit-x centers): [0.173, 0.186]
+## Tree
+Ramcke Bde HQ  (Ramcke)  ID=b | N | arr 2/86
+    1 Bn (Kroh)  (1 Kroh)  ID=h | N + 1x7.5cm Lt Gun | arr 1791
+    II Bn (von der Heydte)  (II vdH)  ID=h | Nt1x 7.5cm Lt Gun | arr 1/92
+    11 Bn (Hubner)  (Ill Hub)  ID=h | N+1x7.5cm Lt Gun | arr 1/93
+    IV Bn (Schweiger)  (IV Sch)  ID=h | N+1x 7.5cm Lt Gun | arr 2/87
+    V Bn (Burchardt)  (V Brc)  ID=h | N+ 1x7.5cm Lt Gun | arr 2/86
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ramcke Bde HQ	Ramcke	b	N	2/86		
+1	1 Bn (Kroh)	1 Kroh	h	N + 1x7.5cm Lt Gun	1791		Ramcke Bde HQ
+1	II Bn (von der Heydte)	II vdH	h	Nt1x 7.5cm Lt Gun	1/92		Ramcke Bde HQ
+1	11 Bn (Hubner)	Ill Hub	h	N+1x7.5cm Lt Gun	1/93		Ramcke Bde HQ
+1	IV Bn (Schweiger)	IV Sch	h	N+1x 7.5cm Lt Gun	2/87		Ramcke Bde HQ
+1	V Bn (Burchardt)	V Brc	h	N+ 1x7.5cm Lt Gun	2/86		Ramcke Bde HQ
+
+# Formation: Unassigned Infantry Umits
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.168]
+## Tree
+Deutsches Afrika Korps HQ  (Rommel)  N | arr 2/20
+707 Schwinf Koy  (707)  N | arr 2/66
+708 SchwInf Koy  (708) [b]  N | arr 3/76
+13th Koy/Brandenburg Regt  (13/Bdbg)  N | arr 1/85
+778 Naval Engineer Koy  (778/Nv1)  ID=gg | N | arr 3/66
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Deutsches Afrika Korps HQ	Rommel		N	2/20		
+0	707 Schwinf Koy	707		N	2/66		
+0	708 SchwInf Koy	708		N	3/76	b	
+0	13th Koy/Brandenburg Regt	13/Bdbg		N	1/85		
+0	778 Naval Engineer Koy	778/Nv1	gg	N	3/66		
+
+===== PAGE 165 =====
+# Formation: Kampfgruppen HQ's (a)
+# Basic Morale: That of the attached units
+# indent levels (unit-x centers): [0.18, 0.271]
+## Tree
+    reflected the incredible German  () [ministrative/organizational flexibility. German units rarely stayed]  ID=2. The Kampfgruppe counter must be removed (disbanded) when
+Pfeiffer (Pfeiffer), Gruppe Schwerin (Schwrn),  () [Gruppe Voss. These units may be formed and disbanded at will,]  ID=2nd Afrika Artillery Regiment headquarters (see the German non-
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+1	reflected the incredible German		2. The Kampfgruppe counter must be removed (disbanded) when			ministrative/organizational flexibility. German units rarely stayed	
+0	Pfeiffer (Pfeiffer), Gruppe Schwerin (Schwrn),		2nd Afrika Artillery Regiment headquarters (see the German non-			Gruppe Voss. These units may be formed and disbanded at will,	
+
+# Formation: Non-Divisional Artillery Umits
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.192, 0.206]
+## Tree
+Ist Afrika Arty Regt HQ  (1 Afr)  N | arr 2/80
+2nd Afrika Arty Regt HO  (2 Afr) [a]  N | arr 3/97
+Artillery Command 104 HQ  (ArKo 104) [b]  N | arr 3/31
+    149 Coastal Def Arty Bn  (149)  3 x 10.5cm Med Gun | arr 1/45
+    362 Artillery Bty  (362)  1 x 17cm Gun | arr 2/30
+    408 SP Artillery Bn  (408)  3 x 15cm SP Gun | arr 2/30
+    528 Artillery Bn  (528)  3× 155mm (Fr. 1915 short) | arr 3/24
+155th Artillery Regt HQ  (155)  ID=b | N | arr 3/35
+    I/155 Artillery Bn II/155 Artillery Bn  () [d]  3 x 15cm Med Gun | arr 3/32
+    III/155 Artillery Bn  (III)  3 × 15cm Gun | arr 2/34
+364 Artillery Bty  (364)  ID=W | 1 x 17cm Gun | arr 1/74
+523 Coastal Def Arty Bn  (523)  ID=V | 3x 155mm (Fr. 1915 short) | arr 3/24
+526 Coastal Def Arty Bn  (526)  3 x 10.5cm Med Gun | arr 3/71
+529 Coastal Def Arty Bn  (529)  3x 155mm (Fr. 1915 short) | arr 2/24
+532 Coastal DefArty Bn  (532)  ID=V | 3 x 155mm (Fr. 1915 short) | arr 2/24
+533 Coastal Def Arty Bn  (533)  3 × 10.5cm Med Gun | arr 1/66
+557 Artillery Bn  (557)  ID=V | 3 x 15cm Med Field Howitzer | arr 2/36
+1/722 Artillery Bty  (1/722*)  ID=W | 1 × 15cm Med Field Howitzer | arr 2/68
+1/902 Artillery Bty  (1/902)  ID=W | 1x 21cm Howitzer | arr 3/40
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ist Afrika Arty Regt HQ	1 Afr		N	2/80		
+0	2nd Afrika Arty Regt HO	2 Afr		N	3/97	a	
+0	Artillery Command 104 HQ	ArKo 104		N	3/31	b	
+1	149 Coastal Def Arty Bn	149		3 x 10.5cm Med Gun	1/45		Artillery Command 104 HQ
+1	362 Artillery Bty	362		1 x 17cm Gun	2/30		Artillery Command 104 HQ
+1	408 SP Artillery Bn	408		3 x 15cm SP Gun	2/30		Artillery Command 104 HQ
+1	528 Artillery Bn	528		3× 155mm (Fr. 1915 short)	3/24		Artillery Command 104 HQ
+0	155th Artillery Regt HQ	155	b	N	3/35		
+1	I/155 Artillery Bn II/155 Artillery Bn			3 x 15cm Med Gun	3/32	d	155th Artillery Regt HQ
+1	III/155 Artillery Bn	III		3 × 15cm Gun	2/34		155th Artillery Regt HQ
+0	364 Artillery Bty	364	W	1 x 17cm Gun	1/74		
+0	523 Coastal Def Arty Bn	523	V	3x 155mm (Fr. 1915 short)	3/24		
+0	526 Coastal Def Arty Bn	526		3 x 10.5cm Med Gun	3/71		
+0	529 Coastal Def Arty Bn	529		3x 155mm (Fr. 1915 short)	2/24		
+0	532 Coastal DefArty Bn	532	V	3 x 155mm (Fr. 1915 short)	2/24		
+0	533 Coastal Def Arty Bn	533		3 × 10.5cm Med Gun	1/66		
+0	557 Artillery Bn	557	V	3 x 15cm Med Field Howitzer	2/36		
+0	1/722 Artillery Bty	1/722*	W	1 × 15cm Med Field Howitzer	2/68		
+0	1/902 Artillery Bty	1/902	W	1x 21cm Howitzer	3/40		
+
+===== PAGE 166 =====
+# Formation: Unassigned Anti-Air Umits (a)
+# Basic Morale: +1
+# indent levels (unit-x centers): [0.199]
+## Tree
+30th Flak Battery  (30)  ID=dd | 1x Heavy AA | arr 1/39
+I1/5 Flak Bn  (11/5)  3x Heavy AA | arr 2/93
+I/6 Flak Bn  (1/6)  ID=CC | 4X Heavy AA | arr 1/68
+I1/12 Flak Bn  (11/12)  ID=aa | 8x Light AA | arr 2/92
+I/18 Flak Bn  (I/18)  ID=CC | 4X Heavy AA | arr 3/52
+11/25 Flak Bn  (11/25) [b]  ID=cc | 4x Heavy AA | arr 2/59
+1/43 Flak Bn  (1/43)  ID=aa | 8x Light AA | arr 1/67
+II/46 Flak Bn  (I1/46)  ID=bb | 6 x Light AA | arr 2/88
+I/53 Flak Bn  (1/53)  ID=bb | 6x Light AA | arr 2/59
+1/54 Flak Bn  (1/54)  ID=bb | 6x Light AA | arr 2/89
+114 Flak Bn  (114)  ID=dd | 2x Heavy AA | arr 2/66
+192 Flak Bn  (192)  ID=bb | 5 x Light AA | arr 1/61
+211 Flak Bn  (211)  ID=aa | 12 x Light AA | arr 3/89
+243 Flak Bn  (243)  ID=aa | 12x Light AA | arr 1/91
+329 Flak Bn  (329)  ID=aa | 8x Light AA | arr 3/91
+358 Flak Bn  (358)  ID=bb | 6X Light AA | arr 2/92
+368 Heavy Flak Bn  (368)  3X Heavy AA | arr 3/60
+442 Flak Bn  (442)  ID=aa | 10 x Light AA | arr 3/66
+612 Army Flak Bn  (612)  ID=aa | 8 × Light AA | arr 1/58
+617 Army Flak Bn  (617)  ID=aa | 12 x Light AA | arr 2/70
+841 Light Flak Bn  (841 Lt)  ID=bb | 6x Light AA | arr 1/61
+860 Flak Bn  (860)  ID=aa | 8 x Light AA | arr 3/92
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	30th Flak Battery	30	dd	1x Heavy AA	1/39		
+0	I1/5 Flak Bn	11/5		3x Heavy AA	2/93		
+0	I/6 Flak Bn	1/6	CC	4X Heavy AA	1/68		
+0	I1/12 Flak Bn	11/12	aa	8x Light AA	2/92		
+0	I/18 Flak Bn	I/18	CC	4X Heavy AA	3/52		
+0	11/25 Flak Bn	11/25	cc	4x Heavy AA	2/59	b	
+0	1/43 Flak Bn	1/43	aa	8x Light AA	1/67		
+0	II/46 Flak Bn	I1/46	bb	6 x Light AA	2/88		
+0	I/53 Flak Bn	1/53	bb	6x Light AA	2/59		
+0	1/54 Flak Bn	1/54	bb	6x Light AA	2/89		
+0	114 Flak Bn	114	dd	2x Heavy AA	2/66		
+0	192 Flak Bn	192	bb	5 x Light AA	1/61		
+0	211 Flak Bn	211	aa	12 x Light AA	3/89		
+0	243 Flak Bn	243	aa	12x Light AA	1/91		
+0	329 Flak Bn	329	aa	8x Light AA	3/91		
+0	358 Flak Bn	358	bb	6X Light AA	2/92		
+0	368 Heavy Flak Bn	368		3X Heavy AA	3/60		
+0	442 Flak Bn	442	aa	10 x Light AA	3/66		
+0	612 Army Flak Bn	612	aa	8 × Light AA	1/58		
+0	617 Army Flak Bn	617	aa	12 x Light AA	2/70		
+0	841 Light Flak Bn	841 Lt	bb	6x Light AA	1/61		
+0	860 Flak Bn	860	aa	8 x Light AA	3/92		
+
+# Formation: 90th Light (The Afrika") Division (a)
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.162, 0.203, 0.219, 0.232]
+## Tree
+    90th Light Div HQ  (90 Le)  ID=b | N | arr 2/44
+        155th Schutzen Regt HQ  (155)  ID=b | arr 3/32
+            1/155 Schutzen Bn  (1/155)  ID=k | N | arr 3/32
+            II/155 Schutzen Bn  (11/155)  N | arr 3/32
+            1117155 Schutzen Bn  (IH/155)  ID=k | N | arr 3/32
+b 361st Afrika Regt HQ  (361 Af)  ID=b | N | arr 1/37
+            I/361 Bn  (1/361)  U@3 | arr 1/37
+            II/361 Bn  (II/361)  U@6 | arr 1/37
+            361 ArtilleryBn  (361/361)  3 x 10.5cm Med Gun | arr 1/37
+        111/255 Schutzen Bn  (I11/255)  N | arr 3/49
+        Щ1/347 Schutzen Bn  (111/347)  N | arr 3/49
+        190th Artillery Regt  (190)  3 × 21cm How, 3 × 10.5cm Med Gun | arr 2/82
+        613 Flak Bn  (613)  3x 7.5cm Lt Gun, 3 x Light AA | arr 1/37
+        190th Panzerjaeger Bn  (190)  4×5cm | arr 1/91
+        580th Aufklarungs Bn  (580)  ID=ee | U@6 | arr 1/43
+        900th Pioneer Bn  (900)  ID=88 | N | arr 1/34
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+1	90th Light Div HQ	90 Le	b	N	2/44		
+2	155th Schutzen Regt HQ	155	b		3/32		90th Light Div HQ
+3	1/155 Schutzen Bn	1/155	k	N	3/32		155th Schutzen Regt HQ
+3	II/155 Schutzen Bn	11/155		N	3/32		155th Schutzen Regt HQ
+3	1117155 Schutzen Bn	IH/155	k	N	3/32		155th Schutzen Regt HQ
+0	b 361st Afrika Regt HQ	361 Af	b	N	1/37		
+3	I/361 Bn	1/361		U@3	1/37		b 361st Afrika Regt HQ
+3	II/361 Bn	II/361		U@6	1/37		b 361st Afrika Regt HQ
+3	361 ArtilleryBn	361/361		3 x 10.5cm Med Gun	1/37		b 361st Afrika Regt HQ
+2	111/255 Schutzen Bn	I11/255		N	3/49		b 361st Afrika Regt HQ
+2	Щ1/347 Schutzen Bn	111/347		N	3/49		b 361st Afrika Regt HQ
+2	190th Artillery Regt	190		3 × 21cm How, 3 × 10.5cm Med Gun	2/82		b 361st Afrika Regt HQ
+2	613 Flak Bn	613		3x 7.5cm Lt Gun, 3 x Light AA	1/37		b 361st Afrika Regt HQ
+2	190th Panzerjaeger Bn	190		4×5cm	1/91		b 361st Afrika Regt HQ
+2	580th Aufklarungs Bn	580	ee	U@6	1/43		b 361st Afrika Regt HQ
+2	900th Pioneer Bn	900	88	N	1/34		b 361st Afrika Regt HQ
+

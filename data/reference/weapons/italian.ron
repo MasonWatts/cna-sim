@@ -1,0 +1,40 @@
+// data/reference/weapons/italian.ron
+//
+// Italian Tank & Gun Characteristics Chart (rules §4.48) — DATA.
+// Human-readable companion: docs/source-materials/tank-gun-characteristics-italian.md
+//
+// Map keyed by weapon-system name -> WeaponsSystem. Absent rating = "-"/not-applicable.
+// `kind` (Tank/Artillery/AntiTank/LightAntiAir/HeavyAntiAir/Reconnaissance) drives
+// combined arms (§15.4) and barrage class (§12.6).
+// breakdown_adjustment (BAR): Italian chart uses right (positive) or none (Some(0));
+// omitted/None = not applicable.
+{
+    // --- Tank Weapon Systems ---
+    "CV 33 (L3/35)": ( kind: Tank, cpa: Some(25), anti_air: Some((value: 0)), anti_armor: Some((value: 0)), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 1), def: (value: 2))), fuel_rate: Some(1), breakdown_adjustment: Some(2) ),
+    "L 6/40":        ( kind: Tank, cpa: Some(25), anti_air: Some((value: 0)), anti_armor: Some((value: 1)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 2), def: (value: 2))), fuel_rate: Some(2), breakdown_adjustment: Some(0) ),
+    "M 11/39":       ( kind: Tank, cpa: Some(20), anti_air: Some((value: 1)), anti_armor: Some((value: 2)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 3), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(1) ),
+    "M 13/40":       ( kind: Tank, cpa: Some(20), anti_air: Some((value: 1)), anti_armor: Some((value: 3)), armor_protection: Some((value: 3)), close_assault: Some((off: (value: 3), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(1) ),
+    "M 14/41":       ( kind: Tank, cpa: Some(20), anti_air: Some((value: 1)), anti_armor: Some((value: 3)), armor_protection: Some((value: 3)), close_assault: Some((off: (value: 3), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(0) ),
+
+    // --- Gun Weapon Systems ---
+    "65/17 Gun":            ( kind: Artillery, cpa: Some(15), barrage: Some((value: 5)),  anti_armor: Some((value: 0)), vulnerability: Some((value: 3)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "75/18 Gun-Howitzer":   ( kind: Artillery, cpa: Some(15), barrage: Some((value: 6)),  anti_armor: Some((value: 0)), vulnerability: Some((value: 5)), close_assault: Some((off: (value: 1), def: (value: 0))), fuel_rate: Some(1) ),
+    "75/18 Gun (Semovente)":( kind: Artillery, cpa: Some(20), barrage: Some((value: 6)),  anti_armor: Some((value: 6)), vulnerability: Some((value: 4)), armor_protection: Some((value: 3)), close_assault: Some((off: (value: 3), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(1), notes: ["Semovente self-propelled 75/18 gun"] ),
+    "75/27 Gun":            ( kind: Artillery, cpa: Some(15), barrage: Some((value: 6)),  anti_armor: Some((value: 2)), vulnerability: Some((value: 4)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1), notes: ["anti-armor is 0 until the first Operations Stage of Jan 1942 (Game-Turn 63)"] ),
+    "100/17 Howitzer":      ( kind: Artillery, cpa: Some(15), barrage: Some((value: 8)),  anti_armor: Some((value: 0)), vulnerability: Some((value: 5)), close_assault: Some((off: (value: 1), def: (value: 0))), fuel_rate: Some(1) ),
+    "105/28 Gun":           ( kind: Artillery, cpa: Some(15), barrage: Some((value: 9)),  anti_armor: Some((value: 1)), vulnerability: Some((value: 7)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "149/13 Howitzer":      ( kind: Artillery, cpa: Some(15), barrage: Some((value: 15)), anti_armor: Some((value: 0)), vulnerability: Some((value: 5)), close_assault: Some((off: (value: 1), def: (value: 0))), fuel_rate: Some(1) ),
+    "ParaArt":              ( kind: Artillery, cpa: Some(15), barrage: Some((value: 2)),  anti_armor: Some((value: 2)), vulnerability: Some((value: 1)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1), notes: ["81mm mortars + light anti-tank; the only Italian gun system that may be airdropped"] ),
+    "149mm Vichy French":   ( kind: Artillery, cpa: Some(15), barrage: Some((value: 10)), anti_armor: Some((value: 1)), vulnerability: Some((value: 5)), close_assault: Some((off: (value: 0), def: (value: 1))), fuel_rate: Some(1) ),
+    "155mm Rimhailo (Fr.)": ( kind: Artillery, cpa: Some(15), barrage: Some((value: 13)), anti_armor: Some((value: 0)), vulnerability: Some((value: 3)), close_assault: Some((off: (value: 0), def: (value: 0))), fuel_rate: Some(1) ),
+
+    // --- Anti-tank ---
+    "47/32 Mod. 37": ( kind: AntiTank, cpa: Some(15), anti_armor: Some((value: 4)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+
+    // --- Anti-air ---
+    "Light AA (20mm M/35 Breda)": ( kind: LightAntiAir, cpa: Some(15), anti_air: Some((value: 1)), anti_armor: Some((value: 2)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1, parenthesized: true), def: (value: 1, parenthesized: true))), fuel_rate: Some(1) ),
+    "T Light AA":                 ( kind: LightAntiAir, cpa: Some(0),  anti_air: Some((value: 1)), anti_armor: Some((value: 2)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1, parenthesized: true), def: (value: 1, parenthesized: true))), fuel_rate: Some(1), notes: ["0+ CPA (motorizable; no organic transport)"] ),
+    "Heavy AA (75/46 Mod. 34)":   ( kind: HeavyAntiAir, cpa: Some(15), anti_air: Some((value: 2)), anti_armor: Some((value: 5, parenthesized: true)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1, parenthesized: true), def: (value: 1, parenthesized: true))), fuel_rate: Some(1) ),
+    "T Heavy AA":                 ( kind: HeavyAntiAir, cpa: Some(0),  anti_air: Some((value: 2)), anti_armor: Some((value: 5, parenthesized: true)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1, parenthesized: true), def: (value: 1, parenthesized: true))), fuel_rate: Some(0), notes: ["0+ CPA (motorizable; no organic transport)"] ),
+    "Heavy AA (90/53)":           ( kind: HeavyAntiAir, cpa: Some(15), anti_air: Some((value: 3)), anti_armor: Some((value: 9)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1, parenthesized: true), def: (value: 1, parenthesized: true))), fuel_rate: Some(1) ),
+}

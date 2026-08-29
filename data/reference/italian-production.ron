@@ -1,0 +1,31 @@
+// Italian Production Chart (§20.66) — Italian Replacement Point availability. `total` = lifetime
+// points (the sum where two Numbers are shown); `tonnage` = Axis Naval Convoy tons per point;
+// `tiers` = phased per-Game-Turn maxima over "Dates" windows (period: GameTurn default, Month for
+// the "†" note). Planned points arrive two Game-Turns later.
+// Notes: * Armored Recce/Car are all Autobelinda 41 (ID "vv"). ‡ 149mm/155mm (Fr.) are in the
+// Tunis box, available GT39 with no delay, moved by land / Axis coastal shipping, ≤2 called up
+// per Game-Turn. There are no M 13/39 tank replacements. Transcription in replacements.md.
+(
+    items: [
+        (item: "Infantry",                total: 1200, tonnage: 30, tiers: [(max: 5, from_gt: 5, to_gt: Some(8)), (max: 10, from_gt: 9, to_gt: Some(24)), (max: 25, from_gt: 25)]),
+        (item: "Armored Reconnaissance",  total: 25,   tonnage: 59, max: 1, first_gt: 31),
+        (item: "Light AA",                total: 60,   tonnage: 6,  tiers: [(max: 2, from_gt: 2, to_gt: Some(24)), (max: 1, from_gt: 25)]),
+        (item: "Heavy AA (75/46)",        total: 30,   tonnage: 59, tiers: [(max: 1, from_gt: 10, to_gt: Some(24)), (max: 1, from_gt: 25)]),
+        (item: "Heavy AA (90/53)",        total: 10,   tonnage: 92, max: 1, first_gt: 73),
+        (item: "47/32 Mod. 37",           total: 33,   tonnage: 9,  tiers: [(max: 2, from_gt: 10, to_gt: Some(24)), (max: 1, from_gt: 25)]),
+        (item: "65/17 Gun",               total: 20,   tonnage: 3,  tiers: [(max: 1, from_gt: 9, to_gt: Some(24)), (max: 1, from_gt: 25)]),
+        (item: "75/27 Gun",               total: 38,   tonnage: 12, tiers: [(max: 2, from_gt: 9, to_gt: Some(24)), (max: 2, from_gt: 25)]),
+        (item: "75/18 Howitzer",          total: 11,   tonnage: 12, tiers: [(max: 1, from_gt: 9, to_gt: Some(24)), (max: 1, from_gt: 25, period: Month)]),
+        (item: "100/17 Howitzer",         total: 32,   tonnage: 17, tiers: [(max: 1, from_gt: 9, to_gt: Some(24)), (max: 2, from_gt: 25)]),
+        (item: "105/28 Gun",              total: 9,    tonnage: 48, tiers: [(max: 1, from_gt: 9, to_gt: Some(24), period: Month), (max: 1, from_gt: 25, period: Month)]),
+        (item: "Semovente 75/18 SP Gun",  total: 8,    tonnage: 60, max: 1, first_gt: 65, period: Month),
+        (item: "149/13 Howitzer",         total: 6,    tonnage: 84, max: 1, first_gt: 25, period: Month),
+        (item: "ParaArt",                 total: 4,    tonnage: 3,  max: 2, first_gt: 96),
+        (item: "149mm (Fr.)",             total: 10,   tonnage: 50, max: 2, first_gt: 39),
+        (item: "155mm Rimhailo (Fr.)",    total: 10,   tonnage: 53, max: 2, first_gt: 39),
+        (item: "CV L.3 or CV 33/35",      total: 68,   tonnage: 16, max: 5, first_gt: 3),
+        (item: "CA L6/40",                total: 26,   tonnage: 28, tiers: [(max: 1, from_gt: 33, to_gt: Some(68), period: Month), (max: 2, from_gt: 69)]),
+        (item: "CA M 13/40",              total: 49,   tonnage: 70, max: 2, first_gt: 25),
+        (item: "CA M 14/41",              total: 61,   tonnage: 73, max: 3, first_gt: 59),
+    ],
+)

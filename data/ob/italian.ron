@@ -1,0 +1,99 @@
+// data/ob/italian.ron — Italian Order of Battle (§4.44b). Reference data (D12): the full
+// campaign roster; scenarios select + place formations from it.
+//
+// FIRST CUT: three semi-motorized infantry divisions to validate the schema. 64 Catanzaro
+// is transcribed from its §4.44b sheet (p153); 62 Marmarica and 63 Cirene are the standard
+// semi-motorized template (D13, abstracted — no §4.44b sheet). The remaining ~31 Italian
+// formations will be batch-converted from docs/source-materials/italian-ob-4.44b.DRAFT.txt.
+//
+// Notes: line-infantry battalion ID codes ("u") and weapon-name strings are provisional —
+// verify against the §4.46 Characteristics / §4.47-49 weapons charts when batch-encoding.
+(
+    formations: [
+        (
+            name: "64 Catanzaro Division",
+            org_size: Division,
+            basic_morale: -1,
+            units: [
+                (name: "64th Catanzaro Div HQ", abbr: "64 Cat", id: "b",   comp: Organic(Normal),                        org_size: Division,       parent: ""),
+                (name: "141st Infantry Regt HQ", abbr: "141",    id: "h",   comp: Weapons([("65/17 Gun", 1)]),            org_size: StandardBrigade, parent: "64th Catanzaro Div HQ"),
+                (name: "I/141 Infantry Bn",      abbr: "1/141",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "141st Infantry Regt HQ"),
+                (name: "II/141 Infantry Bn",     abbr: "2/141",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "141st Infantry Regt HQ"),
+                (name: "III/141 Infantry Bn",    abbr: "3/141",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "141st Infantry Regt HQ"),
+                (name: "142nd Infantry Regt HQ", abbr: "142",    id: "h",   comp: Weapons([("65/17 Gun", 1)]),            org_size: StandardBrigade, parent: "64th Catanzaro Div HQ"),
+                (name: "I/142 Infantry Bn",      abbr: "1/142",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "142nd Infantry Regt HQ"),
+                (name: "II/142 Infantry Bn",     abbr: "2/142",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "142nd Infantry Regt HQ"),
+                (name: "III/142 Infantry Bn",    abbr: "3/142",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "142nd Infantry Regt HQ"),
+                (name: "64th Machinegun Bn",     abbr: "64 MG",  id: "bb",  comp: Organic(Normal),                        org_size: Battalion,      parent: "64th Catanzaro Div HQ"),
+                (name: "64th Anti-tank Coy",     abbr: "64 AT",  id: "rr",  comp: Weapons([("47/32 Mod. 37", 2)]),            org_size: Company,        parent: "64th Catanzaro Div HQ"),
+                (name: "203rd Artillery Regt",   abbr: "203",    id: "kk",  comp: Weapons([("75/18 Gun-Howitzer", 6), ("105/28 Gun", 3), ("Light AA (20mm M/35 Breda)", 3)]), org_size: StandardBrigade, parent: "64th Catanzaro Div HQ"),
+                (name: "64th Engineer Bn",       abbr: "64 Eng", id: "bbb", comp: Organic(Normal),                        org_size: Battalion,      parent: "64th Catanzaro Div HQ"),
+            ],
+        ),
+        // 62 Marmarica — abstracted (D13); standard semi-motorized template.
+        (
+            name: "62 Marmarica Division",
+            org_size: Division,
+            basic_morale: -1,
+            abstracted: true,
+            units: [
+                (name: "62nd Marmarica Div HQ", abbr: "62 Mar", id: "b",   comp: Organic(Normal),                        org_size: Division,       parent: ""),
+                (name: "115th Infantry Regt HQ", abbr: "115",   id: "h",   comp: Weapons([("65/17 Gun", 1)]),            org_size: StandardBrigade, parent: "62nd Marmarica Div HQ"),
+                (name: "I/115 Infantry Bn",      abbr: "1/115",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "115th Infantry Regt HQ"),
+                (name: "II/115 Infantry Bn",     abbr: "2/115",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "115th Infantry Regt HQ"),
+                (name: "III/115 Infantry Bn",    abbr: "3/115",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "115th Infantry Regt HQ"),
+                (name: "116th Infantry Regt HQ", abbr: "116",   id: "h",   comp: Weapons([("65/17 Gun", 1)]),            org_size: StandardBrigade, parent: "62nd Marmarica Div HQ"),
+                (name: "I/116 Infantry Bn",      abbr: "1/116",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "116th Infantry Regt HQ"),
+                (name: "II/116 Infantry Bn",     abbr: "2/116",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "116th Infantry Regt HQ"),
+                (name: "III/116 Infantry Bn",    abbr: "3/116",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "116th Infantry Regt HQ"),
+                (name: "62nd Machinegun Bn",     abbr: "62 MG",  id: "bb",  comp: Organic(Normal),                        org_size: Battalion,      parent: "62nd Marmarica Div HQ"),
+                (name: "62nd Anti-tank Coy",     abbr: "62 AT",  id: "rr",  comp: Weapons([("47/32 Mod. 37", 2)]),            org_size: Company,        parent: "62nd Marmarica Div HQ"),
+                (name: "44th Artillery Regt",    abbr: "44",     id: "kk",  comp: Weapons([("75/27 Gun", 6), ("100/17 Howitzer", 3), ("Heavy AA (75/46 Mod. 34)", 3)]), org_size: StandardBrigade, parent: "62nd Marmarica Div HQ"),
+                (name: "62nd Engineer Bn",       abbr: "62 Eng", id: "bbb", comp: Organic(Normal),                        org_size: Battalion,      parent: "62nd Marmarica Div HQ"),
+            ],
+        ),
+        // 63 Cirene — abstracted (D13); standard semi-motorized template.
+        (
+            name: "63 Cirene Division",
+            org_size: Division,
+            basic_morale: -1,
+            abstracted: true,
+            units: [
+                (name: "63rd Cirene Div HQ",     abbr: "63 Cir", id: "b",   comp: Organic(Normal),                        org_size: Division,       parent: ""),
+                (name: "157th Infantry Regt HQ", abbr: "157",    id: "h",   comp: Weapons([("65/17 Gun", 1)]),            org_size: StandardBrigade, parent: "63rd Cirene Div HQ"),
+                (name: "I/157 Infantry Bn",      abbr: "1/157",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "157th Infantry Regt HQ"),
+                (name: "II/157 Infantry Bn",     abbr: "2/157",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "157th Infantry Regt HQ"),
+                (name: "III/157 Infantry Bn",    abbr: "3/157",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "157th Infantry Regt HQ"),
+                (name: "158th Infantry Regt HQ", abbr: "158",    id: "h",   comp: Weapons([("65/17 Gun", 1)]),            org_size: StandardBrigade, parent: "63rd Cirene Div HQ"),
+                (name: "I/158 Infantry Bn",      abbr: "1/158",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "158th Infantry Regt HQ"),
+                (name: "II/158 Infantry Bn",     abbr: "2/158",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "158th Infantry Regt HQ"),
+                (name: "III/158 Infantry Bn",    abbr: "3/158",  id: "u",   comp: Organic(Normal),                        org_size: Battalion,      parent: "158th Infantry Regt HQ"),
+                (name: "63rd Machinegun Bn",     abbr: "63 MG",  id: "bb",  comp: Organic(Normal),                        org_size: Battalion,      parent: "63rd Cirene Div HQ"),
+                (name: "63rd Anti-tank Coy",     abbr: "63 AT",  id: "rr",  comp: Weapons([("47/32 Mod. 37", 2)]),            org_size: Company,        parent: "63rd Cirene Div HQ"),
+                (name: "45th Artillery Regt",    abbr: "45",     id: "kk",  comp: Weapons([("75/27 Gun", 6), ("100/17 Howitzer", 3), ("Heavy AA (75/46 Mod. 34)", 3)]), org_size: StandardBrigade, parent: "63rd Cirene Div HQ"),
+                (name: "63rd Engineer Bn",       abbr: "63 Eng", id: "bbb", comp: Organic(Normal),                        org_size: Battalion,      parent: "63rd Cirene Div HQ"),
+            ],
+        ),
+        (
+            name: "132 Ariete Armored Division",
+            org_size: Division,
+            basic_morale: 1,
+            units: [
+                (name: "Ariete (132nd) Div HQE", abbr: "Ariete", id: "d", comp: Weapons([("M 13/40", 1)]), org_size: Division, arrival: Turn(game_turn: 18, stage: 1), parent: ""),
+                (name: "132 Regt Corazzata HQ", abbr: "132 RC", id: "d", comp: Weapons([("M 13/40", 1)]), org_size: StandardBrigade, arrival: Turn(game_turn: 18, stage: 1), parent: "Ariete (132nd) Div HQE"),
+                (name: "VII(M) Tank Bn", abbr: "VII(M)", id: "l", comp: Weapons([("M 13/40", 7)]), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "132 Regt Corazzata HQ"),
+                (name: "VIII(M) Tank Bn", abbr: "VIII(M)", id: "l", comp: Weapons([("M 13/40", 7)]), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "132 Regt Corazzata HQ"),
+                (name: "IX(M) Tank Bn", abbr: "IX(M)", id: "l", comp: Weapons([("M 13/40", 7)]), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "132 Regt Corazzata HQ"),
+                (name: "8th Bersaglieri Regt HQ", abbr: "8Brs", id: "c", comp: Organic(Normal), org_size: StandardBrigade, arrival: Turn(game_turn: 18, stage: 1), parent: "Ariete (132nd) Div HQE"),
+                (name: "3rd Bersaglieri Mitrg Bn", abbr: "3/8 Brs", id: "n", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "8th Bersaglieri Regt HQ"),
+                (name: "5th Bersaglieri Mitrg Bn", abbr: "5/8 Brs", id: "t", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "8th Bersaglieri Regt HQ"),
+                (name: "12th Bersaglieri Mitrg Bn", abbr: "12/8 Brs", id: "t", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "8th Bersaglieri Regt HQ"),
+                (name: "2nd Anti-tank Bn", abbr: "2", id: "qq", comp: Weapons([("47/32 Mod. 37", 6)]), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "Ariete (132nd) Div HQE"),
+                (name: "RECo 'Nizza Cavalleria'", abbr: "NizCav", id: "ww", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "Ariete (132nd) Div HQE"),
+                (name: "132nd Artillery Regt", abbr: "132", id: "kk", comp: Weapons([("75/27 Gun", 3), ("75/18 Gun-Howitzer", 3), ("105/28 Gun", 3), ("Light AA (20mm M/35 Breda)", 6)]), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "Ariete (132nd) Div HQE"),
+                (name: "I(L) Tank Bn", abbr: "I(L)", id: "k", comp: Weapons([("CV 33 (L3/35)", 1)]), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "Ariete (132nd) Div HQE"),
+                (name: "II(L) Tank Bn", abbr: "II(L)", id: "k", comp: Weapons([("CV 33 (L3/35)", 1)]), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "Ariete (132nd) Div HQE"),
+            ],
+        ),
+    ],
+)

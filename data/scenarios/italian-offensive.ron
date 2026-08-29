@@ -1,0 +1,104 @@
+// data/scenarios/italian-offensive.ron
+//
+// Scenario 1: "The Italian Offensive" (rules §60), Sept 1940 — section-C order of battle.
+// FIRST CUT (design Option A): the forward forces at their historical hexes with
+// SIMPLIFIED compositions — infantry formations as Organic TOE, tank/artillery units as
+// representative weapon groups. Full division org (attachments), trucks, air, supply, and
+// the rear (section D/E) forces are deferred. Hexes are from §60.31 (Axis) / §60.41 (CW).
+(
+    name: "The Italian Offensive",
+    game_turn: 1,
+    first_turn_initiative: Some(Axis),
+    rommel_on_map: false,
+    // Divisions deployed from the Italian OB (§4.44b) as full hierarchies (D12). Cirene &
+    // Marmarica are the abstracted template divisions (D13). Hexes per §60.31.
+    placements: [
+        (nationality: Italian, formation: "64 Catanzaro Division", hex: "C4707"),
+        (nationality: Italian, formation: "62 Marmarica Division",  hex: "C3918"),
+        (nationality: Italian, formation: "63 Cirene Division",     hex: "C4120"),
+        // Commonwealth 7th Armoured Division (§60.41): main body at D3612, with the
+        // covering-force battalions detached forward to their screen hexes (7Spt/7 & 7/7).
+        (nationality: Commonwealth, formation: "7th Armored Division", hex: "D3612", unit_hexes: [
+            ("1st KRRC",           "C3922"),
+            ("4th Ryl Horse Arty", "C3922"),
+            ("3rd Ryl Horse Arty", "C3721"),
+            ("1st Royal Tank Regt", "C3520"),
+            ("2nd Rifle Brigade",  "C3320"),
+            ("11th Hussars",       "C3020"),
+        ]),
+        // 4th Indian Division (§60.41): main body at D3615, 31st Field Arty detached forward
+        // to C4131. (7th Indian Bde and 1st Field Arty arrive later per the OB schedule.)
+        (nationality: Commonwealth, formation: "4th Indian Division", hex: "D3615", unit_hexes: [
+            ("31st Field Artillery Regt", "C4131"),
+        ]),
+    ],
+    units: [
+        // ---- Italian border force (§60.31); the rest remain flat pending OB verification ----
+        (nationality: Italian, id_code: "p", name: "1 CCNN Division",   org_size: Division, hex: "C4218", composition: Organic(current_toe: 12), trucks: (light: 10, medium: 25, heavy: 10)),
+        (nationality: Italian, id_code: "p", name: "1 Libyan Division",  org_size: Division, hex: "C4020", composition: Organic(current_toe: 12), trucks: (light: 10, medium: 15)),
+        (nationality: Italian, id_code: "p", name: "2 Libyan Division",  org_size: Division, hex: "C3920", composition: Organic(current_toe: 12), trucks: (light: 15, medium: 15)),
+        (nationality: Italian, id_code: "k", name: "Aresca Tank Regiment", org_size: StandardBrigade, hex: "C3919", composition: Weapons(groups: [(system: "M 11/39", count: 6)]), trucks: (medium: 5, heavy: 5)),
+        // Maletti Group (Raggruppamento Maletti) — an ad-hoc brigade battlegroup, modeled
+        // with org hierarchy: a HQ counter on the map plus attached tank and Libyan infantry
+        // battalions. Demonstrates formation CPA (§6.15) and combined-arms close assault.
+        (nationality: Italian, id_code: "p", name: "Maletti Group", org_size: StandardBrigade, is_hq: true, hex: "C3617", composition: Organic(current_toe: 1), trucks: (light: 5, medium: 30, heavy: 5)),
+        (nationality: Italian, id_code: "k", name: "Maletti Tank Bn",     org_size: Battalion, composition: Weapons(groups: [(system: "M 11/39", count: 6)]), attached_to: "Maletti Group"),
+        (nationality: Italian, id_code: "p", name: "1st Libyan Battalion", org_size: Battalion, composition: Organic(current_toe: 5), attached_to: "Maletti Group"),
+        (nationality: Italian, id_code: "p", name: "2nd Libyan Battalion", org_size: Battalion, composition: Organic(current_toe: 5), attached_to: "Maletti Group"),
+        (nationality: Italian, id_code: "p", name: "4 CCNN Division", org_size: Division, hex: "C4507", composition: Organic(current_toe: 12), trucks: (light: 10, medium: 25, heavy: 10)),
+        (nationality: Italian, id_code: "p", name: "Bardia Garrison", org_size: StandardBrigade, hex: "C4321", composition: Organic(current_toe: 6), trucks: (medium: 20)),
+        (nationality: Italian, id_code: "p", name: "Tobruk Garrison", org_size: StandardBrigade, hex: "C4807", composition: Organic(current_toe: 4), trucks: (medium: 5)),
+
+        // ---- Commonwealth (§60.41): 7th Armoured's covering force is now deployed from the
+        //      OB via the placement above. These remaining units are NOT part of 7th Armoured
+        //      (22nd Guards Bde / army artillery / a detached 4th Indian regiment) and stay
+        //      flat pending their own OB promotion. Hexes per §60.41. ----
+        (nationality: Commonwealth, id_code: "h", name: "2nd Scots Guards", org_size: Battalion, hex: "C4131", composition: Organic(current_toe: 4), basic_morale: 1, trucks: (medium: 10)),
+        (nationality: Commonwealth, id_code: "h", name: "1st French Motor Marines", org_size: Battalion, hex: "C3926", composition: Organic(current_toe: 2), trucks: (medium: 2)),
+        (nationality: Commonwealth, id_code: "h", name: "3rd Coldstream Guards", org_size: Battalion, hex: "C3922", composition: Organic(current_toe: 4), basic_morale: 1, trucks: (medium: 15, heavy: 5)),
+        (nationality: Commonwealth, id_code: "x", name: "7th Medium Artillery Regt", org_size: Battalion, hex: "C3922", composition: Weapons(groups: [(system: "4.5\" Gun", count: 3)])),
+        (nationality: Commonwealth, id_code: "h", name: "1st Royal Northumberland Fusiliers", org_size: Battalion, hex: "C3721", composition: Organic(current_toe: 4), basic_morale: 1, trucks: (light: 5, medium: 5)),
+    ],
+    // Initial Supply for the full Logistics Game (§60.34 Axis / §60.44 Commonwealth), in the
+    // four commodities (Ammo/Fuel/Stores/Water Points). Fixed-location dumps below; the
+    // player-choice dumps (Dump 1/2/I + dummies) are in `supply_dump_choices`, placed later
+    // against their constraints. Benghazi is A4827 (map A; user-confirmed).
+    supply_dumps: [
+        // --- Axis (§60.34) ---
+        (side: Axis, at: "C4807", ammo: 200, fuel: 2000, stores: 500),   // Tobruk
+        (side: Axis, at: "C4321", ammo: 100, fuel: 1000, stores: 200),   // Bardia
+        (side: Axis, at: "A4827", ammo: 100, fuel: 250,  stores: 100),   // Benghazi
+        (side: Axis, at: "B5925", ammo: 0,   fuel: 250,  stores: 50),    // Derna
+        (side: Axis, at: "Tripoli", ammo: 250, fuel: 5000, stores: 250), // Tripoli box (off-map)
+        (side: Axis, at: "C0716", ammo: 100, fuel: 50, stores: 50),
+        // --- Commonwealth (§60.44) ---
+        (side: Commonwealth, at: "D3714", ammo: 1000, fuel: 3000, stores: 4000), // Mersa Matruh
+        (side: Commonwealth, at: "C4131", ammo: 250,  fuel: 500,  stores: 100),  // Sidi Barrani
+        // Unlimited supplies in Cairo & Alexandria (§60.44) — modeled as very large dumps.
+        (side: Commonwealth, at: "E1430", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Cairo
+        (side: Commonwealth, at: "E3613", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Alexandria
+    ],
+    // Player-choice dumps (§60.34/§60.44 asterisked). Axis Dump 1/2 + 2 dummies: section C in
+    // Libya, ≥5 hexes from any Commonwealth unit. CW Dump I + 1 dummy: in Egypt on map C or D
+    // (east of Sollum C4021, west of section E).
+    supply_dump_choices: [
+        (side: Axis, label: "Dump 1", count: 1, ammo: 1000, fuel: 1500, stores: 1500, water: 200,
+            constraint: (section: Some('C'), not_within_of_enemy: Some(4))),
+        (side: Axis, label: "Dump 2", count: 1, ammo: 1000, fuel: 1500, stores: 1000, water: 200,
+            constraint: (section: Some('C'), not_within_of_enemy: Some(4))),
+        (side: Axis, label: "Axis dummies", count: 2, dummy: true,
+            constraint: (section: Some('C'), not_within_of_enemy: Some(4))),
+        (side: Commonwealth, label: "Dump I", count: 1, ammo: 500, fuel: 750, stores: 500,
+            constraint: (east_of: Some("C4021"), west_of: Some("E0100"))),
+        (side: Commonwealth, label: "Dump I dummy", count: 1, dummy: true,
+            constraint: (east_of: Some("C4021"), west_of: Some("E0100"))),
+    ],
+    // Repair Facilities (§60.31 Axis / §60.44 CW). The Axis Major facility at Tripoli is off-map
+    // (not yet modeled as a hex); on-map facilities below. Benghazi is A4827.
+    repair_facilities: [
+        (at: "C4807", kind: Temporary), // Tobruk (Axis)
+        (at: "A4827", kind: Temporary), // Benghazi (Axis)
+        (at: "E3613", kind: Major),     // Alexandria (Commonwealth)
+        (at: "D3714", kind: Temporary), // Mersa Matruh (Commonwealth)
+    ],
+)

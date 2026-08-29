@@ -1,0 +1,9 @@
+// Mining Harbor by Plane Table (§41.39A / §41.52). Roll one die per SIX bombers attempting to mine
+// the harbor; the column is the AVERAGE bombload of those six planes. The harbor is mined if the
+// die roll is <= the listed number (0-5 avg -> 0, i.e. never; 6-10 -> 1; ...; 31+ -> 6, always).
+// `band[i]` is the upper bound of the i-th average-bombload band; `die_max[i]` the max successful
+// d6 for that band.
+(
+    bands:   [5, 10, 15, 20, 25, 30, 4294967295],
+    die_max: [0, 1,  2,  3,  4,  5,  6],
+)

@@ -1,0 +1,49 @@
+// Minimal hierarchy example (test fodder, not a historical OB): one Commonwealth
+// division counter with three attached battalions, one of them a shell. Demonstrates
+// attachment (attached units have no own hex — they ride the parent's counter),
+// formation CPA aggregation (§6.15), and shell reduction (§9.26/§9.28).
+(
+    name: "Formation Example",
+    game_turn: 1,
+    units: [
+        // Parent counter on the map (Division org size, at C3520).
+        (
+            nationality: Commonwealth,
+            id_code: "h",
+            name: "Example Division HQ",
+            org_size: Division,
+            is_hq: true,
+            hex: "C3520",
+            composition: Organic(current_toe: 1),
+            basic_morale: 12,
+            cohesion: 12,
+        ),
+        // Attached infantry battalion, full strength (CPA 15).
+        (
+            nationality: Commonwealth,
+            id_code: "h",
+            name: "1st Battalion",
+            org_size: Battalion,
+            composition: Organic(current_toe: 5),
+            attached_to: "Example Division HQ",
+        ),
+        // Attached battalion of a slower type (id "k", CPA 10) — sets the formation's pace.
+        (
+            nationality: Commonwealth,
+            id_code: "k",
+            name: "2nd Battalion",
+            org_size: Battalion,
+            composition: Organic(current_toe: 7),
+            attached_to: "Example Division HQ",
+        ),
+        // Attached but depleted (TOE 2 of max 5 -> shell, §9.26) -> counts as a company.
+        (
+            nationality: Commonwealth,
+            id_code: "h",
+            name: "Spent Battalion",
+            org_size: Battalion,
+            composition: Organic(current_toe: 2),
+            attached_to: "Example Division HQ",
+        ),
+    ],
+)

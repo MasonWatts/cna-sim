@@ -1,0 +1,11 @@
+// data/reference/crt/prisoners.ron
+//
+// Prisoners Captured Results Table (rules §15.89) — DATA.
+// Human-readable companion: docs/source-materials/prisoners-captured-table.md
+//
+// Roll one die (1..6); the value is the percentage of Infantry, Armor, and Gun
+// casualties that are taken as Prisoners by the opposing Player.
+//                die:  1   2   3   4   5   6
+(
+    percent: [10, 25, 33, 50, 50, 75],
+)

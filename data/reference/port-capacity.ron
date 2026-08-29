@@ -1,0 +1,24 @@
+// Port Capacity & Efficiency Level Chart (§55.3). Per port: maximum Efficiency Level, the stacking
+// points that may be shipped IN and OUT in one Operations Stage (None = "na", not allowed), and the
+// maximum supply tonnage in/out per Operations Stage. `default` covers "All others".
+//
+// Notes: stacking_in Some(0) (Bardia, Sollum) = only a single zero-stacking-point unit may be
+// shipped in (chart mark 0-double-dagger). Bizerta may not be used before Game-Turn 35, then rolls
+// for activation (§55.17; the chart's explicit GT 35 is used — note it disagrees with the prose
+// "June 1 1941" under the uniform 4-weeks/month season_of clock, which would give GT 37; recorded as
+// a calendar discrepancy in convoy-system.md). Tobruk begins the campaign three Efficiency Levels
+// below its listed 5 because the cruiser San Giorgio partially blocks the harbour (§55.25).
+(
+    ports: {
+        "Tripoli":      (efficiency_level: 10, stacking_in: Some(10), stacking_out: Some(15), max_tonnage: 15000),
+        "Bizerta":      (efficiency_level: 10, stacking_in: Some(10), stacking_out: Some(15), max_tonnage: 3333, available_from_gt: Some(35)),
+        "Alexandria":   (efficiency_level: 10, stacking_in: Some(5),  stacking_out: Some(10), max_tonnage: 15000),
+        "Tobruk":       (efficiency_level: 5,  stacking_in: Some(1),  stacking_out: Some(3),  max_tonnage: 1700, starts_blocked: 3),
+        "Benghazi":     (efficiency_level: 3,  stacking_in: Some(2),  stacking_out: Some(5),  max_tonnage: 2500),
+        "Mersa Matruh": (efficiency_level: 1,  stacking_in: Some(1),  stacking_out: Some(2),  max_tonnage: 250),
+        "Bardia":       (efficiency_level: 1,  stacking_in: Some(0),  stacking_out: Some(1),  max_tonnage: 400),
+        "Sollum":       (efficiency_level: 1,  stacking_in: Some(0),  stacking_out: Some(1),  max_tonnage: 250),
+        "Derna":        (efficiency_level: 1,  stacking_in: None,     stacking_out: Some(1),  max_tonnage: 300),
+    },
+    default: (efficiency_level: 1, stacking_in: None, stacking_out: None, max_tonnage: 100),
+)

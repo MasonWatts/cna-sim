@@ -1,0 +1,55 @@
+// Commonwealth Order of Battle — verified formations promoted from staging
+// (docs/source-materials/ob-generated/commonwealth.ron). Every id validated against
+// data/reference/unit-characteristics/commonwealth.ron (see ob_ids_are_valid_characteristics_keys).
+(
+    formations: [
+        // 4th Indian Division — §4.44a. Parenthetical arrival morale 0, trains up to Basic 1.
+        (
+            name: "4th Indian Division",
+            org_size: Division,
+            basic_morale: 1,
+            arrival_morale: Some(0),
+            units: [
+                (name: "4th Indian Div HQ", abbr: "4 In", id: "a", comp: Organic(Normal), org_size: Division, arrival: Deployed, parent: ""),
+                (name: "5th Indian Bde HQ", abbr: "5 In", id: "a", comp: Organic(Normal), org_size: StandardBrigade, arrival: Deployed, parent: "4th Indian Div HQ"),
+                (name: "1st Royal Fusiliers", abbr: "1 RFslr", id: "p", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "5th Indian Bde HQ"),
+                (name: "3/1 Punjab Regt", abbr: "3/1 Pjb", id: "p", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "5th Indian Bde HQ"),
+                (name: "4/6 Rajputana Rifles", abbr: "4/6 RajRf", id: "p", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "5th Indian Bde HQ"),
+                (name: "7th Indian Bde HQ", abbr: "7 In", id: "a", comp: Organic(Normal), org_size: StandardBrigade, arrival: Turn(game_turn: 5, stage: 1), parent: "4th Indian Div HQ"),
+                (name: "1st Royal Sussex", abbr: "1 RSsx", id: "p", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 5, stage: 1), parent: "7th Indian Bde HQ"),
+                (name: "4/11 Sikhs", abbr: "4/11 Skh", id: "p", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 5, stage: 1), parent: "7th Indian Bde HQ"),
+                (name: "4/16 Punjab Regt", abbr: "4/16 Pjb", id: "p", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 5, stage: 1), parent: "7th Indian Bde HQ"),
+                (name: "11th Indian Bde HQ", abbr: "11 In", id: "a", comp: Organic(Normal), org_size: StandardBrigade, arrival: Deployed, parent: "4th Indian Div HQ"),
+                (name: "2nd Camerons", abbr: "2 Cmrn", id: "p", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "11th Indian Bde HQ"),
+                (name: "1/6 Rajputana Rifles", abbr: "1/6 RajRf", id: "p", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "11th Indian Bde HQ"),
+                (name: "4/7 Rajput Regt", abbr: "4/7 Rajpt", id: "p", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "11th Indian Bde HQ"),
+                (name: "Central India Horse", abbr: "1 CIH", id: "ll", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "4th Indian Div HQ"),
+                (name: "1st Field Artillery Regt", abbr: "1 Fld", id: "x", comp: Weapons([("18/25-pounder Gun", 6)]), org_size: Battalion, arrival: Turn(game_turn: 3, stage: 3), parent: "4th Indian Div HQ"),
+                (name: "25th Field Artillery Regt", abbr: "25 Fld", id: "x", comp: Weapons([("3.7\" Howitzer", 6)]), org_size: Battalion, arrival: Deployed, parent: "4th Indian Div HQ"),
+                (name: "31st Field Artillery Regt", abbr: "31 Fld", id: "x", comp: Weapons([("18-pounder Gun", 6)]), org_size: Battalion, arrival: Deployed, parent: "4th Indian Div HQ"),
+            ],
+        ),
+        // 7th Armored Division — §4.44a. The Scenario-1 covering screen (all Deployed).
+        // 4 RHA id resolved xx->x (6 guns require x's max-6; y caps at 4).
+        (
+            name: "7th Armored Division",
+            org_size: Division,
+            basic_morale: 2,
+            units: [
+                (name: "7th Armored Div HQE", abbr: "7", id: "b", comp: Weapons([("Mark VI Light", 1)]), org_size: Division, arrival: Deployed, parent: ""),
+                (name: "4th Armored Bde HQ", abbr: "4", id: "b", comp: Weapons([("Mark VI Light", 1)]), org_size: StandardBrigade, arrival: Deployed, parent: "7th Armored Div HQE"),
+                (name: "6th Royal Tank Regt", abbr: "6 RTR", id: "g", comp: Weapons([("Mark VI Light", 10)]), org_size: Battalion, arrival: Deployed, parent: "4th Armored Bde HQ"),
+                (name: "7th Queens Own Hussars", abbr: "7 Hus", id: "g", comp: Weapons([("Mark VI Light", 10)]), org_size: Battalion, arrival: Deployed, parent: "4th Armored Bde HQ"),
+                (name: "7th Armored Bde HQ", abbr: "7", id: "d", comp: Weapons([("A9 Cruiser", 1)]), org_size: StandardBrigade, arrival: Deployed, parent: "7th Armored Div HQE"),
+                (name: "1st Royal Tank Regt", abbr: "1RTR", id: "g", comp: Weapons([("A9 Cruiser", 7)]), org_size: Battalion, arrival: Deployed, parent: "7th Armored Bde HQ"),
+                (name: "8th Hussars", abbr: "8 Hus", id: "g", comp: Weapons([("A10 Cruiser", 7)]), org_size: Battalion, arrival: Deployed, parent: "7th Armored Bde HQ"),
+                (name: "7th Support Group HQ", abbr: "7 Spt", id: "a", comp: Organic(Normal), org_size: StandardBrigade, arrival: Deployed, parent: "7th Armored Div HQE"),
+                (name: "1st KRRC", abbr: "1 KRRC", id: "n", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "7th Support Group HQ"),
+                (name: "2nd Rifle Brigade", abbr: "2 RflBde", id: "n", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "7th Support Group HQ"),
+                (name: "3rd Ryl Horse Arty", abbr: "3 RHA", id: "aa", comp: Weapons([("2-pounder", 6)]), org_size: Battalion, arrival: Deployed, parent: "7th Support Group HQ"),
+                (name: "4th Ryl Horse Arty", abbr: "4 RHA", id: "x", comp: Weapons([("18/25-pounder Gun", 6)]), org_size: Battalion, arrival: Deployed, parent: "7th Support Group HQ"),
+                (name: "11th Hussars", abbr: "11 Hus", id: "ll", comp: Organic(Under(6)), org_size: Battalion, arrival: Deployed, parent: "7th Support Group HQ"),
+            ],
+        ),
+    ],
+)

@@ -1,0 +1,7 @@
+// Maltese Air Facility Construction Table (§44.5). A d6 roll gives the number of Air Facility levels
+// the Commonwealth may repair/construct on one Malta field (usable once per Game-Turn per facility,
+// §44.13; no supplies expended). `levels[die-1]`: die 2-5 build 1 level, die 6 builds 2. The chart
+// has no die-1 column, so a roll of 1 builds 0 levels (inferred: the table starts at die 2).
+(
+    levels: [0, 1, 1, 1, 1, 2],
+)

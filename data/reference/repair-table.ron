@@ -1,0 +1,15 @@
+// Broken-Down Vehicle Repair Table (§22.8), indexed by MODIFIED die roll (0–8). Field columns:
+// Truck Points repaired (1 = one Light/Medium; 2 = one Heavy or two Light/Medium), AC-Recce TOE
+// SP repaired, Tank/SPA/TD repair %. Facility columns: Temporary / Major repair %. "na" → 0.
+// %-results round fractions up; a 10%* result on a single TOE Strength Point is treated as 0%.
+// DRMs (§22.8): −1 with a Tank Delivery Squadron / Mobile Tank Repair Squad; +1 facility in a
+// Major City at Fort Level 2; +2 facility in a Major City at Fort Level 0–1.
+// Transcription in docs/source-materials/repair.md.
+(
+    //                 die: 0   1   2   3   4   5   6   7   8
+    truck_field:            [2,  2,  1,  0,  0,  0,  0,  0,  0],
+    acr_field:              [1,  1,  0,  0,  0,  0,  0,  0,  0],
+    tank_field_pct:         [25, 25, 10, 10, 10, 0,  0,  0,  0],
+    temp_facility_pct:      [50, 50, 33, 25, 25, 10, 10, 10, 10],
+    major_facility_pct:     [75, 75, 50, 50, 50, 33, 33, 25, 10],
+)

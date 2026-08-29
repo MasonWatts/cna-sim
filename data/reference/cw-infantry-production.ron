@@ -1,0 +1,12 @@
+// Commonwealth Infantry Production Table (§20.78B). Roll 2d6; the value (per era) is Infantry
+// Replacement Points planned (arriving four Game-Turns later, all placed in one city). "none" = 0.
+// by_roll indexes rolls 2..12 (by_roll[0] = roll 2). Transcription in replacements.md.
+(
+    eras: [
+        //                              roll: 2   3   4   5   6   7   8   9  10  11  12
+        (from_gt: 3,   to_gt: 30,  by_roll: [0,  3, 15,  0,  5,  6,  4,  5,  8, 10, 20]),
+        (from_gt: 31,  to_gt: 46,  by_roll: [0,  4, 10, 22, 13, 15,  8, 18, 20, 25,  0]),
+        (from_gt: 47,  to_gt: 102, by_roll: [5, 22, 25, 13, 28, 20, 16, 30, 19, 35,  8]),
+        (from_gt: 103, to_gt: 107, by_roll: [0,  5,  3,  2, 11,  0, 13,  1,  5,  7,  0]),
+    ],
+)

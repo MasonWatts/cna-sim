@@ -1,0 +1,44 @@
+// Air-to-Air Combat tables (§45.4 Maneuver Adjustment Chart, §45.5 TacAir Kill Table).
+//
+// maneuver_adjustment: the ABSOLUTE difference between the two planes' Maneuver Ratings maps to a
+// TacAir adjustment (§45.4). Scanning ascending, the first row whose max_diff >= the difference
+// applies. It is ADDED to the higher-maneuver plane's TacAir differential and SUBTRACTED from the
+// lower's (§45.0).
+//
+// kill_table: the Adjusted TacAir Differential (attacker's modified TacAir + maneuver adjustment,
+// minus the defender's modified TacAir) maps to the maximum 2d6 roll (encoded 10*d1+d2) that kills
+// the defender; None = "na" (never eliminated). Scanning ascending, the first row whose max_diff >=
+// the differential applies.
+//
+// NOTE: rulebook example (a) shows a +2 differential needing "11-22"; the chart and example (b)
+// (+5 -> 26, -5 -> 11) are self-consistent with +2 -> 16, so the chart value (16) is used here and
+// example (a) is treated as an erratum.
+(
+    maneuver_adjustment: [
+        (max_diff: 0,          adjustment: 0),
+        (max_diff: 3,          adjustment: 1),
+        (max_diff: 7,          adjustment: 2),
+        (max_diff: 14,         adjustment: 3),
+        (max_diff: 20,         adjustment: 4),
+        (max_diff: 2147483647, adjustment: 5),
+    ],
+    kill_table: [
+        (max_diff: -13,        kill: None),
+        (max_diff: -5,         kill: Some(11)),
+        (max_diff: -2,         kill: Some(12)),
+        (max_diff: -1,         kill: Some(13)),
+        (max_diff: 0,          kill: Some(14)),
+        (max_diff: 1,          kill: Some(15)),
+        (max_diff: 2,          kill: Some(16)),
+        (max_diff: 3,          kill: Some(22)),
+        (max_diff: 4,          kill: Some(24)),
+        (max_diff: 5,          kill: Some(26)),
+        (max_diff: 6,          kill: Some(32)),
+        (max_diff: 7,          kill: Some(34)),
+        (max_diff: 8,          kill: Some(36)),
+        (max_diff: 9,          kill: Some(43)),
+        (max_diff: 10,         kill: Some(46)),
+        (max_diff: 11,         kill: Some(53)),
+        (max_diff: 2147483647, kill: Some(56)),
+    ],
+)

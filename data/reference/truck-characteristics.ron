@@ -1,0 +1,25 @@
+// Truck Characteristics Chart (§54.2). One Truck Point ≈ ten trucks. CPA fields are the Truck
+// Point's CPA when transporting that item (None = "na"). TOE capacities are Max TOE Strength
+// Points carried per Truck Point, in TENTHS (Light Infantry ½ → 5). Cargo fields are Supply
+// Points per Truck Point. bar = Breakdown Adjustment Rating (negative = column shifts left; "2L").
+// Transcription in docs/source-materials/truck-characteristics.md.
+(
+    light:  (
+        cpa_inf: Some(25), cpa_guns: None, cpa_supplies: 40,
+        toe_inf_tenths: Some(5), toe_arty_tenths: None, toe_aa_tenths: Some(10),
+        cargo_ammo: 2, cargo_fuel: 50, cargo_stores: 6, cargo_water: 40,
+        fuel_capacity: 8, fuel_consumption_factor: 1, bar: -2,
+    ),
+    medium: (
+        cpa_inf: Some(20), cpa_guns: Some(15), cpa_supplies: 30,
+        toe_inf_tenths: Some(10), toe_arty_tenths: Some(10), toe_aa_tenths: Some(20),
+        cargo_ammo: 4, cargo_fuel: 120, cargo_stores: 15, cargo_water: 100,
+        fuel_capacity: 6, fuel_consumption_factor: 1, bar: -2,
+    ),
+    heavy:  (
+        cpa_inf: Some(20), cpa_guns: Some(15), cpa_supplies: 30,
+        toe_inf_tenths: Some(20), toe_arty_tenths: Some(10), toe_aa_tenths: Some(40),
+        cargo_ammo: 8, cargo_fuel: 250, cargo_stores: 30, cargo_water: 200,
+        fuel_capacity: 6, fuel_consumption_factor: 1, bar: -2,
+    ),
+)

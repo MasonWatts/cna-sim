@@ -1,0 +1,57 @@
+// data/reference/crt/barrage.ron
+//
+// Barrage Against Land Units Combat Results Table (rules §12.6) — DATA.
+// Human-readable companion: docs/source-materials/crt-barrage.md
+//
+// Inverted CRT: pick the target-class block, then the Barrage-Points column
+// (1,2 / 3,4 / 5,6 / 7,8 / 9,10 / 11,12 / 13,14 / 15,16 / 17+), then find which
+// printed dice range [min,max] (straight two-dice read, 11..66) contains the roll.
+// Entry = (min, max, result). Results: NoEffect, Pinned, One, Two.
+(
+    classes: [
+        (Infantry, [
+            [(11, 53, NoEffect), (54, 66, Pinned)],                     // 1,2
+            [(11, 44, NoEffect), (45, 66, Pinned)],                     // 3,4
+            [(11, 41, NoEffect), (42, 65, Pinned), (66, 66, One)],      // 5,6
+            [(11, 34, NoEffect), (35, 64, Pinned), (65, 66, One)],      // 7,8
+            [(11, 24, NoEffect), (25, 61, Pinned), (62, 66, One)],      // 9,10
+            [(11, 16, NoEffect), (21, 44, Pinned), (45, 66, One)],      // 11,12
+            [(11, 35, Pinned), (36, 64, One), (65, 66, Two)],           // 13,14
+            [(11, 32, Pinned), (33, 56, One), (61, 66, Two)],           // 15,16
+            [(11, 31, Pinned), (32, 55, One), (56, 66, Two)],           // 17+
+        ]),
+        (Armor, [
+            [(11, 62, NoEffect), (63, 66, Pinned)],                     // 1,2
+            [(11, 54, NoEffect), (55, 66, Pinned)],                     // 3,4
+            [(11, 45, NoEffect), (46, 66, Pinned)],                     // 5,6
+            [(11, 36, NoEffect), (41, 66, Pinned)],                     // 7,8
+            [(11, 31, NoEffect), (32, 66, Pinned)],                     // 9,10
+            [(11, 22, NoEffect), (23, 66, Pinned)],                     // 11,12
+            [(11, 14, NoEffect), (15, 63, Pinned), (64, 66, One)],      // 13,14
+            [(11, 62, Pinned), (63, 66, One)],                          // 15,16
+            [(11, 54, Pinned), (55, 66, One)],                          // 17+
+        ]),
+        (Gun, [
+            [(11, 61, NoEffect), (62, 66, One)],                        // 1,2
+            [(11, 54, NoEffect), (55, 66, One)],                        // 3,4
+            [(11, 46, NoEffect), (51, 66, One)],                        // 5,6
+            [(11, 36, NoEffect), (41, 66, One)],                        // 7,8
+            [(11, 26, NoEffect), (31, 66, One)],                        // 9,10
+            [(11, 22, NoEffect), (23, 64, One), (65, 66, Two)],         // 11,12
+            [(11, 12, NoEffect), (13, 56, One), (61, 66, Two)],         // 13,14
+            [(11, 54, One), (55, 66, Two)],                             // 15,16
+            [(11, 36, One), (41, 66, Two)],                             // 17+
+        ]),
+        (Truck, [
+            [(11, 66, NoEffect)],                                       // 1,2
+            [(11, 64, NoEffect), (65, 66, One)],                        // 3,4
+            [(11, 62, NoEffect), (63, 66, One)],                        // 5,6
+            [(11, 56, NoEffect), (61, 66, One)],                        // 7,8
+            [(11, 55, NoEffect), (56, 63, One), (64, 66, Two)],         // 9,10
+            [(11, 53, NoEffect), (54, 63, One), (64, 66, Two)],         // 11,12
+            [(11, 46, NoEffect), (51, 61, One), (62, 66, Two)],         // 13,14
+            [(11, 42, NoEffect), (43, 61, One), (62, 66, Two)],         // 15,16
+            [(11, 32, NoEffect), (33, 61, One), (62, 66, Two)],         // 17+
+        ]),
+    ],
+)

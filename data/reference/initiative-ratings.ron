@@ -1,0 +1,17 @@
+// data/reference/initiative-ratings.ron
+//
+// Initiative Ratings Chart (rules §7.2) — DATA.
+// Human-readable companion: docs/source-materials/initiative-ratings-chart.md
+//
+// Commonwealth rating depends on the Game-Turn; Axis rating is situational (Rommel on
+// the maps / German combat units present / neither) — resolved by code from game state.
+(
+    commonwealth_by_turn: [
+        (from: 1,  to: 42,  rating: 3),
+        (from: 43, to: 90,  rating: 4),
+        (from: 91, to: 111, rating: 5),
+    ],
+    axis_rommel: 6,
+    axis_german: 3,
+    axis_minimal: 1,
+)

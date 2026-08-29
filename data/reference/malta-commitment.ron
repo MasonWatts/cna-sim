@@ -1,0 +1,18 @@
+// Axis Strategic Airforce Commitment Chart (§44.41). Per scenario, how many Game-Turns each Axis
+// Malta Availability Level (I–IV) may be used for strategic bombardment of Malta (§44.23):
+//   Unlimited = may be used any number of turns (Level I is always Unlimited when Malta is in play,
+//   §44.25); Turns(n) = usable at most n Game-Turns; NotAllowed = na (not applicable/allowed).
+// The Campaign Game row (§64.0) is the primary target and fully confirmed. Two cells were blank on
+// the chart and are interpreted from the rules: Race-for-Tobruk Level IV = NotAllowed (blank), and
+// Long-Retreat Level I = Unlimited (§44.25: Level I is always unlimited while Malta is in play).
+// Levels are ordered [I, II, III, IV].
+(
+    scenarios: {
+        "Campaign Game":       [Unlimited, Turns(25), Turns(12), Turns(12)],
+        "Graziani's Offensive":[Unlimited, NotAllowed, NotAllowed, NotAllowed],
+        "Race for Tobruk":     [Unlimited, Turns(6), Turns(3), NotAllowed],
+        "Crusader":            [Unlimited, Turns(4), Turns(2), Turns(2)],
+        "Last Chance":         [NotAllowed, NotAllowed, NotAllowed, NotAllowed],
+        "Long Retreat":        [Unlimited, Turns(3), NotAllowed, NotAllowed],
+    },
+)

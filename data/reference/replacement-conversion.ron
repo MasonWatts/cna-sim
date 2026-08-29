@@ -1,0 +1,31 @@
+// Replacement Point Conversion Chart (§20.3). To rebuild ONE TOE Strength Point of a unit type,
+// spend any one `options` set (all reqs in it); `supplies: true` also expends Supplies. Empty
+// `options` = no points needed. Kinds are free-form (Inf/Gun/ArmR/Lt Tank/Tank/Artillery/
+// Anti-tank/Anti-air/Lt AT/ParaArt/7.5cm Lt Gun). See docs/source-materials/replacements.md.
+// Footnotes: Commando = Layforce/SAS; Paratroop = 185th Folgore / Ramcke; Heavy Weapons = all but
+// Ramcke; Road/Rail Construction returns as a reinforcement if eliminated; Airdropable AT only
+// for 185th Folgore / Ramcke HQs; Italian ArmR points are always Autobelinda 41 (ID "vv").
+(
+    entries: [
+        (unit_type: "Any Headquarters Unit",     options: [[(kind: "Inf", count: 2)]]),
+        (unit_type: "Commando",                  options: [[(kind: "Inf", count: 3)]]),
+        (unit_type: "Paratroop Infantry",        options: [[(kind: "Inf", count: 2)]]),
+        (unit_type: "Italian Bersaglieri Infantry", options: [[(kind: "Inf", count: 2)]]),
+        (unit_type: "Machinegun",                options: [[(kind: "Inf", count: 2)]]),
+        (unit_type: "Heavy Weapons",             options: [[(kind: "Inf", count: 1), (kind: "Gun", count: 1)]]),
+        (unit_type: "Any other Infantry",        options: [[(kind: "Inf", count: 1)]]),
+        (unit_type: "Engineer Battalion",        options: [[(kind: "Inf", count: 2)]]),
+        (unit_type: "Engineer Company",          options: [[(kind: "Inf", count: 1)]]),
+        (unit_type: "Road/Railroad Construction", options: []),
+        (unit_type: "Motorcycle/Camel/Reconnaissance", options: [[(kind: "Inf", count: 2)]]),
+        (unit_type: "Armored Reconnaissance",    options: [[(kind: "ArmR", count: 1)], [(kind: "Lt Tank", count: 1)]]),
+        (unit_type: "Armored Car",               options: [[(kind: "ArmR", count: 2)], [(kind: "Lt Tank", count: 1)]]),
+        (unit_type: "Tank",                      options: [[(kind: "Tank", count: 1)]]),
+        (unit_type: "Artillery",                 options: [[(kind: "Artillery", count: 1)]]),
+        (unit_type: "Airdropable Artillery",     options: [[(kind: "ParaArt", count: 1)], [(kind: "7.5cm Lt Gun", count: 1)]]),
+        (unit_type: "Anti-tank",                 options: [[(kind: "Anti-tank", count: 1)]]),
+        (unit_type: "Airdropable Anti-tank",     options: [[(kind: "Lt AT", count: 1)]]),
+        (unit_type: "Anti-air",                  options: [[(kind: "Anti-air", count: 1)]]),
+        (unit_type: "Squadron Ground Support Unit", options: [[(kind: "Inf", count: 1)]], supplies: true),
+    ],
+)

@@ -1,0 +1,53 @@
+// Anti-Aircraft Combat Results Table (§46.3) + Flak Adjustment Chart (§46.4).
+//
+// flak_bands: upper bounds of the "Number of Flak Points" columns (1-4, 5-8, ..., 37+).
+// density_adjustment (§46.4): the number of non-fighter enemy planes overhead shifts the flak
+// column this many places in favor of the firing player (1-23 -> 0, 24-47 -> 1, 48-71 -> 2,
+// 72+ -> 3).
+//   NOTE: the printed §46.3 CRT note gives a different density rule ("+1 column per twelve
+//   Bomber/Transport aircraft exceeding twelve"), which conflicts with §46.4 at some counts (e.g.
+//   36 planes: §46.4 -> +1, note -> +2). §46.0's procedure references the §46.4 chart, so that is
+//   what is transcribed here; the note is recorded in air-game.md as an unresolved discrepancy.
+//
+// Sections: a 2d6 roll (encoded 10*d1+d2) read on the appropriate section's rows gives the result.
+// Planes on Other Missions are rolled twice (once on other_destroyed, once on other_aborted, same
+// column). Planes on Fighter Missions use fighter_destroyed. `ranges[col]` is None or Some((min,max)).
+(
+    flak_bands: [4, 8, 12, 16, 20, 24, 28, 32, 36, 4294967295],
+    density_adjustment: [
+        (max_planes: 23, columns: 0),
+        (max_planes: 47, columns: 1),
+        (max_planes: 71, columns: 2),
+        (max_planes: 4294967295, columns: 3),
+    ],
+
+    // Planes on Other Missions -> No. Planes Destroyed (0..5).
+    other_destroyed: [
+        (result: 0, ranges: [Some((11,55)),Some((11,45)),Some((11,36)),Some((11,32)),Some((11,21)),Some((11,12)),None,None,None,None]),
+        (result: 1, ranges: [Some((56,66)),Some((46,65)),Some((41,62)),Some((33,56)),Some((22,55)),Some((13,53)),Some((11,45)),Some((11,36)),Some((11,32)),Some((11,24))]),
+        (result: 2, ranges: [None,Some((66,66)),Some((63,66)),Some((61,64)),Some((56,64)),Some((54,63)),Some((46,61)),Some((41,54)),Some((33,51)),Some((25,43))]),
+        (result: 3, ranges: [None,None,None,Some((65,66)),Some((65,66)),Some((64,66)),Some((62,65)),Some((55,64)),Some((52,62)),Some((44,56))]),
+        (result: 4, ranges: [None,None,None,None,None,None,Some((66,66)),Some((65,66)),Some((63,65)),Some((61,64))]),
+        (result: 5, ranges: [None,None,None,None,None,None,None,None,Some((66,66)),Some((65,66))]),
+    ],
+
+    // Planes on Other Missions -> No. Planes Aborted (0..7).
+    other_aborted: [
+        (result: 0, ranges: [Some((11,53)),Some((11,42)),Some((11,31)),Some((11,22)),Some((11,13)),None,None,None,None,None]),
+        (result: 1, ranges: [Some((54,66)),Some((43,64)),Some((32,62)),Some((23,55)),Some((14,52)),Some((11,44)),Some((11,31)),Some((11,21)),Some((11,12)),None]),
+        (result: 2, ranges: [None,Some((65,66)),Some((63,66)),Some((56,64)),Some((53,62)),Some((45,55)),Some((32,52)),Some((22,43)),Some((13,34)),Some((11,26))]),
+        (result: 3, ranges: [None,None,None,Some((65,66)),Some((63,65)),Some((56,63)),Some((53,62)),Some((44,55)),Some((35,51)),Some((31,43))]),
+        (result: 4, ranges: [None,None,None,None,Some((66,66)),Some((64,66)),Some((63,66)),Some((56,65)),Some((52,63)),Some((44,54))]),
+        (result: 5, ranges: [None,None,None,None,None,None,None,Some((66,66)),Some((64,65)),Some((55,62))]),
+        (result: 6, ranges: [None,None,None,None,None,None,None,None,Some((66,66)),Some((63,65))]),
+        (result: 7, ranges: [None,None,None,None,None,None,None,None,None,Some((66,66))]),
+    ],
+
+    // Planes on Fighter Missions -> Nr. Planes Destroyed (0..3).
+    fighter_destroyed: [
+        (result: 0, ranges: [Some((11,64)),Some((11,56)),Some((11,52)),Some((11,42)),Some((11,31)),Some((11,16)),None,None,None,None]),
+        (result: 1, ranges: [Some((65,66)),Some((61,66)),Some((53,66)),Some((43,66)),Some((32,65)),Some((21,62)),Some((11,56)),Some((11,46)),Some((11,34)),Some((11,16))]),
+        (result: 2, ranges: [None,None,None,None,Some((66,66)),Some((63,66)),Some((61,66)),Some((51,64)),Some((35,62)),Some((21,56))]),
+        (result: 3, ranges: [None,None,None,None,None,None,None,Some((65,66)),Some((63,66)),Some((61,66))]),
+    ],
+)

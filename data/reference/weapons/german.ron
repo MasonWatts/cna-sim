@@ -1,0 +1,52 @@
+// data/reference/weapons/german.ron
+//
+// German Tank & Gun Characteristics Chart (rules §4.49) — DATA.
+// Human-readable companion: docs/source-materials/tank-gun-characteristics-german.md
+//
+// Map keyed by weapon-system name -> WeaponsSystem. Absent rating = "-"/not-applicable.
+// `kind` (Tank/Artillery/AntiTank/LightAntiAir/HeavyAntiAir/Reconnaissance) drives
+// combined arms (§15.4) and barrage class (§12.6).
+// breakdown_adjustment (BAR): German chart uses Right (positive) or none (Some(0)).
+// NOTE: all German TANKS have BAR 1R until the 1/31 Game-Turn; the printed BAR here is
+// the later value (a time-dependent rule to enforce in code). cpa omitted = "-" (uses
+// parent unit CPA).
+{
+    // --- Tank Weapon Systems ---
+    "Pz I":                ( kind: Tank, cpa: Some(24), anti_air: Some((value: 1)), anti_armor: Some((value: 0)), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 2), def: (value: 2))), fuel_rate: Some(2), breakdown_adjustment: Some(0) ),
+    "Pz II":               ( kind: Tank, cpa: Some(35), anti_air: Some((value: 0)), anti_armor: Some((value: 1)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 2), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(0) ),
+    // TODO: Pz III E close-assault / fuel were ambiguous in the scan (confirm CA 3/3, fuel 4).
+    "Pz III E":            ( kind: Tank, cpa: Some(25), anti_air: Some((value: 1)), anti_armor: Some((value: 4)), armor_protection: Some((value: 4)), close_assault: Some((off: (value: 3), def: (value: 3))), fuel_rate: Some(4), breakdown_adjustment: Some(3) ),
+    "Pz III H":            ( kind: Tank, cpa: Some(25), anti_air: Some((value: 1)), anti_armor: Some((value: 4)), armor_protection: Some((value: 4)), close_assault: Some((off: (value: 4), def: (value: 4))), fuel_rate: Some(4), breakdown_adjustment: Some(0) ),
+    "Pz III J (Special)":  ( kind: Tank, cpa: Some(26), anti_air: Some((value: 1)), anti_armor: Some((value: 6)), armor_protection: Some((value: 4)), close_assault: Some((off: (value: 7), def: (value: 5))), fuel_rate: Some(3), breakdown_adjustment: Some(0) ),
+    "Pz IV D":             ( kind: Tank, cpa: Some(25), anti_air: Some((value: 1)), anti_armor: Some((value: 6)), armor_protection: Some((value: 3)), close_assault: Some((off: (value: 5), def: (value: 4))), fuel_rate: Some(4), breakdown_adjustment: Some(0) ),
+    "Pz IV E":             ( kind: Tank, cpa: Some(25), anti_air: Some((value: 1)), anti_armor: Some((value: 6)), armor_protection: Some((value: 3)), close_assault: Some((off: (value: 5), def: (value: 5))), fuel_rate: Some(4), breakdown_adjustment: Some(0) ),
+    "Pz IV F2 (Special)":  ( kind: Tank, cpa: Some(25), anti_air: Some((value: 1)), anti_armor: Some((value: 8)), armor_protection: Some((value: 4)), close_assault: Some((off: (value: 6), def: (value: 5))), fuel_rate: Some(4), breakdown_adjustment: Some(0) ),
+
+    // --- Gun Weapon Systems ---
+    "7.5cm (IG18) Light Infantry Gun":     ( kind: Artillery, cpa: Some(15), barrage: Some((value: 6)),  anti_armor: Some((value: 3)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1), notes: ["anti-armor is 0 until the first Ops Stage of Jan 1942 (GT 63); air-transportable/droppable"] ),
+    "10.5cm (K18) Medium Gun":             ( kind: Artillery, cpa: Some(15), barrage: Some((value: 9)),  anti_armor: Some((value: 1)), vulnerability: Some((value: 9)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "10.5cm (leFH18) Light Field Howitzer":( kind: Artillery, cpa: Some(15), barrage: Some((value: 9)),  anti_armor: Some((value: 2)), vulnerability: Some((value: 5)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "10.5cm SP K18 Gun":                   ( kind: Artillery, cpa: Some(15), barrage: Some((value: 9)),  anti_armor: Some((value: 2)), vulnerability: Some((value: 4)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 2), def: (value: 2))), fuel_rate: Some(2), breakdown_adjustment: Some(0) ),
+    "149mm Vichy French":                  ( kind: Artillery, cpa: Some(15), barrage: Some((value: 10)), anti_armor: Some((value: 1)), vulnerability: Some((value: 5)), close_assault: Some((off: (value: 0), def: (value: 1))), fuel_rate: Some(1) ),
+    "15cm (sIG33) Medium Infantry Gun":    ( kind: Artillery, cpa: Some(15), barrage: Some((value: 14)), anti_armor: Some((value: 1)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "15cm (sFH18) Medium Field Howitzer":  ( kind: Artillery, cpa: Some(15), barrage: Some((value: 15)), anti_armor: Some((value: 1)), vulnerability: Some((value: 7)), close_assault: Some((off: (value: 0), def: (value: 1))), fuel_rate: Some(1) ),
+    "15cm (K18) Gun":                      ( kind: Artillery, cpa: Some(15), barrage: Some((value: 15)), anti_armor: Some((value: 1)), vulnerability: Some((value: 11)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "15cm SP Gun":                         ( kind: Artillery, cpa: Some(25), barrage: Some((value: 14)), anti_armor: Some((value: 1)), vulnerability: Some((value: 2)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 2), def: (value: 2))), fuel_rate: Some(2), breakdown_adjustment: Some(0) ),
+    "155mm (french 1915 short)":           ( kind: Artillery, cpa: Some(15), barrage: Some((value: 13)), anti_armor: Some((value: 0)), vulnerability: Some((value: 5)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "17cm (K18) Gun":                      ( kind: Artillery, cpa: Some(15), barrage: Some((value: 15)), anti_armor: Some((value: 0)), vulnerability: Some((value: 13)), close_assault: Some((off: (value: 1), def: (value: 0))), fuel_rate: Some(1) ),
+    "21cm (mrs18) Howitzer":               ( kind: Artillery, cpa: Some(15), barrage: Some((value: 18)), anti_armor: Some((value: 0)), vulnerability: Some((value: 8)), close_assault: Some((off: (value: 1), def: (value: 0))), fuel_rate: Some(1) ),
+
+    // --- Anti-tank ---
+    "2.8cm s.Pz.B.41 (28/20 Pak)": ( kind: AntiTank, cpa: Some(15), anti_armor: Some((value: 4)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1), notes: ["air-transportable/droppable"] ),
+    "3.7cm Pak 35/36":             ( kind: AntiTank, cpa: Some(15), anti_armor: Some((value: 2)), vulnerability: Some((value: 1)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    // TODO: 5cm Pak 38 offensive close-assault may be 1½ (scan showed a ½); encoded as 1 pending confirmation.
+    "5cm Pak 38":                  ( kind: AntiTank, cpa: Some(15), anti_armor: Some((value: 5)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
+    "7.62cm Pak(R)":               ( kind: AntiTank, anti_armor: Some((value: 9)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1), notes: ["captured Russian AT gun; air-transportable; CPA '-' on chart (uses parent CPA)"] ),
+    "Pzjg 1 (SP)":                 ( kind: AntiTank, cpa: Some(30), anti_armor: Some((value: 4)), vulnerability: Some((value: 2)), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 2), def: (value: 2))), fuel_rate: Some(1), breakdown_adjustment: Some(0), notes: ["PzI chassis + Czech 47mm gun"] ),
+    // TODO: Marder III CPA '-' (uses parent CPA); fuel/BAR ambiguous in scan.
+    "Marder III (SP)":             ( kind: AntiTank, anti_armor: Some((value: 9)), vulnerability: Some((value: 2)), armor_protection: Some((value: 3)), close_assault: Some((off: (value: 2), def: (value: 2))), fuel_rate: Some(0), notes: ["self-propelled 7.62cm Pak(R); CPA '-' on chart"] ),
+
+    // --- Anti-air ---
+    "Light AA (20mm & 37mm Flak)": ( kind: LightAntiAir, cpa: Some(15), anti_air: Some((value: 1)), anti_armor: Some((value: 1, parenthesized: true)), vulnerability: Some((value: 1, parenthesized: true)), close_assault: Some((off: (value: 1, parenthesized: true), def: (value: 1, parenthesized: true))), fuel_rate: Some(1) ),
+    "Heavy AA (88mm Flak)":        ( kind: HeavyAntiAir, cpa: Some(15), anti_air: Some((value: 3)), anti_armor: Some((value: 13)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 2), def: (value: 1))), fuel_rate: Some(1) ),
+}

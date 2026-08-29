@@ -1,0 +1,12 @@
+// Ammunition Consumption Rates (§50.2), full Logistics Game column. Ammo Points expended per
+// TOE Strength Point performing the action (§50.14). Authoritative machine values; transcription
+// in docs/source-materials/ammo-consumption.md.
+//
+// close_assault (rate 2) applies to Armor-class, Gun-class, MG-inf and HvyWpn-inf — not plain
+// rifle infantry. Air actions are handled by the Air Game.
+(
+    barrage: 4,
+    anti_armor: 3,
+    close_assault: 2,
+    anti_air: 2,
+)

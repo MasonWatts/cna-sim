@@ -1,0 +1,1099 @@
+===== PAGE 116 =====
+# Formation: Ist Armored Division
+# Basic Morale: +2 (+1)
+# indent levels (unit-x centers): [0.162, 0.179, 0.193]
+## Tree
+Ist Armored Div HQ  ()  ID=b | 1x Stuart | arr 3/56
+    2nd Armored Bde HQ  (2)  ID=b | 1x Stuart | arr 3/58
+        2nd Bays  (2 Bays)  ID=g | 8× Crusader Mk 1, 2 x A13 | arr 3/58
+        10th Royal Hussars  (10 Hus)  ID=g | 9x Crusader Mk 1, 1 x A13 | arr 3/58
+        9th Lancers  (9 Lancr)  ID=g | 10 x Stuarts | arr 3/58
+        Ist Rifle Brigade  (1 RflBde)  N | arr 3/58
+    Ist Support Group HQ  (1Spt)  N | arr 3/59
+        2nd KRRC  (2 KRRC) [b]  N | arr 3/59
+        76th Anti-tank Regt  (76)  ID=aa | 8 × 2-pounders | arr 3/59
+        11th Royal Horse Arty  (11 RHA)  6 x 25-pounders | arr 3/59
+        61st Light AA Regt  (61 LAA)  ID=ee | 6 × Light AA | arr 3/59
+    12th Lancers Bn  (12 Lancr)  ID=11 | N | arr 3/58
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ist Armored Div HQ		b	1x Stuart	3/56		
+1	2nd Armored Bde HQ	2	b	1x Stuart	3/58		Ist Armored Div HQ
+2	2nd Bays	2 Bays	g	8× Crusader Mk 1, 2 x A13	3/58		2nd Armored Bde HQ
+2	10th Royal Hussars	10 Hus	g	9x Crusader Mk 1, 1 x A13	3/58		2nd Armored Bde HQ
+2	9th Lancers	9 Lancr	g	10 x Stuarts	3/58		2nd Armored Bde HQ
+2	Ist Rifle Brigade	1 RflBde		N	3/58		2nd Armored Bde HQ
+1	Ist Support Group HQ	1Spt		N	3/59		Ist Armored Div HQ
+2	2nd KRRC	2 KRRC		N	3/59	b	Ist Support Group HQ
+2	76th Anti-tank Regt	76	aa	8 × 2-pounders	3/59		Ist Support Group HQ
+2	11th Royal Horse Arty	11 RHA		6 x 25-pounders	3/59		Ist Support Group HQ
+2	61st Light AA Regt	61 LAA	ee	6 × Light AA	3/59		Ist Support Group HQ
+1	12th Lancers Bn	12 Lancr	11	N	3/58		Ist Armored Div HQ
+
+===== PAGE 117 =====
+# Formation: 2nd Armored Division (a)
+# Basic Morale: + 2 (+ 1)
+# indent levels (unit-x centers): [0.197, 0.211, 0.227]
+## Tree
+2nd Armored Div HQ  (2)  ID=b | 1 × Mk VI Lights | arr 1/15
+    Ist Armored Bde HQ  () [b]  ID=b | 1x Mk VI Lights | arr 1/15
+        4th Hussars  (4 Hus)  ID=g | 5 x A9Cruisers, 5 x A10 Cruisers | arr 1/15
+        3rd Royal Tank Regt  (3 RTR)  ID=g | 10x Mk VI Lights | arr 1/15
+    3rd Armored Bde HQ  (3)  ID=d | 1 X Crusader Mk I | arr 1/15
+    32nd Army Tank Bde HQ  (32 Army)  ID=d | arr 1/51
+        5th Royal Tank Regt  (5 RTR)  ID=g | 10 × A13 Cruisers | arr 1/15
+    2nd Support Group HQ  (2 Spt)  N | arr 1/15
+        1st Tower Hamlet Rifles  (1 THRf) [d]  N | arr 1/15
+        Ist Rangers  (1 Ranger)  N | arr 1/15
+        2nd Royal Horse Arty  (2 RHA)  6 × 25-pounders | arr 1/15
+        102nd/NH Light Anti- Aircraft/Anti-Tank Regt  (102(NH))  ID=bb | 2 x 2-pounders, 2 x Light AA | arr 1/15
+        Kings Dragoon Guards  (KDGd) [a - The 2nd Armored Division was undermanned, in terms of itsc-On October 1, 1941, the 3rd Armored Brigade became the 32nd]  ID=PP | N | arr 1/15
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	2nd Armored Div HQ	2	b	1 × Mk VI Lights	1/15		
+1	Ist Armored Bde HQ		b	1x Mk VI Lights	1/15	b	2nd Armored Div HQ
+2	4th Hussars	4 Hus	g	5 x A9Cruisers, 5 x A10 Cruisers	1/15		Ist Armored Bde HQ
+2	3rd Royal Tank Regt	3 RTR	g	10x Mk VI Lights	1/15		Ist Armored Bde HQ
+1	3rd Armored Bde HQ	3	d	1 X Crusader Mk I	1/15		2nd Armored Div HQ
+1	32nd Army Tank Bde HQ	32 Army	d		1/51		2nd Armored Div HQ
+2	5th Royal Tank Regt	5 RTR	g	10 × A13 Cruisers	1/15		32nd Army Tank Bde HQ
+1	2nd Support Group HQ	2 Spt		N	1/15		2nd Armored Div HQ
+2	1st Tower Hamlet Rifles	1 THRf		N	1/15	d	2nd Support Group HQ
+2	Ist Rangers	1 Ranger		N	1/15		2nd Support Group HQ
+2	2nd Royal Horse Arty	2 RHA		6 × 25-pounders	1/15		2nd Support Group HQ
+2	102nd/NH Light Anti- Aircraft/Anti-Tank Regt	102(NH)	bb	2 x 2-pounders, 2 x Light AA	1/15		2nd Support Group HQ
+2	Kings Dragoon Guards	KDGd	PP	N	1/15	a - The 2nd Armored Division was undermanned, in terms of itsc-On October 1, 1941, the 3rd Armored Brigade became the 32nd	2nd Support Group HQ
+
+# Formation: 7th Armored Division
+# Basic Morale: +2
+# indent levels (unit-x centers): [0.195, 0.211, 0.226]
+## Tree
+7th Armored Div HQE  (7)  ID=b | 1x Mark VI Light | arr D
+    4th Armored Bde HQ  ()  ID=b | 1xMark VI Light | arr D
+        6th Royal Tank Regt  (6 RTR)  10 x Mark VI Lights
+        7th Queens Own Hussars  (7 Hus)  10 × Mark VI Lights
+    7th Armored Bde HQ  (7)  ID=d | 1xA9
+        Ist Royal Tank Regt  (1RTR)  ID=g | 7XA9
+        8th Hussars  (8 Hus) [b]  ID=g | 7XA10 | arr D
+    7th Support Group HQ  (7 Spt)  N | arr D
+    7th Motor Bde HQ  (7 Mu)  ID=a | N | arr 2/68
+        Ist KRRC  (1 KRRC) [d]  N | arr D
+        2nd Rifle Brigade  (2 RflBde)  N
+        3rd Ryl Horse Arty  (3 RHA)  ID=aa | 6× 2-pounders
+        4th Ryl Horse Arty  (4 RHA)  6x 18/25-pounders
+        11th Hussars  (11 Hus)  ID=Il | U@6 TOE | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	7th Armored Div HQE	7	b	1x Mark VI Light	D		
+1	4th Armored Bde HQ		b	1xMark VI Light	D		7th Armored Div HQE
+2	6th Royal Tank Regt	6 RTR		10 x Mark VI Lights			4th Armored Bde HQ
+2	7th Queens Own Hussars	7 Hus		10 × Mark VI Lights			4th Armored Bde HQ
+1	7th Armored Bde HQ	7	d	1xA9			7th Armored Div HQE
+2	Ist Royal Tank Regt	1RTR	g	7XA9			7th Armored Bde HQ
+2	8th Hussars	8 Hus	g	7XA10	D	b	7th Armored Bde HQ
+1	7th Support Group HQ	7 Spt		N	D		7th Armored Div HQE
+1	7th Motor Bde HQ	7 Mu	a	N	2/68		7th Armored Div HQE
+2	Ist KRRC	1 KRRC		N	D	d	7th Motor Bde HQ
+2	2nd Rifle Brigade	2 RflBde		N			7th Motor Bde HQ
+2	3rd Ryl Horse Arty	3 RHA	aa	6× 2-pounders			7th Motor Bde HQ
+2	4th Ryl Horse Arty	4 RHA		6x 18/25-pounders			7th Motor Bde HQ
+2	11th Hussars	11 Hus	Il	U@6 TOE	D		7th Motor Bde HQ
+
+===== PAGE 118 =====
+# Formation: 8th Armored Division
+# Basic Morale: + 1 (0)
+# indent levels (unit-x centers): [0.171, 0.189, 0.203]
+## Tree
+8th Armored Div HO  (8)  ID=d | 1x Crusader Mk II | arr 3/87
+    23rd Armored Bde HQ  (23)  ID=d | 1 x Crusader Mk II | arr 3/87
+        40th Royal Tank Regt  (40 RTR)  ID=g | 1 x Matilda, 9x Valentine | arr 3/87
+        46th Royal Tank Regt  (46 RTR)  ID=g | 1 x Matilda, 9 X Valentine | arr 3/87
+        50th Royal Tank Regt  (50 RTR)  ID=g | 1 x Matilda, 9x Valentine | arr 3/87
+        7th Rifle Brigade  (7 RflBde)  N | arr 3/87
+    24th Armored Bde HO  (24)  ID=d | 1 x Crusader Mk II | arr 1/88
+        41st Royal Tank Regt  (41 RTR)  ID=g | 1 xMatilda, 9× Valentine | arr 1/88
+        45th Royal Tank Regt  (45 RTR)  ID=g | 1xMatilda, 9 x Valentine | arr 1/88
+        47th Royal Tank Regt  (47 RIR)  ID=g | 1xMatilda, 9× Valentine | arr 1/88
+        11th KRRC  (11 KRRC)  N | arr 1/88
+    2nd Derbyshire Yeomanry  (2 DerYeo)  ID=hh | N | arr 3/87
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	8th Armored Div HO	8	d	1x Crusader Mk II	3/87		
+1	23rd Armored Bde HQ	23	d	1 x Crusader Mk II	3/87		8th Armored Div HO
+2	40th Royal Tank Regt	40 RTR	g	1 x Matilda, 9x Valentine	3/87		23rd Armored Bde HQ
+2	46th Royal Tank Regt	46 RTR	g	1 x Matilda, 9 X Valentine	3/87		23rd Armored Bde HQ
+2	50th Royal Tank Regt	50 RTR	g	1 x Matilda, 9x Valentine	3/87		23rd Armored Bde HQ
+2	7th Rifle Brigade	7 RflBde		N	3/87		23rd Armored Bde HQ
+1	24th Armored Bde HO	24	d	1 x Crusader Mk II	1/88		8th Armored Div HO
+2	41st Royal Tank Regt	41 RTR	g	1 xMatilda, 9× Valentine	1/88		24th Armored Bde HO
+2	45th Royal Tank Regt	45 RTR	g	1xMatilda, 9 x Valentine	1/88		24th Armored Bde HO
+2	47th Royal Tank Regt	47 RIR	g	1xMatilda, 9× Valentine	1/88		24th Armored Bde HO
+2	11th KRRC	11 KRRC		N	1/88		24th Armored Bde HO
+1	2nd Derbyshire Yeomanry	2 DerYeo	hh	N	3/87		8th Armored Div HO
+
+# Formation: 44th (Home Countries) Infantry Division
+# Basic Morale: + 2
+# indent levels (unit-x centers): [0.177, 0.192, 0.207]
+## Tree
+44th Infantry Div HQE  (44)  N | arr 2/90
+    13ist Infantry Bde HQ  (131)  ID=а | N | arr 1/90
+        1/5 Queens  (1/5 Qns)  ID=m | N | arr 1/90
+        1/6 Queens  (1/6 Qns)  ID=m | N | arr 1/90
+        1/7 Queens  (1/7 Qns)  ID=m | N | arr 1/90
+    132nd Infantry Bde HQ  (132)  N | arr 2/90
+        4th Royal West Kents  (4RWK)  ID=m | N | arr 2/90
+        5th Royal West Kents  (5 RWK)  ID=m | N | arr 2/90
+        2nd Buffs  (2 Buffs)  N | arr 2/90
+    133rd Infantry Bde HQ  (133)  N | arr 2/90
+        2nd Royal Sussex  (2 RSsx)  N | arr 2/90
+        4th Royal Sussex  (4 RSsx)  N | arr 2/90
+        5th Royal Sussex  (5 RSsx)  ID=m | N | arr 2/90
+    6th Cheshire MG Bn  (6 Ches)  N | arr 2/90
+    44th Recce Regt  (44)  ID=11 | N | arr 2/90
+    57th Anti-tank Regt  (57)  ID=aa | 6X 6-pounders, 2x 2-pounders | arr 2/95
+    57th Field Artillery Regt  (57 Fld)  6 x 25-pounders | arr 2/95
+    58th Field Artillery Regt  (58 Fld)  6 × 25-pounders | arr 2/95
+    65th Field Artillery Regt  (65 Fld)  ID=X | 6 x 25-pounders | arr 2/95
+    30th Light AA Regt  (30 LAA)  ID=ee | 6x Light AA | arr 2/90
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	44th Infantry Div HQE	44		N	2/90		
+1	13ist Infantry Bde HQ	131	а	N	1/90		44th Infantry Div HQE
+2	1/5 Queens	1/5 Qns	m	N	1/90		13ist Infantry Bde HQ
+2	1/6 Queens	1/6 Qns	m	N	1/90		13ist Infantry Bde HQ
+2	1/7 Queens	1/7 Qns	m	N	1/90		13ist Infantry Bde HQ
+1	132nd Infantry Bde HQ	132		N	2/90		44th Infantry Div HQE
+2	4th Royal West Kents	4RWK	m	N	2/90		132nd Infantry Bde HQ
+2	5th Royal West Kents	5 RWK	m	N	2/90		132nd Infantry Bde HQ
+2	2nd Buffs	2 Buffs		N	2/90		132nd Infantry Bde HQ
+1	133rd Infantry Bde HQ	133		N	2/90		44th Infantry Div HQE
+2	2nd Royal Sussex	2 RSsx		N	2/90		133rd Infantry Bde HQ
+2	4th Royal Sussex	4 RSsx		N	2/90		133rd Infantry Bde HQ
+2	5th Royal Sussex	5 RSsx	m	N	2/90		133rd Infantry Bde HQ
+1	6th Cheshire MG Bn	6 Ches		N	2/90		44th Infantry Div HQE
+1	44th Recce Regt	44	11	N	2/90		44th Infantry Div HQE
+1	57th Anti-tank Regt	57	aa	6X 6-pounders, 2x 2-pounders	2/95		44th Infantry Div HQE
+1	57th Field Artillery Regt	57 Fld		6 x 25-pounders	2/95		44th Infantry Div HQE
+1	58th Field Artillery Regt	58 Fld		6 × 25-pounders	2/95		44th Infantry Div HQE
+1	65th Field Artillery Regt	65 Fld	X	6 x 25-pounders	2/95		44th Infantry Div HQE
+1	30th Light AA Regt	30 LAA	ee	6x Light AA	2/90		44th Infantry Div HQE
+
+===== PAGE 119 =====
+# Formation: 10th Armored Division (a)
+# Basic Morale: + 1 (- 1)
+# indent levels (unit-x centers): [0.188, 0.204, 0.221]
+## Tree
+10th Armored Diy HQ  (10)  ID=b | 1 x Stuart | arr 1/79
+    8th Armored Bde HQ  (8)  ID=b | 1 x Stuart | arr 3/69
+        Nottinghamshire Yeoman  (Nott Yeo)  ID=g | 9 x Grant | arr 3/69
+        Staffordshire Yeoman  (StffYeo)  ID=g | 8 × Grant, 2 × Crusader Mk II | arr 3/69
+        Royal Scotts Greys  (SctsGry)  ID=8 | 5 x Grant, 4 x Stuart | arr 3/69
+    9th Armored Bde HQ  (9)  ID=b | 1 x Stuart | arr 2/80
+        Royal Wiltshire Yeoman  (RWiYeo)  ID=g | 9 X Grant | arr 2/80
+        Warwick Yeoman  (WkYeo)  ID=g | 9 x Grant | arr 2/80
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	10th Armored Diy HQ	10	b	1 x Stuart	1/79		
+1	8th Armored Bde HQ	8	b	1 x Stuart	3/69		10th Armored Diy HQ
+2	Nottinghamshire Yeoman	Nott Yeo	g	9 x Grant	3/69		8th Armored Bde HQ
+2	Staffordshire Yeoman	StffYeo	g	8 × Grant, 2 × Crusader Mk II	3/69		8th Armored Bde HQ
+2	Royal Scotts Greys	SctsGry	8	5 x Grant, 4 x Stuart	3/69		8th Armored Bde HQ
+1	9th Armored Bde HQ	9	b	1 x Stuart	2/80		10th Armored Diy HQ
+2	Royal Wiltshire Yeoman	RWiYeo	g	9 X Grant	2/80		9th Armored Bde HQ
+2	Warwick Yeoman	WkYeo	g	9 x Grant	2/80		9th Armored Bde HQ
+
+# Formation: 50th (Northumbrian) Infantry Division
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.194, 0.209, 0.224]
+## Tree
+50th Infantry Div HQE  (50)  N | arr 3/68
+    69th Infantry Bde HQ  (69)  N | arr 1/69
+        5th East Yorkshires  (5 EYork)  ID=m | N | arr 1/69
+        6th Green Howards  (6 GrnHo)  N | arr 1/69
+        7th Green Howards  (7 GrnHo)  ID=m | N | arr 1/69
+    150th Infantry Bde HQ  (150)  ID=a | N | arr 3/36
+        4th East Yorkshires  (4 EYork)  ID=m | N | arr 3/36
+        4th Green Howards  (4 GrnHo)  ID=m | N | arr 3/36
+        5th Green Howards  (5 GrnHo)  ID=m | N | arr 3/36
+    151st Infantry Bde HQ  (151)  N | arr 2/69
+        6th Durham Light Inf  (6 DurLt)  ID=m | N | arr 2/69
+        8th Durham Light Inf  (8 DurLt)  ID=m | N | arr 2/69
+        9th Durham Light Inf  (9 DurLt)  ID=m | N | arr 2/69
+    2nd Cheshire MG Bn  (2 Ches)  0@4 | arr 3/68
+    50th Recce Regt  (50) [b]  ID=1l | U@6 | arr 2/58
+    72nd Field Artillery Regt  (72 Fld)  6 x 25-pounders | arr 2/69
+    74th Field Artillery Regt  (74 Fld)  ID=X | 6 × 25-pounders | arr 3/68
+    124th Field Artillery Regt  (124 Fld)  6 x 25-pounders | arr 2/69
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	50th Infantry Div HQE	50		N	3/68		
+1	69th Infantry Bde HQ	69		N	1/69		50th Infantry Div HQE
+2	5th East Yorkshires	5 EYork	m	N	1/69		69th Infantry Bde HQ
+2	6th Green Howards	6 GrnHo		N	1/69		69th Infantry Bde HQ
+2	7th Green Howards	7 GrnHo	m	N	1/69		69th Infantry Bde HQ
+1	150th Infantry Bde HQ	150	a	N	3/36		50th Infantry Div HQE
+2	4th East Yorkshires	4 EYork	m	N	3/36		150th Infantry Bde HQ
+2	4th Green Howards	4 GrnHo	m	N	3/36		150th Infantry Bde HQ
+2	5th Green Howards	5 GrnHo	m	N	3/36		150th Infantry Bde HQ
+1	151st Infantry Bde HQ	151		N	2/69		50th Infantry Div HQE
+2	6th Durham Light Inf	6 DurLt	m	N	2/69		151st Infantry Bde HQ
+2	8th Durham Light Inf	8 DurLt	m	N	2/69		151st Infantry Bde HQ
+2	9th Durham Light Inf	9 DurLt	m	N	2/69		151st Infantry Bde HQ
+1	2nd Cheshire MG Bn	2 Ches		0@4	3/68		50th Infantry Div HQE
+1	50th Recce Regt	50	1l	U@6	2/58	b	50th Infantry Div HQE
+1	72nd Field Artillery Regt	72 Fld		6 x 25-pounders	2/69		50th Infantry Div HQE
+1	74th Field Artillery Regt	74 Fld	X	6 × 25-pounders	3/68		50th Infantry Div HQE
+1	124th Field Artillery Regt	124 Fld		6 x 25-pounders	2/69		50th Infantry Div HQE
+
+# Formation: Ist Army Tank Brigade
+# Basic Morale: + 1 (0)
+# indent levels (unit-x centers): [0.184, 0.209]
+## Tree
+Ist Army Tank Bde HQ  (1 Army) [a]  ID=d | 1 x A9 Cruiser | arr 1/36
+    8th Royal Tank Regt  (8 RTR)  ID=g | 10 x Matilda | arr 1/36
+    42nd Royal Tank Regt  (42 RTR) [b]  10 x Matilda | arr 2/28
+    44th Royal Tank Regt  (44 RTR) [b]  ID=g | 10 x Matilda | arr 1/36
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ist Army Tank Bde HQ	1 Army	d	1 x A9 Cruiser	1/36	a	
+1	8th Royal Tank Regt	8 RTR	g	10 x Matilda	1/36		Ist Army Tank Bde HQ
+1	42nd Royal Tank Regt	42 RTR		10 x Matilda	2/28	b	Ist Army Tank Bde HQ
+1	44th Royal Tank Regt	44 RTR	g	10 x Matilda	1/36	b	Ist Army Tank Bde HQ
+
+===== PAGE 120 =====
+# Formation: SIst (Highland) Infantry Division
+# Basic Morale: +1
+# indent levels (unit-x centers): [0.173, 0.19, 0.203]
+## Tree
+51st Infantry Div HQE  (51)  N | arr 2/92
+    152 Infantry Bde HQ  (152)  N | arr 3/92
+        2nd Seaforth Highlander  (2 Sea)  ID=m | N | arr 3/92
+        5th Seaforth Highlander  (5 Sea)  ID=m | N | arr 3/92
+        5th Cameron Highlander  (5 Cmrn)  ID=m | N | arr 3/92
+    153rd Infantry Bde HQ  (153) [a]  N | arr 3/92
+        Sth Black Watch  (5 BlkWa)  ID=m | arr 3/92
+        Ist Gordons  (1 Grdn)  ID=m | N | arr 3/92
+        5/7 Gordon  (5/7 Grdn)  ID=m | N | arr 3/92
+    154th Infantry Bde HQ  (154)  N | arr 3/92
+        Ist Black Watch  (1 BlkWa)  ID=m | N | arr 3/92
+        7th Black Watch  (7 BlkWa)  ID=m | N | arr 3/92
+        7th Argyll & Sutherland  (7 A&S) [b]  ID=m | N | arr 3/92
+    1/7 Middlesex MG Bn  (1/7 Malsx)  ID=u | N | arr 2/92
+    5Ist Recce Regt  ()  N | arr 2/92
+    61st Anti-tank Regt  (61)  ID=aa | 6× 6-pounder, 2 x 2-pounder | arr 1/93
+    126th Field Artillery Regt  (126 Fld)  6 x 25-pounder | arr 1/93
+    127th Field Artillery Regt  (127 Fld)  6 x 25-pounder | arr 1/93
+    128th Field Artillery Regt  (128 Fld)  6 x 25-pounder | arr 1/93
+    40th Light AA Regt  (40 LAA)  ID=ee | 6 × Light AA | arr 1/93
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	51st Infantry Div HQE	51		N	2/92		
+1	152 Infantry Bde HQ	152		N	3/92		51st Infantry Div HQE
+2	2nd Seaforth Highlander	2 Sea	m	N	3/92		152 Infantry Bde HQ
+2	5th Seaforth Highlander	5 Sea	m	N	3/92		152 Infantry Bde HQ
+2	5th Cameron Highlander	5 Cmrn	m	N	3/92		152 Infantry Bde HQ
+1	153rd Infantry Bde HQ	153		N	3/92	a	51st Infantry Div HQE
+2	Sth Black Watch	5 BlkWa	m		3/92		153rd Infantry Bde HQ
+2	Ist Gordons	1 Grdn	m	N	3/92		153rd Infantry Bde HQ
+2	5/7 Gordon	5/7 Grdn	m	N	3/92		153rd Infantry Bde HQ
+1	154th Infantry Bde HQ	154		N	3/92		51st Infantry Div HQE
+2	Ist Black Watch	1 BlkWa	m	N	3/92		154th Infantry Bde HQ
+2	7th Black Watch	7 BlkWa	m	N	3/92		154th Infantry Bde HQ
+2	7th Argyll & Sutherland	7 A&S	m	N	3/92	b	154th Infantry Bde HQ
+1	1/7 Middlesex MG Bn	1/7 Malsx	u	N	2/92		51st Infantry Div HQE
+1	5Ist Recce Regt			N	2/92		51st Infantry Div HQE
+1	61st Anti-tank Regt	61	aa	6× 6-pounder, 2 x 2-pounder	1/93		51st Infantry Div HQE
+1	126th Field Artillery Regt	126 Fld		6 x 25-pounder	1/93		51st Infantry Div HQE
+1	127th Field Artillery Regt	127 Fld		6 x 25-pounder	1/93		51st Infantry Div HQE
+1	128th Field Artillery Regt	128 Fld		6 x 25-pounder	1/93		51st Infantry Div HQE
+1	40th Light AA Regt	40 LAA	ee	6 × Light AA	1/93		51st Infantry Div HQE
+
+# Formation: 70th Infantry Division (a)
+# Basic Morale: +1
+# indent levels (unit-x centers): [0.173, 0.187, 0.203]
+## Tree
+70th Infantry Div HQE  (70) [b]  N | arr 2/21
+    14th Infantry Bde HQ  (14)  3 x 4.5" Howitzer | arr 1/35
+        1st Bedfords & Herts  (1 B&H)  ID=m | N | arr 1/35
+        2nd Yorks & Lancashires  (2 Y&L)  ID=m | N | arr 1/35
+        2nd Black Watch  (2 BlkWa)  N | arr 1/35
+        14th Bde Anti-tank Coy  (14)  ID=dd | 2 x 2-pounder | arr 1/47
+    16th Infantry Bde HQ  (16) [d]  3× 3.7" Howitzer | arr D.
+        2nd Queens Royal Regt  (2 Qns)  ID=m | N | arr D
+        2nd Leicesters  (2 Leicst)  ID=m | N | arr D
+        Ist Argyll & Sutherland  (1 A&S)  ID=m | N | arr d
+        16th Bde Anti-tank Coy  (16)  ID=dd | 2× 2-pounder | arr 1/50
+    23rd Infantry Bde HQ  (23)  3 x 25-pounder | arr 3/51
+        1st Essex  (1 Essex) [f]  ID=m | N | arr D
+        Ist Durham Light Inf  (1 Dur Lt)  ID=M | N | arr D
+        4th Borderers  (4 Bord)  N | arr 3/51
+        23rd Bde Anti-tank Coy  (23)  ID=dd | 2 x 2-pounder | arr 2/50
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	70th Infantry Div HQE	70		N	2/21	b	
+1	14th Infantry Bde HQ	14		3 x 4.5" Howitzer	1/35		70th Infantry Div HQE
+2	1st Bedfords & Herts	1 B&H	m	N	1/35		14th Infantry Bde HQ
+2	2nd Yorks & Lancashires	2 Y&L	m	N	1/35		14th Infantry Bde HQ
+2	2nd Black Watch	2 BlkWa		N	1/35		14th Infantry Bde HQ
+2	14th Bde Anti-tank Coy	14	dd	2 x 2-pounder	1/47		14th Infantry Bde HQ
+1	16th Infantry Bde HQ	16		3× 3.7" Howitzer	D.	d	70th Infantry Div HQE
+2	2nd Queens Royal Regt	2 Qns	m	N	D		16th Infantry Bde HQ
+2	2nd Leicesters	2 Leicst	m	N	D		16th Infantry Bde HQ
+2	Ist Argyll & Sutherland	1 A&S	m	N	d		16th Infantry Bde HQ
+2	16th Bde Anti-tank Coy	16	dd	2× 2-pounder	1/50		16th Infantry Bde HQ
+1	23rd Infantry Bde HQ	23		3 x 25-pounder	3/51		70th Infantry Div HQE
+2	1st Essex	1 Essex	m	N	D	f	23rd Infantry Bde HQ
+2	Ist Durham Light Inf	1 Dur Lt	M	N	D		23rd Infantry Bde HQ
+2	4th Borderers	4 Bord		N	3/51		23rd Infantry Bde HQ
+2	23rd Bde Anti-tank Coy	23	dd	2 x 2-pounder	2/50		23rd Infantry Bde HQ
+
+===== PAGE 121 =====
+# Formation: 22nd Armored Brigade
+# Basic Morale: + 2 ( + 1)
+# indent levels (unit-x centers): [0.194, 0.207]
+## Tree
+22nd Armored Bde HQ  (22)  ID=d | 1 X A10 Cruiser | arr 3/20
+    2nd Ryl Gloucester Hussars  (2 Hus)  ID=g | 9 x Crusader I, 1 x A9 Cruiser | arr 3/20
+    3rd CLY Sharpshooters  (3 CLY)  ID=g | 9x Crusader I, 1 X A9 Cruiser | arr 3/20
+    4th CLY Sharpshooters  (4 CLY)  ID=g | 9 × Crusader I, 1x A9 Cruiser | arr 3/20
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	22nd Armored Bde HQ	22	d	1 X A10 Cruiser	3/20		
+1	2nd Ryl Gloucester Hussars	2 Hus	g	9 x Crusader I, 1 x A9 Cruiser	3/20		22nd Armored Bde HQ
+1	3rd CLY Sharpshooters	3 CLY	g	9x Crusader I, 1 X A9 Cruiser	3/20		22nd Armored Bde HQ
+1	4th CLY Sharpshooters	4 CLY	g	9 × Crusader I, 1x A9 Cruiser	3/20		22nd Armored Bde HQ
+
+# Formation: Unassigned Anti-tamk Regiments
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.192]
+## Tree
+13th Anti-tank Regt  (13)  ID=aa | 8 x 6-pounders | arr 2/92
+65th Anti-tank Regt  (65)  ID=aa | 6× 2-pounders | arr D
+73rd Anti-tank Regt  (73)  2x 18-pounder, 8 x 2-pounder | arr 1/27
+84th Anti-tank Regt  (84)  ID=aa | 8x 6-pounder | arr 1/75
+95th Anti-tank Regt  (95)  ID=aa | 8 x 2-pounder | arr 3/60
+102nd Anti-tank Regt  (102) [b]  ID=aa | 8× 2-pounder | arr 1/45
+149th Anti-tank Regt  (149)  ID=aa | 8 x 2-pounder | arr D
+106th Royal Horse Arty Regt  (106 RHA)  ID=aa | 8x 2-pounder | arr 1/11
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	13th Anti-tank Regt	13	aa	8 x 6-pounders	2/92		
+0	65th Anti-tank Regt	65	aa	6× 2-pounders	D		
+0	73rd Anti-tank Regt	73		2x 18-pounder, 8 x 2-pounder	1/27		
+0	84th Anti-tank Regt	84	aa	8x 6-pounder	1/75		
+0	95th Anti-tank Regt	95	aa	8 x 2-pounder	3/60		
+0	102nd Anti-tank Regt	102	aa	8× 2-pounder	1/45	b	
+0	149th Anti-tank Regt	149	aa	8 x 2-pounder	D		
+0	106th Royal Horse Arty Regt	106 RHA	aa	8x 2-pounder	1/11		
+
+===== PAGE 122 =====
+# Formation: Unassigned Armor-Class Umits
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.172]
+## Tree
+3rd Kings Own Hussars  (3 Hus) [a]  ID=g | 10 x Mark VI Light | arr 3/4
+2nd Royal Tank Regt  (2 RTR) [b]  ID=g | 10 x A13 Cruiser | arr 3/2
+7th Royal Tank Regt  (7 RTR)  ID=g | 10x Matilda | arr 3/2
+4th Royal Tank Regt  (4 RTR)  ID=g | 10× Matilda | arr 2/29
+10th, QVOC Guides  (10 QVG) [d]  ID=mm | N | arr 2/84
+Ist, The Royal Dragoons  (1 Royals)  ID=kk | N | arr 1/31
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	3rd Kings Own Hussars	3 Hus	g	10 x Mark VI Light	3/4	a	
+0	2nd Royal Tank Regt	2 RTR	g	10 x A13 Cruiser	3/2	b	
+0	7th Royal Tank Regt	7 RTR	g	10x Matilda	3/2		
+0	4th Royal Tank Regt	4 RTR	g	10× Matilda	2/29		
+0	10th, QVOC Guides	10 QVG	mm	N	2/84	d	
+0	Ist, The Royal Dragoons	1 Royals	kk	N	1/31		
+
+# Formation: Unassigned British Infantry-type Units
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.168]
+## Tree
+Ist Buffs  (1 Buffs) [a]  N | arr D
+3rd Coldstream Guards  (3 CldGds) [b]  ID=P | N
+Ist Hampshire  (1 Hamp)  N | arr D
+2nd King's Own Royal Regt  (2 KOR) [d]  N
+Ist South Staffordshires  (1 SoStff)  N
+2nd Scots Guards  (2 SctGds) [b]  N
+Ist Cheshire MG Bn  (1 Ches)  N
+Ist RNF MG Bn  (1RNF)  N
+"A" Bn, Special Service Bde  ("A") [g]  N | arr 2/19
+Special Air Service Bde  (SAS) [h]  N | arr 2/47
+Ist Sherwood Forresters  (1 Frstrs)  N | arr 1/65
+Royal Yugoslay Guards  (RYugGd) [k]  N | arr 1/70
+14th Sherwood Forresters  (14 Frstrs)  N | arr 2/89
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ist Buffs	1 Buffs		N	D	a	
+0	3rd Coldstream Guards	3 CldGds	P	N		b	
+0	Ist Hampshire	1 Hamp		N	D		
+0	2nd King's Own Royal Regt	2 KOR		N		d	
+0	Ist South Staffordshires	1 SoStff		N			
+0	2nd Scots Guards	2 SctGds		N		b	
+0	Ist Cheshire MG Bn	1 Ches		N			
+0	Ist RNF MG Bn	1RNF		N			
+0	"A" Bn, Special Service Bde	"A"		N	2/19	g	
+0	Special Air Service Bde	SAS		N	2/47	h	
+0	Ist Sherwood Forresters	1 Frstrs		N	1/65		
+0	Royal Yugoslay Guards	RYugGd		N	1/70	k	
+0	14th Sherwood Forresters	14 Frstrs		N	2/89		
+
+===== PAGE 123 =====
+# Formation: Unassigmed Artillery Units
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.182, 0.198]
+## Tree
+    3rd Field Artillery Regt  (3 Fld)  6X3.7" Howitzer | arr 2/80
+    4th Field Artillery Regt  (4 Fld)  6x25-pounder | arr 1/33
+    8th Field Artillery Regt  (8 Fld)  6x25-pounder | arr D
+    11th Field Artillery Regt  (11 Fld)  6x25pounder | arr 1/86
+• 18th Field Artillery Regt  (18 Fld)  6x25-pounder | arr 3/38
+    32nd Field Artillery Regt  (32 Fld)  6x25-pounder | arr 1/85
+    51st Field Artillery Regt  (51 Fld)  6x25-pounder | arr 1/15
+    53rd Field Artillery Regt  (53 Fld)  6x25-pounder | arr 3/89
+    60th Field Artillery Regt  (60 Fld)  6x 25-pounder | arr 2/48
+    78th Field Artillery Regt  (78 Fld)  6x25-pounder | arr 1/56
+    98th Field Artillery Regt  (98 Fld)  6x25-pounder | arr 3/83
+    111th Field Artillery Regt*  (111 Fld)  6X3.7" Howitzer | arr 3/60
+    121st Field Artillery Regt  (121 Fld) [a]  6x25-pounder | arr 1/85
+    146th Field Artillery Regt  (146 Fld)  6x25-pounder | arr 3/28
+    154th Field Artillery Regt  (154 Fld)  6x 25-pounder | arr 3/60
+    7th Medium Artillery Regt  (7 Med)  6X 60-pounder | arr D
+    8th Medium Artillery Regt  (8 Med)  1X6" Howitzer, 3 × 60-pounder | arr D
+    27th Medium Artillery Regt  (27 Med)  6X4.5" Gun | arr 2/44
+    64th Medium Artillery Regt  (64 Med)  6X4.5" Gun | arr 1/16
+    67th Medium Artillery Regt  (67 Med)  6x 155mm Howitzer | arr 1/55
+    68th Medium Artillery Regt  (68 Med)  6X4.5" Gun | arr 2/44
+    69th Medium Artillery Regt  (69 Med)  6X5.5" Gun-Howitzer | arr 3/83
+    Ist Royal Horse Arty Regt 5th Royal Horse Arty Regt  (1 RHA)  6x25-pounder 6x 105mm Howitzer (SPA) | arr 1/15
+    11th Royal Horse Arty Regt  (11 RHA) [b]  ID=x | 6XSP 25-pounder | arr 3/92
+    104th Royal Horse Arty Regt  (104 RHA)  4x25-pounder | arr 2/15
+    107th Royal Horse Arty Regt a = This unit was attached to the 18th Indian Brigade for a short time, after which it saw duty for the remainder of the campaign with the 10th Indian Division. • = This unit is a refitted version of the 11 RHA assigned to the 1: Armored Division. It is not a unit per se. The Commonwealt Player may refit an artillery regiment with up to six TOE Strength Points of Bishops. These self-propelled artillery TOE Strength Points are not listed on the Commonwealth Production Chart as they are "free." The Commonwealth Player may refit any one Royal Horse Artillery Regiment (RHA) which is at that point in monwealth Armored Division. The refitting requires the unit to spend four continuous Game-Turns (one month), beginning on any Operations Stage, in Cairo. If the unit being refitted is the 11th RHA, it may not finish refitting earlier than Operations Stage 3 of Game-Turn 92 (August 1942). If any other RHA unit, it may not finish refitting earier than Operations Stage 3 of Game-Turn 94 (August 1942). At the end of the four Game-Turns, the unit ex- changes (converts) any 25-pounder TOE Strength Points that com- prised the unit before it actually began the refitting into Bishops (SP 25-pounders). Note that if the unit lost any 25-pounder TOE Strength Points (for any reason) during the refitting, it would still receive Bishops equal to the number it began the refitting with. The new counter may be used as a replacement for the old 11th RHA upon completion of the refitting. (Actually, it can be used for any RHA that has been refit, as the refit has no effect on the ability of an artillery regiment to contain SPA.)  (107 RHA)  ID=necessarily attached, to a Com- | 6x 25-pounder | arr 3/9
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+1	3rd Field Artillery Regt	3 Fld		6X3.7" Howitzer	2/80		
+1	4th Field Artillery Regt	4 Fld		6x25-pounder	1/33		
+1	8th Field Artillery Regt	8 Fld		6x25-pounder	D		
+1	11th Field Artillery Regt	11 Fld		6x25pounder	1/86		
+0	• 18th Field Artillery Regt	18 Fld		6x25-pounder	3/38		
+1	32nd Field Artillery Regt	32 Fld		6x25-pounder	1/85		• 18th Field Artillery Regt
+1	51st Field Artillery Regt	51 Fld		6x25-pounder	1/15		• 18th Field Artillery Regt
+1	53rd Field Artillery Regt	53 Fld		6x25-pounder	3/89		• 18th Field Artillery Regt
+1	60th Field Artillery Regt	60 Fld		6x 25-pounder	2/48		• 18th Field Artillery Regt
+1	78th Field Artillery Regt	78 Fld		6x25-pounder	1/56		• 18th Field Artillery Regt
+1	98th Field Artillery Regt	98 Fld		6x25-pounder	3/83		• 18th Field Artillery Regt
+1	111th Field Artillery Regt*	111 Fld		6X3.7" Howitzer	3/60		• 18th Field Artillery Regt
+1	121st Field Artillery Regt	121 Fld		6x25-pounder	1/85	a	• 18th Field Artillery Regt
+1	146th Field Artillery Regt	146 Fld		6x25-pounder	3/28		• 18th Field Artillery Regt
+1	154th Field Artillery Regt	154 Fld		6x 25-pounder	3/60		• 18th Field Artillery Regt
+1	7th Medium Artillery Regt	7 Med		6X 60-pounder	D		• 18th Field Artillery Regt
+1	8th Medium Artillery Regt	8 Med		1X6" Howitzer, 3 × 60-pounder	D		• 18th Field Artillery Regt
+1	27th Medium Artillery Regt	27 Med		6X4.5" Gun	2/44		• 18th Field Artillery Regt
+1	64th Medium Artillery Regt	64 Med		6X4.5" Gun	1/16		• 18th Field Artillery Regt
+1	67th Medium Artillery Regt	67 Med		6x 155mm Howitzer	1/55		• 18th Field Artillery Regt
+1	68th Medium Artillery Regt	68 Med		6X4.5" Gun	2/44		• 18th Field Artillery Regt
+1	69th Medium Artillery Regt	69 Med		6X5.5" Gun-Howitzer	3/83		• 18th Field Artillery Regt
+1	Ist Royal Horse Arty Regt 5th Royal Horse Arty Regt	1 RHA		6x25-pounder 6x 105mm Howitzer (SPA)	1/15		• 18th Field Artillery Regt
+1	11th Royal Horse Arty Regt	11 RHA	x	6XSP 25-pounder	3/92	b	• 18th Field Artillery Regt
+1	104th Royal Horse Arty Regt	104 RHA		4x25-pounder	2/15		• 18th Field Artillery Regt
+1	107th Royal Horse Arty Regt a = This unit was attached to the 18th Indian Brigade for a short time, after which it saw duty for the remainder of the campaign with the 10th Indian Division. • = This unit is a refitted version of the 11 RHA assigned to the 1: Armored Division. It is not a unit per se. The Commonwealt Player may refit an artillery regiment with up to six TOE Strength Points of Bishops. These self-propelled artillery TOE Strength Points are not listed on the Commonwealth Production Chart as they are "free." The Commonwealth Player may refit any one Royal Horse Artillery Regiment (RHA) which is at that point in monwealth Armored Division. The refitting requires the unit to spend four continuous Game-Turns (one month), beginning on any Operations Stage, in Cairo. If the unit being refitted is the 11th RHA, it may not finish refitting earlier than Operations Stage 3 of Game-Turn 92 (August 1942). If any other RHA unit, it may not finish refitting earier than Operations Stage 3 of Game-Turn 94 (August 1942). At the end of the four Game-Turns, the unit ex- changes (converts) any 25-pounder TOE Strength Points that com- prised the unit before it actually began the refitting into Bishops (SP 25-pounders). Note that if the unit lost any 25-pounder TOE Strength Points (for any reason) during the refitting, it would still receive Bishops equal to the number it began the refitting with. The new counter may be used as a replacement for the old 11th RHA upon completion of the refitting. (Actually, it can be used for any RHA that has been refit, as the refit has no effect on the ability of an artillery regiment to contain SPA.)	107 RHA	necessarily attached, to a Com-	6x 25-pounder	3/9		• 18th Field Artillery Regt
+
+===== PAGE 124 =====
+# Formation: Unassigned Anti-aireraft Units
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.198]
+## Tree
+Ist Light AA Regt  (1 LAA)  ID=ee | 6x Light AA | arr 1/31
+13th Light AA Regt  (13 LAA)  ID=ee | 6x Light AA | arr 2/11
+14th Light AA Regt  (14 LAA)  ID=ee | 6x Light AA | arr 2/41
+15th Light AA Regt  (15 LAA)  ID=ee | 6x Light AA | arr D
+16th Light AA Regt  (16 LAA)  ID=ee | 6 x Light AA | arr 3/43
+25th Light AA Regt  (25 LAA)  ID=ee | 6 X Light AA | arr 2/48
+:27th Light AA Regt  (27 LAA)  ID=ee | 6 X Light AA | arr 3/28
+34th Light AA Regt  (34 LAA)  ID=ee | 6x Light AA | arr 2/58
+37th Light AA Regt  (37 LAA)  ID=ee | 6x Light AA | arr 2/30
+42nd Light AA Regt  (42 LAA)  ID=ee | 6x Light AA | arr 1/98
+52nd Light AA Regt  (52 LAA)  ID=ee | 6X Light AA | arr 3/12
+53rd Light AA Regt  (53 LAA)  ID=ee | 6x Light AA | arr 1/86
+56th Light AA Regt  (56 LAA)  ID=ee | 6x Light AA | arr 1/89
+57th Light AA Regt  (57 LAA)  ID=ee | 6x Light AA | arr D
+82nd Light AA Regt  (82 LAA)  ID=ee | 6x Light AA | arr 1/66
+2nd Light AA Regt  (2 LAA)  ID=ee | 6X Light AA | arr 1/45
+2nd Heavy AA Regt  (2 HAA)  ID=88 | 2X Heavy AA | arr 1/15
+9th Heavy AA Regt  (9 HAA)  ID=gg | 2x Heavy AA | arr D
+57th Heavy AA Regt  (57 HAA)  ID=gg | 2x Heavy AA | arr 1/43
+61st Heavy AA Regt  (61 HAA)  ID=gg | 2x Heavy AA | arr 1/28
+68th Heavy AA Regt  (68 HAA)  ID=gg | 2x Heavy AA | arr 2/59
+69th Heavy AA Regt  (69 HAA)  ID=gg | 2 x Heavy AA | arr 2/59
+74th Heavy AA Regt  (74 HAA)  ID=gg | 2X Heavy AA | arr 3/12
+87th Heavy AA Regt  (87 HAA)  ID=gg | 2x Heavy AA | arr 2/41
+88th Heavy AA Regt  (88 HAA)  ID=gg | 2x Heavy AA | arr 3/42
+89th Heavy AA Regt  (89 HAA)  ID=gg | 2x Heavy AA | arr 1/45
+94th Heavy AA Regt  (94 HAA) [AUSTRALIAN]  ID=88 | 2X Heavy AA | arr 3/43
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ist Light AA Regt	1 LAA	ee	6x Light AA	1/31		
+0	13th Light AA Regt	13 LAA	ee	6x Light AA	2/11		
+0	14th Light AA Regt	14 LAA	ee	6x Light AA	2/41		
+0	15th Light AA Regt	15 LAA	ee	6x Light AA	D		
+0	16th Light AA Regt	16 LAA	ee	6 x Light AA	3/43		
+0	25th Light AA Regt	25 LAA	ee	6 X Light AA	2/48		
+0	:27th Light AA Regt	27 LAA	ee	6 X Light AA	3/28		
+0	34th Light AA Regt	34 LAA	ee	6x Light AA	2/58		
+0	37th Light AA Regt	37 LAA	ee	6x Light AA	2/30		
+0	42nd Light AA Regt	42 LAA	ee	6x Light AA	1/98		
+0	52nd Light AA Regt	52 LAA	ee	6X Light AA	3/12		
+0	53rd Light AA Regt	53 LAA	ee	6x Light AA	1/86		
+0	56th Light AA Regt	56 LAA	ee	6x Light AA	1/89		
+0	57th Light AA Regt	57 LAA	ee	6x Light AA	D		
+0	82nd Light AA Regt	82 LAA	ee	6x Light AA	1/66		
+0	2nd Light AA Regt	2 LAA	ee	6X Light AA	1/45		
+0	2nd Heavy AA Regt	2 HAA	88	2X Heavy AA	1/15		
+0	9th Heavy AA Regt	9 HAA	gg	2x Heavy AA	D		
+0	57th Heavy AA Regt	57 HAA	gg	2x Heavy AA	1/43		
+0	61st Heavy AA Regt	61 HAA	gg	2x Heavy AA	1/28		
+0	68th Heavy AA Regt	68 HAA	gg	2x Heavy AA	2/59		
+0	69th Heavy AA Regt	69 HAA	gg	2 x Heavy AA	2/59		
+0	74th Heavy AA Regt	74 HAA	gg	2X Heavy AA	3/12		
+0	87th Heavy AA Regt	87 HAA	gg	2x Heavy AA	2/41		
+0	88th Heavy AA Regt	88 HAA	gg	2x Heavy AA	3/42		
+0	89th Heavy AA Regt	89 HAA	gg	2x Heavy AA	1/45		
+0	94th Heavy AA Regt	94 HAA	88	2X Heavy AA	3/43	AUSTRALIAN	
+
+# Formation: 6th Australian Division (a)
+# Basic Morale: +1 (-3)
+# indent levels (unit-x centers): [0.207, 0.227, 0.24]
+## Tree
+6th Australian Div HQE  (6 Aus)  ID=a
+    16th Aus Infantry Bde HQ  (16 Aus)  
+        2/1 Aus Infantry Bn  (2/1 Aus)  
+        2/2Aus Infantry Bn  (2/2 Aus)  ID=p
+        2/3 Aus Infantry Bn  (2/3 Aus)  
+    17th Aus Infantry Bde HQ  (17 Aus)  
+        2/5 Aus Infantry Bn  (2/5 Aus)  
+        2/6 Aus Infantry Bn  (2/6 Aus)  
+        2/7 Aus Infantry Bn  (2/7 Aus)  
+    19th Aus Infantry Bde HQ  (19 Aus)  arr 2/9
+        2/4 Aus Infantry Bn  (2/4 Aus)  arr 2/9
+        2/8 AusInfantry Bn  (2/8 Aus)  arr 2/9
+        2/11 Aus Infantry Bn  (2/11 Aus)  N | arr 2/9
+    6th Aus Div Cavalry Regt  (6 AusCav)  ID=11 | N | arr D
+    2/1 Aus Field Artillery Regt  (2/1 AFld)  6×25-pounder | arr 1/11
+    2/2 Aus FieldArtillery Regt  (2/2 AFld)  3 × 18-pounder, 3 x 4.5" Howitzer | arr 1/7
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	6th Australian Div HQE	6 Aus	a				
+1	16th Aus Infantry Bde HQ	16 Aus					6th Australian Div HQE
+2	2/1 Aus Infantry Bn	2/1 Aus					16th Aus Infantry Bde HQ
+2	2/2Aus Infantry Bn	2/2 Aus	p				16th Aus Infantry Bde HQ
+2	2/3 Aus Infantry Bn	2/3 Aus					16th Aus Infantry Bde HQ
+1	17th Aus Infantry Bde HQ	17 Aus					6th Australian Div HQE
+2	2/5 Aus Infantry Bn	2/5 Aus					17th Aus Infantry Bde HQ
+2	2/6 Aus Infantry Bn	2/6 Aus					17th Aus Infantry Bde HQ
+2	2/7 Aus Infantry Bn	2/7 Aus					17th Aus Infantry Bde HQ
+1	19th Aus Infantry Bde HQ	19 Aus			2/9		6th Australian Div HQE
+2	2/4 Aus Infantry Bn	2/4 Aus			2/9		19th Aus Infantry Bde HQ
+2	2/8 AusInfantry Bn	2/8 Aus			2/9		19th Aus Infantry Bde HQ
+2	2/11 Aus Infantry Bn	2/11 Aus		N	2/9		19th Aus Infantry Bde HQ
+1	6th Aus Div Cavalry Regt	6 AusCav	11	N	D		6th Australian Div HQE
+1	2/1 Aus Field Artillery Regt	2/1 AFld		6×25-pounder	1/11		6th Australian Div HQE
+1	2/2 Aus FieldArtillery Regt	2/2 AFld		3 × 18-pounder, 3 x 4.5" Howitzer	1/7		6th Australian Div HQE
+
+===== PAGE 125 =====
+# Formation: 9th Australian Division
+# Basic Morale: +1 (0)  [arrival 0 per footnote a; trains up to +1]
+# indent levels (unit-x centers): [0.188, 0.201, 0.216]
+## Tree
+9th Australian Div HQ  (9 Aus)  ID=a | N | arr 3/20
+    20th Australian Inf Bde HQ  (20 Aus)  ID=f | N | arr 1/13
+        2/13 Aus Inf Bn  (2/13 Aus)  arr 1/13
+        2/15 Aus Inf Bn  (2/15 Aus)  arr 1/13
+        2/17 Aus Inf Bn  (2/17 Aus)  arr 1/13
+    24th Australian Inf Bde HQ  (24 Aus)  ID=f | N | arr 2/21
+        2/28 Aus Inf Bn  (2/28 Aus)  arr 2/21
+        2/32 Aus Inf Bn  (2/32 Aus)  arr 1/30
+        2/43 Aus Inf Bn  (2/43 Aus)  arr 2/21
+    26th Australian Inf Bde HQ  (26 Aus)  ID=f | arr 3/20
+        2/23 Aus Inf Bn  (2/23 Aus)  arr 3/20
+        2/24 Aus Inf Bn  (2/24 Aus)  ID=P | arr 3/20
+        2/48 Aus Inf Bn  (2/48 Aus)  arr 3/20
+    9th Aus Div Cavalry Regt  (9 AusCav)  arr 3/29
+    2/3 Aus Anti-tank Regt  (2/3 Aus)  ID=aa | 8× 2-pounder | arr 3/20
+    2/2 Aus MG Bn  (2/2 Aus)  ID=u | N | arr 1/30
+    2/7 Aus Field Artillery Regt  (2/7 AFld)  6× 25-pounder | arr 3/29
+    2/8 AusField Artillery Regt  (2/8 AFld)  6 x 25-pounder | arr 3/29
+    2/12 Aus Field Arty Regt  (2/12 AFld)  6X4.5" Howitzer | arr 3/29
+    2/1 Pioneer Bn  (2/1 AusP) [b]  N | arr 3/29
+    2/3 Aus Light AA Regt  (2/3 LAA)  ID=ee | 6 × Light AA | arr 3/29
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	9th Australian Div HQ	9 Aus	a	N	3/20		
+1	20th Australian Inf Bde HQ	20 Aus	f	N	1/13		9th Australian Div HQ
+2	2/13 Aus Inf Bn	2/13 Aus			1/13		20th Australian Inf Bde HQ
+2	2/15 Aus Inf Bn	2/15 Aus			1/13		20th Australian Inf Bde HQ
+2	2/17 Aus Inf Bn	2/17 Aus			1/13		20th Australian Inf Bde HQ
+1	24th Australian Inf Bde HQ	24 Aus	f	N	2/21		9th Australian Div HQ
+2	2/28 Aus Inf Bn	2/28 Aus			2/21		24th Australian Inf Bde HQ
+2	2/32 Aus Inf Bn	2/32 Aus			1/30		24th Australian Inf Bde HQ
+2	2/43 Aus Inf Bn	2/43 Aus			2/21		24th Australian Inf Bde HQ
+1	26th Australian Inf Bde HQ	26 Aus	f		3/20		9th Australian Div HQ
+2	2/23 Aus Inf Bn	2/23 Aus			3/20		26th Australian Inf Bde HQ
+2	2/24 Aus Inf Bn	2/24 Aus	P		3/20		26th Australian Inf Bde HQ
+2	2/48 Aus Inf Bn	2/48 Aus			3/20		26th Australian Inf Bde HQ
+1	9th Aus Div Cavalry Regt	9 AusCav			3/29		9th Australian Div HQ
+1	2/3 Aus Anti-tank Regt	2/3 Aus	aa	8× 2-pounder	3/20		9th Australian Div HQ
+1	2/2 Aus MG Bn	2/2 Aus	u	N	1/30		9th Australian Div HQ
+1	2/7 Aus Field Artillery Regt	2/7 AFld		6× 25-pounder	3/29		9th Australian Div HQ
+1	2/8 AusField Artillery Regt	2/8 AFld		6 x 25-pounder	3/29		9th Australian Div HQ
+1	2/12 Aus Field Arty Regt	2/12 AFld		6X4.5" Howitzer	3/29		9th Australian Div HQ
+1	2/1 Pioneer Bn	2/1 AusP		N	3/29	b	9th Australian Div HQ
+1	2/3 Aus Light AA Regt	2/3 LAA	ee	6 × Light AA	3/29		9th Australian Div HQ
+
+# Formation: 18th Australian Brigade (a)
+# Basic Morale: + 1 (0)
+# indent levels (unit-x centers): [0.183, 0.199]
+## Tree
+18th Aus Infantry Bde HO  (18 Aus) [a]  arr 3/14
+    2/9 Aus Infantry Bn  (2/9 Aus)  N | arr 3/14
+    2/10 Aus Infantry Bn  (2/10 Aus)  arr 3/14
+    2/12 Aus Infantry Bn  (2/12 Aus)  N | arr 3/14
+7th Aus Div Cavalry Regt  (7 AusCav)  ID=11 | N | arr 3/14
+2/1 Aus MG Bn  (2/1 Aus) [b]  N | arr 3/14
+2/1 Aus Anti-tank Regt  (2/1 Aus) [b]  ID=aa | 8x 2-pounder | arr 3/14
+2/3 Aus Field Artillery Regt  (2/3 AFld) [b]  6 × 25-pounder | arr 3/14
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	18th Aus Infantry Bde HO	18 Aus			3/14	a	
+1	2/9 Aus Infantry Bn	2/9 Aus		N	3/14		18th Aus Infantry Bde HO
+1	2/10 Aus Infantry Bn	2/10 Aus			3/14		18th Aus Infantry Bde HO
+1	2/12 Aus Infantry Bn	2/12 Aus		N	3/14		18th Aus Infantry Bde HO
+0	7th Aus Div Cavalry Regt	7 AusCav	11	N	3/14		
+0	2/1 Aus MG Bn	2/1 Aus		N	3/14	b	
+0	2/1 Aus Anti-tank Regt	2/1 Aus	aa	8x 2-pounder	3/14	b	
+0	2/3 Aus Field Artillery Regt	2/3 AFld		6 × 25-pounder	3/14	b	
+
+===== PAGE 126 =====
+# Formation: 4th Indian Division (a)
+# Basic Morale: + 1 (0)
+# indent levels (unit-x centers): [0.177, 0.194, 0.209]
+## Tree
+4th Indian Div HQ*  (4 In)  ID=a | N
+    5th Indian Bde HQ  (5In)  N | arr D
+        Ist Royal Fusiliers  (1 REslr)  N | arr D
+        3/1 Punjab Regt  (3/1 Pjb)  ID=p | N | arr D
+        4/6 Rajputana Rifles  (4/6 RajRf)  N
+    7th Indian Bde HQ  (7 In)  N | arr 1/5
+        Ist Royal Sussex  (1 RSsx)  N | arr 1/5
+        4/11 Sikhs  (4/11 Skh)  N | arr 1/5
+        4/16 Punjab Regt  (4/16 Pib)  arr 1/5
+    11th Indian Bde HQ  (11 In)  ID=a | arr D
+        2nd Camerons  (2 Cmrn)  N | arr D
+        1/6 Rajputana Rifles  (1/6 RajRf)  N | arr D
+        4/7 RajputRegt  (4/7 Rajpt)  ID=P. | N | arr D
+    Central India Horse  (1 CIH)  ID=11 | N | arr D
+    Ist Field Artillery Regt  (1 Eld)  6x 18/25-pounder | arr 3/3
+    25th Field Artillery Regt  (25 Fld)  6×3.7" Howitzer | arr D
+    31st Field Artillery Regt  (31 Fld)  6X 18-pounder | arr D
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	4th Indian Div HQ*	4 In	a	N			
+1	5th Indian Bde HQ	5In		N	D		4th Indian Div HQ*
+2	Ist Royal Fusiliers	1 REslr		N	D		5th Indian Bde HQ
+2	3/1 Punjab Regt	3/1 Pjb	p	N	D		5th Indian Bde HQ
+2	4/6 Rajputana Rifles	4/6 RajRf		N			5th Indian Bde HQ
+1	7th Indian Bde HQ	7 In		N	1/5		4th Indian Div HQ*
+2	Ist Royal Sussex	1 RSsx		N	1/5		7th Indian Bde HQ
+2	4/11 Sikhs	4/11 Skh		N	1/5		7th Indian Bde HQ
+2	4/16 Punjab Regt	4/16 Pib			1/5		7th Indian Bde HQ
+1	11th Indian Bde HQ	11 In	a		D		4th Indian Div HQ*
+2	2nd Camerons	2 Cmrn		N	D		11th Indian Bde HQ
+2	1/6 Rajputana Rifles	1/6 RajRf		N	D		11th Indian Bde HQ
+2	4/7 RajputRegt	4/7 Rajpt	P.	N	D		11th Indian Bde HQ
+1	Central India Horse	1 CIH	11	N	D		4th Indian Div HQ*
+1	Ist Field Artillery Regt	1 Eld		6x 18/25-pounder	3/3		4th Indian Div HQ*
+1	25th Field Artillery Regt	25 Fld		6×3.7" Howitzer	D		4th Indian Div HQ*
+1	31st Field Artillery Regt	31 Fld		6X 18-pounder	D		4th Indian Div HQ*
+
+# Formation: 3rd Indian Motorized Brigade Group (a)
+# Basic Morale: +1 (0)
+# indent levels (unit-x centers): [0.179, 0.195]
+## Tree
+3rd Indian Motor Bde HQ  (3 In)  N | arr 3/23
+    2nd Royal Lancers  (2 RLnc) [b]  arr 3/23
+    11th FF PAVO Cavalry  (11 PAV)  ID=1 | N | arr 3/23
+    18th KEO Cavalry  (18 KE) [d]  N | arr 3/23
+    2nd Indian Field Arty Regt:  (2 InFld)  6× 25-pounder | arr 3/80
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	3rd Indian Motor Bde HQ	3 In		N	3/23		
+1	2nd Royal Lancers	2 RLnc			3/23	b	3rd Indian Motor Bde HQ
+1	11th FF PAVO Cavalry	11 PAV	1	N	3/23		3rd Indian Motor Bde HQ
+1	18th KEO Cavalry	18 KE		N	3/23	d	3rd Indian Motor Bde HQ
+1	2nd Indian Field Arty Regt:	2 InFld		6× 25-pounder	3/80		3rd Indian Motor Bde HQ
+
+===== PAGE 127 =====
+# Formation: 5th Indian Division (a)
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.188, 0.203, 0.216]
+## Tree
+5th Indian Division HQE  (5 In)  ID=a | N | arr 3/38
+    9th Indian Bde HQ  (9 In)  N | arr 2/38
+        2nd West Yorkshires  (2 WYork)  arr 2/38
+        3/12 FFR Regt  (3/12 FFR)  N | arr 2/38
+        3/5 Mahratta Light Inf  (3/5 Mah)  arr 2/38
+    10th Indian Bde HQ  (10 In)  N | arr 1/40
+        2nd Highland Light Inf  (2 Hghlnd)  N | arr 1/40
+        3/18 Royal Garhwal Rfl  (3/18 RGR)  N | arr 1/53
+        4/10 Baluch Regt  (4/10 Bal)  ID=P | N | arr 1/40
+29th Indian Bde HQ  (29 In)  N | arr 3/40
+        Ist Worcestshires  (1 Wshire)  arr 3/40
+        3/2 Punjab Regt  (3/2 Pjb)  N | arr 3/41
+        6/13 Frontier Force Rfl  (6/13 FFR)  ID=P | N | arr 3/40
+    144th Field Artillery Regt  (144 Fld) [d]  6 x 25-pounder | arr 3/38
+    28th Field Artillery Regt  (28 Fld)  6 x 25-pounder | arr 2/43
+    Ist Duke of York's Cavalry  (1 DOYC)  ID=99 | N | arr 3/40
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	5th Indian Division HQE	5 In	a	N	3/38		
+1	9th Indian Bde HQ	9 In		N	2/38		5th Indian Division HQE
+2	2nd West Yorkshires	2 WYork			2/38		9th Indian Bde HQ
+2	3/12 FFR Regt	3/12 FFR		N	2/38		9th Indian Bde HQ
+2	3/5 Mahratta Light Inf	3/5 Mah			2/38		9th Indian Bde HQ
+1	10th Indian Bde HQ	10 In		N	1/40		5th Indian Division HQE
+2	2nd Highland Light Inf	2 Hghlnd		N	1/40		10th Indian Bde HQ
+2	3/18 Royal Garhwal Rfl	3/18 RGR		N	1/53		10th Indian Bde HQ
+2	4/10 Baluch Regt	4/10 Bal	P	N	1/40		10th Indian Bde HQ
+0	29th Indian Bde HQ	29 In		N	3/40		
+2	Ist Worcestshires	1 Wshire			3/40		29th Indian Bde HQ
+2	3/2 Punjab Regt	3/2 Pjb		N	3/41		29th Indian Bde HQ
+2	6/13 Frontier Force Rfl	6/13 FFR	P	N	3/40		29th Indian Bde HQ
+1	144th Field Artillery Regt	144 Fld		6 x 25-pounder	3/38	d	29th Indian Bde HQ
+1	28th Field Artillery Regt	28 Fld		6 x 25-pounder	2/43		29th Indian Bde HQ
+1	Ist Duke of York's Cavalry	1 DOYC	99	N	3/40		29th Indian Bde HQ
+
+# Formation: Unassigned Indian Units
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.19]
+## Tree
+Ist Welch Regt  (1 Wlch)  ID=m | N | arr D
+2/5 Mahratta Light Inf  (2/5 Mah)  arr 3/29
+3/10 Baluch Regt  (3/10 Bal)  N | arr 1/60
+1/1 Punjab Regt  (1/1 Pjb)  arr 1/60
+1/4 The Essex Regt  (1/4 Essx)  arr 2/73
+2/4 Gurkha Rifles  (2/4 Grka)  arr 3/75
+3/9 The Jat Regt  (3/9 Jats)  arr 3/75
+1/S Mahratta Light Inf  (1/5 Mah)  arr 3/75
+2/7 Gurkha Rifles  (2/7 Grka)  N | arr 3/76
+2/8 Gurkha Rifles  (2/8 Grka)  N | arr 1/84
+6th Rajputana Rifles Bn  (6 RajRf)  0@4 | arr 3/84
+3/14 Punjab Regt  (3/14 Pjb)  N | arr 2/87
+1/2 Gurkha Rifles  (1/2 Grka)  N | arr 2/94
+13th DCO Lancers  (13 DCL) [b]  N | arr 1/86
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ist Welch Regt	1 Wlch	m	N	D		
+0	2/5 Mahratta Light Inf	2/5 Mah			3/29		
+0	3/10 Baluch Regt	3/10 Bal		N	1/60		
+0	1/1 Punjab Regt	1/1 Pjb			1/60		
+0	1/4 The Essex Regt	1/4 Essx			2/73		
+0	2/4 Gurkha Rifles	2/4 Grka			3/75		
+0	3/9 The Jat Regt	3/9 Jats			3/75		
+0	1/S Mahratta Light Inf	1/5 Mah			3/75		
+0	2/7 Gurkha Rifles	2/7 Grka		N	3/76		
+0	2/8 Gurkha Rifles	2/8 Grka		N	1/84		
+0	6th Rajputana Rifles Bn	6 RajRf		0@4	3/84		
+0	3/14 Punjab Regt	3/14 Pjb		N	2/87		
+0	1/2 Gurkha Rifles	1/2 Grka		N	2/94		
+0	13th DCO Lancers	13 DCL		N	1/86	b	
+
+===== PAGE 128 =====
+# Formation: 10th Indian Division (a)
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.173, 0.189, 0.203]
+## Tree
+10th Indian Div HQE  (10 In)  ID=a | N | arr 3/81
+    20th Indian Bde Group HQ  (20 In) [b]  N | arr 3/82
+        Ist S. Wales Borderers  (1 SWB)  N | arr 2/79
+        97th Field Artillery Regt  (97 Fld)  6 x 25-pounder | arr 3/82
+    21st Indian Bde Group HQ  (21 In) [d]  N | arr 3/82
+        1st DCLI  (1 DCLI)  N | arr 3/82
+        4/13 Frontier Force Rfl  (4/13 FFR)  N | arr 3/82
+        157th Field Arty Regt  (157 Fld)  6 x 25-pounder | arr 3/82
+    25th Indian Bde Group HQ  (25 In)  N | arr 2/82
+        Ist King's Own Ryl Regt  (1KOR)  N | arr 2/82
+        2/11 Sikhs  (2/11 Skh)  N | arr 2/82
+        164th Field Arty Regt  (164 Fld)  6 x 25-pounder | arr 2/82
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	10th Indian Div HQE	10 In	a	N	3/81		
+1	20th Indian Bde Group HQ	20 In		N	3/82	b	10th Indian Div HQE
+2	Ist S. Wales Borderers	1 SWB		N	2/79		20th Indian Bde Group HQ
+2	97th Field Artillery Regt	97 Fld		6 x 25-pounder	3/82		20th Indian Bde Group HQ
+1	21st Indian Bde Group HQ	21 In		N	3/82	d	10th Indian Div HQE
+2	1st DCLI	1 DCLI		N	3/82		21st Indian Bde Group HQ
+2	4/13 Frontier Force Rfl	4/13 FFR		N	3/82		21st Indian Bde Group HQ
+2	157th Field Arty Regt	157 Fld		6 x 25-pounder	3/82		21st Indian Bde Group HQ
+1	25th Indian Bde Group HQ	25 In		N	2/82		10th Indian Div HQE
+2	Ist King's Own Ryl Regt	1KOR		N	2/82		25th Indian Bde Group HQ
+2	2/11 Sikhs	2/11 Skh		N	2/82		25th Indian Bde Group HQ
+2	164th Field Arty Regt	164 Fld		6 x 25-pounder	2/82		25th Indian Bde Group HQ
+
+# Formation: 18th Indian Brigade (a)
+# Basic Morale: +1
+# indent levels (unit-x centers): [0.173, 0.191]
+## Tree
+18th Indian Bde HQ  (18 In)  ID=a | N | arr 1/86
+    2/5 Essex  (2/5 Essx)  N | arr 1/86
+    2/3 Gurkha Rifles  (2/3 Grka)  N | arr 1/86
+    13th DCO Lancers  (13 DCL) [b]  arr 1/86
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	18th Indian Bde HQ	18 In	a	N	1/86		
+1	2/5 Essex	2/5 Essx		N	1/86		18th Indian Bde HQ
+1	2/3 Gurkha Rifles	2/3 Grka		N	1/86		18th Indian Bde HQ
+1	13th DCO Lancers	13 DCL			1/86	b	18th Indian Bde HQ
+
+# Formation: 161st Indian Motor Brigade (a)
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.175, 0.189]
+## Tree
+161st Indian Motor Bde HQ  (161 In)  N | arr 3/73
+    1/2 Punjab Regt  (1/2 Pjb)  N | arr 3/73
+    3/7 Rajput Regt  (3/7 Rajpt)  ID=n | N | arr 3/73
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	161st Indian Motor Bde HQ	161 In		N	3/73		
+1	1/2 Punjab Regt	1/2 Pjb		N	3/73		161st Indian Motor Bde HQ
+1	3/7 Rajput Regt	3/7 Rajpt	n	N	3/73		161st Indian Motor Bde HQ
+
+===== PAGE 129 =====
+# Formation: 2md New Zealand Division (a)
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.19, 0.206, 0.219]
+## Tree
+2nd New Zealand Div HQF  (2NZ)  ID=a | N | arr D
+    4th New Zealand Bde HQ  (4 NZ)  ID=a | N | arr D
+        18th NZ Bn  (18 NZ)  ID=m | N | arr D
+        19th NZ Bn  (19 NZ)  ID=m | arr D
+        20th NZ Bn  (20 NZ)  ID=m | arr D
+    Sth New Zealand Bde HQ  (5 NZ) [b]  ID=a. | N | arr 1/35
+        21st NZ Bn  (21 NZ)  U@2 | arr 1/35
+        22nd NZ Bn  (22 NZ)  U@2 | arr 1/35
+        23rd NZ Bn  (23 NZ)  ID=m | U@2 | arr 1/35
+        28th Maori Inf Bn  (28 Mao)  ID=k | U@2 | arr 1/35
+    6th New Zealand Bde HQ  (6NZ)  ID=a | N | arr 3/6
+        24th NZ Bn  (24NZ)  N | arr 3/6
+        25th NZ Bn  (25 NZ)  ID=m | N | arr 3/6
+        26th NZ Bn  (26 NZ)  ID=m | N | arr 3/6
+    27th New Zealand MG Bn  (27 NZ)  U@2 | arr D
+    2nd New Zealand Cavalry  (2 NZ CV)  ID=Il | N | arr D
+    7th NZ Anti-tank Regt  (7 NZ)  ID=aa | 8 x 2-pounder | arr 1/35
+    4th NZ Field Artillery Regt  (4 NZ Fld)  6×3.7" Howitzer | arr D
+    5th NZ Field Artillery Regt  (5 NZ Fld)  6 x 25-pounder | arr 1/35
+    6th NZ Field Artillery Regt  (6 NZ Fld)  ID=X | 6× 18/25-pounder | arr 3/2
+14th NZ Light AA Regt a = The division was originally known simply as the New Zealand Division. The New Zealand Division was sent to Greece and thence tọ Crete in the spring of 1941. It returned to Egypt with the 5th NZ Brigade and some support units) in early June 1941 where it was reformed, being placed back in action in August 1941. The division was again withdrawn in March 1942 to Syria, returning in June 1942. The 4th NZ Brigade was eventually withdrawn again in September 1942, to be refitted as an armored brigade. b=The 5th New Zealand Brigade (plus the 7th New Zealand Anti- tank Regiment and the 5th New Zealand Field Artillery Regiment) actually arrived in March 1941. However, they were shipped im- mediately to Greece. They started service in North Africa in August  (14 NZ Lt)  ID=ee | 6x Light AA | arr 1/35
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	2nd New Zealand Div HQF	2NZ	a	N	D		
+1	4th New Zealand Bde HQ	4 NZ	a	N	D		2nd New Zealand Div HQF
+2	18th NZ Bn	18 NZ	m	N	D		4th New Zealand Bde HQ
+2	19th NZ Bn	19 NZ	m		D		4th New Zealand Bde HQ
+2	20th NZ Bn	20 NZ	m		D		4th New Zealand Bde HQ
+1	Sth New Zealand Bde HQ	5 NZ	a.	N	1/35	b	2nd New Zealand Div HQF
+2	21st NZ Bn	21 NZ		U@2	1/35		Sth New Zealand Bde HQ
+2	22nd NZ Bn	22 NZ		U@2	1/35		Sth New Zealand Bde HQ
+2	23rd NZ Bn	23 NZ	m	U@2	1/35		Sth New Zealand Bde HQ
+2	28th Maori Inf Bn	28 Mao	k	U@2	1/35		Sth New Zealand Bde HQ
+1	6th New Zealand Bde HQ	6NZ	a	N	3/6		2nd New Zealand Div HQF
+2	24th NZ Bn	24NZ		N	3/6		6th New Zealand Bde HQ
+2	25th NZ Bn	25 NZ	m	N	3/6		6th New Zealand Bde HQ
+2	26th NZ Bn	26 NZ	m	N	3/6		6th New Zealand Bde HQ
+1	27th New Zealand MG Bn	27 NZ		U@2	D		2nd New Zealand Div HQF
+1	2nd New Zealand Cavalry	2 NZ CV	Il	N	D		2nd New Zealand Div HQF
+1	7th NZ Anti-tank Regt	7 NZ	aa	8 x 2-pounder	1/35		2nd New Zealand Div HQF
+1	4th NZ Field Artillery Regt	4 NZ Fld		6×3.7" Howitzer	D		2nd New Zealand Div HQF
+1	5th NZ Field Artillery Regt	5 NZ Fld		6 x 25-pounder	1/35		2nd New Zealand Div HQF
+1	6th NZ Field Artillery Regt	6 NZ Fld	X	6× 18/25-pounder	3/2		2nd New Zealand Div HQF
+0	14th NZ Light AA Regt a = The division was originally known simply as the New Zealand Division. The New Zealand Division was sent to Greece and thence tọ Crete in the spring of 1941. It returned to Egypt with the 5th NZ Brigade and some support units) in early June 1941 where it was reformed, being placed back in action in August 1941. The division was again withdrawn in March 1942 to Syria, returning in June 1942. The 4th NZ Brigade was eventually withdrawn again in September 1942, to be refitted as an armored brigade. b=The 5th New Zealand Brigade (plus the 7th New Zealand Anti- tank Regiment and the 5th New Zealand Field Artillery Regiment) actually arrived in March 1941. However, they were shipped im- mediately to Greece. They started service in North Africa in August	14 NZ Lt	ee	6x Light AA	1/35		
+
+# Formation: Unassigned South Africa Units (a)
+# Basic Morale: +1
+# indent levels (unit-x centers): [0.194]
+## Tree
+4th SA Armored Car Regt  (4 SA) [b]  N | arr 2/44
+6th SA Armored Car Regt  (6 SA) [b]  ID=TT | N | arr 2/47
+Ist SA Road Construction Bn  (1 SARC)  ID=uu | N | arr 1/50
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	4th SA Armored Car Regt	4 SA		N	2/44	b	
+0	6th SA Armored Car Regt	6 SA	TT	N	2/47	b	
+0	Ist SA Road Construction Bn	1 SARC	uu	N	1/50		
+
+===== PAGE 130 =====
+# Formation: Ist South African Infantry Division
+# Basic Morale: 0 (-3) (a)
+# indent levels (unit-x centers): [0.167, 0.181, 0.196]
+## Tree
+Ist South African Div HQE  (1 SA)  ID=a | N | arr 1/32
+    Ist S. African Bde HQ  (1 SA)  ID=a | N | arr 2/37
+        Royal Natal Carbineers  (RNtIC)  N | arr 2/37
+        Ist Transvaal Scot  (1 TrnsvS)  N | arr 3/38
+        DEO Rifles  (DEORf1) [b]  N | arr 2/37
+    2nd S. African Bde HQ  (2 SA)  N | arr 3/36
+        Natal Mounted Rifles  (Nt1MRfl)  N | arr 3/36
+        Cape Town Highlanders  (CpTnHi)  ID=P. | N | arr 1/38
+        1/2 Field Force Bn  (1/2 FF)  arr 3/36
+    5th S. African Bde HQ  (5 SA)  ID=a | arr 1/32
+        South Africa Irish  (SAIrish)  arr 1/32
+        2nd Regt Botha  (2 Botha)  arr 1/32
+        3rd Transvaal Scot  (3TrnsvS)  N | arr 1/32
+    Regt Presid'nt Steyn MG Bn  (PresStn)  ID=u | N | arr 1/38
+    3rd SA Armored Car Bn  (3 SA)  ID=jj | N | arr 1/47
+    Ist SA Anti-tank Regt  (1 SA)  8x 2-pounder, 3 x 18-pounder | arr 3/36
+    3rd SA Field Artillery Regt (THA)  (3FIdTHA) [d]  4× 18/25-pounder | arr 1/51
+    4th SA Field Artillery Regt  (4 SA Fld)  4x 25-pounder | arr 1/45
+    7th SA Field Artillery Regt  (7 SA Fld)  4 x 25-pounder | arr 1/52
+    Ist SA Light AA Regt  (1 SA LAA)  ID=ee | 6 x Light AA | arr 2/32
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ist South African Div HQE	1 SA	a	N	1/32		
+1	Ist S. African Bde HQ	1 SA	a	N	2/37		Ist South African Div HQE
+2	Royal Natal Carbineers	RNtIC		N	2/37		Ist S. African Bde HQ
+2	Ist Transvaal Scot	1 TrnsvS		N	3/38		Ist S. African Bde HQ
+2	DEO Rifles	DEORf1		N	2/37	b	Ist S. African Bde HQ
+1	2nd S. African Bde HQ	2 SA		N	3/36		Ist South African Div HQE
+2	Natal Mounted Rifles	Nt1MRfl		N	3/36		2nd S. African Bde HQ
+2	Cape Town Highlanders	CpTnHi	P.	N	1/38		2nd S. African Bde HQ
+2	1/2 Field Force Bn	1/2 FF			3/36		2nd S. African Bde HQ
+1	5th S. African Bde HQ	5 SA	a		1/32		Ist South African Div HQE
+2	South Africa Irish	SAIrish			1/32		5th S. African Bde HQ
+2	2nd Regt Botha	2 Botha			1/32		5th S. African Bde HQ
+2	3rd Transvaal Scot	3TrnsvS		N	1/32		5th S. African Bde HQ
+1	Regt Presid'nt Steyn MG Bn	PresStn	u	N	1/38		Ist South African Div HQE
+1	3rd SA Armored Car Bn	3 SA	jj	N	1/47		Ist South African Div HQE
+1	Ist SA Anti-tank Regt	1 SA		8x 2-pounder, 3 x 18-pounder	3/36		Ist South African Div HQE
+1	3rd SA Field Artillery Regt (THA)	3FIdTHA		4× 18/25-pounder	1/51	d	Ist South African Div HQE
+1	4th SA Field Artillery Regt	4 SA Fld		4x 25-pounder	1/45		Ist South African Div HQE
+1	7th SA Field Artillery Regt	7 SA Fld		4 x 25-pounder	1/52		Ist South African Div HQE
+1	Ist SA Light AA Regt	1 SA LAA	ee	6 x Light AA	2/32		Ist South African Div HQE
+
+# Formation: Unassigned New Zealand Umits
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.162]
+## Tree
+10th NZ RR Construetion Coy  (10 NZ.)  ID=uu | N | arr 1/32
+13th NZ RR Construction Coy  (13 NZ) [a]  ID=uu | N | arr 3/50
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	10th NZ RR Construetion Coy	10 NZ.	uu	N	1/32		
+0	13th NZ RR Construction Coy	13 NZ	uu	N	3/50	a	
+
+===== PAGE 131 =====
+# Formation: 2nd South African Infantry Division
+# Basic Morale: 0 (-1)
+# indent levels (unit-x centers): [0.194, 0.209, 0.225]
+## Tree
+2nd South African Div HQE  (2 SA)  N | arr 2/36
+    3rd S. African Bde HQ  (3 SA)  N | arr 1/38
+        Ist Imperial Light Horse  (1 ImLtH)  N | arr 1/32
+        1st Ryl Durban Light Inf  (1 RDrbn)  N | arr 1/38
+        Ist Rand Light Inf  (1 RndLt)  arr 1/38
+    4th S. African Bde HQ  (4 SA)  N | arr 3/44
+        Umvoti Mounted Rifles  (UMtRf)  N | arr 3/44
+        2nd Ryl Durban Light Inf  (2 RDrbn)  N | arr 3/44
+        Kaffrarian Rifles  (KafrRfl)  Z Z,ZZ | arr 3/44
+    6th S. African Bde HO  (6 SA)  arr 1/38
+        2nd Transvaal Scot  (2 TrnsvS)  arr 1/38
+        1st S. African Police  (1 SA Plc)  arr 1/38
+        2nd S. African Police  (1 SA Plc)  N | arr 1/38
+    Die Middellandse MG Regt  (Midind)  ID=u | arr 2/41
+    7th S. African Recce Bn  (7 SA)  ID=nn | N | arr 2/43
+    2nd SA Anti-tankRegt  (2 SA)  ID=aa | 8x2-pounder | arr 1/45
+    1st SA Field Artillery Regt  (ISA CFA) [b]  4 × 25-pounder | arr 2/44
+    2nd SA Field Artillery Regt  (2SA NFA)  4 x 25-pounder | arr 2/44
+    5th SA Field Artillery Regt  (5 SA Fld)  4 × 4.5" Howitzer | arr 2/44
+    2nd SA Light AA Regt  (2 SA LAA)  ID=ee | 6 x Light AA | arr 1/45
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	2nd South African Div HQE	2 SA		N	2/36		
+1	3rd S. African Bde HQ	3 SA		N	1/38		2nd South African Div HQE
+2	Ist Imperial Light Horse	1 ImLtH		N	1/32		3rd S. African Bde HQ
+2	1st Ryl Durban Light Inf	1 RDrbn		N	1/38		3rd S. African Bde HQ
+2	Ist Rand Light Inf	1 RndLt			1/38		3rd S. African Bde HQ
+1	4th S. African Bde HQ	4 SA		N	3/44		2nd South African Div HQE
+2	Umvoti Mounted Rifles	UMtRf		N	3/44		4th S. African Bde HQ
+2	2nd Ryl Durban Light Inf	2 RDrbn		N	3/44		4th S. African Bde HQ
+2	Kaffrarian Rifles	KafrRfl		Z Z,ZZ	3/44		4th S. African Bde HQ
+1	6th S. African Bde HO	6 SA			1/38		2nd South African Div HQE
+2	2nd Transvaal Scot	2 TrnsvS			1/38		6th S. African Bde HO
+2	1st S. African Police	1 SA Plc			1/38		6th S. African Bde HO
+2	2nd S. African Police	1 SA Plc		N	1/38		6th S. African Bde HO
+1	Die Middellandse MG Regt	Midind	u		2/41		2nd South African Div HQE
+1	7th S. African Recce Bn	7 SA	nn	N	2/43		2nd South African Div HQE
+1	2nd SA Anti-tankRegt	2 SA	aa	8x2-pounder	1/45		2nd South African Div HQE
+1	1st SA Field Artillery Regt	ISA CFA		4 × 25-pounder	2/44	b	2nd South African Div HQE
+1	2nd SA Field Artillery Regt	2SA NFA		4 x 25-pounder	2/44		2nd South African Div HQE
+1	5th SA Field Artillery Regt	5 SA Fld		4 × 4.5" Howitzer	2/44		2nd South African Div HQE
+1	2nd SA Light AA Regt	2 SA LAA	ee	6 x Light AA	1/45		2nd South African Div HQE
+
+# Formation: Ist Free French Brigade (a)
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.193, 0.21]
+## Tree
+Ist Free French Bde HOE  (1 FreeFr)  ID=a | N | arr 2/62
+    2nd Bn de legion etrangere  (2 LgEtr) [b]  N | arr 2/62
+    3rd Bn de legion etrangere  (3 LgEtr) [b]  N | arr 2/62
+    2nd Bn de marche  (2 Mrch)  N | arr 2/62
+    1st Bn d'inf de marine  (1 Marine) [d]  N | arr 1/65
+    1st Bn du Pacifique  (1 Pacf)  N | arr 2/62
+    Ist Regt d'artillerie  (1)  4 × French 149mm (see It. Arty) | arr 1/63
+    2nd NA Anti-tank Coy  (2 NA)  ID=CC | 4x2-pounder | arr 3/63
+    Ist Bn de fusiliers  (1 Fslrs)  ID=ff | 4x Light AA | arr 3/63
+    Ist Free Fr Flying Column  (1 FFFC) [g]  ID=tt | N | arr 1/95
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ist Free French Bde HOE	1 FreeFr	a	N	2/62		
+1	2nd Bn de legion etrangere	2 LgEtr		N	2/62	b	Ist Free French Bde HOE
+1	3rd Bn de legion etrangere	3 LgEtr		N	2/62	b	Ist Free French Bde HOE
+1	2nd Bn de marche	2 Mrch		N	2/62		Ist Free French Bde HOE
+1	1st Bn d'inf de marine	1 Marine		N	1/65	d	Ist Free French Bde HOE
+1	1st Bn du Pacifique	1 Pacf		N	2/62		Ist Free French Bde HOE
+1	Ist Regt d'artillerie	1		4 × French 149mm (see It. Arty)	1/63		Ist Free French Bde HOE
+1	2nd NA Anti-tank Coy	2 NA	CC	4x2-pounder	3/63		Ist Free French Bde HOE
+1	Ist Bn de fusiliers	1 Fslrs	ff	4x Light AA	3/63		Ist Free French Bde HOE
+1	Ist Free Fr Flying Column	1 FFFC	tt	N	1/95	g	Ist Free French Bde HOE
+
+===== PAGE 132 =====
+# Formation: 2nd Free French Brigade (a) Notes:
+# Basic Morale: + 1
+# indent levels (unit-x centers): [0.199, 0.214]
+## Tree
+2nd Free French Bde HOE  (2 FreeFr)  N | arr 3/75
+    5th Bn de marche  (5 Mrch)  N | arr 3/75
+    11th Bn de marche  (11 Mrch)  N | arr 3/75
+    23 NA Anti-tank Coy  (23 NA)  ID=cC | 3×2-pounder | arr 3/75
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	2nd Free French Bde HOE	2 FreeFr		N	3/75		
+1	5th Bn de marche	5 Mrch		N	3/75		2nd Free French Bde HOE
+1	11th Bn de marche	11 Mrch		N	3/75		2nd Free French Bde HOE
+1	23 NA Anti-tank Coy	23 NA	cC	3×2-pounder	3/75		2nd Free French Bde HOE
+
+# Formation: 1st Greek Infantry Brigade Group
+# Basic Morale: 0
+# indent levels (unit-x centers): [0.199, 0.213]
+## Tree
+Ist Greek Bde HQ  (1 Greek)  N | arr 1/93
+    1st Greek Infantry Bn  (1 Greek)  ID=m | N | arr 1/93
+    2nd Greek Infantry Bn  (2 Greek) [a]  ID=m | N | arr 1/93
+    3rd Greek Infantry Bn  (3 Greek) [a]  ID=m | N | arr 1/93
+    Ist Greek Field Arty Regt  (1 GrkFld)  6× 25-pounder | arr 1/93
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	Ist Greek Bde HQ	1 Greek		N	1/93		
+1	1st Greek Infantry Bn	1 Greek	m	N	1/93		Ist Greek Bde HQ
+1	2nd Greek Infantry Bn	2 Greek	m	N	1/93	a	Ist Greek Bde HQ
+1	3rd Greek Infantry Bn	3 Greek	m	N	1/93	a	Ist Greek Bde HQ
+1	Ist Greek Field Arty Regt	1 GrkFld		6× 25-pounder	1/93		Ist Greek Bde HQ
+
+# Formation: The Polish (Carpathian) Brigade (a)
+# Basic Morale: + 1(- 1)
+# indent levels (unit-x centers): [0.16, 0.201, 0.218]
+## Tree
+    Polish Brigade HQ  (Polish)  N | arr 3/1
+b Ist Polish Bn  (1 Pol)  N | arr 3/1
+b 2nd Polish Bn  (2 Pol)  N | arr 3/1
+b 3rd Polish Bn  (3 Pol)  N | arr 3/1
+        Kopanski MG Coy  (Kopnski)  ID=W | U@l | arr 3/1
+        Ist Polish Cavalry Regt  (1 PolCv)  ID=SS | N | arr 3/1
+        1st Polish Anti-tank Coy  (1 Pol)  ID=dd | 1 x2-pounder | arr 3/1
+        Ist Polish Artillery Regt  (1 Pol)  4× 18-pounder | arr 3/1
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+1	Polish Brigade HQ	Polish		N	3/1		
+0	b Ist Polish Bn	1 Pol		N	3/1		
+0	b 2nd Polish Bn	2 Pol		N	3/1		
+0	b 3rd Polish Bn	3 Pol		N	3/1		
+2	Kopanski MG Coy	Kopnski	W	U@l	3/1		b 3rd Polish Bn
+2	Ist Polish Cavalry Regt	1 PolCv	SS	N	3/1		b 3rd Polish Bn
+2	1st Polish Anti-tank Coy	1 Pol	dd	1 x2-pounder	3/1		b 3rd Polish Bn
+2	Ist Polish Artillery Regt	1 Pol		4× 18-pounder	3/1		b 3rd Polish Bn
+
+# Formation: Unassigned Allied Units
+# Basic Morale: +1
+# indent levels (unit-x centers): [0.161]
+## Tree
+a Ist Company, Fr Mtr Marine  ("1")  ID=V | N | arr 3/65
+b 11th Czech Bn  (11 Czech)  N | arr 3/8
+## TSV	level	unit	abbr	id	toe	arrives	note	parent
+0	a Ist Company, Fr Mtr Marine	"1"	V	N	3/65		
+0	b 11th Czech Bn	11 Czech		N	3/8		
+
+===== PAGE 133 =====
+no 'Basic Morale' lines found — is this a §4.44 chart page?

@@ -1,0 +1,11 @@
+// Reinforcement debarkation hexes (§20.14–20.15). A whole-formation reinforcement enters
+// the map at its nationality's point unless a per-unit exception applies.
+//   Commonwealth → Cairo (E1430) (§20.14). Exceptions (Alexandria E3613 for Layforce GT19 /
+//     Tiger Convoy GT32; returning units Cairo-or-Alexandria) are handled per-reinforcement.
+//   Axis → Tripoli (§20.15) — OFF-MAP, pending the off-map-node system; Benghazi (A4827) is
+//     the on-map diversion fallback. Not listed here until off-map nodes exist.
+{
+    Commonwealth: "E1430",
+    Italian: "Tripoli",
+    German: "Tripoli",
+}

@@ -1,0 +1,14 @@
+// Scramble Table (§40.4). Distance in hexes from the scrambling squadron's base to the target hex
+// gives the maximum d6 roll that still succeeds (roll <= listed number scrambles that squadron's
+// planes, §40.33). Farther is harder; beyond 15 hexes there is no entry and the squadron cannot
+// scramble. Ranges: 0-2 -> 6, 3-4 -> 5, 5-6 -> 4, 7-8 -> 3, 9-10 -> 2, 11-15 -> 1.
+(
+    thresholds: [
+        (max_distance: 2,  success_die_max: 6),
+        (max_distance: 4,  success_die_max: 5),
+        (max_distance: 6,  success_die_max: 4),
+        (max_distance: 8,  success_die_max: 3),
+        (max_distance: 10, success_die_max: 2),
+        (max_distance: 15, success_die_max: 1),
+    ],
+)

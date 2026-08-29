@@ -1,0 +1,20 @@
+// Equivalent Weights Chart (§54.5), in tonnage. Tons per point of each supply shipped by naval
+// convoy, interport transfer, railroad or air transport, expressed as an exact fraction num/den:
+//   Ammo 4, Fuel 1/8, Stores 1, Water 1/6.
+// One replacement point by air = 2 tons (key *: only infantry-class replacements may go by air).
+// One truck/motorization point by interport = 50 tons (key †: only unattached points, or attached
+// points in excess of the parent unit's TOE). Replacement/truck points by Axis Naval Convoy vary
+// (see the Axis Replacement Pool); rail replacement/truck are n/a; air truck is prohibited.
+// Stacking-point equivalents (rail/interport): truck 1/10, replacement 1/5, SGSU 1/2, unit-of-SP 1/2.
+(
+    ammo:   (num: 4, den: 1),
+    fuel:   (num: 1, den: 8),
+    stores: (num: 1, den: 1),
+    water:  (num: 1, den: 6),
+    air_replacement_tons: 2,
+    interport_truck_tons: 50,
+    sp_truck:       (num: 1, den: 10),
+    sp_replacement: (num: 1, den: 5),
+    sp_sgsu:        (num: 1, den: 2),
+    sp_unit:        (num: 1, den: 2),
+)
