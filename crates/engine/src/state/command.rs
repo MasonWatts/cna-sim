@@ -107,6 +107,15 @@ pub enum Command {
     /// §56.16: deliver an arrived convoy's surviving supply tonnage into supply points (Naval
     /// Convoy Arrival Phase).
     DeliverConvoy { convoy_index: usize },
+    /// §20.66/§20.78C: plan `count` Replacement Points of a Production Chart `item` for
+    /// `nationality` (Organization Phase). Validated against the chart's lifetime total and
+    /// per-period maximum; on success the points are scheduled to arrive after the §20.21 delay
+    /// (Axis 2 / Commonwealth 4 Game-Turns) and begin Training.
+    PlanProduction {
+        nationality: crate::reference::units::Nationality,
+        item: String,
+        count: u32,
+    },
     /// §55.22: block a port's harbour by scuttling (an engineer/CW-HQ must be present).
     BlockHarbor { port: String, has_engineer: bool },
     /// §55.26: remove one level of harbour blocking with the required engineer units.
@@ -373,6 +382,13 @@ pub enum CommandOutcome {
     MaltaBaseBombed { mission: crate::state::game::BombingMissionOutcome, levels_lost: u32 },
     /// §44.13: capacity levels built on a Maltese air facility.
     MaltaFacilityConstructed(u32),
+    /// §20.66/§20.78C: a production order was accepted — the points arrive on `arrival_game_turn`
+    /// as `class` Replacement Points and require `tonnage` Axis Naval Convoy tons (0 for CW).
+    ProductionPlanned {
+        arrival_game_turn: u32,
+        class: crate::state::game::ReplacementClass,
+        tonnage: u32,
+    },
 }
 
 /// Why a command was rejected. The state is left unchanged on any error.
@@ -458,6 +474,13 @@ pub enum CommandError {
     WithdrawalFailed,
     /// §20: the Replacement Points could not be absorbed (still training, class/hex mismatch).
     ReplacementFailed,
+    /// §20.66/§20.78C: the item is not on the acting nationality's Production Chart.
+    NoSuchProductionItem,
+    /// §20.66: planning this order would exceed the item's lifetime production total.
+    ProductionExhausted,
+    /// §20.66: planning this order would exceed the item's per-period maximum (or the item is
+    /// not yet available on this Game-Turn).
+    ProductionRateExceeded,
     /// §38.36: no Stores Point is present at the squadron's base to pay for the refit attempt.
     InsufficientStores,
     /// §35.14: the SGSU lacks its own upkeep and may not repair (refit) its planes this stage.
@@ -511,6 +534,9 @@ impl GameState {
                 self.cmd_bomb_convoy(convoy_index, bomb_points, torpedo_planes, total_planes, roll)
             }
             Command::DeliverConvoy { convoy_index } => self.cmd_deliver_convoy(convoy_index),
+            Command::PlanProduction { nationality, item, count } => {
+                self.cmd_plan_production(nationality, &item, count)
+            }
             Command::BlockHarbor { port, has_engineer } => self.cmd_block_harbor(&port, has_engineer),
             Command::UnblockHarbor { port, engineers } => self.cmd_unblock_harbor(&port, engineers),
             Command::AssignSquadronPlanes { squadron, aircraft_type, class, count } => {
@@ -1059,6 +1085,81 @@ impl GameState {
             Some((ammo, stores)) => Ok(CommandOutcome::HarborAction { ammo, stores }),
             None => Err(CommandError::HarborActionFailed),
         }
+    }
+
+    /// §20.66/§20.78C PlanProduction: validate `count` Replacement Points of `item` against the
+    /// nationality's Production Chart (lifetime total + per-period maximum), then schedule them to
+    /// arrive after the §20.21 planning delay (Axis 2 / Commonwealth 4 Game-Turns) and begin
+    /// Training. Convoy tonnage is recorded on the order; consuming Axis convoy capacity to ship
+    /// it is deferred pending fuller convoy integration (D15 step 8).
+    fn cmd_plan_production(
+        &mut self,
+        nationality: crate::reference::units::Nationality,
+        item: &str,
+        count: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::state::game::{replacement_class_for_item, ProductionOrder};
+        self.require_phase(Phase::Organization)?;
+        if count == 0 {
+            return Err(CommandError::NoParticipants);
+        }
+        let gt = self.game_turn;
+        let chart = self
+            .reference
+            .production_charts
+            .get(&nationality)
+            .ok_or(CommandError::NoTable)?;
+        let def = chart.item(item).ok_or(CommandError::NoSuchProductionItem)?;
+        let (total, tonnage_per, span) =
+            (def.total, def.tonnage, def.period_at(gt).span_game_turns());
+        let cap = chart.available(item, gt);
+
+        // §20.66: the item's lifetime production total may not be exceeded.
+        let lifetime: u32 = self
+            .production_orders
+            .iter()
+            .filter(|o| o.nationality == nationality && o.item == item)
+            .map(|o| o.count)
+            .sum();
+        if lifetime + count > total {
+            return Err(CommandError::ProductionExhausted);
+        }
+        // §20.66: at most `cap` points may be planned in any `span` consecutive Game-Turns.
+        let lo = gt.saturating_sub(span - 1);
+        let in_window: u32 = self
+            .production_orders
+            .iter()
+            .filter(|o| o.nationality == nationality && o.item == item)
+            .filter(|o| o.game_turn >= lo && o.game_turn <= gt)
+            .map(|o| o.count)
+            .sum();
+        if in_window + count > cap {
+            return Err(CommandError::ProductionRateExceeded);
+        }
+
+        // Accepted. Record the order, then schedule the points to arrive after the §20.21 delay.
+        let tonnage = tonnage_per * count;
+        self.production_orders.push(ProductionOrder {
+            nationality,
+            item: item.to_string(),
+            game_turn: gt,
+            count,
+            tonnage,
+        });
+        let delay = if nationality.side() == crate::reference::units::Side::Commonwealth {
+            4
+        } else {
+            2
+        };
+        let arrival_game_turn = gt + delay;
+        let class = replacement_class_for_item(item).unwrap_or(crate::state::game::ReplacementClass::Gun);
+        let location = self
+            .reference
+            .reinforcement_entry_hex(nationality)
+            .map(str::to_string)
+            .and_then(|s| self.resolve_entry(&s));
+        self.plan_replacement(class, count, arrival_game_turn, self.operations_stage as u32, location, None);
+        Ok(CommandOutcome::ProductionPlanned { arrival_game_turn, class, tonnage })
     }
 
     /// §35.2 AssignSquadronPlanes: gated to the Organization Phase.

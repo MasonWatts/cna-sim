@@ -357,6 +357,52 @@ pub struct PendingReplacement {
     pub assigned_to: Option<UnitId>,
 }
 
+/// An accepted §20.66/§20.78C production order: `count` Replacement Points of `item` for
+/// `nationality`, planned on Game-Turn `game_turn`, requiring `tonnage` Axis Naval Convoy
+/// tons (0 for Commonwealth production, which lands at Alexandria).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProductionOrder {
+    pub nationality: Nationality,
+    pub item: String,
+    pub game_turn: u32,
+    pub count: u32,
+    pub tonnage: u32,
+}
+
+/// Classify a §20.66/§20.78C Production Chart item into one of the four Replacement Point
+/// classes (§20.2). Order matters: Recce → Infantry → Tank (incl. tracked SP guns) → Gun
+/// (the artillery/AA/anti-tank remainder). Returns `None` only for an unrecognized name.
+///
+/// NOTE (cf. D14): the SP-gun / tankette calls (Marder, Semovente, `SP …`) are **inferred** —
+/// they are tracked, gun-armed AFVs, classified here as Tank (6 Training stages, §20.43) rather
+/// than Gun (1 stage). This materially changes training time and must be verified against the
+/// physical §20.66 chart in a faithfulness pass.
+pub fn replacement_class_for_item(item: &str) -> Option<ReplacementClass> {
+    if item.contains("Recce") || item.contains("Reconnaissance") {
+        return Some(ReplacementClass::Recce);
+    }
+    if item == "Infantry" {
+        return Some(ReplacementClass::Infantry);
+    }
+    let is_tank = item.starts_with("Pz")
+        || item.starts_with("CA ")
+        || item.starts_with("CV ")
+        || item.starts_with("SP ") // inferred: self-propelled guns as tracked AFVs
+        || item.contains("Cruiser")
+        || item.contains("Crusader")
+        || item.contains("Semovente") // inferred (SP)
+        || item.contains("Marder") // inferred (SP anti-tank)
+        || matches!(
+            item,
+            "Matilda" | "Valentine" | "Stuart" | "Grant" | "Sherman" | "Churchill" | "Mark VI Light"
+        );
+    if is_tank {
+        return Some(ReplacementClass::Tank);
+    }
+    // The remainder are guns, howitzers, AA, anti-tank, and paratroop artillery → Gun.
+    Some(ReplacementClass::Gun)
+}
+
 /// Result of evaluating the campaign victory conditions (§64.7): occupation-point totals,
 /// the leading side, and the §64.76 victory level.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -562,6 +608,10 @@ pub struct GameState {
     /// Replacement Points planned to arrive at a future Naval Convoy Arrival Phase (§20.21).
     #[serde(default)]
     pub pending_replacements: Vec<PendingReplacement>,
+    /// Accepted §20.66/§20.78C production orders, for enforcing lifetime totals and per-period
+    /// maxima across a game (§20.66 notes). Each records the Game-Turn it was planned.
+    #[serde(default)]
+    pub production_orders: Vec<ProductionOrder>,
     /// Replacement Points consumed (absorbed) so far, per side — for the §64.74 unused-
     /// replacement victory points.
     #[serde(default)]
@@ -707,6 +757,7 @@ impl GameState {
             repair_facilities: std::collections::HashMap::new(),
             replacement_points: Vec::new(),
             pending_replacements: Vec::new(),
+            production_orders: Vec::new(),
             replacements_used: std::collections::HashMap::new(),
             withdrawn: std::collections::HashMap::new(),
             withdrawal_banked: 0,

@@ -249,6 +249,18 @@ pub enum ProductionPeriod {
     Month,
 }
 
+impl ProductionPeriod {
+    /// The length of one production period in Game-Turns (a Game-Turn is one week): a plain
+    /// Game-Turn = 1, `*`/`†` Two-Weeks = 2, `†`/`*` Month ≈ 4 (§20.66 notes).
+    pub fn span_game_turns(self) -> u32 {
+        match self {
+            ProductionPeriod::GameTurn => 1,
+            ProductionPeriod::TwoWeeks => 2,
+            ProductionPeriod::Month => 4,
+        }
+    }
+}
+
 /// One Replacement-Point line of a Production Chart (§20.66): total available, per-period max,
 /// first plannable Game-Turn (arrives two Game-Turns later), and convoy tons per point. Items
 /// with a phased schedule (per-date-range maxima) use `tiers` instead of the flat `max`.
@@ -271,6 +283,22 @@ pub struct ProductionItem {
     /// Phased maxima by Game-Turn window (§20.66 "Dates" ranges); empty = use `max`/`first_gt`.
     #[serde(default)]
     pub tiers: Vec<ProductionTierWindow>,
+}
+
+impl ProductionItem {
+    /// The period the per-turn maximum applies over on Game-Turn `gt` — the matching tier's
+    /// period when the item is phased, else the item's flat `period` (§20.66 notes).
+    pub fn period_at(&self, gt: u32) -> ProductionPeriod {
+        if !self.tiers.is_empty() {
+            self.tiers
+                .iter()
+                .find(|t| gt >= t.from_gt && t.to_gt.map(|e| gt <= e).unwrap_or(true))
+                .map(|t| t.period)
+                .unwrap_or(self.period)
+        } else {
+            self.period
+        }
+    }
 }
 
 /// A per-date-range maximum for a phased production item (§20.66 Italian "Dates" like "9…24").

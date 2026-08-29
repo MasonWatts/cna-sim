@@ -503,7 +503,7 @@ impl GameState {
 
     /// Resolve a reinforcement entry string to a `UnitLocation`: an on-map hex-id (e.g.
     /// "E1430"), or the name of an off-map node in the §8.8 complex (e.g. "Tripoli").
-    fn resolve_entry(&self, s: &str) -> Option<UnitLocation> {
+    pub(crate) fn resolve_entry(&self, s: &str) -> Option<UnitLocation> {
         if let Some(h) = HexId::parse(s) {
             return Some(UnitLocation::OnMap(h.to_hex_coord()));
         }

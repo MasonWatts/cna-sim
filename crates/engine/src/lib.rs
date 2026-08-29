@@ -5178,6 +5178,103 @@ mod tests {
     }
 
     #[test]
+    fn replacement_class_classification_20_2() {
+        use crate::state::game::{replacement_class_for_item, ReplacementClass};
+        // Recce / Infantry / Gun (artillery, AA, anti-tank, pounders) / Tank (incl. inferred SP).
+        assert_eq!(replacement_class_for_item("Infantry"), Some(ReplacementClass::Infantry));
+        assert_eq!(replacement_class_for_item("Armed Recce"), Some(ReplacementClass::Recce));
+        assert_eq!(
+            replacement_class_for_item("Armored Reconnaissance"),
+            Some(ReplacementClass::Recce)
+        );
+        assert_eq!(replacement_class_for_item("Heavy AA"), Some(ReplacementClass::Gun));
+        assert_eq!(replacement_class_for_item("25-pounders"), Some(ReplacementClass::Gun));
+        assert_eq!(replacement_class_for_item("5cm Pak38"), Some(ReplacementClass::Gun));
+        assert_eq!(replacement_class_for_item("ParaArt"), Some(ReplacementClass::Gun));
+        assert_eq!(replacement_class_for_item("PzIV F2 Special"), Some(ReplacementClass::Tank));
+        assert_eq!(replacement_class_for_item("CA M 13/40"), Some(ReplacementClass::Tank));
+        assert_eq!(replacement_class_for_item("Crusader Mk III"), Some(ReplacementClass::Tank));
+        assert_eq!(replacement_class_for_item("Matilda"), Some(ReplacementClass::Tank));
+        // Inferred SP-gun / tankette calls (flagged for verification).
+        assert_eq!(replacement_class_for_item("Marder III"), Some(ReplacementClass::Tank));
+        assert_eq!(replacement_class_for_item("SP 6-pounders"), Some(ReplacementClass::Tank));
+        assert_eq!(
+            replacement_class_for_item("Semovente 75/18 SP Gun"),
+            Some(ReplacementClass::Tank)
+        );
+        assert_eq!(replacement_class_for_item("CV L.3 or CV 33/35"), Some(ReplacementClass::Tank));
+        // A plain anti-tank rifle (starts with a calibre, not "Pz") stays a Gun.
+        assert_eq!(replacement_class_for_item("2.8cm s.Pz.B.41"), Some(ReplacementClass::Gun));
+    }
+
+    #[test]
+    fn plan_production_validates_and_schedules_20_66() {
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, ReplacementClass};
+
+        let mut refs = ReferenceData::new();
+        refs.load_production_chart(
+            Nationality::German,
+            include_str!("../../../data/reference/german-production.ron"),
+        )
+        .unwrap();
+        // §20.66 German Infantry: 12/turn (GameTurn period) from GT38, total 400, 30 tons/point.
+        let mut g = GameState::new(refs, 1);
+        g.game_turn = 40;
+
+        let plan = |item: &str, count: u32| Command::PlanProduction {
+            nationality: Nationality::German,
+            item: item.into(),
+            count,
+        };
+
+        // Wrong phase (still InitiativeDetermination).
+        assert_eq!(g.apply(plan("Infantry", 5)), Err(CommandError::WrongPhase));
+        g.phase = Phase::Organization;
+
+        // Unknown item.
+        assert_eq!(g.apply(plan("Panther", 1)), Err(CommandError::NoSuchProductionItem));
+        // Item not yet available on this Game-Turn (PzIII E starts GT53) → rate error.
+        assert_eq!(g.apply(plan("PzIII E", 1)), Err(CommandError::ProductionRateExceeded));
+
+        // A valid order: 10 Infantry points. Arrives GT42 (Axis +2), 300 tons, Infantry class.
+        assert_eq!(
+            g.apply(plan("Infantry", 10)),
+            Ok(CommandOutcome::ProductionPlanned {
+                arrival_game_turn: 42,
+                class: ReplacementClass::Infantry,
+                tonnage: 300,
+            })
+        );
+        assert_eq!(g.pending_replacements.len(), 1);
+        assert_eq!(g.production_orders.len(), 1);
+
+        // §20.66 per-Game-Turn cap is 12: 10 already planned this turn, so 3 more is too many...
+        assert_eq!(g.apply(plan("Infantry", 3)), Err(CommandError::ProductionRateExceeded));
+        // ...but 2 more fits (10 + 2 = 12).
+        assert!(matches!(g.apply(plan("Infantry", 2)), Ok(_)));
+
+        // Next Game-Turn the per-turn window resets (12 available again), but the lifetime total
+        // (400) is enforced across the whole game.
+        g.game_turn = 41;
+        assert_eq!(g.apply(plan("Infantry", 12)), Ok(CommandOutcome::ProductionPlanned {
+            arrival_game_turn: 43,
+            class: ReplacementClass::Infantry,
+            tonnage: 360,
+        }));
+        // Drive the arrival: at GT42 the first planned pool enters the Replacement Point pool and
+        // begins Training (Infantry = 3 Operations Stages, §20.43).
+        g.game_turn = 42;
+        g.process_replacement_arrivals();
+        let pool = g
+            .replacement_points
+            .iter()
+            .find(|rp| rp.class == ReplacementClass::Infantry && rp.count == 10)
+            .expect("the GT40 order should have arrived");
+        assert_eq!(pool.training_remaining, 3);
+    }
+
+    #[test]
     fn italian_production_chart() {
         use crate::reference::logistics::ProductionPeriod;
 

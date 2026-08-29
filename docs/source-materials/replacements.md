@@ -66,9 +66,17 @@ Axis points train in Tripoli or any Major City; Commonwealth per §17.32.
   assigned_to)` queues a pool; `process_replacement_arrivals()` (run at the Naval Convoy Arrival
   Phase, beside reinforcements) brings due plans into the Replacement Point pool, starting
   Training. Full lifecycle now runs: **plan → arrive → train → absorb** (restore TOE).
-- **§20 is functionally complete.** Deferred: production planning validated against the charts'
-  availability/per-period caps + convoy tonnage; §64.74/§64.75 victory points (unused
-  replacements / withdrawals).
-  (§20.7), §20.3 Conversion Chart; arrival scheduling at the Naval Convoy Phase; the §20.42
-  restrictions/morale; §20.5 upgrades; and the §64.74 (unused Replacement Points) / §64.75
-  (withdrawal) victory points that build on this.
+- **Production planning wired (§20.66/§20.78C):** the `PlanProduction { nationality, item, count }`
+  command (Organization Phase) validates against the chart's lifetime `total` and per-period max
+  (rolling Game-Turn window keyed to each item's GameTurn/Two-Weeks/Month period via
+  `ProductionItem::period_at` + `ProductionPeriod::span_game_turns`), records the required Axis
+  convoy tonnage on a `ProductionOrder`, maps the item to a Replacement class
+  (`replacement_class_for_item`), and schedules the points to arrive after the §20.21 delay
+  (Axis 2 / CW 4 Game-Turns). Full lifecycle: **plan → produce → arrive → train → absorb.**
+- **§64.74/§64.75 victory points are implemented** (`replacement_vp` reads the chart totals minus
+  `replacements_used`; withdrawal VP via §64.75).
+- **Still deferred:** the item→class map flags SP-gun/tankette calls as *inferred* (verify vs the
+  physical §20.66 chart, cf. D14); the §20.3 Conversion Chart is not yet applied on absorption;
+  the recorded convoy tonnage does not yet consume Axis convoy capacity; the §20.78A truck /
+  §20.78B CW-infantry roll tables remain reference-only; and the §20.42 restrictions/morale and
+  §20.5 upgrades are not modelled.

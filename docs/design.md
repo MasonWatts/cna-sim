@@ -268,8 +268,9 @@ Air Recon §42.27; Malta availability/construction/commitment §44), the **naval
 §42.53), the **logistics** tables (ammo/fuel/water/stores rates, Truck Characteristics,
 Breakdown §21.38, Repair §22, Equivalent Weights §54.5), and the **production** charts (§20:
 German/Italian/CW production, Axis/CW truck production, CW infantry production, Replacement
-Conversion §20.3). All are deserialized and unit-tested; note that the production charts,
-though loaded, are not yet consulted by game logic (see §8.7).
+Conversion §20.3). All are deserialized and unit-tested; the Replacement-Point production charts
+are now consulted by the `PlanProduction` command (§8.7), though the §20.3 Conversion chart and
+the truck/CW-infantry roll tables are not yet driven by game logic.
 
 ### 8.2 Turn driver / Sequence of Play — implemented
 `GameState`'s turn driver (`advance_phase`) walks the full per-Game-Turn sequence, not just
@@ -355,11 +356,17 @@ the Stores Expenditure Stage (requirement draw, starvation attrition, half-ratio
 pipelines §52.2, the §52.6 Italian Pasta Rule, deprivation restrictions on move/combat);
 **(6)** Trucks (Light/Medium/Heavy chart, motorization §6.17, breakdown §21.38, field/facility
 repair §22); **(7)** supply transport/dumps + Commonwealth rail supply §54.3 and the two-leg
-strategic-supply trace for victory §64.71/72; **(8)** naval convoys §56 (see §8.6). **Not
-started in game logic — (9) Production §20:** the reference charts and RON data are complete and
-tested, but they are never consulted by state (the §20.3 Replacement Conversion chart is unused;
-the replacement pool/training/absorb flow exists but is not chart-driven), so parts of the
-§64.74/§64.75 VP still carry a "need production" note.
+strategic-supply trace for victory §64.71/72; **(8)** naval convoys §56 (see §8.6). **(9)
+Production §20 — Replacement-Point planning now wired:** the `PlanProduction` command validates a
+requested item/count against the nationality's §20.66/§20.78C chart (lifetime `total` and the
+per-period maximum, via a rolling Game-Turn window keyed to each item's GameTurn/Two-Weeks/Month
+period), records the required Axis convoy tonnage, and — mapping the item to a Replacement class —
+schedules the points to arrive after the §20.21 delay (Axis 2 / CW 4 Game-Turns) and begin
+Training, feeding the existing plan→arrive→train→absorb lifecycle. **Still open in production:**
+the item→class map flags the SP-gun/tankette calls as *inferred* (cf. D14) pending physical-chart
+verification; the §20.3 Replacement Conversion cost chart is not yet applied on absorption; the
+recorded convoy tonnage does not yet consume Axis convoy capacity (D15 step 8); and the truck
+(§20.78A) / CW-infantry (§20.78B) roll tables remain reference-only.
 
 ### 8.8 Scenario, map & OB
 The Scenario-1 order of battle and the full map are in: all five map sections (A–E) digitized,
