@@ -421,9 +421,12 @@ roster** (`AssignPilot`, §40.12) is modeled: each squadron's best flyable pilot
 lockouts (§40.13/14/17) tick each Operations Stage; and **ace progression** (§40.18) is in — a
 bombing interception credits the intercepting squadron's pilot with the bombers it downs, and a
 pilot's effective Rating is the greater of his assigned Rating and his earned ace Rating (1 per 5
-kills). Still deferred: per-plane (rather than per-flight best-pilot) rating, and crediting kills
-from the caller-supplied `FlyBombingMission`/`BombShip` paths (only the map-based
-`FlyBombingMissionAt` interception credits pilots).
+kills). All three bombing paths now credit the intercepting squadron's pilot: `FlyBombingMissionAt`
+selects the CAP/scramble squadron itself, and the caller-supplied `FlyBombingMission`/`BombShip`
+commands carry an `interceptor_squadron` so their interceptions credit ace kills too. **Voluntary
+abort (§39.3) supports partial abort (§39.34):** `abort_planes` on `FlyBombingMissionAt` may be a
+subset of the bombers — those turn back and dump (consuming fuel, §39.31/33) while the remainder
+press on and resolve normally. Still deferred: per-plane (rather than per-flight best-pilot) rating.
 
 ### 8.6 Naval / convoy — abstract model implemented
 Ports (§55: efficiency, blocking §55.22, mining §55.27, San Giorgio §30.17), the Commonwealth
@@ -434,8 +437,11 @@ where reinforcements enter (Naval Convoy Arrival Phase). **This abstraction is t
 not a shortcut** (rulebook §56.11: "the Shipping Lanes are not printed on the game map … identified
 by their ports of origin and destination"; §56.12: "a convoy is the total tonnage assigned to a
 Shipping Lane"). So there is deliberately **no hex-placed convoy / sea-movement model** — convoys
-are lane tonnages attacked only by air (§41.6), and on-map convoy strafing does not apply. The
-§42.53 size-class reveal is a rule helper not yet used by recon.
+are lane tonnages attacked only by air (§41.6), and on-map convoy strafing does not apply.
+**§42.53 naval reconnaissance** reveals only a convoy's *size class* (Small/Medium/Large), never its
+exact tonnage: `ReconConvoyLane` returns the class the Axis reports, chosen adversarially among the
+deliberately-overlapping §42.53 ranges (the most open-ended legal class, which conceals the true
+tonnage best).
 
 ### 8.7 Logistics (full game, D15) — increments 1–8 built; production (§20) is the gap
 The §32 abstract supply mode has been fully removed as D15 directed; the interim coarse
@@ -465,9 +471,15 @@ affordable `options` set (plus a Stores Point when flagged) drawn from co-locate
 with requirement kinds collapsed onto the four pool classes — using a **provisional** unit→row
 classifier (`conversion_row_for_unit`, flagged cf. D14; special-infantry and armored-recce/car
 distinctions default to the generic row, with Commando/Bersaglieri/Paratroop caught by name). With
-no §20.3 chart loaded it falls back to legacy 1:1. **Still open in production:** the recorded convoy
-tonnage does not yet consume Axis convoy capacity (D15 step 8); and the truck (§20.78A) / CW-infantry
-(§20.78B) roll tables remain reference-only. (The production item→class map's SP-gun/tankette Tank
+no §20.3 chart loaded it falls back to legacy 1:1. **Axis Replacement-Point tonnage now consumes
+convoy capacity (§20.62):** `PlanProduction` rejects an Axis order whose tonnage — added to the
+Axis replacement tonnage already committed to its arrival Game-Turn and any supply tonnage already
+booked on convoys arriving that turn — would exceed that turn's convoy Shipping Tonnage allowance
+(`InsufficientConvoyCapacity`). Bounded model (D15 step 8): it uses the die-6 allowance *ceiling*
+(the turn's die roll is unknown two turns out at planning time) and subtracts only already-planned
+supply convoys; Commonwealth production (strategic-supply line, Alexandria) is exempt; with no
+Convoy Level Chart loaded the gate is skipped. **Still open in production:** the truck (§20.78A) /
+CW-infantry (§20.78B) roll tables remain reference-only. (The production item→class map's SP-gun/tankette Tank
 calls were owner-confirmed 2026-08-29; the §20.3 absorb classifier's special-infantry/armored-car
 distinctions remain provisional.)
 

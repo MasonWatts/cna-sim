@@ -43,6 +43,13 @@ impl ConvoyLevelChart {
         let level = self.level_for(year, month)?;
         self.capacity.get(level).map(|c| c.tonnage(die))
     }
+
+    /// The best-case Shipping Tonnage the Axis could ship in `year`/`month` — the §56.5 formula is
+    /// monotonic in the die, so this is the die-6 tonnage. Used as the §20.62 ceiling against which
+    /// planned Axis Replacement-Point tonnage for that Game-Turn is counted.
+    pub fn max_tonnage_for(&self, year: u32, month: u32) -> Option<u32> {
+        self.tonnage_for(year, month, 6)
+    }
 }
 
 /// The Air Reconnaissance of Axis Naval Convoys Table (§42.53): the number of Commonwealth recon

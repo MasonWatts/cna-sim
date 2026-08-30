@@ -152,6 +152,18 @@ pub fn convoy_size_options(tonnage: u32) -> Vec<ConvoySize> {
     v
 }
 
+/// §42.53: the size class the Axis actually reports for a convoy of `tonnage` when forced to reveal.
+/// The choice is the Axis player's; absent an Axis decision, this is the deterministic adversarial
+/// default — the Axis reports the most open-ended class among its legal options (Large > Medium >
+/// Small), which conceals the true tonnage best. `None` only if `tonnage` matches no class (never,
+/// since the classes cover all tonnages). This is what recon reveals, not the exact tonnage.
+pub fn concealing_size(tonnage: u32) -> Option<ConvoySize> {
+    let opts = convoy_size_options(tonnage);
+    [ConvoySize::Large, ConvoySize::Medium, ConvoySize::Small]
+        .into_iter()
+        .find(|class| opts.contains(class))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,6 +221,17 @@ mod tests {
         assert_eq!(convoy_size_options(4000), vec![ConvoySize::Small, ConvoySize::Medium]);
         assert_eq!(convoy_size_options(8000), vec![ConvoySize::Medium, ConvoySize::Large]);
         assert_eq!(convoy_size_options(6000), vec![ConvoySize::Medium]);
+    }
+
+    #[test]
+    fn concealing_size_picks_most_open_ended() {
+        // No choice: report the only legal class.
+        assert_eq!(concealing_size(2000), Some(ConvoySize::Small));
+        assert_eq!(concealing_size(6000), Some(ConvoySize::Medium));
+        assert_eq!(concealing_size(12000), Some(ConvoySize::Large));
+        // With a choice, the Axis reports the more concealing (open-ended) class.
+        assert_eq!(concealing_size(4000), Some(ConvoySize::Medium)); // vs Small
+        assert_eq!(concealing_size(8000), Some(ConvoySize::Large)); // vs Medium
     }
 
     #[test]

@@ -411,13 +411,16 @@ pub struct PendingReplacement {
 }
 
 /// An accepted §20.66/§20.78C production order: `count` Replacement Points of `item` for
-/// `nationality`, planned on Game-Turn `game_turn`, requiring `tonnage` Axis Naval Convoy
-/// tons (0 for Commonwealth production, which lands at Alexandria).
+/// `nationality`, planned on Game-Turn `game_turn` and due to arrive on `arrival_game_turn`
+/// (§20.21 delay), requiring `tonnage` Axis Naval Convoy tons (0 for Commonwealth production,
+/// which lands at Alexandria). Axis tonnage is counted against `arrival_game_turn`'s convoy
+/// Shipping Tonnage allowance (§20.62).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProductionOrder {
     pub nationality: Nationality,
     pub item: String,
     pub game_turn: u32,
+    pub arrival_game_turn: u32,
     pub count: u32,
     pub tonnage: u32,
 }

@@ -258,6 +258,9 @@ pub enum Command {
         bombload_per_plane: u32,
         ship_index: usize,
         interceptors: Option<crate::state::game::Flight>,
+        /// The enemy squadron flying `interceptors`, if any — its pilot earns §40.18 ace credit for
+        /// the bombers it downs. `None` leaves the interception uncredited.
+        interceptor_squadron: Option<crate::state::air::SquadronId>,
         flak_points: u32,
         flak_destroy_roll: u32,
         flak_abort_roll: u32,
@@ -290,6 +293,9 @@ pub enum Command {
         /// Intercepting enemy CAP that attacks the bombers before flak (§39.0/§45); `None` if
         /// unopposed.
         interceptors: Option<crate::state::game::Flight>,
+        /// The enemy squadron flying `interceptors`, if any — its pilot earns §40.18 ace credit for
+        /// the bombers it downs. `None` leaves the interception uncredited.
+        interceptor_squadron: Option<crate::state::air::SquadronId>,
         flak_points: u32,
         flak_destroy_roll: u32,
         flak_abort_roll: u32,
@@ -379,9 +385,11 @@ pub enum Command {
         /// fight the escort before it can attack the bombers. (§43.24: a Crete-based bomber may not
         /// take an on-map/African escort.)
         escort: Option<crate::state::air::SquadronId>,
-        /// §39.3: voluntarily abort the mission before any combat (the bombers turn back). Allowed
-        /// only if the escort screen (§39.36/§39.37) or bomber Maneuver (§39.35) qualifies.
-        abort: bool,
+        /// §39.3/§39.34: how many of `planes` voluntarily abort before any combat (turn back). 0 =
+        /// none abort; `>= planes` = the whole mission aborts; in between is a §39.34 partial abort
+        /// (the aborting planes turn back, the rest press on). Any abort is allowed only if the
+        /// escort screen (§39.36/§39.37) or bomber Maneuver (§39.35) qualifies.
+        abort_planes: u32,
         flak_destroy_roll: u32,
         flak_abort_roll: u32,
         bomb_roll: u32,
@@ -421,9 +429,11 @@ pub enum CommandOutcome {
     HarborMineLaid,
     /// A harbour-mine clearance attempt resolved (§55.27): whether the mine was removed.
     HarborMineRemoved(bool),
-    /// §42.53 naval reconnaissance: whether the recon succeeded, and the revealed convoy tonnage in
-    /// the lane if one is present (`None` = no convoy).
-    ConvoyRecon { revealed: bool, convoy_tonnage: Option<u32> },
+    /// §42.53 naval reconnaissance: whether the recon succeeded, and — if it did and a convoy is in
+    /// the lane — the convoy's revealed **size class** (Small/Medium/Large), not its exact tonnage.
+    /// The Axis chooses the class it reports among the overlapping §42.53 ranges; `size` is that
+    /// adversarial choice (`None` = recon failed or no convoy present).
+    ConvoyRecon { revealed: bool, size: Option<crate::rules::naval::ConvoySize> },
     /// §44.42 Malta availability: the (map%, strategic%) support, or `None` for "na" (no forces).
     /// §44.42/§44.25: the raw `(map_percent, strategic_percent)` for the chosen level/roll, and the
     /// `planes_available` from the map — the map-percent of the in-play Italy/Sicily bombers plus the
@@ -558,6 +568,9 @@ pub enum CommandError {
     ConvoyRejected,
     /// The Convoy Level Chart is not loaded, so allowable tonnage cannot be derived.
     NoConvoyTable,
+    /// §20.62: the planned Axis Replacement-Point tonnage for its arrival Game-Turn would exceed
+    /// that turn's convoy Shipping Tonnage allowance (there is not enough sea lift to carry it).
+    InsufficientConvoyCapacity,
     /// The referenced convoy index does not exist.
     InvalidConvoy,
     /// §55.2: the harbour action failed (port unblockable/unknown, no engineer, too few engineers,
@@ -913,7 +926,7 @@ impl GameState {
                 Ok(CommandOutcome::MaltaFacilityConstructed(base.construct(levels)))
             }
             Command::BombShip {
-                squadron, planes, bombload_per_plane, ship_index, interceptors,
+                squadron, planes, bombload_per_plane, ship_index, interceptors, interceptor_squadron,
                 flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll,
             } => {
                 self.require_phase(Phase::LandSupportAir)?;
@@ -932,6 +945,12 @@ impl GameState {
                         interceptors, None, flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, false,
                     )
                     .ok_or(CommandError::NoSuchSquadron)?;
+                // §40.18: credit the intercepting squadron's pilot with the bombers it shot down.
+                if let Some(sq) = interceptor_squadron {
+                    if outcome.intercepted > 0 {
+                        self.credit_pilot_kills(sq, outcome.intercepted);
+                    }
+                }
                 self.fleet[ship_index].damage(outcome.result.max(0) as u32);
                 Ok(CommandOutcome::BombingMission(outcome))
             }
@@ -974,7 +993,7 @@ impl GameState {
                 Ok(CommandOutcome::SquadronFlew(sgsu.fly(count)))
             }
             Command::FlyBombingMission {
-                squadron, planes, bombload_per_plane, mission, interceptors,
+                squadron, planes, bombload_per_plane, mission, interceptors, interceptor_squadron,
                 flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, night,
             } => {
                 self.require_phase(Phase::LandSupportAir)?;
@@ -983,12 +1002,19 @@ impl GameState {
                 }
                 let group = crate::rules::air::bombing_target_group(mission)
                     .ok_or(CommandError::NoTable)?; // mining harbours use their own table
-                self.resolve_bombing_mission(
-                    squadron, planes, bombload_per_plane, group, interceptors, None,
-                    flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, night,
-                )
-                .map(CommandOutcome::BombingMission)
-                .ok_or(CommandError::NoSuchSquadron)
+                let outcome = self
+                    .resolve_bombing_mission(
+                        squadron, planes, bombload_per_plane, group, interceptors, None,
+                        flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, night,
+                    )
+                    .ok_or(CommandError::NoSuchSquadron)?;
+                // §40.18: credit the intercepting squadron's pilot with the bombers it shot down.
+                if let Some(sq) = interceptor_squadron {
+                    if outcome.intercepted > 0 {
+                        self.credit_pilot_kills(sq, outcome.intercepted);
+                    }
+                }
+                Ok(CommandOutcome::BombingMission(outcome))
             }
             Command::DesignateCap { squadron, center, cap_type, planes } => {
                 self.cmd_designate_cap(squadron, center, cap_type, planes)
@@ -1008,10 +1034,10 @@ impl GameState {
                 self.cmd_airdrop_unit(squadron, unit, target)
             }
             Command::FlyBombingMissionAt {
-                squadron, target, mission, planes, bombload_per_plane, night, escort, abort,
+                squadron, target, mission, planes, bombload_per_plane, night, escort, abort_planes,
                 flak_destroy_roll, flak_abort_roll, bomb_roll,
             } => self.cmd_fly_bombing_mission_at(
-                squadron, target, mission, planes, bombload_per_plane, night, escort, abort,
+                squadron, target, mission, planes, bombload_per_plane, night, escort, abort_planes,
                 flak_destroy_roll, flak_abort_roll, bomb_roll,
             ),
         }
@@ -1304,21 +1330,58 @@ impl GameState {
             return Err(CommandError::ProductionRateExceeded);
         }
 
-        // Accepted. Record the order, then schedule the points to arrive after the §20.21 delay.
         let tonnage = tonnage_per * count;
+        let side = nationality.side();
+        let delay = if side == crate::reference::units::Side::Commonwealth { 4 } else { 2 };
+        let arrival_game_turn = gt + delay;
+
+        // §20.62: each Axis Replacement Point is counted against the convoy Shipping Tonnage
+        // allowance for its arrival Game-Turn — it rides the Axis naval convoys and competes with
+        // supplies for the same tonnage. Reject if this order, plus the Axis replacement tonnage
+        // already committed to that Game-Turn, plus any supply tonnage already scheduled on convoys
+        // arriving that turn, would exceed the best-case (die-6) allowance for the turn's month.
+        // Commonwealth production lands via the strategic supply line (Alexandria), not Axis
+        // convoys, so it is not gated. (Bounded model, D15 step 8: uses the die-6 ceiling rather
+        // than the turn's actual die roll — which is unknown two turns out at planning time — and
+        // subtracts only already-planned supply convoys. With no Convoy Level Chart loaded the gate
+        // is skipped.)
+        if side == crate::reference::units::Side::Axis && tonnage > 0 {
+            if let Some(chart) = self.reference.convoy_levels.as_ref() {
+                let d = crate::state::game::date_of(arrival_game_turn);
+                if let Some(ceiling) = chart.max_tonnage_for(d.year, d.month) {
+                    let committed_replacement: u32 = self
+                        .production_orders
+                        .iter()
+                        .filter(|o| {
+                            o.nationality.side() == crate::reference::units::Side::Axis
+                                && o.arrival_game_turn == arrival_game_turn
+                        })
+                        .map(|o| o.tonnage)
+                        .sum();
+                    // Supply tonnage (fuel/ammo/stores) already booked on convoys arriving that turn;
+                    // replacement_tons is excluded here — that lift is tracked via production orders.
+                    let planned_supply: u32 = self
+                        .convoys
+                        .iter()
+                        .filter(|c| !c.cancelled && c.arrival_gt == arrival_game_turn)
+                        .map(|c| c.fuel_tons + c.ammo_tons + c.stores_tons)
+                        .sum();
+                    if committed_replacement + planned_supply + tonnage > ceiling {
+                        return Err(CommandError::InsufficientConvoyCapacity);
+                    }
+                }
+            }
+        }
+
+        // Accepted. Record the order, then schedule the points to arrive after the §20.21 delay.
         self.production_orders.push(ProductionOrder {
             nationality,
             item: item.to_string(),
             game_turn: gt,
+            arrival_game_turn,
             count,
             tonnage,
         });
-        let delay = if nationality.side() == crate::reference::units::Side::Commonwealth {
-            4
-        } else {
-            2
-        };
-        let arrival_game_turn = gt + delay;
         let class = replacement_class_for_item(item).unwrap_or(crate::state::game::ReplacementClass::Gun);
         let location = self
             .reference
@@ -1864,11 +1927,11 @@ impl GameState {
         squadron: crate::state::air::SquadronId,
         target: HexCoord,
         mission: crate::reference::aircraft::BombingMission,
-        planes: u32,
+        mut planes: u32,
         bombload_per_plane: u32,
         night: bool,
         escort: Option<crate::state::air::SquadronId>,
-        abort: bool,
+        abort_planes: u32,
         flak_destroy_roll: u32,
         flak_abort_roll: u32,
         bomb_roll: u32,
@@ -1967,10 +2030,13 @@ impl GameState {
         } else {
             None
         };
-        // §39.3 voluntary abort: before any combat, the bombers may turn back if a sufficient
-        // fighter escort screens them (§39.36/§39.37) or their Maneuver qualifies (§39.35). The
-        // decision is made against the covering offensive CAP, which is neither engaged nor consumed.
-        if abort {
+        // §39.3 voluntary abort: before any combat, some or all of the bombers may turn back if a
+        // sufficient fighter escort screens them (§39.36/§39.37) or their Maneuver qualifies
+        // (§39.35). The decision is made against the covering offensive CAP, which is neither engaged
+        // nor consumed. §39.34: the player need not abort the whole mission — `abort_planes` may be a
+        // subset, in which case the rest press on and resolve normally below.
+        let aborting = abort_planes.min(planes);
+        if aborting > 0 {
             let cap = self.cap_patrols.iter().find(|p| {
                 p.side == enemy
                     && matches!(p.cap_type, CapType::Offensive)
@@ -1991,9 +2057,13 @@ impl GameState {
             if !crate::rules::air::nonfighter_may_abort(sufficient, bomber_maneuver, cap_maneuver) {
                 return Err(CommandError::AbortNotPermitted);
             }
-            // §39.31/§39.33: the bombers fly and dump their bombload, but do not bomb or fight.
-            let flown = self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?.fly(planes);
-            return Ok(CommandOutcome::MissionAborted { planes: flown });
+            // §39.31/§39.33: the aborting planes fly and dump their bombload, but do not bomb or fight.
+            let flown = self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?.fly(aborting);
+            if aborting >= planes {
+                return Ok(CommandOutcome::MissionAborted { planes: flown });
+            }
+            // §39.34 partial abort: the remainder continues the mission (resolved below).
+            planes -= aborting;
         }
         // §40.26/§40.27: an enemy offensive CAP whose air ZOC covers the target intercepts (consuming
         // its one interception this stage); else a fighter base may scramble (§40.3).
@@ -2101,15 +2171,17 @@ impl GameState {
         self.require_phase(Phase::ConvoyResolution)?;
         let table = self.reference.naval_recon.as_ref().ok_or(CommandError::NoTable)?;
         let revealed = table.reveals(planes, roll);
-        let convoy_tonnage = if revealed {
+        // §42.53: on a successful reveal the Axis discloses only the convoy's *size class* (chosen
+        // adversarially among the overlapping ranges), never the exact tonnage.
+        let size = if revealed {
             self.convoys
                 .iter()
                 .find(|c| c.lane == lane && !c.cancelled && c.arrival_gt == self.game_turn)
-                .map(|c| c.total_tonnage())
+                .and_then(|c| crate::rules::naval::concealing_size(c.total_tonnage()))
         } else {
             None
         };
-        Ok(CommandOutcome::ConvoyRecon { revealed, convoy_tonnage })
+        Ok(CommandOutcome::ConvoyRecon { revealed, size })
     }
 
     /// §44.42 DetermineMaltaAvailability: gated to the Malta Availability Determination Phase.

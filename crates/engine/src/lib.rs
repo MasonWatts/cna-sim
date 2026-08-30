@@ -4596,7 +4596,7 @@ mod tests {
         // 12 bombers x 20 = 240 bomb points, no flak, roll 66 -> a "units" result of some damage.
         match g.apply(Command::BombShip {
             squadron: SquadronId(1), planes: 12, bombload_per_plane: 20, ship_index: 0,
-            interceptors: None, flak_points: 0, flak_destroy_roll: 11, flak_abort_roll: 11, bomb_roll: 66,
+            interceptors: None, interceptor_squadron: None, flak_points: 0, flak_destroy_roll: 11, flak_abort_roll: 11, bomb_roll: 66,
         }) {
             Ok(CommandOutcome::BombingMission(o)) => {
                 assert!(o.result >= 1, "heavy raid should score damage");
@@ -4676,12 +4676,15 @@ mod tests {
 
         // Strong CAP (high TacAir + pilots + maneuver) intercepts, no flak.
         let cap = Flight { count: 12, tacair: 8, pilot: 3, maneuver: 40 };
+        // §40.18: a Commonwealth pilot flies the intercepting CAP squadron and earns ace credit.
+        let cw_sq = SquadronId(9);
+        g.pilots.push(crate::state::air::Pilot::new(0, Some(cw_sq)));
         while g.phase != Phase::LandSupportAir {
             g.advance_phase();
         }
         match g.apply(Command::FlyBombingMission {
             squadron: SquadronId(1), planes: 12, bombload_per_plane: 20, mission: BombingMission::Personnel,
-            interceptors: Some(cap), flak_points: 0, flak_destroy_roll: 11, flak_abort_roll: 11, bomb_roll: 66, night: false,
+            interceptors: Some(cap), interceptor_squadron: Some(cw_sq), flak_points: 0, flak_destroy_roll: 11, flak_abort_roll: 11, bomb_roll: 66, night: false,
         }) {
             Ok(CommandOutcome::BombingMission(o)) => {
                 assert_eq!(o.flown, 12);
@@ -4689,6 +4692,8 @@ mod tests {
                 // Intercepted bombers are removed; survivors deliver the bombs.
                 assert_eq!(g.sgsus[&SquadronId(1)].plane_count(), 12 - o.intercepted);
                 assert_eq!(o.delivered_bomb_points, (12 - o.intercepted) * 20);
+                // §40.18: the intercepting squadron's pilot is credited with the kills.
+                assert_eq!(g.pilots.iter().find(|p| p.squadron == Some(cw_sq)).unwrap().kills, o.intercepted);
             }
             other => panic!("unexpected: {other:?}"),
         }
@@ -4735,7 +4740,7 @@ mod tests {
 
         let mission = Command::FlyBombingMission {
             squadron: SquadronId(1), planes: 12, bombload_per_plane: 20, mission: BombingMission::Personnel,
-            interceptors: None,
+            interceptors: None, interceptor_squadron: None,
             flak_points: 6, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66, night: false,
         };
         assert_eq!(g.apply(mission.clone()), Err(CommandError::WrongPhase));
@@ -4820,7 +4825,7 @@ mod tests {
             bombload_per_plane: 20,
             night: false,
             escort: None,
-            abort: false,
+            abort_planes: 0,
             flak_destroy_roll: 66,
             flak_abort_roll: 66,
             bomb_roll: 66,
@@ -4901,7 +4906,7 @@ mod tests {
         let bomb = |target: HexCoord| Command::FlyBombingMissionAt {
             squadron: SquadronId(2), target, mission: BombingMission::Personnel,
             planes: 6, bombload_per_plane: 20, night: false,
-            escort: None, abort: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // A target OUTSIDE the 7-hex air ZOC is not intercepted (§40.23).
         let outside = HexCoord::new(14, 10); // 4 hexes from center
@@ -5358,7 +5363,7 @@ mod tests {
         let bomb = |mission| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission,
             planes: 12, bombload_per_plane: 20, night: false,
-            escort: None, abort: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         match g.apply(bomb(BombingMission::Personnel)) {
             Ok(CommandOutcome::BombingMission(o)) => {
@@ -5469,7 +5474,7 @@ mod tests {
         }
         let bomb = |target, mission| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission, planes: 12, bombload_per_plane: 20,
-            night: false, escort: None, abort: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            night: false, escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
 
         // §41.37: bombing a placed Level-2 fortification knocks it down at most one level per stage.
@@ -5615,7 +5620,7 @@ mod tests {
         }
         let bomb = |escort| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
-            planes: 12, bombload_per_plane: 20, night: false, escort, abort: false,
+            planes: 12, bombload_per_plane: 20, night: false, escort, abort_planes: 0,
             flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // A non-fighter escort (a bomber squadron) is not permitted (§45: fighters escort).
@@ -5643,7 +5648,7 @@ mod tests {
             g.apply(Command::FlyBombingMissionAt {
                 squadron: SquadronId(3), target: HexId::parse("B5925").unwrap().to_hex_coord(),
                 mission: BombingMission::Personnel, planes: 6, bombload_per_plane: 20, night: false,
-                escort: Some(SquadronId(2)), abort: false,
+                escort: Some(SquadronId(2)), abort_planes: 0,
                 flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
             }),
             Err(CommandError::EscortNotPermitted)
@@ -5695,7 +5700,7 @@ mod tests {
 
         let abort = |escort| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
-            planes: 12, bombload_per_plane: 20, night: false, escort, abort: true,
+            planes: 12, bombload_per_plane: 20, night: false, escort, abort_planes: 12,
             flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // §39.36: with no escort screen and inferior Maneuver, the bombers may not abort.
@@ -5706,6 +5711,61 @@ mod tests {
             other => panic!("unexpected: {other:?}"),
         }
         assert_eq!(g.cap_patrols[0].intercepts_used, 0, "an aborted mission does not engage CAP");
+    }
+
+    #[test]
+    fn partial_abort_39_34() {
+        // §39.34: the player may abort a subset of the bombers and press on with the rest. The
+        // aborting planes turn back (fly + dump); the remainder resolve the mission normally.
+        use crate::reference::aircraft::{AircraftClass, BombingMission, CapType};
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        refs.load_aircraft_chart(Nationality::Commonwealth, include_str!("../../../data/reference/aircraft/commonwealth.ron")).unwrap();
+        refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+        refs.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(1, 1);
+        let target = HexCoord::new(3, 1);
+        let mut kg = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 26", 5, Some(base));
+        kg.add_planes("Ju.88D", AircraftClass::Bomber, 12, 1);
+        g.sgsus.insert(SquadronId(1), kg);
+        let mut esc = Sgsu::new(SquadronId(2), Nationality::German, SquadronClass::Fighter, "JG 27", 5, Some(base));
+        esc.add_planes("Bf.109F", AircraftClass::Fighter, 6, 1);
+        g.sgsus.insert(SquadronId(2), esc);
+        let mut cw = Sgsu::new(SquadronId(3), Nationality::Commonwealth, SquadronClass::Fighter, "252 Sqn", 5, Some(target));
+        cw.add_planes("Beaufighter Mk.IF", AircraftClass::Fighter, 6, 1);
+        g.sgsus.insert(SquadronId(3), cw);
+        for id in [SquadronId(1), SquadronId(2), SquadronId(3)] {
+            for grp in g.sgsus.get_mut(&id).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        }
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+        // A Commonwealth offensive CAP covers the target so a screen is required for the abort.
+        assert!(matches!(
+            g.apply(Command::DesignateCap { squadron: SquadronId(3), center: target, cap_type: CapType::Offensive, planes: 4 }),
+            Ok(_)
+        ));
+        // Abort 4 of 12 (sufficient escort screen); the other 8 press on and resolve.
+        match g.apply(Command::FlyBombingMissionAt {
+            squadron: SquadronId(1), target, mission: BombingMission::Personnel,
+            planes: 12, bombload_per_plane: 20, night: false, escort: Some(SquadronId(2)), abort_planes: 4,
+            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+        }) {
+            Ok(CommandOutcome::BombingMission(o)) => assert_eq!(o.flown, 8, "8 bombers pressed on"),
+            other => panic!("unexpected: {other:?}"),
+        }
+        // All 12 left the ready pool (4 turned back + 8 flew the mission).
+        assert_eq!(g.sgsus[&SquadronId(1)].ready_planes(), 0);
     }
 
     #[test]
@@ -5739,7 +5799,7 @@ mod tests {
         let bomb = Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target: derna, mission: BombingMission::Personnel,
             planes: 12, bombload_per_plane: 20, night: false,
-            escort: None, abort: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // §43.23: in the first 4 Operations Stages of the month, Crete is committed to Suez.
         g.game_turn = 1;
@@ -5788,7 +5848,7 @@ mod tests {
         let bomb = |target| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 12, bombload_per_plane: 20, night: false,
-            escort: None, abort: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // With no §37.4 chart loaded, a Box squadron has no computable flight distance.
         assert_eq!(g.apply(bomb(derna)), Err(CommandError::TargetOutOfRange));
@@ -5936,7 +5996,7 @@ mod tests {
         let bomb = Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 6, bombload_per_plane: 20, night: false,
-            escort: None, abort: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
 
         // CW fighters based AT the target (distance 0 → Scramble Table success on any d6, §40.4).
@@ -6251,15 +6311,17 @@ mod tests {
         while g.phase != Phase::ConvoyResolution {
             g.advance_phase();
         }
-        // 1 plane reveals on 2d6 <= 12; a convoy of 5000 t is present.
+        // 1 plane reveals on 2d6 <= 12; a convoy of 5000 t is present. §42.53: the Axis reveals only
+        // a size class, not the tonnage — 5000 t is legally Small or Medium, so the adversarial Axis
+        // reports the more concealing Medium.
         assert_eq!(
             g.apply(Command::ReconConvoyLane { lane: 2, planes: 1, roll: 12 }),
-            Ok(CommandOutcome::ConvoyRecon { revealed: true, convoy_tonnage: Some(5000) })
+            Ok(CommandOutcome::ConvoyRecon { revealed: true, size: Some(crate::rules::naval::ConvoySize::Medium) })
         );
         // Roll 13 fails to reveal.
         assert_eq!(
             g.apply(Command::ReconConvoyLane { lane: 2, planes: 1, roll: 13 }),
-            Ok(CommandOutcome::ConvoyRecon { revealed: false, convoy_tonnage: None })
+            Ok(CommandOutcome::ConvoyRecon { revealed: false, size: None })
         );
 
         // Refit the squadron in the Land Support Air Phase. German +1 (§38.35): 12 planes
@@ -6582,6 +6644,45 @@ mod tests {
             .find(|rp| rp.class == ReplacementClass::Infantry && rp.count == 10)
             .expect("the GT40 order should have arrived");
         assert_eq!(pool.training_remaining, 3);
+    }
+
+    #[test]
+    fn plan_production_consumes_convoy_capacity_20_62() {
+        // §20.62: Axis Replacement-Point tonnage competes with supply tonnage for the arrival
+        // Game-Turn's convoy Shipping Tonnage allowance. A production order is rejected if it would
+        // push the turn's booked tonnage over the (die-6) allowance ceiling.
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{date_of, GameState, Phase};
+
+        let mut refs = ReferenceData::new();
+        refs.load_production_chart(
+            Nationality::German,
+            include_str!("../../../data/reference/german-production.ron"),
+        )
+        .unwrap();
+        refs.load_convoy_levels(include_str!("../../../data/reference/convoy-levels.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.game_turn = 40;
+        g.phase = Phase::Organization;
+
+        let plan = |count: u32| Command::PlanProduction {
+            nationality: Nationality::German,
+            item: "Infantry".into(),
+            count,
+        };
+        // German Infantry costs 30 tons/point and arrives at GT42 (Axis +2).
+        let d = date_of(42);
+        let ceiling = g.reference.convoy_levels.as_ref().unwrap().max_tonnage_for(d.year, d.month).unwrap();
+
+        // Book supply convoys arriving GT42 that leave only 100 tons of headroom.
+        assert!(g.plan_convoy(4, "Tripoli", 42, 0, 0, ceiling - 100, 0, ceiling));
+
+        // 4 Infantry points = 120 tons > 100 headroom -> rejected for want of sea lift.
+        assert_eq!(g.apply(plan(4)), Err(CommandError::InsufficientConvoyCapacity));
+        // 3 points = 90 tons fits within the 100-ton headroom.
+        assert!(matches!(g.apply(plan(3)), Ok(CommandOutcome::ProductionPlanned { .. })));
+        // Now only 10 tons remain; even 1 more point (30 tons) is too much.
+        assert_eq!(g.apply(plan(1)), Err(CommandError::InsufficientConvoyCapacity));
     }
 
     #[test]
