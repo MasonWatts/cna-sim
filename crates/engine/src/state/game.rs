@@ -369,7 +369,7 @@ pub enum FacilityKind {
 }
 
 /// The class of a Replacement Point (§20.2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ReplacementClass {
     Infantry,
     Gun,
@@ -1747,13 +1747,176 @@ impl GameState {
         if rp.location.and_then(|l| l.hex()) != Some(unit_hex) {
             return None;
         }
-        let added = self.add_toe(unit, rp.count);
-        // §64.74: record the points consumed, by the absorbing unit's side.
-        if let Some(side) = self.units.get(&unit).map(|u| u.nationality.side()) {
+        let side = self.units.get(&unit)?.nationality.side();
+
+        // Legacy 1:1 absorption when no §20.3 Conversion Chart is loaded (one pool point = one TOE).
+        let Some(conv) = self.reference.replacement_conversion.clone() else {
+            let added = self.add_toe(unit, rp.count);
             *self.replacements_used.entry(side).or_insert(0) += rp.count;
+            self.replacement_points.remove(index);
+            return Some(added);
+        };
+        let row = self.conversion_row_for_unit(unit);
+        let Some(entry) = conv.cost(row).cloned() else {
+            // Unmapped type → fall back to 1:1.
+            let added = self.add_toe(unit, rp.count);
+            *self.replacements_used.entry(side).or_insert(0) += rp.count;
+            self.replacement_points.remove(index);
+            return Some(added);
+        };
+
+        // §20.3 cost-based absorption: rebuild TOE Strength Points, each costing one affordable
+        // `options` set drawn from co-located, trained, assignable Replacement-Point pools (plus a
+        // Stores Point when the entry is `supplies`), until the unit is full or nothing is affordable.
+        let mut room = self.unit_toe_headroom(unit);
+        let mut added = 0u32;
+        let mut consumed = 0u32;
+        while room > 0 {
+            // Choose the first affordable option (empty options list = free rebuild).
+            let cost = if entry.options.is_empty() {
+                Some(std::collections::HashMap::new())
+            } else {
+                entry.options.iter().find_map(|opt| {
+                    let mut need: std::collections::HashMap<ReplacementClass, u32> = std::collections::HashMap::new();
+                    for req in opt {
+                        *need.entry(Self::conversion_class_for_kind(&req.kind)).or_insert(0) += req.count;
+                    }
+                    need.iter()
+                        .all(|(&c, &n)| self.available_replacement_class(c, unit, unit_hex) >= n)
+                        .then_some(need)
+                })
+            };
+            let Some(cost) = cost else { break };
+            if entry.supplies && self.available_commodity_at(unit_hex, side, Commodity::Stores) < 1 {
+                break;
+            }
+            // Commit: draw the points, spend Stores, and rebuild one TOE Strength Point.
+            for (&class, &n) in &cost {
+                self.draw_replacement_class(class, unit, unit_hex, n);
+                consumed += n;
+            }
+            if entry.supplies {
+                self.consume_commodity_at(unit_hex, side, Commodity::Stores, 1);
+            }
+            if self.add_toe(unit, 1) == 0 {
+                break;
+            }
+            added += 1;
+            room -= 1;
         }
-        self.replacement_points.remove(index);
+        *self.replacements_used.entry(side).or_insert(0) += consumed;
+        self.replacement_points.retain(|p| p.count > 0);
         Some(added)
+    }
+
+    /// TOE Strength Points a unit may still gain before hitting its §4.44 Max-TOE (`u32::MAX` if the
+    /// unit has no listed maximum).
+    fn unit_toe_headroom(&self, id: UnitId) -> u32 {
+        let Some(u) = self.units.get(&id) else { return 0 };
+        let cur = u.total_toe();
+        match self
+            .reference
+            .unit_characteristics
+            .get(&u.nationality)
+            .and_then(|m| m.get(&u.id_code))
+            .and_then(|c| c.max_toe.as_ref())
+        {
+            Some(m) => (m.value.max(0) as u32).saturating_sub(cur),
+            None => u32::MAX,
+        }
+    }
+
+    /// Replacement Points of `class` available to rebuild `unit` at `hex`: those in co-located,
+    /// trained pools assigned to this unit or unassigned (§20.41/§20.43).
+    fn available_replacement_class(&self, class: ReplacementClass, unit: UnitId, hex: HexCoord) -> u32 {
+        self.replacement_points
+            .iter()
+            .filter(|p| {
+                p.class == class
+                    && p.training_remaining == 0
+                    && p.location.as_ref().and_then(|l| l.hex()) == Some(hex)
+                    && (p.assigned_to.is_none() || p.assigned_to == Some(unit))
+            })
+            .map(|p| p.count)
+            .sum()
+    }
+
+    /// Remove `n` Replacement Points of `class` for `unit` at `hex` (pools assigned to this unit
+    /// first, then unassigned).
+    fn draw_replacement_class(&mut self, class: ReplacementClass, unit: UnitId, hex: HexCoord, n: u32) {
+        let mut owed = n;
+        for assigned_first in [true, false] {
+            for p in self.replacement_points.iter_mut().filter(|p| {
+                p.class == class
+                    && p.training_remaining == 0
+                    && p.location.as_ref().and_then(|l| l.hex()) == Some(hex)
+                    && if assigned_first { p.assigned_to == Some(unit) } else { p.assigned_to.is_none() }
+            }) {
+                if owed == 0 {
+                    break;
+                }
+                let take = owed.min(p.count);
+                p.count -= take;
+                owed -= take;
+            }
+        }
+    }
+
+    /// §20.3 provisional classifier (cf. D14): map a unit's §4.46 `unit_type` label (and name, for
+    /// the special-infantry rows) to a Replacement-Point Conversion Chart row. **Inferred** — the
+    /// special infantry rows (Machinegun / Heavy Weapons) and the Armored-Reconnaissance vs
+    /// Armored-Car vs Motorcycle/Camel distinction are not derivable from the OB data and default to
+    /// the generic row; verify against the §4.46 counters / OA sheets in a faithfulness pass.
+    pub fn conversion_row_for_unit(&self, id: UnitId) -> &'static str {
+        let Some(u) = self.units.get(&id) else { return "Any other Infantry" };
+        let ut = self
+            .reference
+            .unit_characteristics
+            .get(&u.nationality)
+            .and_then(|m| m.get(&u.id_code))
+            .map(|c| c.unit_type.as_str())
+            .unwrap_or("");
+        let name = u.name.as_str();
+        if ut.contains("Headquarters") {
+            "Any Headquarters Unit"
+        } else if ut.contains("Construction") {
+            "Road/Railroad Construction"
+        } else if ut.contains("Engineer") {
+            if ut.contains("Coy") && !ut.contains("Bn") { "Engineer Company" } else { "Engineer Battalion" }
+        } else if ut.contains("Tank") {
+            "Tank"
+        } else if ut.contains("Artillery") {
+            "Artillery"
+        } else if ut.contains("Anti-tank") {
+            "Anti-tank"
+        } else if ut.contains("Anti-air") {
+            "Anti-air"
+        } else if ut.contains("Reconnaissance") || ut.contains("Recce") {
+            "Armored Reconnaissance" // inferred: recce → ArmR points (Armored Car / Motorcycle unverified)
+        } else if ut.contains("Infantry") {
+            if name.contains("Bersaglieri") {
+                "Italian Bersaglieri Infantry"
+            } else if name.contains("Commando") || name.contains("Layforce") || name.contains("SAS") {
+                "Commando"
+            } else if name.contains("Folgore") || name.contains("Ramcke") || name.contains("Para") {
+                "Paratroop Infantry"
+            } else {
+                "Any other Infantry" // inferred: Machinegun / Heavy Weapons not distinguishable here
+            }
+        } else {
+            "Any other Infantry"
+        }
+    }
+
+    /// Collapse a §20.3 requirement `kind` onto one of the four Replacement-Point pool classes:
+    /// Inf → Infantry; Tank/Lt Tank → Tank; ArmR → Recce; all gun/artillery/AT/AA kinds → Gun.
+    fn conversion_class_for_kind(kind: &str) -> ReplacementClass {
+        match kind {
+            "Inf" => ReplacementClass::Infantry,
+            "Tank" | "Lt Tank" => ReplacementClass::Tank,
+            "ArmR" => ReplacementClass::Recce,
+            _ => ReplacementClass::Gun,
+        }
     }
 
     /// Check a unit for breakdown on ceasing movement (§21.24–38): if it is subject and has more

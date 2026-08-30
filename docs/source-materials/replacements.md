@@ -75,8 +75,16 @@ Axis points train in Tripoli or any Major City; Commonwealth per §17.32.
   (Axis 2 / CW 4 Game-Turns). Full lifecycle: **plan → produce → arrive → train → absorb.**
 - **§64.74/§64.75 victory points are implemented** (`replacement_vp` reads the chart totals minus
   `replacements_used`; withdrawal VP via §64.75).
-- **Still deferred:** the item→class map flags SP-gun/tankette calls as *inferred* (verify vs the
-  physical §20.66 chart, cf. D14); the §20.3 Conversion Chart is not yet applied on absorption;
-  the recorded convoy tonnage does not yet consume Axis convoy capacity; the §20.78A truck /
-  §20.78B CW-infantry roll tables remain reference-only; and the §20.42 restrictions/morale and
-  §20.5 upgrades are not modelled.
+- **§20.3 Conversion Chart applied on absorption:** `absorb_replacement` now rebuilds TOE Strength
+  Points at the §20.3 cost — each SP consumes an affordable `options` set (plus a Stores Point when
+  the entry is `supplies`) drawn from co-located, trained, assignable pools, collapsing the
+  requirement kinds onto the four pool classes (Inf→Infantry; Tank/Lt Tank→Tank; ArmR→Recce; all
+  gun/AA/AT kinds→Gun). A unit's conversion row comes from a **provisional classifier**
+  (`conversion_row_for_unit`, flagged cf. D14): the special-infantry rows (Machinegun / Heavy
+  Weapons) and Armored-Reconnaissance vs Armored-Car vs Motorcycle/Camel distinctions are not
+  derivable from the OB data and default to the generic row (Commando / Bersaglieri / Paratroop are
+  caught by unit name). With no chart loaded, absorption falls back to the legacy 1:1.
+- **Still deferred:** the production item→class map flags SP-gun/tankette calls as *inferred*
+  (verify vs the physical §20.66 chart, cf. D14); the recorded convoy tonnage does not yet consume
+  Axis convoy capacity; the §20.78A truck / §20.78B CW-infantry roll tables remain reference-only;
+  and the §20.42 restrictions/morale and §20.5 upgrades are not modelled.

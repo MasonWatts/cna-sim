@@ -5314,6 +5314,39 @@ mod tests {
     }
 
     #[test]
+    fn replacement_conversion_absorb_20_3() {
+        use crate::reference::units::Side;
+        use crate::state::game::{GameState, ReplacementClass};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        refs.load_replacement_conversion(include_str!("../../../data/reference/replacement-conversion.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let a = HexCoord::new(0, 0);
+
+        // Provisional classifier (§20.3): recce/HQ/infantry rows, incl. name-based specials.
+        let recce = g.spawn_unit(Nationality::German, "ee", "recce", Composition::Organic { current_toe: 2 });
+        let hq = g.spawn_unit(Nationality::German, "e", "hq", Composition::Weapons { groups: vec![] });
+        let commando = g.spawn_unit(Nationality::German, "p", "Layforce Commando", Composition::Organic { current_toe: 1 });
+        assert_eq!(g.conversion_row_for_unit(recce), "Armored Reconnaissance");
+        assert_eq!(g.conversion_row_for_unit(hq), "Any Headquarters Unit");
+        assert_eq!(g.conversion_row_for_unit(commando), "Commando");
+
+        // §20.3: a Commando costs 3 Infantry Replacement Points per TOE Strength Point rebuilt.
+        g.unit_mut(commando).unwrap().location = Some(UnitLocation::OnMap(a));
+        let rp = g.add_replacement_points(ReplacementClass::Infantry, 6, Some(UnitLocation::OnMap(a)), Some(commando));
+        g.replacement_points[rp].training_remaining = 0;
+        // "p" Max-TOE is 4; from TOE 1 there is room for 3 → 6 points / 3-per-SP = 2 SPs rebuilt.
+        assert_eq!(g.absorb_replacement(rp, commando), Some(2));
+        assert_eq!(g.unit(commando).unwrap().total_toe(), 3);
+        // §64.74: all 6 consumed points count against the side's unused-replacement pool.
+        assert_eq!(*g.replacements_used.get(&Side::Axis).unwrap(), 6);
+        assert!(g.replacement_points.is_empty());
+    }
+
+    #[test]
     fn flak_destruction_41_33() {
         use crate::reference::units::Side;
         use crate::state::game::GameState;
