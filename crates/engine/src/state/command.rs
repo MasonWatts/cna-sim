@@ -2410,8 +2410,8 @@ impl GameState {
     /// each enemy squadron. Subject to the §27.87 frequency limit (≥6 Operations Stages between raids).
     fn cmd_raid_airfield_sas(&mut self, unit: UnitId, roll: u32) -> Result<CommandOutcome, CommandError> {
         self.require_phase(Phase::MovementAndCombat)?;
-        // §27.93 SAS Raid Table: % of grounded planes destroyed by a d6 (die 6 provisional — the OCR
-        // of §27.93 is legible only for 1-5 = 0/10/25/25/33; 6 taken as 50, flagged D).
+        // §27.93 SAS Raid Table: % of grounded planes destroyed by a d6 (1-6). Verified against the
+        // physical chart (owner-confirmed 2026-08-30): die 6 = 50%.
         const SAS_RAID_PCT: [u32; 6] = [0, 10, 25, 25, 33, 50];
         if !self.is_sas(unit) {
             return Err(CommandError::SasCannotAct);

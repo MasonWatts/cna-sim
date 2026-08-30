@@ -557,8 +557,8 @@ with the §27.84 three-stage supply window and raids grounded Axis planes (`Raid
 passing convoy attack it in the Truck Convoy Phase. Positions are tracked for real; the §27.32
 hidden-movement concealment awaits §3.5 fog-of-war. Flagged simplifications (D): §27.12 "trained to
 max Morale" precondition; per-hex fuel accounting (§27.38); all-replacement convoy auto-elimination
-(§27.58); facility/plane side-tagging (§27.53/54); the §27.93 table's die-6 value (OCR-illegible,
-taken as 50%); and §27.59 range as hex distance ≤4 (proxy for "4 Movement CPs").
+(§27.58); facility/plane side-tagging (§27.53/54); and §27.59 range as hex distance ≤4 (proxy for
+"4 Movement CPs"). The §27.93 SAS Raid Table (0/10/25/25/33/50 by d6) is owner-confirmed (2026-08-30).
 
 ## 9. Source-Material Transcription Practice
 
