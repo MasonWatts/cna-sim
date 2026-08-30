@@ -5253,6 +5253,59 @@ mod tests {
     }
 
     #[test]
+    fn airdrop_unit_42_41() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::terrain::HexTerrain;
+        use crate::state::air::{AirFacility, AirFacilityKind, Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(2, 2);
+        let target = HexCoord::new(4, 2);
+        let nowhere = HexCoord::new(2, 10);
+        g.map.set_hex(target, HexTerrain::Clear);
+        g.map.set_hex(nowhere, HexTerrain::Clear);
+        // A recognizable land feature at the drop zone (§42.44).
+        g.air_facilities.push(AirFacility::new(AirFacilityKind::Airfield, target));
+        // Ju.52 transports + a German airborne unit co-located at the base.
+        let mut tp = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Transport, "KGrzbV", 5, Some(base));
+        tp.add_planes("Ju.52/3m", AircraftClass::Transport, 3, 1);
+        g.sgsus.insert(SquadronId(1), tp);
+        let ready = |g: &mut GameState| {
+            for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        };
+        ready(&mut g);
+        let para = g.spawn_unit(Nationality::German, "p", "V/186 Bn", Composition::Organic { current_toe: 2 });
+        g.unit_mut(para).unwrap().location = Some(UnitLocation::OnMap(base));
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+
+        let drop = |target| Command::AirdropUnit { squadron: SquadronId(1), unit: para, target };
+        // §42.41: a non-airborne unit may not be airdropped.
+        assert_eq!(g.apply(drop(target)), Err(CommandError::MissionNotPermitted));
+        g.unit_mut(para).unwrap().airdroppable = true;
+        // §42.43/44: a drop zone with no land feature nearby is illegal.
+        assert_eq!(g.apply(drop(nowhere)), Err(CommandError::DropZoneIllegal));
+        // A legal drop lands the unit in the target hex (§42.45 — no drift).
+        assert_eq!(g.apply(drop(target)), Ok(CommandOutcome::UnitAirdropped));
+        assert_eq!(g.unit(para).unwrap().hex(), Some(target));
+        // §42.48: it may not be airdropped again within 12 Operations Stages.
+        g.unit_mut(para).unwrap().location = Some(UnitLocation::OnMap(base));
+        ready(&mut g);
+        assert_eq!(g.apply(drop(target)), Err(CommandError::AirdropOnCooldown));
+    }
+
+    #[test]
     fn land_bombing_effects_41() {
         use crate::reference::aircraft::{AircraftClass, BombingMission};
         use crate::reference::squadron::SquadronClass;

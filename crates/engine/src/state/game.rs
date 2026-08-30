@@ -670,6 +670,10 @@ pub struct GameState {
     /// air-to-air combat (§40.15) and is assigned to a squadron (§40.12).
     #[serde(default)]
     pub pilots: Vec<crate::state::air::Pilot>,
+    /// §42.48: the absolute Operations-Stage index at which each unit was last airdropped — a unit
+    /// may not be airdropped more than once per 12 Operations Stages (a month).
+    #[serde(default)]
+    pub airdrop_last_stage: std::collections::HashMap<UnitId, u32>,
     /// Replacement Points consumed (absorbed) so far, per side — for the §64.74 unused-
     /// replacement victory points.
     #[serde(default)]
@@ -818,6 +822,7 @@ impl GameState {
             production_orders: Vec::new(),
             cap_patrols: Vec::new(),
             pilots: Vec::new(),
+            airdrop_last_stage: std::collections::HashMap::new(),
             replacements_used: std::collections::HashMap::new(),
             withdrawn: std::collections::HashMap::new(),
             withdrawal_banked: 0,

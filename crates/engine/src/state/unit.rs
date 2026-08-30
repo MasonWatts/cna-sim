@@ -198,6 +198,9 @@ pub struct Unit {
     /// as 0 SP — and may not voluntarily attack (§3.33) — when it has none attached.
     #[serde(default)]
     pub is_hq: bool,
+    /// §42.41: this unit is airborne / airdrop-eligible (set from its OA sheet).
+    #[serde(default)]
+    pub airdroppable: bool,
 
     // Organization: two independent, nullable links (§19.1).
     pub assigned_parent: Option<UnitId>,
@@ -299,6 +302,7 @@ impl Unit {
             name: name.into(),
             org_size: OrgSize::Battalion,
             is_hq: false,
+            airdroppable: false,
             assigned_parent: None,
             attached_parent: None,
             composition,

@@ -68,6 +68,10 @@ pub struct ObUnit {
     /// assigned" notes.
     #[serde(default)]
     pub attached: bool,
+    /// §42.41: the OA sheet marks this unit as airdrop-eligible (the Folgore / Ramcke airborne
+    /// units). Set when the airborne formations are promoted into the loaded OB.
+    #[serde(default)]
+    pub airdroppable: bool,
     #[serde(default)]
     pub notes: String,
 }

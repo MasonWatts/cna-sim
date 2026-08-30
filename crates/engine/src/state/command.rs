@@ -346,6 +346,16 @@ pub enum Command {
         unit: UnitId,
         target: HexCoord,
     },
+    /// §42.41/§42.42: airdrop an airborne-eligible `unit` (co-located with the transport squadron)
+    /// into a `target` hex — like a transport mission but the unit is dropped, so no air facility is
+    /// needed at the target (it must still start from the transports' hex). Validates the §42.43/44
+    /// drop-zone, weather (§42.45), stacking, and the §42.48 once-per-12-stages limit. (Land Support
+    /// Air Phase.)
+    AirdropUnit {
+        squadron: crate::state::air::SquadronId,
+        unit: UnitId,
+        target: HexCoord,
+    },
     /// §37/§41: fly a land-support bombing mission from the squadron's base hex to a `target` hex,
     /// validating flight range/distance (§37.12), mission day/night capability (§39.42), and the
     /// sandstorm/rainstorm grounding of the base or target (§37.22) against the map; computing
@@ -467,6 +477,8 @@ pub enum CommandOutcome {
     SuppliesAirdropped { amount: u32 },
     /// §42.3: a unit was air-transported to a friendly air facility (and has used its CPA).
     UnitTransported,
+    /// §42.4: an airborne unit was airdropped into the target hex.
+    UnitAirdropped,
 }
 
 /// Why a command was rejected. The state is left unchanged on any error.
@@ -574,6 +586,8 @@ pub enum CommandError {
     /// §42.43: the airdrop target hex is not a legal drop zone (wrong terrain, a major city, enemy-
     /// occupied, in an enemy ZOC, or not within two hexes of a recognizable land feature).
     DropZoneIllegal,
+    /// §42.48: the unit was airdropped within the last 12 Operations Stages and may not drop again.
+    AirdropOnCooldown,
     /// §38.36: no Stores Point is present at the squadron's base to pay for the refit attempt.
     InsufficientStores,
     /// §35.14: the SGSU lacks its own upkeep and may not repair (refit) its planes this stage.
@@ -952,6 +966,9 @@ impl GameState {
             }
             Command::TransportUnit { squadron, unit, target } => {
                 self.cmd_transport_unit(squadron, unit, target)
+            }
+            Command::AirdropUnit { squadron, unit, target } => {
+                self.cmd_airdrop_unit(squadron, unit, target)
             }
             Command::FlyBombingMissionAt {
                 squadron, target, mission, planes, bombload_per_plane, night,
@@ -1513,6 +1530,99 @@ impl GameState {
             u.cp_expended = Fixed(cpa * 10);
         }
         Ok(CommandOutcome::UnitTransported)
+    }
+
+    /// §42.41/§42.42 AirdropUnit: airdrop an airborne-eligible unit into a legal drop-zone hex.
+    fn cmd_airdrop_unit(
+        &mut self,
+        squadron: crate::state::air::SquadronId,
+        unit: UnitId,
+        target: HexCoord,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::aircraft::Mission;
+        use crate::reference::terrain::HexTerrain;
+        use crate::state::game::Weather;
+        use crate::state::unit::UnitLocation;
+        self.require_phase(Phase::LandSupportAir)?;
+        let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+        let base = sgsu.location.ok_or(CommandError::SquadronNotBased)?;
+        let nationality = sgsu.nationality;
+        let side = nationality.side();
+
+        // §42.45: no airdrop in a Sandstorm/Rainstorm (base or target).
+        let grounded = |g: &Self, h: HexCoord| matches!(g.weather_at(h), Weather::Sandstorm | Weather::Rainstorm);
+        if grounded(self, base) || grounded(self, target) {
+            return Err(CommandError::WeatherGrounded);
+        }
+        // §42.41: the unit must be airdrop-eligible, friendly, and start in the transports' hex.
+        let u = self.units.get(&unit).ok_or(CommandError::UnitNotFound)?;
+        if u.hex() != Some(base) || u.nationality.side() != side || !u.airdroppable {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        let toe = u.total_toe();
+        // §42.48: a unit may not be airdropped more than once per 12 Operations Stages.
+        let abs_stage = self.game_turn * 3 + self.operations_stage as u32;
+        if let Some(&last) = self.airdrop_last_stage.get(&unit) {
+            if abs_stage < last + 12 {
+                return Err(CommandError::AirdropOnCooldown);
+            }
+        }
+        // Transport-capable ready planes; one plane per TOE Strength Point (§42.48 note).
+        let chart = self.reference.aircraft_charts.get(&nationality);
+        let mut min_range = u32::MAX;
+        let mut ready_transport = 0;
+        for g in sgsu.planes.iter().filter(|g| g.ready > 0) {
+            if let Some(ac) = chart.and_then(|c| c.get(&g.aircraft_type)) {
+                if crate::rules::air::can_perform(&ac.missions, Mission::Transport, false) {
+                    ready_transport += g.ready;
+                    min_range = min_range.min(ac.max_range());
+                }
+            }
+        }
+        if min_range == u32::MAX {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        if toe == 0 || ready_transport < toe {
+            return Err(CommandError::NoReadyPlanes);
+        }
+        if !crate::rules::air::can_fly(min_range, base.distance(target), false) {
+            return Err(CommandError::TargetOutOfRange);
+        }
+        // §42.43/§42.44 drop-zone legality.
+        let enemy = side.opponent();
+        let occupants = self.units_in_hex(target);
+        if occupants.iter().any(|&id| self.unit(id).is_some_and(|u| u.nationality.side() == enemy)) {
+            return Err(CommandError::DropZoneIllegal); // enemy-occupied
+        }
+        let terrain_ok = matches!(
+            self.map.terrain(target),
+            Some(HexTerrain::Clear | HexTerrain::SandGravel | HexTerrain::Desert)
+        );
+        if !terrain_ok
+            || self.hex_in_zoc_of(target, enemy)
+            || !self.within_two_of_land_feature(target)
+        {
+            return Err(CommandError::DropZoneIllegal);
+        }
+        // §42.43: within stacking restrictions.
+        if let Some(limit) = self
+            .map
+            .terrain(target)
+            .and_then(|t| self.reference.terrain.get(&t))
+            .and_then(|p| p.stacking_limit)
+        {
+            if self.hex_stacking_points(target) + self.effective_stacking_points(unit) > limit {
+                return Err(CommandError::StackingLimitExceeded);
+            }
+        }
+        // §42.45: no drift/casualties — the unit lands in the target hex. §42.47: it may act but not
+        // over-expend CPA this stage (the no-over-CPA nuance is not separately enforced yet).
+        self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?.fly(toe);
+        if let Some(u) = self.unit_mut(unit) {
+            u.location = Some(UnitLocation::OnMap(target));
+        }
+        self.airdrop_last_stage.insert(unit, abs_stage);
+        Ok(CommandOutcome::UnitAirdropped)
     }
 
     /// §40.5–40.8 Strafe: validate and resolve a strafing mission against the map, applying the

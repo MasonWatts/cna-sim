@@ -293,7 +293,7 @@ unused-replacement VP; §64.75 CW withdrawal VP; §64.76 band), with §64.71/§6
 including the one-full-turn objective-hold check. (The scenario-level §60.8 victory is not
 separately modeled.)
 
-### 8.3 Command boundary — ~53 commands, phase-gated
+### 8.3 Command boundary — ~54 commands, phase-gated
 `GameState::apply` covers land movement/combat, air, naval, logistics, and construction. Land:
 `MoveStep`/`FormationMove`, `Barrage`/`AntiArmor`/`CloseAssault`/`Retreat`, `React`,
 `MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply`, `PoisonWell`/`SweetenWell`.
@@ -305,7 +305,7 @@ Logistics/construction (Organization phase): `LoadTrucks`/`UnloadTrucks`, `Sipho
 `SanGiorgioAttackShip`/`BombShip`/`OffShoreBombard`, `LayHarborMine`/`RemoveHarborMine`. Air:
 `AssignSquadronPlanes`, `AssignPilot` (§40.12), `ReadySquadron`/`ArmSquadron`/`RefitSquadron`,
 `DesignateCap` (§40.2), `Strafe` (§40.5), `AirdropSupplies` (§42.4), `TransportUnit` (§42.3),
-`FlySquadronMission`/
+`AirdropUnit` (§42.41), `FlySquadronMission`/
 `FlyBombingMission`/`FlyBombingMissionAt` (map-validated, §8.5)/`BombAirFacility`/`BombMaltaBase`,
 `DetermineMaltaAvailability`/`ConstructMaltaFacility`. Every command is gated to its
 Sequence-of-Play phase.
@@ -365,14 +365,18 @@ transport squadron's base dumps into a target hex, validating transport capabili
 enemy-occupied or in an enemy ZOC and within two hexes of a recognizable land feature — waived for a
 Friendly-occupied hex); delivered supplies are usable immediately. `TransportUnit` (§42.3) air-lifts
 an eligible co-located unit (infantry-without-trucks or motorcycle/recce, §42.37) to a friendly air
-facility, landing it and exhausting its CPA (§42.34), one plane per TOE point (§42.31). **Scramble (§40.3):** when no CAP covers a bombing target, an enemy fighter base
+facility, landing it and exhausting its CPA (§42.34), one plane per TOE point (§42.31). `AirdropUnit`
+(§42.41/§42.42) drops an **airdrop-eligible** unit (the OB carries an `airdroppable` flag, set from
+the OA sheet — the Folgore/Ramcke airborne units) into a legal §42.43/44 drop zone (no air facility
+needed at the target), honoring stacking and the §42.48 once-per-12-stages limit. **Scramble (§40.3):** when no CAP covers a bombing target, an enemy fighter base
 within Scramble-Table range (§40.4) may scramble to intercept — the first eligible squadron rolls a
 d6 and, on success (§40.33), its ready fighters fly and intercept (`scramble_interception`). **Still
 not computed from the map:** multi-hex flight **path/ZOC routing** (so the §40.33 clear-path rule is
 not enforced) and fuel gating at execution; defensive-CAP engagement choice; land-unit air recon
-(waits on fog-of-war); **airdrop of airborne units** (§42.41 — needs the OA-sheet airdrop-eligible
-flag) and a precise per-plane cargo-tonnage cap; convoy/port strafing; and Med-basing/Malta-
-commitment enforcement (§43/§44.41). A **pilot
+(waits on fog-of-war); a precise per-plane cargo-tonnage cap and the §42.47 no-over-CPA drop-stage
+restriction; convoy/port strafing; and Med-basing/Malta-commitment enforcement (§43/§44.41). (The
+airborne formations — Folgore/Ramcke — are not yet in the loaded OB, so `AirdropUnit` is exercisable
+only via test units until they are promoted.) A **pilot
 roster** (`AssignPilot`, §40.12) is modeled: each squadron's best flyable pilot Rating
 (§40.15/§40.16) feeds into its CAP and scramble flights' TacAir; reassignment/retraining/recovery
 lockouts (§40.13/14/17) tick each Operations Stage; and **ace progression** (§40.18) is in — a
