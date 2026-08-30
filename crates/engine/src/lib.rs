@@ -5486,8 +5486,8 @@ mod tests {
 
         let avail = |level| Command::DetermineMaltaAvailability { level, roll: 7 };
         // §44.23: Level III may be used at most 2 Game-Turns in Crusader.
-        assert!(matches!(g.apply(avail(3)), Ok(CommandOutcome::MaltaAvailability(_))));
-        assert!(matches!(g.apply(avail(3)), Ok(CommandOutcome::MaltaAvailability(_))));
+        assert!(matches!(g.apply(avail(3)), Ok(CommandOutcome::MaltaAvailability { .. })));
+        assert!(matches!(g.apply(avail(3)), Ok(CommandOutcome::MaltaAvailability { .. })));
         assert_eq!(g.apply(avail(3)), Err(CommandError::MaltaLevelUnavailable));
         assert_eq!(*g.malta_level_used.get(&3).unwrap(), 2);
         // §44.25: Level I is unlimited — always usable.
@@ -5499,6 +5499,45 @@ mod tests {
         assert_eq!(g.apply(avail(2)), Err(CommandError::MaltaLevelUnavailable));
         // Out-of-range level is rejected.
         assert_eq!(g.apply(avail(5)), Err(CommandError::MaltaLevelUnavailable));
+    }
+
+    #[test]
+    fn malta_raid_plane_count_43() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{MedBase, Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::Italian, include_str!("../../../data/reference/aircraft/italian.ron")).unwrap();
+        refs.load_malta_availability(include_str!("../../../data/reference/malta-availability.ron")).unwrap();
+        refs.load_malta_commitment(include_str!("../../../data/reference/malta-commitment.ron")).unwrap();
+        let mut g = GameState::new(refs, 1); // scenario defaults to "Campaign Game"
+        // 12 Italian bombers based in the Italy/Sicily Box (§43.0).
+        let mut it = Sgsu::new(SquadronId(1), Nationality::Italian, SquadronClass::Bomber, "205 Gruppo", 5, None);
+        it.med_base = Some(MedBase::ItalySicily);
+        it.add_planes("S.M.79", AircraftClass::Bomber, 12, 1);
+        g.sgsus.insert(SquadronId(1), it);
+        // A Crete-based squadron doesn't feed a Malta raid.
+        let mut cr = Sgsu::new(SquadronId(2), Nationality::Italian, SquadronClass::Bomber, "Crete", 5, None);
+        cr.med_base = Some(MedBase::Crete);
+        cr.add_planes("S.M.79", AircraftClass::Bomber, 6, 1);
+        g.sgsus.insert(SquadronId(2), cr);
+        assert_eq!(g.med_based_planes(MedBase::ItalySicily), 12);
+        assert_eq!(g.med_based_planes(MedBase::Crete), 6);
+
+        g.phase = Phase::MaltaAvailabilityDetermination;
+        // §44.25/§43.0: Level III / roll 6 → (50% map, 100% strategic) of the 12 Italy/Sicily
+        // bombers = 6 + 12 = 18 planes available.
+        match g.apply(Command::DetermineMaltaAvailability { level: 3, roll: 6 }) {
+            Ok(CommandOutcome::MaltaAvailability { percentages, planes_available }) => {
+                assert_eq!(percentages, Some((50, 100)));
+                assert_eq!(planes_available, 18);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 
     #[test]
@@ -5860,7 +5899,8 @@ mod tests {
         }
         assert_eq!(
             g.apply(Command::DetermineMaltaAvailability { level: 3, roll: 6 }),
-            Ok(CommandOutcome::MaltaAvailability(Some((50, 100))))
+            // No Italy/Sicily-based bombers here, so the absolute count is 0.
+            Ok(CommandOutcome::MaltaAvailability { percentages: Some((50, 100)), planes_available: 0 })
         );
         // Wrong phase for recon here.
         assert_eq!(

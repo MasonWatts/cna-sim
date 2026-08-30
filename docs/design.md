@@ -382,11 +382,14 @@ matching the rulebook's "air combat is resolved on an operational level, with mu
 multi-hex flight path/ZOC routing (so the §40.33 clear-path rule is not enforced), fuel gating at
 execution, defensive-CAP engagement choice, per-plane pilot ratings (a per-flight best is used), and
 a precise per-plane cargo-tonnage cap / the §42.47 no-over-CPA drop-stage restriction. Land-unit air
-recon waits on fog-of-war. **Malta strategic-air commitment (§44.41) is enforced:** each Axis Malta
-Availability Level (I–IV) is limited to the scenario's Game-Turn count (the §44.41 chart), tracked in
-`malta_level_used` and gated at `DetermineMaltaAvailability` (Level I unlimited, §44.25). Still open:
-the §43 Med-basing region model (Italy/Sicily vs Africa vs Crete per-squadron basing + the §43.11–13
-commitment percentages) needed to compute the *absolute* Malta-raid plane counts. (The airborne
+recon waits on fog-of-war. **Malta strategic-air commitment (§43/§44.41) is modeled:** each Axis
+Malta Availability Level (I–IV) is limited to the scenario's Game-Turn count (the §44.41 chart),
+tracked in `malta_level_used` and gated at `DetermineMaltaAvailability` (Level I unlimited, §44.25);
+SGSUs carry a §43.0 Mediterranean base region (`med_base`: Italy/Sicily or Crete, else on-map
+Africa), and a raid's **absolute plane count** is computed from the in-play Italy/Sicily bombers
+(§44.25 map-% + strategic-%). Still open: the §43.11–13 basing *percentage* requirements and the
+§43.14 transfer action (need a basing/transfer command), and the §43.21 auto-supply is only implicit
+(a Box-based SGSU has no dump, so upkeep is skipped). (The airborne
 formations — Folgore/Ramcke — are not yet in the loaded OB, so `AirdropUnit` is exercisable only via
 test units until they are promoted.) A **pilot
 roster** (`AssignPilot`, §40.12) is modeled: each squadron's best flyable pilot Rating

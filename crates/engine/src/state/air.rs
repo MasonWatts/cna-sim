@@ -17,6 +17,18 @@ use crate::state::map::HexCoord;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct SquadronId(pub u32);
 
+/// An off-map Axis Mediterranean bomber base region (§43.0). Bombers here need no SGSU and are
+/// auto-supplied by the Box (§43.21); the region governs the §43.11–13 basing percentages and,
+/// for Italy/Sicily, the pool a Malta raid draws on (§44.25). On-map bombers (Africa) carry a
+/// `location` and no `MedBase`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MedBase {
+    /// The Italy/Sicily Box (§43.12/§43.25) — may coordinate with African fighters and raid Malta.
+    ItalySicily,
+    /// The Crete Box (§43.13/§43.23/§43.24) — Suez commitment, no African CAP.
+    Crete,
+}
+
 /// A group of identical planes attached to a squadron: a key into the nationality's aircraft chart
 /// plus a count. A squadron may hold several types so long as they share the squadron's class
 /// (§35.21). Readiness (§38) is tracked as nested counts: `refitted` planes have been repaired
@@ -100,6 +112,10 @@ pub struct Sgsu {
     /// /Operations Stage). An unsupplied SGSU may not repair (refit) its planes. Defaults true.
     #[serde(default = "default_true")]
     pub supplied: bool,
+    /// §43.0: the off-map Mediterranean Box this bomber base sits in (Italy/Sicily or Crete), or
+    /// `None` for an on-map (African) squadron. Med-based bombers are auto-supplied (§43.21).
+    #[serde(default)]
+    pub med_base: Option<MedBase>,
 }
 
 fn default_true() -> bool {
@@ -131,6 +147,7 @@ impl Sgsu {
             location,
             planes: Vec::new(),
             supplied: true,
+            med_base: None,
         }
     }
 

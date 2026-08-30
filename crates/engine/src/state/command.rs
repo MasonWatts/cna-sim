@@ -410,7 +410,10 @@ pub enum CommandOutcome {
     /// the lane if one is present (`None` = no convoy).
     ConvoyRecon { revealed: bool, convoy_tonnage: Option<u32> },
     /// §44.42 Malta availability: the (map%, strategic%) support, or `None` for "na" (no forces).
-    MaltaAvailability(Option<(u32, u32)>),
+    /// §44.42/§44.25: the raw `(map_percent, strategic_percent)` for the chosen level/roll, and the
+    /// `planes_available` from the map — the map-percent of the in-play Italy/Sicily bombers plus the
+    /// strategic-percent added from out-of-play strategic aircraft (§43.0 basing).
+    MaltaAvailability { percentages: Option<(u32, u32)>, planes_available: u32 },
     /// §38.34: the number of a squadron's planes successfully refitted.
     SquadronRefitted(u32),
     /// §53.24: supply loaded onto / unloaded from trucks (the amount moved).
@@ -1961,9 +1964,16 @@ impl GameState {
             .as_ref()
             .ok_or(CommandError::NoTable)?
             .cell(roll, level);
+        // §44.25/§43.0: absolute planes available = map-percent of the in-play Italy/Sicily bombers,
+        // plus the strategic-percent added from out-of-play strategic aircraft.
+        let in_play = self.med_based_planes(crate::state::air::MedBase::ItalySicily);
+        let planes_available = cell.map_or(0, |(map, strat)| {
+            crate::rules::air::malta_map_usable(map, in_play)
+                + crate::rules::air::malta_strategic_addable(strat, in_play)
+        });
         // §44.29: the level counts as used this Game-Turn whether or not the raid is flown.
         *self.malta_level_used.entry(level).or_insert(0) += 1;
-        Ok(CommandOutcome::MaltaAvailability(cell))
+        Ok(CommandOutcome::MaltaAvailability { percentages: cell, planes_available })
     }
 
     /// §38.34 RefitSquadron: gated to the Land Support Air Phase (Tactical Maintenance Segment);

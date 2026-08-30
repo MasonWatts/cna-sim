@@ -4527,6 +4527,16 @@ impl GameState {
         }
     }
 
+    /// §43.0: total planes based in a Mediterranean Box (`region`) across all Axis squadrons — the
+    /// Italy/Sicily count is the in-play pool a Malta raid draws on (§44.25).
+    pub fn med_based_planes(&self, region: crate::state::air::MedBase) -> u32 {
+        self.sgsus
+            .values()
+            .filter(|s| s.med_base == Some(region) && s.nationality.side() == Side::Axis)
+            .map(|s| s.plane_count())
+            .sum()
+    }
+
     /// The result of resolving a bombing mission (§39.0 procedure).
     pub fn resolve_bombing_mission(
         &mut self,
