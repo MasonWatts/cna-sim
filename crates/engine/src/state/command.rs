@@ -58,6 +58,9 @@ pub enum Command {
     /// §27.44: an Enemy attempts to spot the raider at index `raider` (spending 1 CP); `roll` is a
     /// d6 and a 6 eliminates it (§27.43).
     SpotRaider { raider: usize, roll: u32 },
+    /// §27.6: a Commonwealth LRDG in Rommel's hex attempts a Raid on Rommel (Movement & Combat
+    /// Phase). `roll` is 2d6 (2–12) resolved on the §27.64 table. Costs 10 CP; max four per campaign.
+    RaidRommel { raider: usize, roll: u32 },
     /// Move a whole formation (a parent counter plus its attached units) one hex. The
     /// parent counter moves and the attached units ride along; over-expenditure is judged
     /// against the formation CPA (§6.15, the slowest member).
@@ -499,6 +502,9 @@ pub enum CommandOutcome {
     RaiderMoved { hex: HexCoord, eliminated: bool, cpa_used: u32 },
     /// §27.43/§27.44: a spotting attempt resolved; `eliminated` = the raider was spotted and removed.
     RaiderSpotChecked { eliminated: bool },
+    /// §27.6/§27.64: a Raid on Rommel resolved — `raider_eliminated` (§27.64 "LRDG elim"),
+    /// `rommel_removed` ("AI perm 3", captured), and `axis_temp3` ("AI temp 3", two-turn rating drop).
+    RommelRaided { raider_eliminated: bool, rommel_removed: bool, axis_temp3: bool },
     /// §52.16/§52.17: whether a well was poisoned / sweetened.
     WellPoisoned(bool),
     WellSweetened(bool),
@@ -751,6 +757,7 @@ impl GameState {
             Command::FormRaider { kind, from_unit } => self.cmd_form_raider(kind, from_unit),
             Command::MoveRaider { raider, to, spot_roll } => self.cmd_move_raider(raider, to, spot_roll),
             Command::SpotRaider { raider, roll } => self.cmd_spot_raider(raider, roll),
+            Command::RaidRommel { raider, roll } => self.cmd_raid_rommel(raider, roll),
             Command::FormationMove { formation, to, mode } => {
                 self.formation_move(formation, to, mode)
             }
@@ -1829,6 +1836,63 @@ impl GameState {
             self.eliminate_raider(raider);
         }
         Ok(CommandOutcome::RaiderSpotChecked { eliminated })
+    }
+
+    /// §27.6 RaidRommel: a Commonwealth LRDG in Rommel's hex attempts to assassinate/capture him
+    /// (Movement & Combat Phase). Costs 10 CP (§27.63); at most four per campaign (§27.64). `roll`
+    /// (2d6) resolves on the §27.64 table: 2 = "AI temp 3" (Axis rating 3 for two Game-Turns); 3/9/11
+    /// = "LRDG elim" (raider eliminated unless no combat/HQ units share Rommel's hex); 12 = "AI perm
+    /// 3" (Rommel captured — counter removed); 4-8/10 = no effect. Over-spending the 50-CP allowance
+    /// also eliminates the raider (§27.37).
+    fn cmd_raid_rommel(&mut self, raider: usize, roll: u32) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::units::Side;
+        self.require_phase(Phase::MovementAndCombat)?;
+        // §27.61: only a Commonwealth LRDG, in play, on the Commonwealth turn.
+        let r = self.raiders.get(raider).ok_or(CommandError::RaiderNotAvailable)?;
+        let rhex = r.hex.ok_or(CommandError::RaiderNotAvailable)?;
+        if r.kind != crate::state::game::RaiderKind::Lrdg || self.active_player != Side::Commonwealth {
+            return Err(CommandError::RaiderCannotMove);
+        }
+        // §27.62: the LRDG must be in the hex the Rommel counter occupies.
+        if self.rommel_hex() != Some(rhex) {
+            return Err(CommandError::RaiderCannotMove);
+        }
+        // §27.64: at most four Raids on Rommel per campaign.
+        if self.raids_on_rommel >= 4 {
+            return Err(CommandError::RaiderCannotMove);
+        }
+        self.raids_on_rommel += 1;
+        // §27.63: the raid costs 10 CP; over-extending the 50-CP allowance eliminates the raider.
+        let over = {
+            let rr = self.raiders.get_mut(raider).unwrap();
+            rr.cpa_used += 100;
+            rr.cpa_used > 500
+        };
+        // §27.64 table result.
+        let mut raider_eliminated = over;
+        let mut rommel_removed = false;
+        let mut axis_temp3 = false;
+        match roll {
+            2 => {
+                axis_temp3 = true;
+                self.rommel_raid_ai3_until_gt = self.game_turn + 2;
+            }
+            3 | 9 | 11 => {
+                // "LRDG elim": eliminated unless there are no combat/HQ units in Rommel's hex.
+                if !self.units_in_hex(rhex).is_empty() {
+                    raider_eliminated = true;
+                }
+            }
+            12 => {
+                rommel_removed = true;
+                self.rommel = None; // captured — remove the counter from the game-maps
+            }
+            _ => {} // 4-8, 10: no effect
+        }
+        if raider_eliminated {
+            self.eliminate_raider(raider);
+        }
+        Ok(CommandOutcome::RommelRaided { raider_eliminated, rommel_removed, axis_temp3 })
     }
 
     /// §40.2 DesignateCap: commit `planes` fighters of a located squadron to Combat Air Patrol over

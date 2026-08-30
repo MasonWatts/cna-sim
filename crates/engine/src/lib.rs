@@ -2645,6 +2645,80 @@ mod tests {
     }
 
     #[test]
+    fn raid_on_rommel_table_27_64() {
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, Raider, RaiderKind, RommelState};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let hex = HexCoord::new(5, 5);
+        let mut refs = ReferenceData::new();
+        refs.load_initiative_ratings(include_str!("../../../data/reference/initiative-ratings.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.game_turn = 10;
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+
+        // Helper: (re)place Rommel and one Commonwealth LRDG in `hex`, raid count reset.
+        let reset = |g: &mut GameState| {
+            g.rommel = Some(RommelState {
+                arrival_game_turn: 1, start_hex: Some(hex), hex: Some(hex), in_germany: false,
+                mcp_left: 600, stage_start_hex: Some(hex), cpa_unit: None,
+            });
+            g.raiders = vec![Raider {
+                kind: RaiderKind::Lrdg, side: Side::Commonwealth, hex: Some(hex),
+                cpa_used: 0, fuel: 0, ammo: 0, drew_water_this_gt: false, reform_game_turn: 0,
+            }];
+            g.raids_on_rommel = 0;
+            g.rommel_raid_ai3_until_gt = 0;
+        };
+
+        // Roll 12: "AI perm 3" — Rommel is captured and removed from the maps.
+        reset(&mut g);
+        assert_eq!(
+            g.apply(Command::RaidRommel { raider: 0, roll: 12 }),
+            Ok(CommandOutcome::RommelRaided { raider_eliminated: false, rommel_removed: true, axis_temp3: false })
+        );
+        assert!(g.rommel.is_none());
+
+        // Roll 2: "AI temp 3" — Rommel stays, but the Axis rating is 3 for the next two Game-Turns.
+        reset(&mut g);
+        assert_eq!(
+            g.apply(Command::RaidRommel { raider: 0, roll: 2 }),
+            Ok(CommandOutcome::RommelRaided { raider_eliminated: false, rommel_removed: false, axis_temp3: true })
+        );
+        assert!(g.rommel_on_map());
+        assert_eq!(g.axis_initiative_rating(), 3, "temp-3 overrides Rommel's 6");
+        g.game_turn = 13; // window was GT10..12
+        assert_eq!(g.axis_initiative_rating(), 6, "window expired, Rommel on map -> 6");
+        g.game_turn = 10;
+
+        // Roll 9 "LRDG elim": survives when Rommel is alone; eliminated when combat/HQ units share.
+        reset(&mut g);
+        assert_eq!(
+            g.apply(Command::RaidRommel { raider: 0, roll: 9 }),
+            Ok(CommandOutcome::RommelRaided { raider_eliminated: false, rommel_removed: false, axis_temp3: false })
+        );
+        reset(&mut g);
+        let guard = g.spawn_unit(Nationality::German, "k", "guard", Composition::Organic { current_toe: 5 });
+        g.unit_mut(guard).unwrap().location = Some(UnitLocation::OnMap(hex));
+        assert_eq!(
+            g.apply(Command::RaidRommel { raider: 0, roll: 9 }),
+            Ok(CommandOutcome::RommelRaided { raider_eliminated: true, rommel_removed: false, axis_temp3: false })
+        );
+        assert_eq!(g.raiders_in_play(RaiderKind::Lrdg), 0);
+
+        // §27.64: at most four Raids on Rommel per campaign.
+        reset(&mut g);
+        g.units.clear();
+        for _ in 0..4 {
+            assert!(matches!(g.apply(Command::RaidRommel { raider: 0, roll: 5 }), Ok(_)));
+        }
+        assert_eq!(g.apply(Command::RaidRommel { raider: 0, roll: 5 }), Err(CommandError::RaiderCannotMove));
+    }
+
+    #[test]
     fn deploy_formation_builds_hierarchy() {
         use crate::state::game::GameState;
         use crate::state::map::HexCoord;

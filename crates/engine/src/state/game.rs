@@ -695,6 +695,13 @@ pub struct GameState {
     /// Desert-raider counters in play or awaiting re-form (§27): up to two LRDG + one DSA.
     #[serde(default)]
     pub raiders: Vec<Raider>,
+    /// §27.64: Raids on Rommel attempted so far (max four per Campaign Game).
+    #[serde(default)]
+    pub raids_on_rommel: u32,
+    /// §27.64 "AI temp 3": the last Game-Turn on which a Raid-on-Rommel result forces the Axis
+    /// Initiative Rating to the German value (3); 0 = no active window.
+    #[serde(default)]
+    pub rommel_raid_ai3_until_gt: u32,
     /// The predetermined Initiative for the first Game-Turn (§7.15), if the scenario sets
     /// it; otherwise the first turn is rolled like any other.
     #[serde(default)]
@@ -910,6 +917,8 @@ impl GameState {
             player_a: Side::Commonwealth,
             rommel: None,
             raiders: Vec::new(),
+            raids_on_rommel: 0,
+            rommel_raid_ai3_until_gt: 0,
             first_turn_initiative: None,
             weather: Weather::Normal,
             weather_by_section: HashMap::new(),
@@ -5756,6 +5765,11 @@ impl GameState {
         let Some(r) = self.reference.initiative_ratings.as_ref() else {
             return 0;
         };
+        // §27.64 "AI temp 3": a Raid-on-Rommel result pins the Axis rating to the German value for
+        // two Game-Turns, overriding Rommel-on-map.
+        if self.rommel_raid_ai3_until_gt > 0 && self.game_turn <= self.rommel_raid_ai3_until_gt {
+            return r.axis_german;
+        }
         if self.rommel_on_map() {
             r.axis_rommel
         } else if self
