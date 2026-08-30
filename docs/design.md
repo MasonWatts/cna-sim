@@ -382,7 +382,12 @@ not computed from the map (a deliberate operational abstraction, project-owner r
 matching the rulebook's "air combat is resolved on an operational level, with much abstracted"):**
 multi-hex flight path/ZOC routing (so the §40.33 clear-path rule is not enforced), fuel gating at
 execution, defensive-CAP engagement choice, per-plane pilot ratings (a per-flight best is used), and
-a precise per-plane cargo-tonnage cap / the §42.47 no-over-CPA drop-stage restriction. Land-unit air
+a precise per-plane cargo-tonnage cap / the §42.47 no-over-CPA drop-stage restriction. **Box-based
+flight (§36.53/§37.4):** a squadron with no on-map base flies from its off-map Box via a configured
+anchor (entry hex + air distance), so the bombing/CAP/strafe commands compute range as air distance
++ hex distance from the entry hex; the anchor distances themselves await the §37.4 Air Distance Chart
+(OCR-garbled), and the §43.23 Crete→Suez timing / §43.24/§43.25 Box CAP coordination still layer on
+top. Land-unit air
 recon waits on fog-of-war. **Malta strategic-air commitment (§43/§44.41) is modeled:** each Axis
 Malta Availability Level (I–IV) is limited to the scenario's Game-Turn count (the §44.41 chart),
 tracked in `malta_level_used` and gated at `DetermineMaltaAvailability` (Level I unlimited, §44.25);

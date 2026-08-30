@@ -687,6 +687,11 @@ pub struct GameState {
     /// no level may be used more Game-Turns than the commitment chart allows for the scenario.
     #[serde(default)]
     pub malta_level_used: std::collections::HashMap<u32, u32>,
+    /// §36.53/§37.4: the on-map entry hex + air distance for each off-map Mediterranean Box, letting
+    /// Box-based squadrons fly (a Box→target distance is the anchor's air distance plus the hex
+    /// distance from its entry hex). Empty until the §37.4 Air Distance Chart is loaded.
+    #[serde(default)]
+    pub med_base_anchors: std::collections::HashMap<crate::state::air::MedBase, crate::state::air::MedBaseAnchor>,
     /// Replacement Points consumed (absorbed) so far, per side — for the §64.74 unused-
     /// replacement victory points.
     #[serde(default)]
@@ -838,6 +843,7 @@ impl GameState {
             airdrop_last_stage: std::collections::HashMap::new(),
             scenario_name: default_scenario(),
             malta_level_used: std::collections::HashMap::new(),
+            med_base_anchors: std::collections::HashMap::new(),
             replacements_used: std::collections::HashMap::new(),
             withdrawn: std::collections::HashMap::new(),
             withdrawal_banked: 0,
@@ -4527,6 +4533,23 @@ impl GameState {
         }
     }
 
+    /// §37.12/§36.53: a squadron's flight origin — an on-map base (its `location`), or an off-map
+    /// Mediterranean Box resolved through its configured anchor (entry hex + air distance). Returns
+    /// `(range_origin_hex, added_distance, on_map)`: flight distance to a target is `added_distance`
+    /// plus the hex distance from `range_origin_hex`; `on_map` is false for a Box (no base weather).
+    /// `None` if the squadron is unbased, or Box-based with no anchor configured.
+    ///
+    /// (This makes flying *from* the Boxes possible; the §43.23 Crete→Suez timing and §43.24/§43.25
+    /// Box-bomber CAP coordination still layer on top and are not modeled.)
+    pub fn flight_origin(&self, squadron: SquadronId) -> Option<(HexCoord, u32, bool)> {
+        let s = self.sgsus.get(&squadron)?;
+        if let Some(hex) = s.location {
+            return Some((hex, 0, true));
+        }
+        let anchor = self.med_base_anchors.get(&s.med_base?)?;
+        Some((anchor.entry, anchor.air_distance, false))
+    }
+
     /// §43.0: total planes based in a Mediterranean Box (`region`) across all Axis squadrons — the
     /// Italy/Sicily count is the in-play pool a Malta raid draws on (§44.25).
     pub fn med_based_planes(&self, region: crate::state::air::MedBase) -> u32 {
@@ -4537,9 +4560,6 @@ impl GameState {
             .sum()
     }
 
-    /// (§43.23 Crete→Suez timing and §43.24/§43.25 Box-bomber CAP coordination govern flying *from*
-    /// the Med Boxes, which awaits Box-based flight execution; not modeled here.)
-    ///
     /// §43.11–13: whether German air basing meets the date-appropriate requirements. Always: §43.11
     /// — at least 75% of the strategic bombers (He.111 / Ju.88D / Fw.200) are in a Mediterranean Box.
     /// Before Game-Turn 35 (June 1941): §43.12 — at least 75% of *all* German bombers are in the
