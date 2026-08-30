@@ -5567,6 +5567,40 @@ mod tests {
     }
 
     #[test]
+    fn basing_date_bands_43_11_43_12_43_13() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{MedBase, Sgsu, SquadronId};
+        use crate::state::game::GameState;
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let mut kg = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG", 5, None);
+        kg.med_base = Some(MedBase::ItalySicily);
+        kg.add_planes("He.111", AircraftClass::Bomber, 4, 1);
+        g.sgsus.insert(SquadronId(1), kg);
+        let set = |g: &mut GameState, b: Option<MedBase>| g.sgsus.get_mut(&SquadronId(1)).unwrap().med_base = b;
+
+        // §43.12 (pre-GT35): all German bombers must be ≥75% in Italy/Sicily.
+        g.game_turn = 1;
+        assert!(g.german_basing_ok()); // 100% Italy/Sicily
+        set(&mut g, Some(MedBase::Crete));
+        assert!(!g.german_basing_ok()); // Crete satisfies §43.11 but fails §43.12 before GT35
+
+        // §43.13 (from GT35): ≥50% of strategic bombers must be in Crete.
+        g.game_turn = 35;
+        assert!(g.german_basing_ok()); // 100% Crete
+        set(&mut g, Some(MedBase::ItalySicily));
+        assert!(!g.german_basing_ok()); // Italy/Sicily fails §43.13 from GT35
+
+        // §43.11 (always): moving out of the Med entirely fails at any date.
+        set(&mut g, None);
+        g.game_turn = 1;
+        assert!(!g.german_basing_ok());
+    }
+
+    #[test]
     fn malta_raid_plane_count_43() {
         use crate::reference::aircraft::AircraftClass;
         use crate::reference::squadron::SquadronClass;

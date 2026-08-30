@@ -1426,8 +1426,8 @@ impl GameState {
             }
         }
         sgsu.transfer_remaining = 1; // §43.14: one Operations Stage of transit.
-        // §43.11: the move may not drop German strategic bombers below the 75% Med requirement.
-        if !self.german_strategic_bombers_med_ok() {
+        // §43.11–13: the move may not break the date-appropriate German basing requirements.
+        if !self.german_basing_ok() {
             let sgsu = self.sgsus.get_mut(&squadron).expect("just borrowed");
             (sgsu.med_base, sgsu.location, sgsu.transfer_remaining) = prior;
             return Err(CommandError::BasingRequirementViolated);

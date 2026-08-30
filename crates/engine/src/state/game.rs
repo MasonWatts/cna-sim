@@ -4537,20 +4537,63 @@ impl GameState {
             .sum()
     }
 
-    /// §43.11: whether at least 75% of Germany's strategic bombers (He.111 / Ju.88D / Fw.200) are
-    /// based in a Mediterranean Box. `true` when none are in play. (The §43.12/§43.13 date-banded
-    /// all-bomber and Crete requirements are not yet enforced.)
-    pub fn german_strategic_bombers_med_ok(&self) -> bool {
+    /// (§43.23 Crete→Suez timing and §43.24/§43.25 Box-bomber CAP coordination govern flying *from*
+    /// the Med Boxes, which awaits Box-based flight execution; not modeled here.)
+    ///
+    /// §43.11–13: whether German air basing meets the date-appropriate requirements. Always: §43.11
+    /// — at least 75% of the strategic bombers (He.111 / Ju.88D / Fw.200) are in a Mediterranean Box.
+    /// Before Game-Turn 35 (June 1941): §43.12 — at least 75% of *all* German bombers are in the
+    /// Italy/Sicily Box. From Game-Turn 35: §43.13 — at least 50% of the strategic bombers are in the
+    /// Crete Box. `true` when the relevant totals are zero.
+    pub fn german_basing_ok(&self) -> bool {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::state::air::MedBase;
         let is_strat = |t: &str| matches!(t, "He.111" | "Ju.88D" | "Fw.200 C");
-        let (mut med, mut total) = (0u32, 0u32);
+        let (mut strat_total, mut strat_med, mut strat_crete) = (0u32, 0u32, 0u32);
+        let (mut bomb_total, mut bomb_italy_sicily) = (0u32, 0u32);
         for s in self.sgsus.values().filter(|s| s.nationality == Nationality::German) {
-            let n: u32 = s.planes.iter().filter(|g| is_strat(&g.aircraft_type)).map(|g| g.count).sum();
-            total += n;
-            if s.med_base.is_some() {
-                med += n;
+            for g in &s.planes {
+                if is_strat(&g.aircraft_type) {
+                    strat_total += g.count;
+                    if s.med_base.is_some() {
+                        strat_med += g.count;
+                    }
+                    if s.med_base == Some(MedBase::Crete) {
+                        strat_crete += g.count;
+                    }
+                }
+                let is_bomber = matches!(
+                    self.reference
+                        .aircraft_charts
+                        .get(&Nationality::German)
+                        .and_then(|c| c.get(&g.aircraft_type))
+                        .map(|a| a.class),
+                    Some(AircraftClass::Bomber | AircraftClass::DiveBomber)
+                );
+                if is_bomber {
+                    bomb_total += g.count;
+                    if s.med_base == Some(MedBase::ItalySicily) {
+                        bomb_italy_sicily += g.count;
+                    }
+                }
             }
         }
-        total == 0 || med * 100 >= total * 75
+        // §43.11 (always): ≥75% of strategic bombers in a Med Box.
+        if strat_total > 0 && strat_med * 100 < strat_total * 75 {
+            return false;
+        }
+        if self.game_turn < 35 {
+            // §43.12 (pre-June 1941): ≥75% of all German bombers in Italy/Sicily.
+            if bomb_total > 0 && bomb_italy_sicily * 100 < bomb_total * 75 {
+                return false;
+            }
+        } else {
+            // §43.13 (from June 1941): ≥50% of strategic bombers in Crete.
+            if strat_total > 0 && strat_crete * 100 < strat_total * 50 {
+                return false;
+            }
+        }
+        true
     }
 
     /// The result of resolving a bombing mission (§39.0 procedure).

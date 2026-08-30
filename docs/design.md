@@ -391,9 +391,11 @@ Africa), and a raid's **absolute plane count** is computed from the in-play Ital
 (§44.25 map-% + strategic-%). `TransferSquadron` (§43.14) moves a squadron between the Boxes and
 on-map Africa with one Operations Stage of transit (`transfer_remaining`; a squadron in transit may
 not fly), refusing any move that would drop German strategic bombers below the §43.11 75%-Med
-requirement. Still open: the §43.12/§43.13 date-banded all-bomber and Crete basing requirements, the
-§43.23 Crete-Suez commitment, and §43.21 auto-supply is only implicit (a Box-based SGSU has no dump,
-so upkeep is skipped). (The airborne
+requirement — date-aware: before Game-Turn 35 it enforces §43.12 (≥75% of all German bombers in
+Italy/Sicily), and from GT35 §43.13 (≥50% of strategic bombers in Crete). Still open — all governing
+flight *from* the Boxes, which awaits Box-based flight execution: the §43.23 Crete→Suez timing and
+§43.24/§43.25 Box-bomber CAP coordination; §43.21 auto-supply is only implicit (a Box-based SGSU has
+no dump, so upkeep is skipped). (The airborne
 formations — Folgore/Ramcke — are not yet in the loaded OB, so `AirdropUnit` is exercisable only via
 test units until they are promoted.) A **pilot
 roster** (`AssignPilot`, §40.12) is modeled: each squadron's best flyable pilot Rating
