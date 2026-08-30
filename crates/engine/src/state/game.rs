@@ -158,6 +158,8 @@ pub enum StrafeEffect {
     /// §40.6: planes destroyed on the ground (the Strafing-Table result was the number of d6 to
     /// roll; their sum is the planes lost).
     GroundedAircraftDestroyed { planes: u32 },
+    /// §40.62: first-line attached Truck Points eliminated from an enemy unit in the target hex.
+    TrucksEliminated { points: u32 },
 }
 
 /// A squadron flying Combat Air Patrol over `center` this Operations Stage (§40.2). Offensive CAP
@@ -3720,6 +3722,22 @@ impl GameState {
         self.supply_dumps.push(SupplyDump { location, side, supply, dummy: false });
     }
 
+    /// Add `amount` of one Commodity to a friendly non-dummy Supply Dump in `hex`, merging into an
+    /// existing dump or creating one if none is present (e.g. delivering airdropped supplies).
+    pub fn add_commodity_to_dump(&mut self, hex: HexCoord, side: Side, commodity: Commodity, amount: u32) {
+        if let Some(d) = self
+            .supply_dumps
+            .iter_mut()
+            .find(|d| d.side == side && !d.dummy && d.location.hex() == Some(hex))
+        {
+            *d.supply.get_mut(commodity) += amount;
+        } else {
+            let mut supply = Commodities::default();
+            *supply.get_mut(commodity) += amount;
+            self.add_supply_dump_full(UnitLocation::OnMap(hex), side, supply);
+        }
+    }
+
     /// Consume `amount` Stores Points from `side`'s (non-dummy) Supply Dumps in `hex` (an airfield
     /// is itself such a dump, §36.17). Returns `false` and changes nothing if fewer than `amount`
     /// Stores are present. Used for the §38.36 per-squadron refit cost.
@@ -3929,6 +3947,85 @@ impl GameState {
             }
             _ => 0,
         }
+    }
+
+    /// §42.44: whether `hex` is a "recognizable land feature" for airdrop targeting — a major city,
+    /// a road or railroad hex (any state), a village, an air facility, or an oasis.
+    pub fn is_recognizable_land_feature(&self, hex: HexCoord) -> bool {
+        use crate::state::map::{Feature, HexsideKind};
+        if self.map.terrain(hex) == Some(HexTerrain::MajorCity) {
+            return true;
+        }
+        let feats = self.map.features(hex);
+        if feats.contains(&Feature::Village) || feats.contains(&Feature::Oasis) {
+            return true;
+        }
+        if self.air_facilities.iter().any(|f| f.hex == hex) {
+            return true;
+        }
+        // A road (finished/unfinished/destroyed track) or railroad hexside touches the hex.
+        self.map.neighbors(hex).any(|n| {
+            self.map.hexsides_on(hex, n).iter().any(|h| {
+                matches!(
+                    h.kind,
+                    HexsideKind::Road
+                        | HexsideKind::UnfinishedRoad
+                        | HexsideKind::Track
+                        | HexsideKind::Railroad
+                        | HexsideKind::UnfinishedRailroad
+                )
+            })
+        })
+    }
+
+    /// §42.43/§42.44: whether `hex` is within two hexes of any recognizable land feature.
+    pub fn within_two_of_land_feature(&self, hex: HexCoord) -> bool {
+        if self.is_recognizable_land_feature(hex) {
+            return true;
+        }
+        for n in self.map.neighbors(hex) {
+            if self.is_recognizable_land_feature(n) {
+                return true;
+            }
+            for n2 in self.map.neighbors(n) {
+                if self.is_recognizable_land_feature(n2) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// §40.62: strafe the first-line (attached) Truck Points of the first enemy unit in `hex`,
+    /// eliminating up to `points` Truck Points (Light → Medium → Heavy) and the cargo they carried,
+    /// the cargo loss spread as evenly as possible across commodities (proportional to the trucks
+    /// lost). Returns the Truck Points removed.
+    pub fn strafe_first_line_trucks(&mut self, hex: HexCoord, attacker_side: Side, points: u32) -> u32 {
+        let victim = self.units.values().find_map(|u| {
+            let t = &u.trucks;
+            (u.hex() == Some(hex)
+                && u.nationality.side() != attacker_side
+                && t.light + t.medium + t.heavy > 0)
+                .then_some(u.id)
+        });
+        let Some(id) = victim else { return 0 };
+        let u = self.units.get_mut(&id).unwrap();
+        let total_before = u.trucks.light + u.trucks.medium + u.trucks.heavy;
+        let mut removed = points.min(total_before);
+        let taken = removed;
+        for field in [&mut u.trucks.light, &mut u.trucks.medium, &mut u.trucks.heavy] {
+            let n = removed.min(*field);
+            *field -= n;
+            removed -= n;
+        }
+        // Cargo the destroyed trucks were carrying is lost in proportion (§40.62 "evenly").
+        if total_before > 0 {
+            for c in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
+                let have = u.truck_cargo.get(c);
+                *u.truck_cargo.get_mut(c) = have - have * taken / total_before;
+            }
+        }
+        taken
     }
 
     /// §40.6: strafe grounded aircraft — roll `dice` d6 and destroy their sum in planes from the

@@ -324,6 +324,19 @@ pub enum Command {
     /// (Organization Phase). The best flyable assigned pilot's Rating adds to the squadron's TacAir
     /// in air-to-air combat.
     AssignPilot { rating: u32, squadron: crate::state::air::SquadronId },
+    /// §42.4/§42.46: airdrop `amount` of `commodity` (Ammo or Stores only) from the squadron's base
+    /// dumps into a `target` hex, using `planes` transport-capable planes. Validates transport
+    /// capability, flight range (§37.12), weather (§42.45), and the §42.43/§42.44 drop-zone legality
+    /// (clear/gravel/desert, not a major city, not enemy-occupied or in an enemy ZOC and within two
+    /// hexes of a recognizable land feature — waived for a Friendly-occupied hex, §42.46). Delivered
+    /// supplies are usable immediately. (Land Support Air Phase.)
+    AirdropSupplies {
+        squadron: crate::state::air::SquadronId,
+        target: HexCoord,
+        commodity: crate::state::game::Commodity,
+        amount: u32,
+        planes: u32,
+    },
     /// §37/§41: fly a land-support bombing mission from the squadron's base hex to a `target` hex,
     /// validating flight range/distance (§37.12), mission day/night capability (§39.42), and the
     /// sandstorm/rainstorm grounding of the base or target (§37.22) against the map; computing
@@ -441,6 +454,8 @@ pub enum CommandOutcome {
     Strafed { result: u32, effect: crate::state::game::StrafeEffect },
     /// §40.12: a pilot was added to a squadron's roster.
     PilotAssigned,
+    /// §42.4: supplies were airdropped into the target hex (usable immediately).
+    SuppliesAirdropped { amount: u32 },
 }
 
 /// Why a command was rejected. The state is left unchanged on any error.
@@ -545,6 +560,9 @@ pub enum CommandError {
     MissionNotPermitted,
     /// §40.15: a pilot Rating must be 0 or one of 1, 2, 3, 4, 6.
     InvalidPilotRating,
+    /// §42.43: the airdrop target hex is not a legal drop zone (wrong terrain, a major city, enemy-
+    /// occupied, in an enemy ZOC, or not within two hexes of a recognizable land feature).
+    DropZoneIllegal,
     /// §38.36: no Stores Point is present at the squadron's base to pay for the refit attempt.
     InsufficientStores,
     /// §35.14: the SGSU lacks its own upkeep and may not repair (refit) its planes this stage.
@@ -918,6 +936,9 @@ impl GameState {
                 self.cmd_strafe(squadron, target, strafe_target, planes, fort_level, roll)
             }
             Command::AssignPilot { rating, squadron } => self.cmd_assign_pilot(rating, squadron),
+            Command::AirdropSupplies { squadron, target, commodity, amount, planes } => {
+                self.cmd_airdrop_supplies(squadron, target, commodity, amount, planes)
+            }
             Command::FlyBombingMissionAt {
                 squadron, target, mission, planes, bombload_per_plane, night,
                 flak_destroy_roll, flak_abort_roll, bomb_roll,
@@ -1319,6 +1340,90 @@ impl GameState {
         Ok(CommandOutcome::PilotAssigned)
     }
 
+    /// §42.4/§42.46 AirdropSupplies: drop Ammo/Stores from the squadron's base dumps into a target
+    /// hex, validating transport capability, range, weather, and the §42.43/§42.44 drop-zone rules.
+    fn cmd_airdrop_supplies(
+        &mut self,
+        squadron: crate::state::air::SquadronId,
+        target: HexCoord,
+        commodity: crate::state::game::Commodity,
+        amount: u32,
+        planes: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::aircraft::Mission;
+        use crate::reference::terrain::HexTerrain;
+        use crate::state::game::{Commodity, Weather};
+        self.require_phase(Phase::LandSupportAir)?;
+        // §42.46: only ammunition and stores may be airdropped.
+        if !matches!(commodity, Commodity::Ammo | Commodity::Stores) {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+        let base = sgsu.location.ok_or(CommandError::SquadronNotBased)?;
+        let side = sgsu.nationality.side();
+        let nationality = sgsu.nationality;
+
+        let grounded = |g: &Self, h: HexCoord| matches!(g.weather_at(h), Weather::Sandstorm | Weather::Rainstorm);
+        if grounded(self, base) || grounded(self, target) {
+            return Err(CommandError::WeatherGrounded);
+        }
+        // Transport-capable ready planes and their shortest range (§42.31/§42.36).
+        let chart = self.reference.aircraft_charts.get(&nationality);
+        let mut min_range = u32::MAX;
+        let mut ready_transport = 0;
+        for g in sgsu.planes.iter().filter(|g| g.ready > 0) {
+            if let Some(ac) = chart.and_then(|c| c.get(&g.aircraft_type)) {
+                if crate::rules::air::can_perform(&ac.missions, Mission::Transport, false) {
+                    ready_transport += g.ready;
+                    min_range = min_range.min(ac.max_range());
+                }
+            }
+        }
+        if min_range == u32::MAX {
+            return Err(CommandError::MissionNotPermitted); // no transport-capable planes
+        }
+        if planes == 0 || planes > ready_transport {
+            return Err(CommandError::NoReadyPlanes);
+        }
+        if !crate::rules::air::can_fly(min_range, base.distance(target), false) {
+            return Err(CommandError::TargetOutOfRange);
+        }
+        // §42.43/§42.46 drop-zone legality.
+        let enemy = side.opponent();
+        let occupants = self.units_in_hex(target);
+        let enemy_occ = occupants.iter().any(|&id| self.unit(id).is_some_and(|u| u.nationality.side() == enemy));
+        let friendly_occ = occupants.iter().any(|&id| self.unit(id).is_some_and(|u| u.nationality.side() == side));
+        if enemy_occ {
+            return Err(CommandError::DropZoneIllegal);
+        }
+        if !friendly_occ {
+            // §42.43: clear/gravel/desert, not a major city, not in an enemy ZOC, and within two
+            // hexes of a recognizable land feature (§42.44).
+            let terrain_ok = matches!(
+                self.map.terrain(target),
+                Some(HexTerrain::Clear | HexTerrain::SandGravel | HexTerrain::Desert)
+            );
+            if !terrain_ok
+                || self.hex_in_zoc_of(target, enemy)
+                || !self.within_two_of_land_feature(target)
+            {
+                return Err(CommandError::DropZoneIllegal);
+            }
+        }
+        // §42.32: the cargo comes from the transport's base hex; consume it there.
+        if !self.consume_commodity_at(base, side, commodity, amount) {
+            return Err(if matches!(commodity, Commodity::Ammo) {
+                CommandError::InsufficientAmmo
+            } else {
+                CommandError::InsufficientStores
+            });
+        }
+        self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?.fly(planes);
+        // §42.46: airdropped supplies are usable immediately.
+        self.add_commodity_to_dump(target, side, commodity, amount);
+        Ok(CommandOutcome::SuppliesAirdropped { amount })
+    }
+
     /// §40.5–40.8 Strafe: validate and resolve a strafing mission against the map, applying the
     /// effect for supply dumps (§40.64) and water pipelines (§40.67). Other target types (infantry,
     /// trucks, grounded aircraft, tanks, ports) are not yet modeled and are rejected.
@@ -1341,6 +1446,7 @@ impl GameState {
                 | StrafeTarget::WaterPipeline
                 | StrafeTarget::Infantry
                 | StrafeTarget::GroundedAircraft
+                | StrafeTarget::FirstLineTrucks
         ) {
             return Err(CommandError::MissionNotPermitted);
         }
@@ -1422,6 +1528,11 @@ impl GameState {
                 // §40.6: the result is the number of d6 to roll; their sum is the planes destroyed.
                 let planes = self.strafe_grounded_aircraft_loss(target, side, result);
                 if planes > 0 { StrafeEffect::GroundedAircraftDestroyed { planes } } else { StrafeEffect::None }
+            }
+            StrafeTarget::FirstLineTrucks => {
+                // §40.62: the result is the first-line attached Truck Points eliminated.
+                let removed = self.strafe_first_line_trucks(target, side, result);
+                if removed > 0 { StrafeEffect::TrucksEliminated { points: removed } } else { StrafeEffect::None }
             }
             _ => StrafeEffect::None, // unreachable (guarded above)
         };

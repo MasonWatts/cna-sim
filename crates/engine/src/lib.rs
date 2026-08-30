@@ -5061,6 +5061,92 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+
+        // §40.62 First-line trucks: the result is Truck Points eliminated, cargo lost in proportion.
+        ready(&mut g);
+        let mover = g.spawn_unit(Nationality::Commonwealth, "h", "trucked", Composition::Organic { current_toe: 3 });
+        {
+            let u = g.unit_mut(mover).unwrap();
+            u.location = Some(UnitLocation::OnMap(target));
+            u.trucks.light = 10;
+            u.truck_cargo.fuel = 100;
+        }
+        match g.apply(Command::Strafe {
+            squadron: SquadronId(1), target, strafe_target: StrafeTarget::FirstLineTrucks, planes: 6, fort_level: 0, roll: 66,
+        }) {
+            Ok(CommandOutcome::Strafed { result, effect }) => {
+                let removed = result.min(10);
+                if removed > 0 {
+                    assert_eq!(effect, StrafeEffect::TrucksEliminated { points: removed });
+                }
+                assert_eq!(g.unit(mover).unwrap().trucks.light, 10 - removed);
+                assert_eq!(g.unit(mover).unwrap().truck_cargo.fuel, 100 - 100 * removed / 10);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn airdrop_supplies_42_4() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::air::{AirFacility, AirFacilityKind, Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{Commodities, Commodity, GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::UnitLocation;
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(5, 6);
+        let target = HexCoord::new(5, 5);
+        g.map.set_hex(target, HexTerrain::Clear);
+        // A recognizable land feature at the target (an air facility) satisfies §42.44.
+        g.air_facilities.push(AirFacility::new(AirFacilityKind::Airfield, target));
+        // Ju.52/3m transport (transport: Day, range 72).
+        let mut sq = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Transport, "KGrzbV", 5, Some(base));
+        sq.add_planes("Ju.52/3m", AircraftClass::Transport, 3, 1);
+        g.sgsus.insert(SquadronId(1), sq);
+        let ready = |g: &mut GameState| {
+            for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        };
+        ready(&mut g);
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+        // A base dump with Stores to drop (placed after the stage-advance so SGSU upkeep §35.14
+        // doesn't nibble it).
+        g.add_supply_dump_full(UnitLocation::OnMap(base), Side::Axis, Commodities { fuel: 0, ammo: 0, stores: 100, water: 0 });
+        // §42.46: Fuel may not be airdropped.
+        assert_eq!(
+            g.apply(Command::AirdropSupplies { squadron: SquadronId(1), target, commodity: Commodity::Fuel, amount: 10, planes: 1 }),
+            Err(CommandError::MissionNotPermitted)
+        );
+        // A legal Stores drop: base dump loses 50, target gains a dump with 50.
+        assert_eq!(
+            g.apply(Command::AirdropSupplies { squadron: SquadronId(1), target, commodity: Commodity::Stores, amount: 50, planes: 1 }),
+            Ok(CommandOutcome::SuppliesAirdropped { amount: 50 })
+        );
+        let base_stores: u32 = g.supply_dumps.iter().filter(|d| d.location.hex() == Some(base)).map(|d| d.supply.stores).sum();
+        let target_stores: u32 = g.supply_dumps.iter().filter(|d| d.location.hex() == Some(target)).map(|d| d.supply.stores).sum();
+        assert_eq!(base_stores, 50);
+        assert_eq!(target_stores, 50);
+
+        // A drop zone with no land feature nearby is illegal (§42.43/§42.44). Within Ju.52 range
+        // (72) of the base, but far from the only land feature (the airfield at the target).
+        ready(&mut g);
+        let nowhere = HexCoord::new(5, 20);
+        g.map.set_hex(nowhere, HexTerrain::Clear);
+        assert_eq!(
+            g.apply(Command::AirdropSupplies { squadron: SquadronId(1), target: nowhere, commodity: Commodity::Stores, amount: 10, planes: 1 }),
+            Err(CommandError::DropZoneIllegal)
+        );
     }
 
     #[test]
