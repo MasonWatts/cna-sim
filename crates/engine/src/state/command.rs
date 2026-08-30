@@ -176,6 +176,12 @@ pub enum Command {
         commodity: crate::state::game::Commodity,
         amount: u32,
     },
+    /// §6.17/§53.11: assign free Truck Points from the unit's side's pool to a unit as first-line
+    /// trucks (Organization Phase) — the trucks that carry it (motorization) and its supply.
+    AssignTrucks { unit: UnitId, light: u32, medium: u32, heavy: u32 },
+    /// §53.11: return a unit's first-line Truck Points to its side's free pool (Organization Phase),
+    /// so they can be reassigned. Any supply currently loaded on those trucks blocks the release.
+    ReleaseTrucks { unit: UnitId, light: u32, medium: u32, heavy: u32 },
     /// §52.16: poison a well (Movement & Combat Phase); `die` decides success.
     PoisonWell { hex: HexCoord, die: u8 },
     /// §52.17: sweeten (un-poison) a well (Movement & Combat Phase); `die` decides success.
@@ -456,6 +462,10 @@ pub enum CommandOutcome {
     /// §53.24: supply loaded onto / unloaded from trucks (the amount moved).
     TrucksLoaded(u32),
     TrucksUnloaded(u32),
+    /// §6.17/§53.11: Truck Points assigned to / released from a unit — the unit's resulting
+    /// first-line Truck Points (Light, Medium, Heavy), and its §6.17 motorized CPA if it is now
+    /// leg infantry fully carried by them (`None` = not motorized).
+    TrucksAssigned { light: u32, medium: u32, heavy: u32, motorized_cpa: Option<i32> },
     /// §52.16/§52.17: whether a well was poisoned / sweetened.
     WellPoisoned(bool),
     WellSweetened(bool),
@@ -534,6 +544,11 @@ pub enum CommandOutcome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandError {
     UnitNotFound,
+    /// §6.17/§53.11: the side's free-truck pool has fewer Truck Points of a type than requested,
+    /// or the unit has fewer assigned than a release asked to return.
+    InsufficientTrucks,
+    /// §53.11: cannot release Truck Points that still carry loaded supply (unload it first).
+    TrucksLoadedCannotRelease,
     WrongPhase,
     UnitNotOnMap,
     NotAdjacent,
@@ -747,6 +762,12 @@ impl GameState {
                 self.require_phase(Phase::Organization)?;
                 self.require_units_exist(&[unit])?;
                 Ok(CommandOutcome::TrucksUnloaded(self.unload_trucks(unit, commodity, amount)))
+            }
+            Command::AssignTrucks { unit, light, medium, heavy } => {
+                self.cmd_assign_trucks(unit, light, medium, heavy)
+            }
+            Command::ReleaseTrucks { unit, light, medium, heavy } => {
+                self.cmd_release_trucks(unit, light, medium, heavy)
             }
             Command::PoisonWell { hex, die } => {
                 self.require_phase(Phase::MovementAndCombat)?;
@@ -1545,6 +1566,80 @@ impl GameState {
             crate::reference::logistics::TruckKind::Heavy => heavy = count,
         }
         Ok(CommandOutcome::TrucksProduced { arrival_game_turn, light, medium, heavy })
+    }
+
+    /// §6.17/§53.11 AssignTrucks: move `light`/`medium`/`heavy` Truck Points from the unit's side's
+    /// free-truck pool onto the unit as first-line trucks (Organization Phase). These carry the unit
+    /// (motorization, §6.17) and its supply (§53.24). Reports the unit's resulting trucks and its
+    /// §6.17 motorized CPA (if it is now leg infantry the trucks can fully carry).
+    fn cmd_assign_trucks(
+        &mut self,
+        unit: UnitId,
+        light: u32,
+        medium: u32,
+        heavy: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::Organization)?;
+        let side = self.unit(unit).ok_or(CommandError::UnitNotFound)?.nationality.side();
+        let pool = self.truck_pools.get(&side).copied().unwrap_or_default();
+        if pool.light < light || pool.medium < medium || pool.heavy < heavy {
+            return Err(CommandError::InsufficientTrucks);
+        }
+        {
+            let p = self.truck_pools.entry(side).or_default();
+            p.light -= light;
+            p.medium -= medium;
+            p.heavy -= heavy;
+        }
+        let u = self.unit_mut(unit).ok_or(CommandError::UnitNotFound)?;
+        u.trucks.light += light;
+        u.trucks.medium += medium;
+        u.trucks.heavy += heavy;
+        let t = u.trucks;
+        Ok(CommandOutcome::TrucksAssigned {
+            light: t.light, medium: t.medium, heavy: t.heavy,
+            motorized_cpa: self.unit_motorized_cpa(unit),
+        })
+    }
+
+    /// §53.11 ReleaseTrucks: return `light`/`medium`/`heavy` first-line Truck Points from a unit to
+    /// its side's free-truck pool (Organization Phase), so they can be reassigned. Rejected if the
+    /// unit has fewer of a type assigned, or if any supply is still loaded on its trucks (§53.24 —
+    /// unload it first, or the loaded supply would exceed the reduced cargo capacity).
+    fn cmd_release_trucks(
+        &mut self,
+        unit: UnitId,
+        light: u32,
+        medium: u32,
+        heavy: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::Organization)?;
+        let u = self.unit(unit).ok_or(CommandError::UnitNotFound)?;
+        if u.trucks.light < light || u.trucks.medium < medium || u.trucks.heavy < heavy {
+            return Err(CommandError::InsufficientTrucks);
+        }
+        let c = &u.truck_cargo;
+        if c.fuel + c.ammo + c.stores + c.water > 0 {
+            return Err(CommandError::TrucksLoadedCannotRelease);
+        }
+        let side = u.nationality.side();
+        {
+            let um = self.unit_mut(unit).ok_or(CommandError::UnitNotFound)?;
+            um.trucks.light -= light;
+            um.trucks.medium -= medium;
+            um.trucks.heavy -= heavy;
+        }
+        {
+            let p = self.truck_pools.entry(side).or_default();
+            p.light += light;
+            p.medium += medium;
+            p.heavy += heavy;
+        }
+        let t = self.unit(unit).ok_or(CommandError::UnitNotFound)?.trucks;
+        Ok(CommandOutcome::TrucksAssigned {
+            light: t.light, medium: t.medium, heavy: t.heavy,
+            motorized_cpa: self.unit_motorized_cpa(unit),
+        })
     }
 
     /// §40.2 DesignateCap: commit `planes` fighters of a located squadron to Combat Air Patrol over

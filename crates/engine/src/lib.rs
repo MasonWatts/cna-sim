@@ -6810,6 +6810,60 @@ mod tests {
     }
 
     #[test]
+    fn assign_trucks_motorizes_and_releases_6_17() {
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::unit::{Composition, TruckPoints};
+
+        let mut refs = ReferenceData::new();
+        refs.load_unit_characteristics(
+            Nationality::Commonwealth,
+            include_str!("../../../data/reference/unit-characteristics/commonwealth.ron"),
+        )
+        .unwrap();
+        refs.load_truck_chart(include_str!("../../../data/reference/truck-characteristics.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        // CW code "k": leg infantry, basic CPA 10, max TOE 7 — motorizable (§6.17).
+        let u = g.spawn_unit(Nationality::Commonwealth, "k", "1 Bn", Composition::Organic { current_toe: 3 });
+        g.truck_pools.insert(Side::Commonwealth, TruckPoints { light: 0, medium: 5, heavy: 0 });
+
+        // Wrong phase.
+        assert_eq!(
+            g.apply(Command::AssignTrucks { unit: u, light: 0, medium: 3, heavy: 0 }),
+            Err(CommandError::WrongPhase)
+        );
+        g.phase = Phase::Organization;
+
+        // More than the pool holds -> rejected.
+        assert_eq!(
+            g.apply(Command::AssignTrucks { unit: u, light: 0, medium: 6, heavy: 0 }),
+            Err(CommandError::InsufficientTrucks)
+        );
+
+        // 3 Medium Truck Points carry the 3-TOE infantry: motorized CPA 20 (§6.17), pool debited.
+        assert_eq!(
+            g.apply(Command::AssignTrucks { unit: u, light: 0, medium: 3, heavy: 0 }),
+            Ok(CommandOutcome::TrucksAssigned { light: 0, medium: 3, heavy: 0, motorized_cpa: Some(20) })
+        );
+        assert_eq!(g.truck_pools[&Side::Commonwealth].medium, 2);
+        assert_eq!(g.effective_cpa(u), Some(20), "moves at the truck's CPA");
+
+        // Release them: back to the pool, no longer motorized.
+        assert_eq!(
+            g.apply(Command::ReleaseTrucks { unit: u, light: 0, medium: 3, heavy: 0 }),
+            Ok(CommandOutcome::TrucksAssigned { light: 0, medium: 0, heavy: 0, motorized_cpa: None })
+        );
+        assert_eq!(g.truck_pools[&Side::Commonwealth].medium, 5);
+        assert_eq!(g.effective_cpa(u), Some(10), "back to its own leg CPA");
+        // Releasing more than held -> rejected.
+        assert_eq!(
+            g.apply(Command::ReleaseTrucks { unit: u, light: 0, medium: 1, heavy: 0 }),
+            Err(CommandError::InsufficientTrucks)
+        );
+    }
+
+    #[test]
     fn load_campaign_populates_full_reference_layer() {
         use crate::reference::units::Nationality;
         let r = ReferenceData::load_campaign();

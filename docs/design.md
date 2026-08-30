@@ -300,11 +300,11 @@ unused-replacement VP; §64.75 CW withdrawal VP; §64.76 band), with §64.71/§6
 including the one-full-turn objective-hold check. (The scenario-level §60.8 victory is not
 separately modeled.)
 
-### 8.3 Command boundary — ~57 commands, phase-gated
+### 8.3 Command boundary — ~59 commands, phase-gated
 `GameState::apply` covers land movement/combat, air, naval, logistics, and construction. Land:
 `MoveStep`/`FormationMove`, `Barrage`/`AntiArmor`/`CloseAssault`/`Retreat`, `React`,
 `MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply`, `PoisonWell`/`SweetenWell`.
-Logistics/construction (Organization phase): `LoadTrucks`/`UnloadTrucks`, `SiphonFuel`/
+Logistics/construction (Organization phase): `LoadTrucks`/`UnloadTrucks`, `AssignTrucks`/`ReleaseTrucks` (§6.17/§53.11), `SiphonFuel`/
 `RefuelUnit`/`RearmUnit`, `BuildPipeline`/`BuildFortification`/`BuildRailroad`/`DemolishRailroad`/
 `BuildRoad`, `LayMinefield`/`ClearMinefield`, `WithdrawUnit`/`ReturnUnit`/`AbsorbReplacement`,
 `PlanProduction` (§20.66), `ProduceCommonwealthTrucks`/`ProduceCommonwealthInfantry`/
@@ -493,7 +493,9 @@ Game-Turns at Alexandria) and `ProduceCommonwealthInfantry` (§20.78B: 2d6 → I
 Points arriving +4 Game-Turns, fed through the standard replacement lifecycle) roll their tables;
 `ProduceAxisTrucks` (§20.66a) plans against the row's lifetime total and per-Game-Turn maximum,
 delivering +2 Game-Turns. Produced Truck Points land in a per-side free-truck pool (`truck_pools`)
-at the Naval Convoy Arrival Phase, awaiting a future motorization/assignment command. The §20.78A
+at the Naval Convoy Arrival Phase; **`AssignTrucks`/`ReleaseTrucks`** (§6.17/§53.11) move Truck
+Points between that pool and a unit's first-line trucks, closing the loop — assigned trucks feed the
+existing §6.17 motorization (`unit_motorized_cpa`/`effective_cpa`) and §53.24 cargo capacity. The §20.78A
 **"≤25% of the total trucks produced may arrive per Game-Turn"** cap is enforced (owner ruling
 2026-08-30: scoped to the roll's own batch) — each Commonwealth truck type is divided as evenly as
 possible across four Game-Turns (GT+4…GT+7). **§20.74 OpStage division** is also modeled for
