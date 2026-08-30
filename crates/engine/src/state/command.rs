@@ -1792,14 +1792,15 @@ impl GameState {
         let chart = self.reference.aircraft_charts.get(&nationality);
         let mut min_range = u32::MAX;
         let mut any_can_bomb = false;
+        let mut any_strike = false;
         for g in sgsu.planes.iter().filter(|g| g.ready > 0) {
             if let Some(ac) = chart.and_then(|c| c.get(&g.aircraft_type)) {
                 min_range = min_range.min(ac.max_range());
-                if crate::rules::air::can_perform(&ac.missions, Mission::ConvoyLandBombing, night)
-                    || crate::rules::air::can_perform(&ac.missions, Mission::Strike, night)
-                {
+                let strike = crate::rules::air::can_perform(&ac.missions, Mission::Strike, night);
+                if crate::rules::air::can_perform(&ac.missions, Mission::ConvoyLandBombing, night) || strike {
                     any_can_bomb = true;
                 }
+                any_strike |= strike;
             }
         }
         if min_range == u32::MAX {
@@ -1809,6 +1810,11 @@ impl GameState {
             return Err(CommandError::TargetOutOfRange);
         }
         if !any_can_bomb {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        // §41.32: first-line (attached) trucks may be bombed only by a plane with the "D" (strike)
+        // capability. (A hex-placed truck convoy is not modeled; this bombs a unit's own trucks.)
+        if matches!(mission, crate::reference::aircraft::BombingMission::TruckConvoy) && !any_strike {
             return Err(CommandError::MissionNotPermitted);
         }
 

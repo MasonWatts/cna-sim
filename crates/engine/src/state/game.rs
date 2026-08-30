@@ -4411,6 +4411,12 @@ impl GameState {
                 // the first enemy AA-rated unit in the hex.
                 self.destroy_flak_toe(target, enemy, result);
             }
+            M::TruckConvoy => {
+                // §41.32: destroy `result` first-line (attached) Truck Points of an enemy unit in
+                // the hex, cargo lost in proportion (same mechanic as strafing, §40.62). The D-
+                // capability gate is enforced at the command. (Hex-placed convoys are not modeled.)
+                self.strafe_first_line_trucks(target, bomber_side, result);
+            }
             _ => {}
         }
     }

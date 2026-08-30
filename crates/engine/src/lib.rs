@@ -5364,6 +5364,18 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+
+        // §41.32 Truck-convoy bombing hits the target unit's first-line attached trucks (Ju.88D has
+        // the "D"/strike capability required for first-line trucks).
+        ready(&mut g);
+        g.unit_mut(cw).unwrap().trucks.light = 8;
+        match g.apply(bomb(BombingMission::TruckConvoy)) {
+            Ok(CommandOutcome::BombingMission(o)) => {
+                let removed = (o.result.max(0) as u32).min(8);
+                assert_eq!(g.unit(cw).unwrap().trucks.light, 8 - removed);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 
     #[test]
