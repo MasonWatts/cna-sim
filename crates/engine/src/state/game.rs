@@ -2477,7 +2477,7 @@ impl GameState {
     }
 
     /// Whether `hex` is a Major City with a well (the only valid origin for a pipeline, §52.21).
-    fn is_major_city(&self, hex: HexCoord) -> bool {
+    pub(crate) fn is_major_city(&self, hex: HexCoord) -> bool {
         self.reference.campaign_victory.as_ref().is_some_and(|cv| {
             cv.cities
                 .iter()

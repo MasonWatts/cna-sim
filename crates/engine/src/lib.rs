@@ -2772,6 +2772,82 @@ mod tests {
     }
 
     #[test]
+    fn desert_raider_raids_27_5() {
+        // §27.52 pipeline, §27.55 supply dump (unguarded + guarded), §27.57 truck convoy.
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{Commodities, GameState, Phase, Raider, RaiderKind, TruckConvoy};
+        use crate::state::map::HexId;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        for s in [
+            include_str!("../../../data/maps/section-a.ron"),
+            include_str!("../../../data/maps/section-b.ron"),
+            include_str!("../../../data/maps/section-c.ron"),
+            include_str!("../../../data/maps/section-d.ron"),
+            include_str!("../../../data/maps/section-e.ron"),
+        ] {
+            g.map.load_section(s).unwrap();
+        }
+        let hex = HexId::parse("C3617").unwrap().to_hex_coord();
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let place_raider = |g: &mut GameState| {
+            g.raiders = vec![Raider {
+                kind: RaiderKind::Lrdg, side: Side::Commonwealth, hex: Some(hex),
+                cpa_used: 0, fuel: 0, ammo: 0, drew_water_this_gt: false, reform_game_turn: 0,
+            }];
+        };
+
+        // §27.52: blow a pipeline (a 1-4 succeeds); the pipeline is removed.
+        place_raider(&mut g);
+        g.pipelines.insert(hex);
+        assert_eq!(
+            g.apply(Command::RaidPipeline { raider: 0, roll: 3 }),
+            Ok(CommandOutcome::RaidResolved { success: true, raider_eliminated: false })
+        );
+        assert!(!g.pipelines.contains(&hex));
+
+        // §27.55a: an unguarded dump — a 1-2 destroys 10% of each commodity.
+        place_raider(&mut g);
+        g.supply_dumps.push(crate::state::game::SupplyDump {
+            location: UnitLocation::OnMap(hex), side: Side::Axis,
+            supply: Commodities { fuel: 100, ammo: 100, stores: 100, water: 0 }, dummy: false,
+        });
+        assert_eq!(
+            g.apply(Command::RaidSupplyDump { raider: 0, attack_roll: 0, destroy_roll: 1 }),
+            Ok(CommandOutcome::RaidResolved { success: true, raider_eliminated: false })
+        );
+        let d = g.supply_dumps.last().unwrap();
+        assert_eq!((d.supply.fuel, d.supply.ammo), (90, 90), "10% destroyed");
+
+        // §27.55b: a guarded dump — a low 2d6 attack roll (≤ guards' defence) eliminates the raider.
+        place_raider(&mut g);
+        let guard = g.spawn_unit(Nationality::German, "k", "guard", Composition::Organic { current_toe: 5 });
+        g.unit_mut(guard).unwrap().location = Some(UnitLocation::OnMap(hex));
+        match g.apply(Command::RaidSupplyDump { raider: 0, attack_roll: 2, destroy_roll: 1 }) {
+            Ok(CommandOutcome::RaidResolved { success: false, raider_eliminated: true }) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(g.raiders_in_play(RaiderKind::Lrdg), 0);
+
+        // §27.57: raid a free truck convoy — a 1-2 destroys one Truck Point.
+        place_raider(&mut g);
+        g.units.clear(); // remove the guard so the convoy raid isn't blocked by combat units
+        g.truck_convoys.push(TruckConvoy {
+            side: Side::Axis, hex, trucks: TruckPoints { light: 0, medium: 4, heavy: 0 },
+            cargo: Commodities::default(), cpa_used: 0, carries_replacements: false,
+        });
+        let ci = g.truck_convoys.len() - 1;
+        assert_eq!(
+            g.apply(Command::RaidTruckConvoy { raider: 0, convoy: ci, roll: 1 }),
+            Ok(CommandOutcome::RaidResolved { success: true, raider_eliminated: false })
+        );
+        assert_eq!(g.truck_convoys[ci].trucks.medium, 3, "one Truck Point destroyed");
+    }
+
+    #[test]
     fn deploy_formation_builds_hierarchy() {
         use crate::state::game::GameState;
         use crate::state::map::HexCoord;

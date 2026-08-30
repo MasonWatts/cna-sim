@@ -68,6 +68,25 @@ pub enum Command {
     /// §27.6: a Commonwealth LRDG in Rommel's hex attempts a Raid on Rommel (Movement & Combat
     /// Phase). `roll` is 2d6 (2–12) resolved on the §27.64 table. Costs 10 CP; max four per campaign.
     RaidRommel { raider: usize, roll: u32 },
+    /// §27.52: the raider blows the water pipeline in its hex (no enemy combat units present); a d6
+    /// `roll` of 1-4 blows it. Costs 5 CP. (Movement & Combat Phase.)
+    RaidPipeline { raider: usize, roll: u32 },
+    /// §27.53: the raider cripples the (non-strip, non-major-city) airfield in its hex (no enemy
+    /// combat units present); a d6 `roll` of 1-2 reduces its capacity one level. Costs 5 CP.
+    RaidAirfield { raider: usize, roll: u32 },
+    /// §27.54: the raider destroys grounded enemy planes in its hex (no enemy combat units / not a
+    /// major city); a d6 `roll` of 1-2 destroys 10% of each enemy squadron's planes, a 6 eliminates
+    /// the raider. Costs 5 CP.
+    RaidPlanes { raider: usize, roll: u32 },
+    /// §27.55: the raider attacks the enemy Supply Dump in its hex (not a major city). If guarded by
+    /// enemy combat units, `attack_roll` (2d6) must exceed the guards' Raw Defensive Assault Strength
+    /// or the raider is eliminated; then `destroy_roll` (d6) of 1-2 destroys 10% of the dump. Costs
+    /// 5 CP. (§27.56: a dummy dump is revealed instead.)
+    RaidSupplyDump { raider: usize, attack_roll: u32, destroy_roll: u32 },
+    /// §27.57-58: the raider attacks the enemy free truck convoy at index `convoy` in its hex; a d6
+    /// `roll` of 1-2 destroys one Truck Point + its cargo. Replacement-carrying convoys add 1 to the
+    /// roll and a 6 eliminates the raider (§27.58). Costs 5 CP.
+    RaidTruckConvoy { raider: usize, convoy: usize, roll: u32 },
     /// Move a whole formation (a parent counter plus its attached units) one hex. The
     /// parent counter moves and the attached units ride along; over-expenditure is judged
     /// against the formation CPA (§6.15, the slowest member).
@@ -516,6 +535,10 @@ pub enum CommandOutcome {
     TruckConvoyFormed { convoy: usize },
     /// §8.98: a free truck convoy moved to `hex`, with `cpa_used` tenths of a CP spent this phase.
     TruckConvoyMoved { hex: HexCoord, cpa_used: u32 },
+    /// §27.5: a raider raid resolved — `success` = the raid achieved its effect (pipeline blown,
+    /// airfield level lost, planes/supply/truck destroyed); `raider_eliminated` = the raider was
+    /// lost (spotted, over-extended §27.37, or a §27.5x elimination result).
+    RaidResolved { success: bool, raider_eliminated: bool },
     /// §52.16/§52.17: whether a well was poisoned / sweetened.
     WellPoisoned(bool),
     WellSweetened(bool),
@@ -776,6 +799,13 @@ impl GameState {
             Command::MoveRaider { raider, to, spot_roll } => self.cmd_move_raider(raider, to, spot_roll),
             Command::SpotRaider { raider, roll } => self.cmd_spot_raider(raider, roll),
             Command::RaidRommel { raider, roll } => self.cmd_raid_rommel(raider, roll),
+            Command::RaidPipeline { raider, roll } => self.cmd_raid_pipeline(raider, roll),
+            Command::RaidAirfield { raider, roll } => self.cmd_raid_airfield(raider, roll),
+            Command::RaidPlanes { raider, roll } => self.cmd_raid_planes(raider, roll),
+            Command::RaidSupplyDump { raider, attack_roll, destroy_roll } => {
+                self.cmd_raid_supply_dump(raider, attack_roll, destroy_roll)
+            }
+            Command::RaidTruckConvoy { raider, convoy, roll } => self.cmd_raid_truck_convoy(raider, convoy, roll),
             Command::FormationMove { formation, to, mode } => {
                 self.formation_move(formation, to, mode)
             }
@@ -1911,6 +1941,201 @@ impl GameState {
             self.eliminate_raider(raider);
         }
         Ok(CommandOutcome::RommelRaided { raider_eliminated, rommel_removed, axis_temp3 })
+    }
+
+    /// Common raid preamble (§27.5): the raider must be in play on its owner's turn; returns its hex
+    /// and its own side. Raids occur in the Movement & Combat Phase.
+    fn raider_raid_context(&self, raider: usize) -> Result<(HexCoord, crate::reference::units::Side), CommandError> {
+        let r = self.raiders.get(raider).ok_or(CommandError::RaiderNotAvailable)?;
+        let hex = r.hex.ok_or(CommandError::RaiderNotAvailable)?;
+        if self.active_player != r.side {
+            return Err(CommandError::WrongPhase);
+        }
+        Ok((hex, r.side))
+    }
+
+    /// §27.5x / §27.37: charge a raid's 5 Capability Points; eliminate the raider if that pushes it
+    /// over its 50-CP allowance. Returns whether it was eliminated.
+    fn raider_pay_raid_cp(&mut self, raider: usize) -> bool {
+        let over = {
+            let r = &mut self.raiders[raider];
+            r.cpa_used += 50;
+            r.cpa_used > 500
+        };
+        if over {
+            self.eliminate_raider(raider);
+        }
+        over
+    }
+
+    /// §27.52 RaidPipeline: blow the water pipeline in the raider's hex (a d6 1-4).
+    fn cmd_raid_pipeline(&mut self, raider: usize, roll: u32) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::MovementAndCombat)?;
+        let (hex, side) = self.raider_raid_context(raider)?;
+        if !self.pipelines.contains(&hex) || !self.enemy_units_in_hex(hex, side).is_empty() {
+            return Err(CommandError::RaiderCannotMove);
+        }
+        let eliminated = self.raider_pay_raid_cp(raider);
+        let success = (1..=4).contains(&roll);
+        if success {
+            self.pipelines.remove(&hex);
+        }
+        Ok(CommandOutcome::RaidResolved { success, raider_eliminated: eliminated })
+    }
+
+    /// §27.53 RaidAirfield: reduce the airfield in the raider's hex one capacity level (a d6 1-2).
+    fn cmd_raid_airfield(&mut self, raider: usize, roll: u32) -> Result<CommandOutcome, CommandError> {
+        use crate::state::air::AirFacilityKind;
+        self.require_phase(Phase::MovementAndCombat)?;
+        let (hex, side) = self.raider_raid_context(raider)?;
+        // §27.53: an on-map Airfield (not a landing strip), not in a major city, no enemy combat units.
+        let has_field = self
+            .air_facilities
+            .iter()
+            .any(|f| f.hex == hex && f.kind == AirFacilityKind::Airfield && !f.off_map);
+        if !has_field || self.is_major_city(hex) || !self.enemy_units_in_hex(hex, side).is_empty() {
+            return Err(CommandError::RaiderCannotMove);
+        }
+        let eliminated = self.raider_pay_raid_cp(raider);
+        let success = (1..=2).contains(&roll);
+        if success {
+            if let Some(f) = self
+                .air_facilities
+                .iter_mut()
+                .find(|f| f.hex == hex && f.kind == AirFacilityKind::Airfield && !f.off_map)
+            {
+                f.capacity_level = f.capacity_level.saturating_sub(1);
+            }
+        }
+        Ok(CommandOutcome::RaidResolved { success, raider_eliminated: eliminated })
+    }
+
+    /// §27.54 RaidPlanes: destroy grounded enemy planes in the raider's hex (a d6 1-2 → 10% of each
+    /// enemy squadron; a 6 eliminates the raider).
+    fn cmd_raid_planes(&mut self, raider: usize, roll: u32) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::MovementAndCombat)?;
+        let (hex, side) = self.raider_raid_context(raider)?;
+        let enemy = side.opponent();
+        if self.is_major_city(hex) || !self.enemy_units_in_hex(hex, side).is_empty() {
+            return Err(CommandError::RaiderCannotMove);
+        }
+        let targets: Vec<_> = self
+            .sgsus
+            .iter()
+            .filter(|(_, s)| s.location == Some(hex) && s.nationality.side() == enemy && s.plane_count() > 0)
+            .map(|(id, _)| *id)
+            .collect();
+        if targets.is_empty() {
+            return Err(CommandError::RaiderCannotMove);
+        }
+        let mut eliminated = self.raider_pay_raid_cp(raider);
+        let success = (1..=2).contains(&roll);
+        if success {
+            for id in targets {
+                if let Some(s) = self.sgsus.get_mut(&id) {
+                    let ten_pct = s.plane_count().div_ceil(10); // §27.54 "10% (at least)"
+                    s.lose_planes(ten_pct);
+                }
+            }
+        }
+        // §27.54: a die roll of 6 eliminates the raider.
+        if roll == 6 && !eliminated {
+            self.eliminate_raider(raider);
+            eliminated = true;
+        }
+        Ok(CommandOutcome::RaidResolved { success, raider_eliminated: eliminated })
+    }
+
+    /// §27.55 RaidSupplyDump: attack the enemy Supply Dump in the raider's hex (guarded or not).
+    fn cmd_raid_supply_dump(
+        &mut self,
+        raider: usize,
+        attack_roll: u32,
+        destroy_roll: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::state::game::Commodity;
+        self.require_phase(Phase::MovementAndCombat)?;
+        let (hex, side) = self.raider_raid_context(raider)?;
+        let enemy = side.opponent();
+        if self.is_major_city(hex) {
+            return Err(CommandError::RaiderCannotMove);
+        }
+        let dump_idx = self
+            .supply_dumps
+            .iter()
+            .position(|d| d.side == enemy && d.location.hex() == Some(hex))
+            .ok_or(CommandError::RaiderCannotMove)?;
+        let mut eliminated = self.raider_pay_raid_cp(raider);
+        // §27.55b: a guarded dump requires 2d6 > the guards' Raw Defensive Assault Strength.
+        let guards = self.enemy_units_in_hex(hex, side);
+        let guarded = !guards.is_empty();
+        if guarded {
+            let def = self.close_assault_raw(&guards, false).max(0);
+            if (attack_roll as i32) <= def {
+                if !eliminated {
+                    self.eliminate_raider(raider);
+                }
+                return Ok(CommandOutcome::RaidResolved { success: false, raider_eliminated: true });
+            }
+        }
+        // §27.56: a dummy dump is revealed (removed) — the raid is off for destruction.
+        let dummy = self.supply_dumps[dump_idx].dummy;
+        let hit = (1..=2).contains(&destroy_roll);
+        if dummy {
+            self.supply_dumps.remove(dump_idx);
+        } else if hit {
+            // §27.55a: destroy 10% of every commodity in the dump.
+            let d = &mut self.supply_dumps[dump_idx];
+            for c in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
+                let have = d.supply.get(c);
+                *d.supply.get_mut(c) = have - have.div_ceil(10);
+            }
+        }
+        // §27.55b: at a guarded dump, a 6 on the destroy roll eliminates the raider.
+        if guarded && destroy_roll == 6 && !eliminated {
+            self.eliminate_raider(raider);
+            eliminated = true;
+        }
+        Ok(CommandOutcome::RaidResolved { success: hit && !dummy, raider_eliminated: eliminated })
+    }
+
+    /// §27.57-58 RaidTruckConvoy: destroy a Truck Point (+cargo) of the enemy free convoy at index
+    /// `convoy` in the raider's hex (a d6 1-2; replacement cargo adds 1 and a 6 eliminates the raider).
+    fn cmd_raid_truck_convoy(&mut self, raider: usize, convoy: usize, roll: u32) -> Result<CommandOutcome, CommandError> {
+        use crate::state::game::Commodity;
+        self.require_phase(Phase::MovementAndCombat)?;
+        let (hex, side) = self.raider_raid_context(raider)?;
+        let enemy = side.opponent();
+        let c = self.truck_convoys.get(convoy).ok_or(CommandError::RaiderCannotMove)?;
+        if c.hex != hex || c.side != enemy {
+            return Err(CommandError::RaiderCannotMove);
+        }
+        let carries_repl = c.carries_replacements;
+        let mut eliminated = self.raider_pay_raid_cp(raider);
+        // §27.58: replacement cargo adds 1 to the roll; a resulting 6 eliminates the raider.
+        let eff = roll + u32::from(carries_repl);
+        let success = (1..=2).contains(&eff);
+        if success {
+            let c = &mut self.truck_convoys[convoy];
+            let total = c.trucks.light + c.trucks.medium + c.trucks.heavy;
+            // Destroy one Truck Point (heaviest present) and its share of the cargo.
+            if c.trucks.heavy > 0 {
+                c.trucks.heavy -= 1;
+            } else if c.trucks.medium > 0 {
+                c.trucks.medium -= 1;
+            } else if c.trucks.light > 0 {
+                c.trucks.light -= 1;
+            }
+            for cm in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
+                let have = c.cargo.get(cm);
+                *c.cargo.get_mut(cm) = have - have.checked_div(total).unwrap_or(0);
+            }
+        }
+        if carries_repl && eff >= 6 && !eliminated {
+            self.eliminate_raider(raider);
+            eliminated = true;
+        }
+        Ok(CommandOutcome::RaidResolved { success, raider_eliminated: eliminated })
     }
 
     /// §8.97/§8.98 FormTruckConvoy: detach first-line Truck Points (and their loaded cargo) from a
