@@ -2896,6 +2896,64 @@ mod tests {
     }
 
     #[test]
+    fn layforce_amphibious_landing_27_7() {
+        // §27.72/§27.73/§27.74/§27.77: the Layforce commando lands from Alexandria into a coastal
+        // hex after a full Game-Turn there, is auto-supplied for three OpStages, and can re-embark.
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexId;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        for s in [
+            include_str!("../../../data/maps/section-a.ron"),
+            include_str!("../../../data/maps/section-b.ron"),
+            include_str!("../../../data/maps/section-c.ron"),
+            include_str!("../../../data/maps/section-d.ron"),
+            include_str!("../../../data/maps/section-e.ron"),
+        ] {
+            g.map.load_section(s).unwrap();
+        }
+        let alex = HexId::parse("E3613").unwrap().to_hex_coord();
+        let coast = HexId::parse("C4021").unwrap().to_hex_coord(); // Sollum — coastal
+        assert!(g.map.is_coastal(coast));
+        let ly = g.spawn_unit(Nationality::Commonwealth, "k", "Layforce A Bn", Composition::Organic { current_toe: 5 });
+        g.unit_mut(ly).unwrap().location = Some(UnitLocation::OnMap(alex));
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+
+        // §27.73: not yet a full Game-Turn in Alexandria → cannot land.
+        g.layforce_alexandria_since = Some(2);
+        g.game_turn = 2;
+        assert_eq!(
+            g.apply(Command::LandLayforce { unit: ly, to: coast, ship_hexes: 50 }),
+            Err(CommandError::LayforceCannotLand)
+        );
+        // A non-coastal target is rejected too.
+        g.layforce_alexandria_since = Some(1); // entered last Game-Turn → ready this turn
+        assert_eq!(
+            g.apply(Command::LandLayforce { unit: ly, to: HexId::parse("C0101").unwrap().to_hex_coord(), ship_hexes: 50 }),
+            Err(CommandError::LayforceCannotLand)
+        );
+
+        // §27.72: land in the coastal hex.
+        assert_eq!(
+            g.apply(Command::LandLayforce { unit: ly, to: coast, ship_hexes: 50 }),
+            Ok(CommandOutcome::LayforceLanded { hex: coast })
+        );
+        assert_eq!(g.unit(ly).unwrap().hex(), Some(coast));
+        // §27.74: auto-supplied on landing despite no dumps present.
+        assert!(g.layforce_free_supply_active());
+        assert!(g.unit_supply_adequate(ly));
+
+        // §27.77: re-embark → returned to Alexandria, free-supply window closed.
+        assert_eq!(g.apply(Command::EmbarkLayforce { unit: ly }), Ok(CommandOutcome::LayforceEmbarked));
+        assert_eq!(g.unit(ly).unwrap().hex(), Some(alex));
+        assert!(!g.layforce_free_supply_active());
+    }
+
+    #[test]
     fn deploy_formation_builds_hierarchy() {
         use crate::state::game::GameState;
         use crate::state::map::HexCoord;

@@ -54,6 +54,13 @@ pub enum Command {
     /// Convoy Phase). It spends its supply CPA and may not enter an enemy ZOC unoccupied by a
     /// Friendly unit (§10.29).
     MoveTruckConvoy { convoy: usize, to: HexCoord },
+    /// §27.72/§27.73: land the Layforce commando (which has spent a full Game-Turn in Alexandria)
+    /// in any coastal hex `to` (Movement & Combat Phase). Costs 5 CP per 50 hexes the transporting
+    /// ships moved (`ship_hexes`) plus the hex's terrain entry cost; grants the §27.74 supply window.
+    LandLayforce { unit: UnitId, to: HexCoord, ship_hexes: u32 },
+    /// §27.77: re-embark the Layforce commando from its coastal hex onto its ship, which returns it
+    /// to Alexandria (Movement & Combat Phase).
+    EmbarkLayforce { unit: UnitId },
     /// §27.13: form a desert raider (LRDG / DSA) from a Friendly Recce/AC `from_unit`, removing one
     /// TOE Strength Point and placing the counter in its hex (Organization Phase).
     FormRaider { kind: crate::state::game::RaiderKind, from_unit: UnitId },
@@ -541,6 +548,10 @@ pub enum CommandOutcome {
     TruckConvoyFormed { convoy: usize },
     /// §8.98: a free truck convoy moved to `hex`, with `cpa_used` tenths of a CP spent this phase.
     TruckConvoyMoved { hex: HexCoord, cpa_used: u32 },
+    /// §27.72: the Layforce commando made an amphibious landing at `hex`.
+    LayforceLanded { hex: HexCoord },
+    /// §27.77: the Layforce commando re-embarked and was returned to Alexandria.
+    LayforceEmbarked,
     /// §27.5: a raider raid resolved — `success` = the raid achieved its effect (pipeline blown,
     /// airfield level lost, planes/supply/truck destroyed); `raider_eliminated` = the raider was
     /// lost (spotted, over-extended §27.37, or a §27.5x elimination result).
@@ -643,6 +654,9 @@ pub enum CommandError {
     /// §8.98/§10.29: the free truck convoy cannot make the requested move (bad index, not
     /// adjacent/on-map, blocked by an enemy ZOC, or over its Movement Allowance).
     TruckConvoyCannotMove,
+    /// §27.7: the Layforce commando cannot make the requested landing/embarkation (not Layforce,
+    /// not in Alexandria / not a full Game-Turn there, target not a coastal hex, or over its CPA).
+    LayforceCannotLand,
     WrongPhase,
     UnitNotOnMap,
     NotAdjacent,
@@ -801,6 +815,8 @@ impl GameState {
                 self.cmd_form_truck_convoy(from_unit, light, medium, heavy)
             }
             Command::MoveTruckConvoy { convoy, to } => self.cmd_move_truck_convoy(convoy, to),
+            Command::LandLayforce { unit, to, ship_hexes } => self.cmd_land_layforce(unit, to, ship_hexes),
+            Command::EmbarkLayforce { unit } => self.cmd_embark_layforce(unit),
             Command::FormRaider { kind, from_unit } => self.cmd_form_raider(kind, from_unit),
             Command::MoveRaider { raider, to, spot_roll } => self.cmd_move_raider(raider, to, spot_roll),
             Command::SpotRaider { raider, roll } => self.cmd_spot_raider(raider, roll),
@@ -2255,6 +2271,70 @@ impl GameState {
         c.cpa_used += cost;
         c.hex = to;
         Ok(CommandOutcome::TruckConvoyMoved { hex: to, cpa_used: c.cpa_used })
+    }
+
+    /// §27.72/§27.73 LandLayforce: the Layforce commando, having spent a full Game-Turn in
+    /// Alexandria, lands in a coastal hex (Movement & Combat Phase). The landing costs 5 CP per 50
+    /// hexes the ships moved plus the hex's terrain entry cost — capped at the unit's CPA — and opens
+    /// the §27.74 three-Operations-Stage free-supply window.
+    fn cmd_land_layforce(&mut self, unit: UnitId, to: HexCoord, ship_hexes: u32) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::terrain::MoveCost;
+        use crate::rules::movement::{hex_entry_cost, MoveMode};
+        use crate::state::unit::UnitLocation;
+        self.require_phase(Phase::MovementAndCombat)?;
+        if !self.is_layforce(unit) {
+            return Err(CommandError::LayforceCannotLand);
+        }
+        // §27.73: must be in Alexandria a full Game-Turn (entered on an earlier Game-Turn).
+        let ready = self
+            .layforce_alexandria_since
+            .is_some_and(|since| self.game_turn > since);
+        let at_alex = self.unit(unit).and_then(|u| u.hex()) == self.alexandria_hex();
+        if !ready || !at_alex {
+            return Err(CommandError::LayforceCannotLand);
+        }
+        // §27.72: the destination must be a coastal hex on the map.
+        if !self.map.is_coastal(to) {
+            return Err(CommandError::LayforceCannotLand);
+        }
+        // §27.73 cost: 5 CP per 50 ship-hexes (tenths = 50 each) + the hex's terrain entry cost.
+        let ship_cp = ship_hexes.div_ceil(50) * 50;
+        let terrain = match hex_entry_cost(&self.reference, &self.map, to, MoveMode::NonMotorized) {
+            Some(MoveCost::Cost(f)) => f.0.max(0) as u32,
+            _ => return Err(CommandError::LayforceCannotLand), // prohibited / off-map
+        };
+        let cap = self.effective_cpa(unit).unwrap_or(0).max(0) as u32 * 10;
+        if ship_cp + terrain > cap {
+            return Err(CommandError::LayforceCannotLand); // §6: may not exceed its CPA
+        }
+        // Land it, and open the §27.74 free-supply window (this stage plus the next two).
+        if let Some(u) = self.unit_mut(unit) {
+            u.location = Some(UnitLocation::OnMap(to));
+        }
+        let idx = self.game_turn * 3 + (self.operations_stage as u32 - 1) + 2;
+        self.layforce_free_supply_until = Some((idx / 3, (idx % 3) as u8 + 1));
+        self.layforce_alexandria_since = None; // no longer in Alexandria
+        Ok(CommandOutcome::LayforceLanded { hex: to })
+    }
+
+    /// §27.77 EmbarkLayforce: re-embark the Layforce commando from its coastal hex; the ship returns
+    /// it to Alexandria (Movement & Combat Phase).
+    fn cmd_embark_layforce(&mut self, unit: UnitId) -> Result<CommandOutcome, CommandError> {
+        use crate::state::unit::UnitLocation;
+        self.require_phase(Phase::MovementAndCombat)?;
+        if !self.is_layforce(unit) {
+            return Err(CommandError::LayforceCannotLand);
+        }
+        let alex = self.alexandria_hex().ok_or(CommandError::LayforceCannotLand)?;
+        let on_coast = self.unit(unit).and_then(|u| u.hex()).is_some_and(|h| self.map.is_coastal(h));
+        if !on_coast {
+            return Err(CommandError::LayforceCannotLand);
+        }
+        if let Some(u) = self.unit_mut(unit) {
+            u.location = Some(UnitLocation::OnMap(alex)); // the ship carries it back to Alexandria
+        }
+        self.layforce_free_supply_until = None;
+        Ok(CommandOutcome::LayforceEmbarked)
     }
 
     /// §40.2 DesignateCap: commit `planes` fighters of a located squadron to Combat Air Patrol over

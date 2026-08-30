@@ -717,6 +717,14 @@ pub struct GameState {
     /// Desert-raider counters in play or awaiting re-form (§27): up to two LRDG + one DSA.
     #[serde(default)]
     pub raiders: Vec<Raider>,
+    /// §27.73: the Game-Turn the Layforce commando battalion entered Alexandria (it must spend one
+    /// full Game-Turn there before an amphibious landing); `None` while it is not in Alexandria.
+    #[serde(default)]
+    pub layforce_alexandria_since: Option<u32>,
+    /// §27.74: the (Game-Turn, Operations-Stage) through which the just-landed Layforce battalion is
+    /// automatically in supply (its landing stage plus two more); `None` when the window is closed.
+    #[serde(default)]
+    pub layforce_free_supply_until: Option<(u32, u8)>,
     /// §27.64: Raids on Rommel attempted so far (max four per Campaign Game).
     #[serde(default)]
     pub raids_on_rommel: u32,
@@ -940,6 +948,8 @@ impl GameState {
             rommel: None,
             truck_convoys: Vec::new(),
             raiders: Vec::new(),
+            layforce_alexandria_since: None,
+            layforce_free_supply_until: None,
             raids_on_rommel: 0,
             rommel_raid_ai3_until_gt: 0,
             first_turn_initiative: None,
@@ -5109,6 +5119,11 @@ impl GameState {
         let Some(u) = self.units.get(&id) else {
             return false;
         };
+        // §27.74: the Layforce commando is automatically in supply for three Operations Stages after
+        // an amphibious landing (its landing stage plus two more).
+        if self.is_layforce(id) && self.layforce_free_supply_active() {
+            return true;
+        }
         // The Tripoli/Tunisia boxes are unlimited Supply Dumps (§8.88).
         if u.location.as_ref().is_some_and(|l| l.off_map_node().is_some()) {
             return true;
@@ -5628,6 +5643,8 @@ impl GameState {
         for convoy in self.truck_convoys.iter_mut() {
             convoy.cpa_used = 0;
         }
+        // §27.73: track how long the Layforce commando has been mustering in Alexandria.
+        self.track_layforce_alexandria();
         // §52.24: reset the per-stage pipeline-construction allowance.
         self.pipeline_built_this_stage.clear();
         // §26.23: dummy minefields revealed last stage are now removed.
@@ -5971,6 +5988,40 @@ impl GameState {
         .min()
         .unwrap_or(0);
         cpa.max(0) as u32 * 10
+    }
+
+    /// §60/§20.14: the Alexandria map hex (E3613) — where the Layforce commando musters and where
+    /// its transport ships return (§27.73/§27.77).
+    pub fn alexandria_hex(&self) -> Option<HexCoord> {
+        crate::state::map::HexId::parse("E3613").map(|h| h.to_hex_coord())
+    }
+
+    /// §27.71: whether `id` is the Layforce ("A" Battalion, Special Service Brigade) commando unit,
+    /// recognised by name.
+    pub fn is_layforce(&self, id: UnitId) -> bool {
+        self.units.get(&id).is_some_and(|u| u.name.contains("Layforce"))
+    }
+
+    /// §27.74: whether the Layforce free-supply window is still open at the current (Game-Turn,
+    /// Operations Stage).
+    pub fn layforce_free_supply_active(&self) -> bool {
+        self.layforce_free_supply_until
+            .is_some_and(|(gt, st)| (self.game_turn, self.operations_stage) <= (gt, st))
+    }
+
+    /// §27.73 residence tracker (run each Operations Stage): record when the Layforce battalion is
+    /// in Alexandria (it must stay one full Game-Turn before landing), clearing the timer when it is
+    /// elsewhere.
+    fn track_layforce_alexandria(&mut self) {
+        let alex = self.alexandria_hex();
+        let in_alex = self.units.values().any(|u| u.name.contains("Layforce") && u.hex() == alex);
+        if in_alex {
+            if self.layforce_alexandria_since.is_none() {
+                self.layforce_alexandria_since = Some(self.game_turn);
+            }
+        } else {
+            self.layforce_alexandria_since = None;
+        }
     }
 
     /// §27.35 Game-Turn upkeep: eliminate any in-play raider that did not draw Water during the
