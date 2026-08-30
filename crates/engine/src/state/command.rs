@@ -37,6 +37,16 @@ pub enum Command {
         to: HexCoord,
         mode: MoveMode,
     },
+    /// §31: move the Rommel counter one hex to an adjacent `to` (Movement & Combat Phase). He moves
+    /// as a motorized medium truck, spending his 60-CP Movement Allowance; he may not enter an enemy
+    /// Zone of Control unoccupied by a Friendly unit (a normal move).
+    MoveRommel { to: HexCoord },
+    /// §31.2: Rommel reacts/retreats one hex to an adjacent `to`, which may pass through an enemy
+    /// Zone of Control "with impunity" (before an assault reaches his hex).
+    RetreatRommel { to: HexCoord },
+    /// §31.4: designate the co-located `unit` to receive Rommel's +5 CPA this Operations Stage
+    /// (he must be with it at the start of the stage and remain — see `rommel_cpa_bonus`).
+    DesignateRommelUnit { unit: UnitId },
     /// Move a whole formation (a parent counter plus its attached units) one hex. The
     /// parent counter moves and the attached units ride along; over-expenditure is judged
     /// against the formation CPA (§6.15, the slowest member).
@@ -466,6 +476,11 @@ pub enum CommandOutcome {
     /// first-line Truck Points (Light, Medium, Heavy), and its §6.17 motorized CPA if it is now
     /// leg infantry fully carried by them (`None` = not motorized).
     TrucksAssigned { light: u32, medium: u32, heavy: u32, motorized_cpa: Option<i32> },
+    /// §31: the Rommel counter moved/retreated to `hex`, with `mcp_left` tenths of a CP remaining
+    /// this Operations Stage.
+    RommelMoved { hex: HexCoord, mcp_left: u32 },
+    /// §31.4: a unit was designated to receive Rommel's +5 CPA this Operations Stage.
+    RommelUnitDesignated,
     /// §52.16/§52.17: whether a well was poisoned / sweetened.
     WellPoisoned(bool),
     WellSweetened(bool),
@@ -549,6 +564,12 @@ pub enum CommandError {
     InsufficientTrucks,
     /// §53.11: cannot release Truck Points that still carry loaded supply (unload it first).
     TrucksLoadedCannotRelease,
+    /// §31: the Rommel counter is not present on the map (absent from the scenario, not yet
+    /// arrived, or recalled to Germany this Game-Turn).
+    RommelNotPresent,
+    /// §31: Rommel cannot make the requested move (target not adjacent/on-map, blocked by an enemy
+    /// Zone of Control, or not enough Movement Allowance left this stage).
+    RommelCannotMove,
     WrongPhase,
     UnitNotOnMap,
     NotAdjacent,
@@ -700,6 +721,9 @@ impl GameState {
     pub fn apply(&mut self, command: Command) -> Result<CommandOutcome, CommandError> {
         match command {
             Command::MoveStep { unit, to, mode } => self.move_step(unit, to, mode),
+            Command::MoveRommel { to } => self.cmd_move_rommel(to, false),
+            Command::RetreatRommel { to } => self.cmd_move_rommel(to, true),
+            Command::DesignateRommelUnit { unit } => self.cmd_designate_rommel_unit(unit),
             Command::FormationMove { formation, to, mode } => {
                 self.formation_move(formation, to, mode)
             }
@@ -1640,6 +1664,66 @@ impl GameState {
             light: t.light, medium: t.medium, heavy: t.heavy,
             motorized_cpa: self.unit_motorized_cpa(unit),
         })
+    }
+
+    /// §31 MoveRommel / RetreatRommel: move the Rommel counter one hex to adjacent `to` (Movement &
+    /// Combat Phase, on the Axis turn). A normal move (`retreat=false`) spends his motorized
+    /// medium-truck cost from his 60-CP stage allowance and may not enter an enemy ZOC unoccupied by
+    /// a Friendly unit; a §31.2 retreat (`retreat=true`) passes through enemy ZOC "with impunity" and
+    /// spends no allowance (it is a reaction before assault). Moving off his start-of-stage hex
+    /// forfeits any §31.4 CPA designation.
+    fn cmd_move_rommel(&mut self, to: HexCoord, retreat: bool) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::terrain::MoveCost;
+        use crate::reference::units::Side;
+        use crate::rules::movement::{step_cost, MoveMode};
+        self.require_phase(Phase::MovementAndCombat)?;
+        if self.active_player != Side::Axis {
+            return Err(CommandError::WrongPhase);
+        }
+        let from = self.rommel_hex().ok_or(CommandError::RommelNotPresent)?;
+        if !self.map.neighbors(from).any(|n| n == to) {
+            return Err(CommandError::RommelCannotMove);
+        }
+        if !retreat {
+            let friendly = self
+                .units_in_hex(to)
+                .into_iter()
+                .any(|x| self.unit(x).is_some_and(|u| u.nationality.side() == Side::Axis));
+            if self.hex_in_zoc_of(to, Side::Commonwealth) && !friendly {
+                return Err(CommandError::RommelCannotMove);
+            }
+        }
+        let cost = match step_cost(&self.reference, &self.map, from, to, MoveMode::Motorized) {
+            Some(MoveCost::Cost(f)) => f.0.max(0) as u32,
+            _ => return Err(CommandError::RommelCannotMove), // Prohibited / EntireCpa / off-map
+        };
+        let r = self.rommel.as_mut().ok_or(CommandError::RommelNotPresent)?;
+        if !retreat {
+            if cost > r.mcp_left {
+                return Err(CommandError::RommelCannotMove);
+            }
+            r.mcp_left -= cost;
+        }
+        r.hex = Some(to);
+        if r.hex != r.stage_start_hex {
+            r.cpa_unit = None; // §31.4: he no longer "remains" with the designated unit
+        }
+        let mcp_left = r.mcp_left;
+        Ok(CommandOutcome::RommelMoved { hex: to, mcp_left })
+    }
+
+    /// §31.4 DesignateRommelUnit: nominate the co-located `unit` for Rommel's +5 CPA this Operations
+    /// Stage. Valid only while Rommel is at the hex he began the stage in and the unit shares it.
+    fn cmd_designate_rommel_unit(&mut self, unit: UnitId) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::MovementAndCombat)?;
+        let rhex = self.rommel_hex().ok_or(CommandError::RommelNotPresent)?;
+        let at_start = self.rommel.as_ref().is_some_and(|r| r.hex == r.stage_start_hex);
+        let co_located = self.unit(unit).ok_or(CommandError::UnitNotFound)?.hex() == Some(rhex);
+        if !at_start || !co_located {
+            return Err(CommandError::RommelCannotMove);
+        }
+        self.rommel.as_mut().unwrap().cpa_unit = Some(unit);
+        Ok(CommandOutcome::RommelUnitDesignated)
     }
 
     /// §40.2 DesignateCap: commit `planes` fighters of a located squadron to Combat Air Patrol over

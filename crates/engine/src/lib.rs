@@ -2457,6 +2457,115 @@ mod tests {
     }
 
     #[test]
+    fn rommel_cpa_designation_and_recall_31_4() {
+        // §31.4: Rommel grants +5 CPA to one designated co-located unit while he stays with it;
+        // §31 recall (in Germany) suspends it; moving off his start-of-stage hex forfeits it.
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, RommelState};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_unit_characteristics(
+            Nationality::German,
+            include_str!("../../../data/reference/unit-characteristics/german.ron"),
+        )
+        .unwrap();
+        let mut g = GameState::new(refs, 1);
+        let hex = HexCoord::new(5, 5);
+        let u = g.spawn_unit(Nationality::German, "h", "II/104", Composition::Organic { current_toe: 5 });
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(hex));
+        assert_eq!(g.effective_cpa(u), Some(10), "code h leg infantry CPA");
+
+        g.rommel = Some(RommelState {
+            arrival_game_turn: 1, start_hex: Some(hex), hex: Some(hex), in_germany: false,
+            mcp_left: 600, stage_start_hex: Some(hex), cpa_unit: None,
+        });
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Axis;
+
+        // Designating a non-co-located unit is rejected; the co-located one is accepted.
+        let elsewhere = g.spawn_unit(Nationality::German, "h", "far", Composition::Organic { current_toe: 5 });
+        g.unit_mut(elsewhere).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(9, 9)));
+        assert_eq!(g.apply(Command::DesignateRommelUnit { unit: elsewhere }), Err(CommandError::RommelCannotMove));
+        assert_eq!(g.apply(Command::DesignateRommelUnit { unit: u }), Ok(CommandOutcome::RommelUnitDesignated));
+        assert_eq!(g.effective_cpa(u), Some(15), "§31.4 +5");
+
+        // §31 recall suspends every Rommel effect this Game-Turn.
+        g.rommel.as_mut().unwrap().in_germany = true;
+        assert_eq!(g.effective_cpa(u), Some(10));
+        g.rommel.as_mut().unwrap().in_germany = false;
+        assert_eq!(g.effective_cpa(u), Some(15));
+
+        // §31.4: if Rommel leaves the hex he began the stage in, the bonus lapses.
+        g.rommel.as_mut().unwrap().hex = Some(HexCoord::new(6, 5));
+        assert_eq!(g.effective_cpa(u), Some(10));
+    }
+
+    #[test]
+    fn rommel_moves_and_retreats_through_zoc_31() {
+        // §31.0-1/§31.2: the Rommel counter moves as a motorized medium truck spending his 60-CP
+        // allowance and is blocked by an enemy ZOC on a normal move, but may retreat through it.
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, RommelState};
+        use crate::state::map::HexId;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        for s in [
+            include_str!("../../../data/maps/section-a.ron"),
+            include_str!("../../../data/maps/section-b.ron"),
+            include_str!("../../../data/maps/section-c.ron"),
+            include_str!("../../../data/maps/section-d.ron"),
+            include_str!("../../../data/maps/section-e.ron"),
+        ] {
+            g.map.load_section(s).unwrap();
+        }
+        let start = HexId::parse("C3617").unwrap().to_hex_coord();
+        g.rommel = Some(RommelState {
+            arrival_game_turn: 1, start_hex: Some(start), hex: Some(start), in_germany: false,
+            mcp_left: 600, stage_start_hex: Some(start), cpa_unit: None,
+        });
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Axis;
+
+        // Pick an on-map neighbour to move into, and a second CW-occupied hex adjacent to it so the
+        // target lies in a Commonwealth ZOC.
+        let target = g.map.neighbors(start).find(|&h| g.map.terrain(h).is_some()).expect("a neighbour on map");
+        let cw_hex = g.map.neighbors(target).find(|&h| h != start && g.map.terrain(h).is_some()).expect("a second neighbour");
+        let cw = g.spawn_unit(Nationality::Commonwealth, "k", "guard", Composition::Organic { current_toe: 5 });
+        g.unit_mut(cw).unwrap().location = Some(UnitLocation::OnMap(cw_hex));
+
+        if g.hex_in_zoc_of(target, Side::Commonwealth) {
+            // §31.2: a normal move into the enemy ZOC is blocked, but a retreat passes with impunity.
+            assert_eq!(g.apply(Command::MoveRommel { to: target }), Err(CommandError::RommelCannotMove));
+            match g.apply(Command::RetreatRommel { to: target }) {
+                Ok(CommandOutcome::RommelMoved { hex, mcp_left }) => {
+                    assert_eq!(hex, target);
+                    assert_eq!(mcp_left, 600, "a retreat spends no Movement Allowance");
+                }
+                other => panic!("unexpected: {other:?}"),
+            }
+        } else {
+            // No ZOC on the target: a normal move succeeds and spends Movement Allowance.
+            match g.apply(Command::MoveRommel { to: target }) {
+                Ok(CommandOutcome::RommelMoved { hex, mcp_left }) => {
+                    assert_eq!(hex, target);
+                    assert!(mcp_left < 600, "a normal move spends Movement Allowance");
+                }
+                other => panic!("unexpected: {other:?}"),
+            }
+        }
+        // A distant, non-adjacent target is always rejected (Rommel moves one hex at a time).
+        assert_eq!(
+            g.apply(Command::MoveRommel { to: HexId::parse("E3613").unwrap().to_hex_coord() }),
+            Err(CommandError::RommelCannotMove)
+        );
+    }
+
+    #[test]
     fn deploy_formation_builds_hierarchy() {
         use crate::state::game::GameState;
         use crate::state::map::HexCoord;

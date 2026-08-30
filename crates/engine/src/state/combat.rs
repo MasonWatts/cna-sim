@@ -974,12 +974,15 @@ impl GameState {
         }
     }
 
-    /// Whether a side has any unit stacked with General Rommel (§17.28).
+    /// Whether a side has any unit stacked with General Rommel (§31.3 / §17.28) — either the Rommel
+    /// counter is present-on-map (§31) in a participating unit's hex, or a unit carries the explicit
+    /// `with_rommel` marker.
     fn side_has_rommel(&self, units: &[UnitId]) -> bool {
+        let rommel_hex = self.rommel_hex();
         units
             .iter()
             .filter_map(|id| self.units.get(id))
-            .any(|u| u.status.with_rommel)
+            .any(|u| u.status.with_rommel || (rommel_hex.is_some() && u.hex() == rommel_hex))
     }
 
     /// Unit-size column shift (§15.5): §15.51 double-strength (+2 to the side with ≥2× the

@@ -237,6 +237,14 @@ fn default_turn() -> u32 {
 }
 
 #[derive(Deserialize)]
+/// §31 Rommel placement in a scenario: his starting hex and the Game-Turn his counter enters.
+struct RommelPlacement {
+    hex: String,
+    #[serde(default = "default_turn")]
+    arrival_game_turn: u32,
+}
+
+#[derive(Deserialize)]
 struct ScenarioData {
     #[allow(dead_code)]
     name: String,
@@ -244,8 +252,10 @@ struct ScenarioData {
     game_turn: u32,
     #[serde(default)]
     first_turn_initiative: Option<Side>,
+    /// §31: Rommel's counter, if this scenario includes it — his starting hex and the Game-Turn he
+    /// arrives (`arrival_game_turn`). Omit when Rommel is not in the scenario.
     #[serde(default)]
-    rommel_on_map: bool,
+    rommel: Option<RommelPlacement>,
     /// Formations deployed from the Order of Battle (§4.44) at a hex.
     #[serde(default)]
     placements: Vec<Placement>,
@@ -381,7 +391,24 @@ impl GameState {
         let data: ScenarioData = ron::from_str(ron_str).map_err(ScenarioError::Ron)?;
         self.game_turn = data.game_turn;
         self.first_turn_initiative = data.first_turn_initiative;
-        self.rommel_on_map = data.rommel_on_map;
+        // §31: place the Rommel counter, if the scenario includes it.
+        self.rommel = match data.rommel {
+            Some(rp) => {
+                let start = HexId::parse(&rp.hex)
+                    .ok_or_else(|| ScenarioError::BadHex(rp.hex.clone()))?
+                    .to_hex_coord();
+                Some(crate::state::game::RommelState {
+                    arrival_game_turn: rp.arrival_game_turn,
+                    start_hex: Some(start),
+                    hex: None,
+                    in_germany: false,
+                    mcp_left: 0,
+                    stage_start_hex: None,
+                    cpa_unit: None,
+                })
+            }
+            None => None,
+        };
 
         // Pass 1: spawn every unit and record its name -> id.
         let mut by_name: HashMap<&str, crate::state::unit::UnitId> = HashMap::new();

@@ -181,7 +181,7 @@ Target: a legal, playable, machine-refereed simplified Land Game.
 - ~~Full Logistics Game (§§48–58), Air Game (§§33–47)~~ — **now substantially built ahead
   of the original phasing** (D15; air, naval, and full-logistics status in §8.5–8.7).
 - Detailed naval fleet/coastal shipping/chariot raids (§30), desert raiders &
-  commandos (§27), Rommel special rules (§31).
+  commandos (§27). (~~Rommel special rules (§31)~~ — **now implemented**, see §8.2.)
 - Full construction/engineers/minefields/fortifications (§§23–26) — partial first.
 - Detailed prisoners (§28), repair (§22), breakdown (§21) — simplified first.
 - Fog-of-war enforcement (§3.5).
@@ -287,6 +287,14 @@ test confirms previously-`NoTable` commands (production) now resolve from the bo
 the shared setup + A/B blocks:
 - **Initiative Determination** (§7): d6 + Initiative Rating per side, ties re-roll, GT1
   optionally predetermined; the Axis rating is state-derived (Rommel-on-map / any German).
+- **General Rommel (§31)** is modeled as a full moving counter (`RommelState`): a non-combat vehicle
+  with a 60-CP Movement Allowance (`MoveRommel`, motorized medium-truck cost, blocked by enemy ZOC)
+  that may `RetreatRommel` through an enemy ZOC with impunity (§31.2). Scenario-placed (hex + arrival
+  Game-Turn); when present-on-map he sets the Axis Initiative Rating to 6 (§7.2), gives his stack +1
+  combat Morale (§31.3, via co-location), and grants +5 CPA to one `DesignateRommelUnit`-nominated
+  co-located unit that he stays with the whole stage (§31.4, owner ruling: a single unit). At each
+  Game-Turn start a 2d6 recall roll (=12) sends him to Germany for that turn — suspending **all** the
+  above (owner ruling), dropping the Axis rating to the German value (3).
 - **Pre-turn sequence** (once/turn): Strategic Air Designation → Malta Availability → Strategic
   Mission Assignment → Malta Raid → Naval Convoy Schedule → Convoy Resolution.
 - **Three Operations Stages**, each: Weather → Naval Convoy Arrival → Organization →
@@ -303,7 +311,7 @@ unused-replacement VP; §64.75 CW withdrawal VP; §64.76 band), with §64.71/§6
 including the one-full-turn objective-hold check. (The scenario-level §60.8 victory is not
 separately modeled.)
 
-### 8.3 Command boundary — ~59 commands, phase-gated
+### 8.3 Command boundary — ~62 commands, phase-gated
 `GameState::apply` covers land movement/combat, air, naval, logistics, and construction. Land:
 `MoveStep`/`FormationMove`, `Barrage`/`AntiArmor`/`CloseAssault`/`Retreat`, `React`,
 `MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply`, `PoisonWell`/`SweetenWell`.

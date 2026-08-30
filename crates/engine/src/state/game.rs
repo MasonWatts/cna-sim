@@ -410,6 +410,28 @@ pub struct PendingReplacement {
     pub assigned_to: Option<UnitId>,
 }
 
+/// General Rommel's counter (§31): a non-combat vehicle (treated as a 4-wheel-drive medium truck,
+/// §31.0-1) with a 60-CP Movement Allowance and no combat ratings. He enters at `arrival_game_turn`
+/// at `start_hex` (scenario-placed), then occupies `hex`. `in_germany` is set for a Game-Turn by the
+/// §31 recall roll (2d6 = 12), suspending all his effects that turn. `mcp_left` (tenths of a CP) is
+/// his remaining movement this Operations Stage; `stage_start_hex` is where he began it (§31.4 needs
+/// him to remain the whole stage); `cpa_unit` is the one unit he grants +5 CPA (§31.4, owner ruling).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RommelState {
+    pub arrival_game_turn: u32,
+    pub start_hex: Option<HexCoord>,
+    #[serde(default)]
+    pub hex: Option<HexCoord>,
+    #[serde(default)]
+    pub in_germany: bool,
+    #[serde(default)]
+    pub mcp_left: u32,
+    #[serde(default)]
+    pub stage_start_hex: Option<HexCoord>,
+    #[serde(default)]
+    pub cpa_unit: Option<UnitId>,
+}
+
 /// Truck Points scheduled to arrive (§20.78A / §20.66a): both the Commonwealth rolled Truck
 /// Production and Axis planned Truck Production land in the side's free-truck pool at the Naval
 /// Convoy Arrival Phase of a future Operations Stage (CW +4 Game-Turns at Alexandria; Axis +2).
@@ -629,10 +651,11 @@ pub struct GameState {
     /// §III.A declaration; defaults to the Initiative player each stage.
     #[serde(default = "default_side")]
     pub player_a: Side,
-    /// Whether the Rommel counter is on the game-maps (drives the Axis Initiative Rating,
-    /// §7.2). Set by the scenario / when Rommel arrives.
+    /// General Rommel (§31): a non-combat moving counter, present once the scenario grants it.
+    /// `None` = the Rommel counter is not in this scenario. Drives the Axis Initiative Rating
+    /// (§7.2), the §31.3 stack-morale bonus, and the §31.4 CPA bonus — see `rommel_on_map`.
     #[serde(default)]
-    pub rommel_on_map: bool,
+    pub rommel: Option<RommelState>,
     /// The predetermined Initiative for the first Game-Turn (§7.15), if the scenario sets
     /// it; otherwise the first turn is rolled like any other.
     #[serde(default)]
@@ -846,7 +869,7 @@ impl GameState {
             initiative: Side::Commonwealth,
             active_player: Side::Commonwealth,
             player_a: Side::Commonwealth,
-            rommel_on_map: false,
+            rommel: None,
             first_turn_initiative: None,
             weather: Weather::Normal,
             weather_by_section: HashMap::new(),
@@ -1240,9 +1263,28 @@ impl GameState {
 
     /// The CPA that governs a unit's movement this stage: the §6.17 motorized CPA (the truck's,
     /// when leg infantry is fully carried by attached Truck Points) if it applies, otherwise the
-    /// unit's own basic CPA.
+    /// unit's own basic CPA — plus the §31.4 Rommel +5 bonus for his designated unit.
     pub fn effective_cpa(&self, id: UnitId) -> Option<i32> {
-        self.unit_motorized_cpa(id).or_else(|| self.unit_cpa(id))
+        let base = self.unit_motorized_cpa(id).or_else(|| self.unit_cpa(id))?;
+        Some(base + self.rommel_cpa_bonus(id))
+    }
+
+    /// §31.4: +5 CPA for the one unit Rommel is designated to accompany this Operations Stage —
+    /// applies only while Rommel is present (not recalled, §31 recall), co-located with the unit,
+    /// and has remained in the hex he began the stage in ("remains with that unit for the entire
+    /// Operations Stage"). If Rommel moves away the bonus lapses.
+    pub fn rommel_cpa_bonus(&self, id: UnitId) -> i32 {
+        let Some(r) = self.rommel.as_ref() else {
+            return 0;
+        };
+        if !self.rommel_on_map() || r.cpa_unit != Some(id) || r.hex != r.stage_start_hex {
+            return 0;
+        }
+        if r.hex.is_some() && self.unit(id).and_then(|u| u.hex()) == r.hex {
+            5
+        } else {
+            0
+        }
     }
 
     /// Maximum Supply Points the unit's attached Truck Points could carry of each commodity, if
@@ -5498,6 +5540,14 @@ impl GameState {
     /// per-Operations-Stage allowance, §6.2), default the §III.A declaration to
     /// "Initiative player moves first", then enter the first stage step.
     pub fn begin_operations_stage(&mut self) {
+        // §31: refresh Rommel's 60-CP Movement Allowance (600 tenths) for the new stage, record
+        // where he begins it (§31.4 requires him to remain the whole stage), and clear the previous
+        // stage's +5-CPA designation.
+        if let Some(r) = self.rommel.as_mut() {
+            r.mcp_left = 600;
+            r.stage_start_hex = r.hex;
+            r.cpa_unit = None;
+        }
         // §52.24: reset the per-stage pipeline-construction allowance.
         self.pipeline_built_this_stage.clear();
         // §26.23: dummy minefields revealed last stage are now removed.
@@ -5613,6 +5663,7 @@ impl GameState {
             self.process_arrivals();
             self.process_replacement_arrivals();
             self.process_truck_arrivals();
+            self.place_rommel_if_arrived(); // §31: the Rommel counter arrives with reinforcements
         }
     }
 
@@ -5620,6 +5671,9 @@ impl GameState {
     /// adds its Initiative Rating (§7.2); the higher total wins, ties re-roll. The first
     /// Game-Turn may be predetermined by the scenario (§7.15, `first_turn_initiative`).
     fn determine_initiative(&mut self) {
+        // §31 recall: resolve whether Rommel is in Germany this Game-Turn before rolling Initiative
+        // (it lowers the Axis Initiative Rating to the German value when he is away).
+        self.roll_rommel_recall();
         if self.game_turn == 1 {
             if let Some(side) = self.first_turn_initiative {
                 self.initiative = side;
@@ -5658,7 +5712,7 @@ impl GameState {
         let Some(r) = self.reference.initiative_ratings.as_ref() else {
             return 0;
         };
-        if self.rommel_on_map {
+        if self.rommel_on_map() {
             r.axis_rommel
         } else if self
             .units
@@ -5668,6 +5722,55 @@ impl GameState {
             r.axis_german
         } else {
             r.axis_minimal
+        }
+    }
+
+    /// §31: whether the Rommel counter is present and active on the game-maps this Game-Turn —
+    /// he exists in the scenario, has arrived, is placed on a hex, and has not been recalled to
+    /// Germany (§31 recall). All of Rommel's effects (§7.2 initiative, §31.3 morale, §31.4 CPA)
+    /// are gated on this.
+    pub fn rommel_on_map(&self) -> bool {
+        self.rommel.as_ref().is_some_and(|r| {
+            self.game_turn >= r.arrival_game_turn && r.hex.is_some() && !r.in_germany
+        })
+    }
+
+    /// §31: the hex the active Rommel counter occupies (`None` if absent / recalled / not arrived).
+    pub fn rommel_hex(&self) -> Option<HexCoord> {
+        if self.rommel_on_map() {
+            self.rommel.as_ref().and_then(|r| r.hex)
+        } else {
+            None
+        }
+    }
+
+    /// §31 recall roll — at the start of a Game-Turn in which Rommel is present and on the map, the
+    /// Axis Player rolls 2d6; on a 12 Rommel is in Germany for that Game-Turn (all his effects are
+    /// suspended, and the Axis Initiative Rating drops to the German value), else he is present.
+    /// Returns whether Rommel is in Germany this Game-Turn.
+    fn roll_rommel_recall(&mut self) -> bool {
+        let present = self
+            .rommel
+            .as_ref()
+            .is_some_and(|r| self.game_turn >= r.arrival_game_turn && r.hex.is_some());
+        if !present {
+            return false;
+        }
+        let recalled = self.rng.d6() as u32 + self.rng.d6() as u32 == 12;
+        if let Some(r) = self.rommel.as_mut() {
+            r.in_germany = recalled;
+        }
+        recalled
+    }
+
+    /// §31: bring the Rommel counter onto the map at its scenario `start_hex` on the Game-Turn it
+    /// arrives (called at the Naval Convoy Arrival Phase, like other reinforcements).
+    fn place_rommel_if_arrived(&mut self) {
+        let gt = self.game_turn;
+        if let Some(r) = self.rommel.as_mut() {
+            if r.hex.is_none() && gt >= r.arrival_game_turn {
+                r.hex = r.start_hex;
+            }
         }
     }
 }
@@ -5846,9 +5949,20 @@ mod tests {
         );
         g.unit_mut(ge).unwrap().location = Some(crate::state::unit::UnitLocation::OnMap(HexCoord::new(0, 0)));
         assert_eq!(g.axis_initiative_rating(), 3);
-        // Rommel on the maps -> 6.
-        g.rommel_on_map = true;
+        // Rommel on the maps -> 6 (§31: an arrived, placed, not-recalled counter).
+        g.rommel = Some(RommelState {
+            arrival_game_turn: 1,
+            start_hex: Some(HexCoord::new(0, 0)),
+            hex: Some(HexCoord::new(0, 0)),
+            in_germany: false,
+            mcp_left: 0,
+            stage_start_hex: None,
+            cpa_unit: None,
+        });
         assert_eq!(g.axis_initiative_rating(), 6);
+        // §31 recall: in Germany this Game-Turn -> falls back to the German rating (3).
+        g.rommel.as_mut().unwrap().in_germany = true;
+        assert_eq!(g.axis_initiative_rating(), 3);
     }
 
     #[test]
