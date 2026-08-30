@@ -586,6 +586,9 @@ pub enum CommandError {
     DropZoneIllegal,
     /// §42.48: the unit was airdropped within the last 12 Operations Stages and may not drop again.
     AirdropOnCooldown,
+    /// §44.23/§44.41: this Malta Availability Level is not allowed for the scenario, or has already
+    /// been used its maximum number of Game-Turns.
+    MaltaLevelUnavailable,
     /// §38.36: no Stores Point is present at the squadron's base to pay for the refit attempt.
     InsufficientStores,
     /// §35.14: the SGSU lacks its own upkeep and may not repair (refit) its planes this stage.
@@ -1934,9 +1937,33 @@ impl GameState {
         level: u32,
         roll: u32,
     ) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::squadron::MaltaCommitment;
         self.require_phase(Phase::MaltaAvailabilityDetermination)?;
-        let table = self.reference.malta_availability.as_ref().ok_or(CommandError::NoTable)?;
-        Ok(CommandOutcome::MaltaAvailability(table.cell(roll, level)))
+        if !(1..=4).contains(&level) {
+            return Err(CommandError::MaltaLevelUnavailable);
+        }
+        // §44.23/§44.41: no Availability Level may be used more Game-Turns than the scenario's
+        // commitment chart allows. Level I is always unlimited (§44.25).
+        if let Some(chart) = self.reference.malta_commitment.as_ref() {
+            match chart.commitment(&self.scenario_name, level) {
+                Some(MaltaCommitment::NotAllowed) => return Err(CommandError::MaltaLevelUnavailable),
+                Some(MaltaCommitment::Turns(limit)) => {
+                    if self.malta_level_used.get(&level).copied().unwrap_or(0) >= limit {
+                        return Err(CommandError::MaltaLevelUnavailable);
+                    }
+                }
+                _ => {} // Unlimited, or scenario/level not listed — not limited here.
+            }
+        }
+        let cell = self
+            .reference
+            .malta_availability
+            .as_ref()
+            .ok_or(CommandError::NoTable)?
+            .cell(roll, level);
+        // §44.29: the level counts as used this Game-Turn whether or not the raid is flown.
+        *self.malta_level_used.entry(level).or_insert(0) += 1;
+        Ok(CommandOutcome::MaltaAvailability(cell))
     }
 
     /// §38.34 RefitSquadron: gated to the Land Support Air Phase (Tactical Maintenance Segment);

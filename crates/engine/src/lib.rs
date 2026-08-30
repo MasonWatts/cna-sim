@@ -5473,6 +5473,35 @@ mod tests {
     }
 
     #[test]
+    fn malta_commitment_enforcement_44_41() {
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+
+        let mut refs = ReferenceData::new();
+        refs.load_malta_availability(include_str!("../../../data/reference/malta-availability.ron")).unwrap();
+        refs.load_malta_commitment(include_str!("../../../data/reference/malta-commitment.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.scenario_name = "Crusader".to_string(); // Level III = Turns(2), Level II = Turns(4)
+        g.phase = Phase::MaltaAvailabilityDetermination;
+
+        let avail = |level| Command::DetermineMaltaAvailability { level, roll: 7 };
+        // §44.23: Level III may be used at most 2 Game-Turns in Crusader.
+        assert!(matches!(g.apply(avail(3)), Ok(CommandOutcome::MaltaAvailability(_))));
+        assert!(matches!(g.apply(avail(3)), Ok(CommandOutcome::MaltaAvailability(_))));
+        assert_eq!(g.apply(avail(3)), Err(CommandError::MaltaLevelUnavailable));
+        assert_eq!(*g.malta_level_used.get(&3).unwrap(), 2);
+        // §44.25: Level I is unlimited — always usable.
+        for _ in 0..5 {
+            assert!(matches!(g.apply(avail(1)), Ok(_)));
+        }
+        // A level marked "na" for the scenario is not allowed at all (Graziani's Level II).
+        g.scenario_name = "Graziani's Offensive".to_string();
+        assert_eq!(g.apply(avail(2)), Err(CommandError::MaltaLevelUnavailable));
+        // Out-of-range level is rejected.
+        assert_eq!(g.apply(avail(5)), Err(CommandError::MaltaLevelUnavailable));
+    }
+
+    #[test]
     fn flak_destruction_41_33() {
         use crate::reference::units::Side;
         use crate::state::game::GameState;

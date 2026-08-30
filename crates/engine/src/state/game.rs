@@ -453,6 +453,11 @@ pub fn replacement_class_for_item(item: &str) -> Option<ReplacementClass> {
     Some(ReplacementClass::Gun)
 }
 
+/// Default scenario identifier (serde) — the full Campaign Game.
+fn default_scenario() -> String {
+    "Campaign Game".to_string()
+}
+
 /// Result of evaluating the campaign victory conditions (§64.7): occupation-point totals,
 /// the leading side, and the §64.76 victory level.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -674,6 +679,14 @@ pub struct GameState {
     /// may not be airdropped more than once per 12 Operations Stages (a month).
     #[serde(default)]
     pub airdrop_last_stage: std::collections::HashMap<UnitId, u32>,
+    /// The scenario identifier, used for per-scenario limits (e.g. the §44.41 Malta Strategic
+    /// Airforce Commitment Chart). Defaults to the full Campaign Game.
+    #[serde(default = "default_scenario")]
+    pub scenario_name: String,
+    /// §44.23/§44.41: how many Game-Turns each Axis Malta Availability Level (1–4) has been used —
+    /// no level may be used more Game-Turns than the commitment chart allows for the scenario.
+    #[serde(default)]
+    pub malta_level_used: std::collections::HashMap<u32, u32>,
     /// Replacement Points consumed (absorbed) so far, per side — for the §64.74 unused-
     /// replacement victory points.
     #[serde(default)]
@@ -823,6 +836,8 @@ impl GameState {
             cap_patrols: Vec::new(),
             pilots: Vec::new(),
             airdrop_last_stage: std::collections::HashMap::new(),
+            scenario_name: default_scenario(),
+            malta_level_used: std::collections::HashMap::new(),
             replacements_used: std::collections::HashMap::new(),
             withdrawn: std::collections::HashMap::new(),
             withdrawal_banked: 0,

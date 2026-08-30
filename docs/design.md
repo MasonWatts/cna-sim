@@ -377,12 +377,18 @@ the OA sheet — the Folgore/Ramcke airborne units) into a legal §42.43/44 drop
 needed at the target), honoring stacking and the §42.48 once-per-12-stages limit. **Scramble (§40.3):** when no CAP covers a bombing target, an enemy fighter base
 within Scramble-Table range (§40.4) may scramble to intercept — the first eligible squadron rolls a
 d6 and, on success (§40.33), its ready fighters fly and intercept (`scramble_interception`). **Still
-not computed from the map:** multi-hex flight **path/ZOC routing** (so the §40.33 clear-path rule is
-not enforced) and fuel gating at execution; defensive-CAP engagement choice; land-unit air recon
-(waits on fog-of-war); a precise per-plane cargo-tonnage cap and the §42.47 no-over-CPA drop-stage
-restriction; convoy/port strafing; and Med-basing/Malta-commitment enforcement (§43/§44.41). (The
-airborne formations — Folgore/Ramcke — are not yet in the loaded OB, so `AirdropUnit` is exercisable
-only via test units until they are promoted.) A **pilot
+not computed from the map (a deliberate operational abstraction, project-owner ruling 2026-08-29,
+matching the rulebook's "air combat is resolved on an operational level, with much abstracted"):**
+multi-hex flight path/ZOC routing (so the §40.33 clear-path rule is not enforced), fuel gating at
+execution, defensive-CAP engagement choice, per-plane pilot ratings (a per-flight best is used), and
+a precise per-plane cargo-tonnage cap / the §42.47 no-over-CPA drop-stage restriction. Land-unit air
+recon waits on fog-of-war. **Malta strategic-air commitment (§44.41) is enforced:** each Axis Malta
+Availability Level (I–IV) is limited to the scenario's Game-Turn count (the §44.41 chart), tracked in
+`malta_level_used` and gated at `DetermineMaltaAvailability` (Level I unlimited, §44.25). Still open:
+the §43 Med-basing region model (Italy/Sicily vs Africa vs Crete per-squadron basing + the §43.11–13
+commitment percentages) needed to compute the *absolute* Malta-raid plane counts. (The airborne
+formations — Folgore/Ramcke — are not yet in the loaded OB, so `AirdropUnit` is exercisable only via
+test units until they are promoted.) A **pilot
 roster** (`AssignPilot`, §40.12) is modeled: each squadron's best flyable pilot Rating
 (§40.15/§40.16) feeds into its CAP and scramble flights' TacAir; reassignment/retraining/recovery
 lockouts (§40.13/14/17) tick each Operations Stage; and **ace progression** (§40.18) is in — a
@@ -397,9 +403,12 @@ Ports (§55: efficiency, blocking §55.22, mining §55.27, San Giorgio §30.17),
 Fleet (§30: ships as gun-rating strength/damage, seaworthiness, repair cycle, at-sea/rest,
 bombardment), and the **convoy pipeline** (plan → bomb → deliver, one/lane/turn §56.12, tonnage
 from the Convoy Level Chart, survivors converted to supply points) all work end-to-end and are
-where reinforcements enter (Naval Convoy Arrival Phase). Consistent with the game's abstraction,
-there is **no sea-movement/interdiction/submarine model** — convoys are planned tonnages
-attacked only by air; the §42.53 size-class reveal is a rule helper not yet used by recon.
+where reinforcements enter (Naval Convoy Arrival Phase). **This abstraction is the faithful model,
+not a shortcut** (rulebook §56.11: "the Shipping Lanes are not printed on the game map … identified
+by their ports of origin and destination"; §56.12: "a convoy is the total tonnage assigned to a
+Shipping Lane"). So there is deliberately **no hex-placed convoy / sea-movement model** — convoys
+are lane tonnages attacked only by air (§41.6), and on-map convoy strafing does not apply. The
+§42.53 size-class reveal is a rule helper not yet used by recon.
 
 ### 8.7 Logistics (full game, D15) — increments 1–8 built; production (§20) is the gap
 The §32 abstract supply mode has been fully removed as D15 directed; the interim coarse
