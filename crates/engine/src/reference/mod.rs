@@ -187,8 +187,8 @@ impl ReferenceData {
     ///
     /// The `.ron` files are embedded at compile time (`include_str!`) and are already validated by
     /// the per-loader unit tests, so a parse failure here is a build-time data regression — hence
-    /// `expect`. The German Order of Battle is not yet promoted to `data/ob/`, so only the Italian
-    /// and Commonwealth OBs load.
+    /// `expect`. All three Orders of Battle load; the German OB is a curated subset (six DAK
+    /// formations) pending fuller §4.44c promotion.
     pub fn load_campaign() -> Self {
         let mut r = Self::new();
         macro_rules! load {
@@ -262,6 +262,7 @@ impl ReferenceData {
         load!(load_aircraft_chart, Nationality::German, "../../../../data/reference/aircraft/german.ron");
         load!(load_aircraft_chart, Nationality::Italian, "../../../../data/reference/aircraft/italian.ron");
         load!(load_aircraft_chart, Nationality::Commonwealth, "../../../../data/reference/aircraft/commonwealth.ron");
+        load!(load_order_of_battle, Nationality::German, "../../../../data/ob/german.ron");
         load!(load_order_of_battle, Nationality::Italian, "../../../../data/ob/italian.ron");
         load!(load_order_of_battle, Nationality::Commonwealth, "../../../../data/ob/commonwealth.ron");
 

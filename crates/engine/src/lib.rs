@@ -2215,6 +2215,11 @@ mod tests {
         let mut refs = ReferenceData::new();
         let nations = [
             (
+                Nationality::German,
+                include_str!("../../../data/reference/weapons/german.ron"),
+                include_str!("../../../data/ob/german.ron"),
+            ),
+            (
                 Nationality::Italian,
                 include_str!("../../../data/reference/weapons/italian.ron"),
                 include_str!("../../../data/ob/italian.ron"),
@@ -2254,6 +2259,11 @@ mod tests {
         use std::collections::HashSet;
         let mut refs = ReferenceData::new();
         let nations = [
+            (
+                Nationality::German,
+                include_str!("../../../data/reference/unit-characteristics/german.ron"),
+                include_str!("../../../data/ob/german.ron"),
+            ),
             (
                 Nationality::Italian,
                 include_str!("../../../data/reference/unit-characteristics/italian.ron"),
@@ -2351,6 +2361,24 @@ mod tests {
             let u = folgore.units.iter().find(|u| u.abbr == hq).unwrap();
             assert!(!u.airdroppable, "{hq} should not be airdroppable");
         }
+    }
+
+    #[test]
+    fn loads_german_order_of_battle() {
+        let mut refs = ReferenceData::new();
+        refs.load_order_of_battle(Nationality::German, include_str!("../../../data/ob/german.ron"))
+            .unwrap();
+        let ob = refs.orders_of_battle.get(&Nationality::German).unwrap();
+        // Curated first cut: the six DAK combat formations.
+        assert_eq!(ob.formations.len(), 6);
+
+        // Fallschirmjaeger-Brigade Ramcke (§42.41): its five airborne battalions are airdrop-
+        // eligible; the brigade HQ is not. This gives the German side an AirdropUnit formation.
+        let ramcke = ob.formation("Fallschirmjaeger-Brigade Ramcke").expect("Ramcke");
+        let airborne = ramcke.units.iter().filter(|u| u.airdroppable).count();
+        assert_eq!(airborne, 5, "five Ramcke battalions airdroppable");
+        let hq = ramcke.units.iter().find(|u| u.abbr == "Ramcke").unwrap();
+        assert!(!hq.airdroppable, "the brigade HQ is not airdroppable");
     }
 
     #[test]
@@ -6875,10 +6903,10 @@ mod tests {
             assert!(r.aircraft_charts.contains_key(&n), "aircraft {n:?}");
             assert!(r.production_charts.contains_key(&n), "production {n:?}");
         }
-        // Italian + Commonwealth OB loaded; German OB is not yet promoted to data/ob/.
+        // All three OBs are loaded (German is a curated subset).
+        assert!(r.orders_of_battle.contains_key(&Nationality::German));
         assert!(r.orders_of_battle.contains_key(&Nationality::Italian));
         assert!(r.orders_of_battle.contains_key(&Nationality::Commonwealth));
-        assert!(!r.orders_of_battle.contains_key(&Nationality::German));
         assert!(!r.terrain.is_empty() && !r.hexsides.is_empty());
         assert!(!r.reinforcement_entry.is_empty());
 

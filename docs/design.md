@@ -513,13 +513,17 @@ Armoured's §60.41 covering screen with the main body at D3612). Both reinforcem
 **formation-internal arrivals** (later-arriving units of an on-map formation attach to their
 on-map parent at their scheduled game_turn/stage) and **whole-formation entry** (a formation not
 on-map at start enters at a resolved entry hex or off-map node), both resolving at the Naval
-Convoy Arrival Phase. Loaded OB: Italian Catanzaro/Marmarica/Cirene/Ariete/**185 Folgore**, Commonwealth 4th
-Indian/7th Armoured (ids/weapons/parents/org-size all test-validated). Folgore was promoted from the
-DRAFT §4.44b transcription (2026-08-29): its six airborne infantry battalions carry
-`airdroppable: true` (§42.41), and two OCR'd weapon names were normalized to canonical game keys
-(`47/32 Gun`→`47/32 Mod. 37`, `75/46 AA Gun`→`Heavy AA (75/46 Mod. 34)`) — provisional pending the
-physical sheet (D14). Remaining unit-data promotion (Italian border force, CW rear, and the entire
-**German OB** — no `data/ob/german.ron` exists yet, incl. the Ramcke airborne brigade) is tracked
+Convoy Arrival Phase. Loaded OB (all ids/weapons/parents/org-size test-validated): Italian
+Catanzaro/Marmarica/Cirene/Ariete/**185 Folgore**; Commonwealth 4th Indian/7th Armoured; **German
+(DAK)** — 5 Leichte/21 Panzer, Sonderverband 288, 15 Panzer, 164 & 90 Leichte Afrika, and
+**Fallschirmjaeger-Brigade Ramcke**. Folgore (2026-08-29) and the German OB (2026-08-30) were
+promoted from their DRAFT §4.44b/c transcriptions; both flag their airborne battalions
+`airdroppable: true` (§42.41), so each side has an `AirdropUnit` formation. The German OB is a
+**curated subset** (6 of ~11 DRAFT formations; the Oasis/Kampfgruppen/non-divisional-artillery/
+unassigned-flak lists are deferred) with all id codes assigned by unit category and **provisional
+(D14)** pending §4.46 verification; OCR'd weapon strings were mapped to canonical §4.47-49 keys
+(Panzer/Pak/artillery/Flak) or simplified to `Organic` where genuinely unkeyed (7.5cm light guns).
+Remaining unit-data promotion (Italian border force, CW rear, the deferred German lists) is tracked
 separately (§4.44 OB pipeline, D14).
 
 ## 9. Source-Material Transcription Practice
