@@ -95,5 +95,30 @@
                 (name: "II(L) Tank Bn", abbr: "II(L)", id: "k", comp: Weapons([("CV 33 (L3/35)", 1)]), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "Ariete (132nd) Div HQE"),
             ],
         ),
+        // 185 "Folgore" Airborne Division — §4.44b sheet, DRAFT-transcribed & promoted 2026-08-29.
+        // Basic Morale +1; whole division arrives GT94 stage 2. The airborne infantry battalions
+        // (id "v") are §42.41 airdrop-eligible per the OA sheet, so this formation makes the
+        // AirdropUnit command exercisable in a real scenario.
+        // PROVISIONAL (D14): OCR'd weapon names normalized to canonical game keys —
+        //   "47/32 Gun" -> "47/32 Mod. 37"; "75/46 AA Gun" -> "Heavy AA (75/46 Mod. 34)".
+        // OCR'd names/morale cleaned ("Div HO" -> "Div HQ", "I1/187" -> "II/187", "+I" -> +1).
+        // Verify against the physical §4.44b / §4.46 sheets when available.
+        (
+            name: "185 Folgore Airborne Division",
+            org_size: Division,
+            basic_morale: 1,
+            units: [
+                (name: "185th Folgore Div HQ",  abbr: "185 Folg", id: "b",  comp: Organic(Normal),                     org_size: Division,       arrival: Turn(game_turn: 94, stage: 2), parent: ""),
+                (name: "186th Airborne Regt HQ", abbr: "186",     id: "h",  comp: Weapons([("47/32 Mod. 37", 1)]),     org_size: StandardBrigade, arrival: Turn(game_turn: 94, stage: 2), parent: "185th Folgore Div HQ"),
+                (name: "V/186 Bn",               abbr: "V/186",   id: "v",  comp: Organic(Normal),                     org_size: Battalion,      arrival: Turn(game_turn: 94, stage: 2), parent: "186th Airborne Regt HQ", airdroppable: true),
+                (name: "VI/186 Bn",              abbr: "VI/186",  id: "v",  comp: Organic(Normal),                     org_size: Battalion,      arrival: Turn(game_turn: 94, stage: 2), parent: "186th Airborne Regt HQ", airdroppable: true),
+                (name: "VII/186 Bn",             abbr: "VII/186", id: "v",  comp: Organic(Normal),                     org_size: Battalion,      arrival: Turn(game_turn: 94, stage: 2), parent: "186th Airborne Regt HQ", airdroppable: true),
+                (name: "187th Airborne Regt HQ", abbr: "187",     id: "h",  comp: Weapons([("47/32 Mod. 37", 1)]),     org_size: StandardBrigade, arrival: Turn(game_turn: 94, stage: 2), parent: "185th Folgore Div HQ"),
+                (name: "II/187 Bn",              abbr: "II/187",  id: "v",  comp: Organic(Normal),                     org_size: Battalion,      arrival: Turn(game_turn: 94, stage: 2), parent: "187th Airborne Regt HQ", airdroppable: true),
+                (name: "IV/187 Bn",              abbr: "IV/187",  id: "v",  comp: Organic(Normal),                     org_size: Battalion,      arrival: Turn(game_turn: 94, stage: 2), parent: "187th Airborne Regt HQ", airdroppable: true),
+                (name: "IX/187 Bn",              abbr: "IX/187",  id: "v",  comp: Organic(Normal),                     org_size: Battalion,      arrival: Turn(game_turn: 94, stage: 2), parent: "187th Airborne Regt HQ", airdroppable: true),
+                (name: "185th Artigliera Regt",  abbr: "185",     id: "kk", comp: Weapons([("ParaArt", 6), ("Heavy AA (75/46 Mod. 34)", 3)]), org_size: StandardBrigade, arrival: Turn(game_turn: 94, stage: 2), parent: "185th Folgore Div HQ"),
+            ],
+        ),
     ],
 )

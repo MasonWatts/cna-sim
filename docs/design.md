@@ -410,9 +410,12 @@ requirement — date-aware: before Game-Turn 35 it enforces §43.12 (≥75% of a
 Italy/Sicily), and from GT35 §43.13 (≥50% of strategic bombers in Crete). Still open — all governing
 flight *from* the Boxes, which awaits Box-based flight execution: the §43.23 Crete→Suez timing and
 §43.24/§43.25 Box-bomber CAP coordination; §43.21 auto-supply is only implicit (a Box-based SGSU has
-no dump, so upkeep is skipped). (The airborne
-formations — Folgore/Ramcke — are not yet in the loaded OB, so `AirdropUnit` is exercisable only via
-test units until they are promoted.) A **pilot
+no dump, so upkeep is skipped). (The Italian airborne
+formation — **185 Folgore** — is now promoted into the loaded OB (`data/ob/italian.ron`) with its
+six airborne infantry battalions flagged `airdroppable: true` per the §42.41 OA sheet, so
+`AirdropUnit` is exercisable against a real formation. The German **Ramcke Brigade** remains a
+blocker: there is no loaded `data/ob/german.ron` yet — only the DRAFT `ob-generated/german.ron` is
+parse-tested — so standing up the German OB is its own promotion pass.) A **pilot
 roster** (`AssignPilot`, §40.12) is modeled: each squadron's best flyable pilot Rating
 (§40.15/§40.16) feeds into its CAP and scramble flights' TacAir; reassignment/retraining/recovery
 lockouts (§40.13/14/17) tick each Operations Stage; and **ace progression** (§40.18) is in — a
@@ -476,9 +479,14 @@ Armoured's §60.41 covering screen with the main body at D3612). Both reinforcem
 **formation-internal arrivals** (later-arriving units of an on-map formation attach to their
 on-map parent at their scheduled game_turn/stage) and **whole-formation entry** (a formation not
 on-map at start enters at a resolved entry hex or off-map node), both resolving at the Naval
-Convoy Arrival Phase. Loaded OB: Italian Catanzaro/Marmarica/Cirene/Ariete, Commonwealth 4th
-Indian/7th Armoured (ids/weapons/parents/org-size all test-validated). Remaining unit-data
-promotion (Italian border force, CW rear) is tracked separately (§4.44 OB pipeline, D14).
+Convoy Arrival Phase. Loaded OB: Italian Catanzaro/Marmarica/Cirene/Ariete/**185 Folgore**, Commonwealth 4th
+Indian/7th Armoured (ids/weapons/parents/org-size all test-validated). Folgore was promoted from the
+DRAFT §4.44b transcription (2026-08-29): its six airborne infantry battalions carry
+`airdroppable: true` (§42.41), and two OCR'd weapon names were normalized to canonical game keys
+(`47/32 Gun`→`47/32 Mod. 37`, `75/46 AA Gun`→`Heavy AA (75/46 Mod. 34)`) — provisional pending the
+physical sheet (D14). Remaining unit-data promotion (Italian border force, CW rear, and the entire
+**German OB** — no `data/ob/german.ron` exists yet, incl. the Ramcke airborne brigade) is tracked
+separately (§4.44 OB pipeline, D14).
 
 ## 9. Source-Material Transcription Practice
 

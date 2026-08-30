@@ -2308,7 +2308,7 @@ mod tests {
         )
         .unwrap();
         let ob = refs.orders_of_battle.get(&Nationality::Italian).unwrap();
-        assert_eq!(ob.formations.len(), 4);
+        assert_eq!(ob.formations.len(), 5);
 
         let cat = ob.formation("64 Catanzaro Division").expect("Catanzaro");
         assert_eq!(cat.units.len(), 13);
@@ -2338,6 +2338,19 @@ mod tests {
             ariete.units[0].arrival,
             crate::reference::ob::Arrival::Turn { game_turn: 18, stage: 1 }
         ));
+
+        // 185 Folgore (§42.41): the airborne infantry battalions are airdrop-eligible; the
+        // division/regiment HQs and artillery are not. This is what makes AirdropUnit usable.
+        let folgore = ob.formation("185 Folgore Airborne Division").expect("Folgore");
+        assert_eq!(folgore.basic_morale, 1);
+        for bn in ["V/186", "VI/186", "VII/186", "II/187", "IV/187", "IX/187"] {
+            let u = folgore.units.iter().find(|u| u.abbr == bn).unwrap();
+            assert!(u.airdroppable, "{bn} should be airdroppable");
+        }
+        for hq in ["185 Folg", "186", "187", "185"] {
+            let u = folgore.units.iter().find(|u| u.abbr == hq).unwrap();
+            assert!(!u.airdroppable, "{hq} should not be airdroppable");
+        }
     }
 
     #[test]
