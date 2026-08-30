@@ -274,10 +274,13 @@ are consulted by the `PlanProduction` command and the §20.3 Conversion chart by
 (§20.78A), `ProduceCommonwealthInfantry` (§20.78B), and `ProduceAxisTrucks` (§20.66a) commands.
 **`ReferenceData::load_campaign()`** is the production bootstrap: it `include_str!`s and loads the
 entire reference layer (every chart/table/CRT + the per-nationality unit/weapon/aircraft/production
-datasets and the Italian/Commonwealth OB) in one call, so `GameState::new(ReferenceData::load_campaign(), seed)`
-yields an engine where every command has its data — rather than each table being loaded individually
-(as the unit tests still do). The German OB is not yet promoted to `data/ob/`, so it is the one
-dataset `load_campaign` omits.
+datasets and all three Orders of Battle — German is a curated subset) in one call, so
+`GameState::new(ReferenceData::load_campaign(), seed)` yields an engine where every command has its
+data — rather than each table being loaded individually (as the unit tests still do). An integration
+driver test (`campaign_driver_advances_five_turns`) builds the engine this way, deploys the
+Italian-offensive scenario onto the full map, and walks five complete Game-Turns through the Sequence
+of Play — the first end-to-end exercise of the assembled engine, not just its pieces; a companion
+test confirms previously-`NoTable` commands (production) now resolve from the bootstrap.
 
 ### 8.2 Turn driver / Sequence of Play — implemented
 `GameState`'s turn driver (`advance_phase`) walks the full per-Game-Turn sequence, not just

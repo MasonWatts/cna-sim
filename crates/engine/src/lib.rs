@@ -2195,6 +2195,81 @@ mod tests {
     }
 
     #[test]
+    fn campaign_driver_advances_five_turns() {
+        // End-to-end integration: build the whole engine from the reference bootstrap, deploy a
+        // scenario onto the full map, and walk five complete Game-Turns through the Sequence of
+        // Play. Exercises the turn driver + every per-stage/per-turn hook (weather, SGSU upkeep,
+        // §51 Stores Expenditure, replacement/truck arrivals, victory checks) against real data.
+        use crate::state::game::{GameState, Phase};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        for s in [
+            include_str!("../../../data/maps/section-a.ron"),
+            include_str!("../../../data/maps/section-b.ron"),
+            include_str!("../../../data/maps/section-c.ron"),
+            include_str!("../../../data/maps/section-d.ron"),
+            include_str!("../../../data/maps/section-e.ron"),
+        ] {
+            g.map.load_section(s).unwrap();
+        }
+        g.load_scenario(include_str!("../../../data/scenarios/italian-offensive.ron")).unwrap();
+        g.auto_place_dump_choices();
+        assert!(!g.units.is_empty(), "scenario deployed units");
+
+        let mut phases: Vec<Phase> = Vec::new();
+        let mut max_stage = 0u8;
+        let mut guard = 0;
+        while g.game_turn <= 5 {
+            if !phases.contains(&g.phase) {
+                phases.push(g.phase);
+            }
+            max_stage = max_stage.max(g.operations_stage);
+            g.advance_phase();
+            guard += 1;
+            assert!(guard < 100_000, "turn loop failed to progress");
+        }
+        assert_eq!(g.game_turn, 6, "advanced through five full Game-Turns");
+        assert_eq!(max_stage, 3, "three Operations Stages per Game-Turn");
+        for p in [
+            Phase::Weather,
+            Phase::Organization,
+            Phase::MovementAndCombat,
+            Phase::NavalConvoyArrival,
+            Phase::InitiativeDetermination,
+        ] {
+            assert!(phases.contains(&p), "phase {p:?} was never entered");
+        }
+    }
+
+    #[test]
+    fn campaign_bootstrap_enables_production_commands() {
+        // The reference bootstrap makes commands that previously returned NoTable work end-to-end.
+        use crate::reference::units::Nationality;
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        let mut guard = 0;
+        while g.phase != Phase::Organization {
+            g.advance_phase();
+            guard += 1;
+            assert!(guard < 1000, "never reached an Organization phase");
+        }
+        // §20.78A: works only because load_campaign loaded the Commonwealth Truck Production table.
+        assert!(matches!(
+            g.apply(Command::ProduceCommonwealthTrucks { light_die: 3, medium_die: 3, heavy_die: 3 }),
+            Ok(CommandOutcome::TrucksProduced { .. })
+        ));
+        // §20.66: PlanProduction needs the German production chart AND the Convoy Level Chart for the
+        // §20.62 tonnage gate — both bootstrapped. German Infantry is available from GT38.
+        g.game_turn = 40;
+        assert!(matches!(
+            g.apply(Command::PlanProduction { nationality: Nationality::German, item: "Infantry".into(), count: 1 }),
+            Ok(CommandOutcome::ProductionPlanned { .. })
+        ));
+    }
+
+    #[test]
     fn generated_ob_drafts_parse() {
         for (nat, ron, expect) in [
             (Nationality::Italian, include_str!("../../../docs/source-materials/ob-generated/italian.ron"), 34usize),
