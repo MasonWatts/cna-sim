@@ -160,6 +160,8 @@ pub enum StrafeEffect {
     GroundedAircraftDestroyed { planes: u32 },
     /// §40.62: first-line attached Truck Points eliminated from an enemy unit in the target hex.
     TrucksEliminated { points: u32 },
+    /// §40.65: TOE weapon points removed from an enemy armored unit by tank-strafing.
+    TankPointsEliminated { points: u32 },
 }
 
 /// A squadron flying Combat Air Patrol over `center` this Operations Stage (§40.2). Offensive CAP
@@ -4026,6 +4028,51 @@ impl GameState {
             }
         }
         taken
+    }
+
+    /// §40.65: strafe an enemy armored unit in `hex` — roll `dice` d6; their sum is the minimum
+    /// Armour Protection Points that must be removed. TOE weapon points (each contributing its
+    /// system's armour-protection rating) are removed from the first enemy unit holding an
+    /// armour-protection-rated weapon until the removed points' armour protection meets that sum.
+    /// Returns the TOE points removed. (Callers must confirm the strafer is armour-capable, §40.65.)
+    pub fn strafe_tank_loss(&mut self, hex: HexCoord, attacker_side: Side, dice: u32) -> u32 {
+        let armor_of = |nat: Nationality, system: &str| -> u32 {
+            self.reference
+                .weapons_systems
+                .get(&nat)
+                .and_then(|m| m.get(system))
+                .and_then(|w| w.armor_protection)
+                .map(|r| r.value.max(0) as u32)
+                .unwrap_or(0)
+        };
+        let victim = self.units.values().find_map(|u| {
+            if u.hex() != Some(hex) || u.nationality.side() == attacker_side {
+                return None;
+            }
+            let armored = matches!(&u.composition, Composition::Weapons { groups }
+                if groups.iter().any(|g| armor_of(u.nationality, &g.system) > 0));
+            armored.then_some(u.id)
+        });
+        let Some(id) = victim else { return 0 };
+        let target_armor: u32 = (0..dice).map(|_| self.rng.d6() as u32).sum();
+        let nat = self.units.get(&id).unwrap().nationality;
+        let mut removed_armor = 0;
+        let mut removed_points = 0;
+        if let Composition::Weapons { groups } = &mut self.units.get_mut(&id).unwrap().composition {
+            for g in groups.iter_mut() {
+                let per = armor_of(nat, &g.system);
+                if per == 0 {
+                    continue; // only armour-protection-rated points are removed (§40.65)
+                }
+                while g.count > 0 && removed_armor < target_armor {
+                    g.count -= 1;
+                    removed_points += 1;
+                    removed_armor += per;
+                }
+            }
+            groups.retain(|g| g.count > 0);
+        }
+        removed_points
     }
 
     /// §40.6: strafe grounded aircraft — roll `dice` d6 and destroy their sum in planes from the

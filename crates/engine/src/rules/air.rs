@@ -339,6 +339,12 @@ pub fn can_strafe(missions: &crate::reference::aircraft::Missions) -> bool {
     missions.cap != MissionCap::No || missions.strike != MissionCap::No
 }
 
+/// §40.65: only planes with the "strafe-and-armor" (DayStrafeArmor) capability — historically the
+/// Commonwealth Hurricane Mk.IID with its 40mm cannon — may strafe enemy tanks.
+pub fn can_strafe_armor(missions: &crate::reference::aircraft::Missions) -> bool {
+    missions.cap == crate::reference::aircraft::MissionCap::DayStrafeArmor
+}
+
 // ---- Fighter flak suppression (§40.7) & night fighters (§40.9) ----
 
 /// The kinds of anti-aircraft points, for §40.74 suppression eligibility.

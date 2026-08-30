@@ -5150,6 +5150,109 @@ mod tests {
     }
 
     #[test]
+    fn strafe_tanks_40_65() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::rules::air::StrafeTarget;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, StrafeEffect};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::Commonwealth, include_str!("../../../data/reference/aircraft/commonwealth.ron")).unwrap();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::German, include_str!("../../../data/reference/weapons/german.ron")).unwrap();
+        refs.load_strafing_table(include_str!("../../../data/reference/strafing-table.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(1, 1);
+        let target = HexCoord::new(3, 1);
+        // A German tank unit (5× Pz II, armour protection 2 each).
+        let tank = g.spawn_unit(Nationality::German, "tk", "5th Pz", Composition::Weapons {
+            groups: vec![WeaponGroup { system: "Pz II".into(), count: 5 }],
+        });
+        g.unit_mut(tank).unwrap().location = Some(UnitLocation::OnMap(target));
+        // Only the Hurricane Mk.IID (DayStrafeArmor) may strafe tanks (§40.65).
+        let mut iid = Sgsu::new(SquadronId(1), Nationality::Commonwealth, SquadronClass::Fighter, "6 Sqn", 5, Some(base));
+        iid.add_planes("Hurricane Mk.IID", AircraftClass::Fighter, 6, 1);
+        g.sgsus.insert(SquadronId(1), iid);
+        // A German dive-bomber squadron cannot strafe tanks.
+        let mut stuka = Sgsu::new(SquadronId(2), Nationality::German, SquadronClass::Bomber, "StG", 5, Some(base));
+        stuka.add_planes("Ju.87D", AircraftClass::DiveBomber, 6, 1);
+        g.sgsus.insert(SquadronId(2), stuka);
+        for id in [SquadronId(1), SquadronId(2)] {
+            for grp in g.sgsus.get_mut(&id).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        }
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+
+        // A non-armour-capable strafer is rejected for the Tanks target.
+        assert_eq!(
+            g.apply(Command::Strafe { squadron: SquadronId(2), target, strafe_target: StrafeTarget::Tanks, planes: 6, fort_level: 0, roll: 66 }),
+            Err(CommandError::MissionNotPermitted)
+        );
+        // The Hurricane IID strafes the tanks, removing TOE points to meet the armour-points roll.
+        let before = g.unit(tank).unwrap().total_toe();
+        match g.apply(Command::Strafe { squadron: SquadronId(1), target, strafe_target: StrafeTarget::Tanks, planes: 4, fort_level: 0, roll: 66 }) {
+            Ok(CommandOutcome::Strafed { effect, .. }) => {
+                let removed = before - g.unit(tank).unwrap().total_toe();
+                if removed > 0 {
+                    assert_eq!(effect, StrafeEffect::TankPointsEliminated { points: removed });
+                } else {
+                    assert_eq!(effect, StrafeEffect::None);
+                }
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn transport_unit_42_3() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{AirFacility, AirFacilityKind, Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(2, 2);
+        let dest = HexCoord::new(4, 2);
+        g.air_facilities.push(AirFacility::new(AirFacilityKind::Airfield, dest));
+        // A German leg-infantry unit (no trucks) co-located with the transports.
+        let inf = g.spawn_unit(Nationality::German, "p", "II/104", Composition::Organic { current_toe: 2 });
+        g.unit_mut(inf).unwrap().location = Some(UnitLocation::OnMap(base));
+        let mut tp = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Transport, "KGrzbV", 5, Some(base));
+        tp.add_planes("Ju.52/3m", AircraftClass::Transport, 3, 1);
+        g.sgsus.insert(SquadronId(1), tp);
+        for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+            grp.refitted = grp.count;
+            grp.ready = grp.count;
+        }
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+        // §42.3: transport the infantry to the friendly airfield.
+        assert_eq!(
+            g.apply(Command::TransportUnit { squadron: SquadronId(1), unit: inf, target: dest }),
+            Ok(CommandOutcome::UnitTransported)
+        );
+        assert_eq!(g.unit(inf).unwrap().hex(), Some(dest));
+        // §42.34: the transported unit has used its CPA and cannot move further this stage.
+        let cpa = g.unit_cpa(inf).unwrap();
+        assert_eq!(g.unit(inf).unwrap().cp_expended.0, cpa * 10);
+    }
+
+    #[test]
     fn scramble_interception_40_3() {
         use crate::reference::aircraft::{AircraftClass, BombingMission};
         use crate::reference::squadron::SquadronClass;

@@ -293,7 +293,7 @@ unused-replacement VP; §64.75 CW withdrawal VP; §64.76 band), with §64.71/§6
 including the one-full-turn objective-hold check. (The scenario-level §60.8 victory is not
 separately modeled.)
 
-### 8.3 Command boundary — ~52 commands, phase-gated
+### 8.3 Command boundary — ~53 commands, phase-gated
 `GameState::apply` covers land movement/combat, air, naval, logistics, and construction. Land:
 `MoveStep`/`FormationMove`, `Barrage`/`AntiArmor`/`CloseAssault`/`Retreat`, `React`,
 `MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply`, `PoisonWell`/`SweetenWell`.
@@ -304,7 +304,8 @@ Logistics/construction (Organization phase): `LoadTrucks`/`UnloadTrucks`, `Sipho
 `DeliverConvoy`/`ReconConvoyLane`, `AssignShip`/`RepairShip`, `ArtilleryBombardShip`/
 `SanGiorgioAttackShip`/`BombShip`/`OffShoreBombard`, `LayHarborMine`/`RemoveHarborMine`. Air:
 `AssignSquadronPlanes`, `AssignPilot` (§40.12), `ReadySquadron`/`ArmSquadron`/`RefitSquadron`,
-`DesignateCap` (§40.2), `Strafe` (§40.5), `AirdropSupplies` (§42.4), `FlySquadronMission`/
+`DesignateCap` (§40.2), `Strafe` (§40.5), `AirdropSupplies` (§42.4), `TransportUnit` (§42.3),
+`FlySquadronMission`/
 `FlyBombingMission`/`FlyBombingMissionAt` (map-validated, §8.5)/`BombAirFacility`/`BombMaltaBase`,
 `DetermineMaltaAvailability`/`ConstructMaltaFacility`. Every command is gated to its
 Sequence-of-Play phase.
@@ -347,20 +348,25 @@ of each commodity destroyed), **water pipelines** (§40.67, destroyed on r≥2),
 r TOE Strength Points eliminated from an enemy infantry unit in the hex), and **grounded aircraft**
 (§40.6, the result is the number of d6 rolled — their sum is planes destroyed from an enemy SGSU in
 the hex), and **first-line trucks** (§40.62, r Truck Points eliminated from an enemy unit's attached
-trucks with the carried cargo lost in proportion). The remaining strafe targets — trucks in convoy
-(abstract lane tonnages, not hex-placed), tanks (§40.65 needs per-unit armour-protection damage) and
-ports (§40.66 folds into a bombing raid) — are validated-but-rejected pending those models.
-**Airdrop (§42.4/§42.46):** `AirdropSupplies` drops Ammo or Stores from a transport squadron's base
-dumps into a target hex, validating transport capability, range, weather (§42.45), and the
-§42.43/§42.44 drop-zone rules (clear/gravel/desert, not a major city, not enemy-occupied or in an
-enemy ZOC and within two hexes of a recognizable land feature — waived for a Friendly-occupied hex);
-delivered supplies are usable immediately. **Scramble (§40.3):** when no CAP covers a bombing target, an enemy fighter base
+trucks with the carried cargo lost in proportion), and **tanks** (§40.65 — armour-capable planes
+only, i.e. the Hurricane Mk.IID `DayStrafeArmor`; the result is the number of d6 rolled and their
+sum is the minimum Armour-Protection Points removed, taken as TOE weapon points from an enemy
+armoured unit). The remaining strafe targets — trucks in convoy (abstract lane tonnages, not
+hex-placed) and ports (§40.66 folds into a bombing raid) — are validated-but-rejected pending those
+models. **Air transport & airdrop (§42.3/§42.4):** `AirdropSupplies` drops Ammo or Stores from a
+transport squadron's base dumps into a target hex, validating transport capability, range, weather
+(§42.45), and the §42.43/§42.44 drop-zone rules (clear/gravel/desert, not a major city, not
+enemy-occupied or in an enemy ZOC and within two hexes of a recognizable land feature — waived for a
+Friendly-occupied hex); delivered supplies are usable immediately. `TransportUnit` (§42.3) air-lifts
+an eligible co-located unit (infantry-without-trucks or motorcycle/recce, §42.37) to a friendly air
+facility, landing it and exhausting its CPA (§42.34), one plane per TOE point (§42.31). **Scramble (§40.3):** when no CAP covers a bombing target, an enemy fighter base
 within Scramble-Table range (§40.4) may scramble to intercept — the first eligible squadron rolls a
 d6 and, on success (§40.33), its ready fighters fly and intercept (`scramble_interception`). **Still
 not computed from the map:** multi-hex flight **path/ZOC routing** (so the §40.33 clear-path rule is
-not enforced) and fuel gating at execution; defensive-CAP engagement choice; land-unit air recon;
-transport of personnel/units (§42.3) and airdrop of airborne units (§42.41), plus a per-plane
-cargo-tonnage cap; and Med-basing/Malta-commitment enforcement (§43/§44.41). A **pilot
+not enforced) and fuel gating at execution; defensive-CAP engagement choice; land-unit air recon
+(waits on fog-of-war); **airdrop of airborne units** (§42.41 — needs the OA-sheet airdrop-eligible
+flag) and a precise per-plane cargo-tonnage cap; convoy/port strafing; and Med-basing/Malta-
+commitment enforcement (§43/§44.41). A **pilot
 roster** (`AssignPilot`, §40.12) is modeled: each squadron's best flyable pilot Rating
 (§40.15/§40.16) feeds into its CAP and scramble flights' TacAir; reassignment/retraining/recovery
 lockouts (§40.13/14/17) tick each Operations Stage; and **ace progression** (§40.18) is in — a

@@ -337,6 +337,15 @@ pub enum Command {
         amount: u32,
         planes: u32,
     },
+    /// §42.3/§42.37: air-transport a `unit` (infantry-without-trucks or motorcycle/recce, co-located
+    /// with the transport squadron) to a friendly air facility at `target`, landing it there. The
+    /// transported unit has used its CPA and may not move further this stage (§42.34). One transport
+    /// plane carries one TOE Strength Point (§42.31 note). (Land Support Air Phase.)
+    TransportUnit {
+        squadron: crate::state::air::SquadronId,
+        unit: UnitId,
+        target: HexCoord,
+    },
     /// §37/§41: fly a land-support bombing mission from the squadron's base hex to a `target` hex,
     /// validating flight range/distance (§37.12), mission day/night capability (§39.42), and the
     /// sandstorm/rainstorm grounding of the base or target (§37.22) against the map; computing
@@ -456,6 +465,8 @@ pub enum CommandOutcome {
     PilotAssigned,
     /// §42.4: supplies were airdropped into the target hex (usable immediately).
     SuppliesAirdropped { amount: u32 },
+    /// §42.3: a unit was air-transported to a friendly air facility (and has used its CPA).
+    UnitTransported,
 }
 
 /// Why a command was rejected. The state is left unchanged on any error.
@@ -938,6 +949,9 @@ impl GameState {
             Command::AssignPilot { rating, squadron } => self.cmd_assign_pilot(rating, squadron),
             Command::AirdropSupplies { squadron, target, commodity, amount, planes } => {
                 self.cmd_airdrop_supplies(squadron, target, commodity, amount, planes)
+            }
+            Command::TransportUnit { squadron, unit, target } => {
+                self.cmd_transport_unit(squadron, unit, target)
             }
             Command::FlyBombingMissionAt {
                 squadron, target, mission, planes, bombload_per_plane, night,
@@ -1424,6 +1438,83 @@ impl GameState {
         Ok(CommandOutcome::SuppliesAirdropped { amount })
     }
 
+    /// §42.3/§42.37 TransportUnit: air-transport an eligible unit co-located with the transport
+    /// squadron to a friendly air facility, landing it there and marking it as having used its CPA
+    /// (§42.34). One transport plane carries one TOE Strength Point (§42.31 note; a documented
+    /// simplification of the aircraft-chart cargo capacity).
+    fn cmd_transport_unit(
+        &mut self,
+        squadron: crate::state::air::SquadronId,
+        unit: UnitId,
+        target: HexCoord,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::aircraft::Mission;
+        use crate::state::game::Weather;
+        use crate::state::unit::UnitLocation;
+        self.require_phase(Phase::LandSupportAir)?;
+        let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+        let base = sgsu.location.ok_or(CommandError::SquadronNotBased)?;
+        let nationality = sgsu.nationality;
+        // §42.33: transports must land at a Friendly air facility.
+        if !self.air_facilities.iter().any(|f| f.hex == target) {
+            return Err(CommandError::NoSuchFacility);
+        }
+        let grounded = |g: &Self, h: HexCoord| matches!(g.weather_at(h), Weather::Sandstorm | Weather::Rainstorm);
+        if grounded(self, base) || grounded(self, target) {
+            return Err(CommandError::WeatherGrounded);
+        }
+        // §42.32: the cargo unit must start in the transport's hex; §42.37: eligible types only.
+        let u = self.units.get(&unit).ok_or(CommandError::UnitNotFound)?;
+        if u.hex() != Some(base) || u.nationality.side() != nationality.side() {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        let toe = u.total_toe();
+        let ut = self
+            .reference
+            .unit_characteristics
+            .get(&u.nationality)
+            .and_then(|m| m.get(&u.id_code))
+            .map(|c| c.unit_type.as_str())
+            .unwrap_or("");
+        let trucks_empty = { let t = &u.trucks; t.light + t.medium + t.heavy == 0 };
+        let eligible = (ut.contains("Infantry") && trucks_empty)
+            || ut.contains("Reconnaissance")
+            || ut.contains("Recce")
+            || ut.contains("Motorcycle");
+        if !eligible || toe == 0 {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        // Transport-capable ready planes; one plane per TOE Strength Point (§42.31 note).
+        let chart = self.reference.aircraft_charts.get(&nationality);
+        let mut min_range = u32::MAX;
+        let mut ready_transport = 0;
+        for g in sgsu.planes.iter().filter(|g| g.ready > 0) {
+            if let Some(ac) = chart.and_then(|c| c.get(&g.aircraft_type)) {
+                if crate::rules::air::can_perform(&ac.missions, Mission::Transport, false) {
+                    ready_transport += g.ready;
+                    min_range = min_range.min(ac.max_range());
+                }
+            }
+        }
+        if min_range == u32::MAX {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        if ready_transport < toe {
+            return Err(CommandError::NoReadyPlanes);
+        }
+        if !crate::rules::air::can_fly(min_range, base.distance(target), false) {
+            return Err(CommandError::TargetOutOfRange);
+        }
+        // Execute: fly the transports, land the unit, and exhaust its CPA (§42.34).
+        self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?.fly(toe);
+        let cpa = self.unit_cpa(unit).unwrap_or(0).max(0);
+        if let Some(u) = self.unit_mut(unit) {
+            u.location = Some(UnitLocation::OnMap(target));
+            u.cp_expended = Fixed(cpa * 10);
+        }
+        Ok(CommandOutcome::UnitTransported)
+    }
+
     /// §40.5–40.8 Strafe: validate and resolve a strafing mission against the map, applying the
     /// effect for supply dumps (§40.64) and water pipelines (§40.67). Other target types (infantry,
     /// trucks, grounded aircraft, tanks, ports) are not yet modeled and are rejected.
@@ -1447,6 +1538,7 @@ impl GameState {
                 | StrafeTarget::Infantry
                 | StrafeTarget::GroundedAircraft
                 | StrafeTarget::FirstLineTrucks
+                | StrafeTarget::Tanks
         ) {
             return Err(CommandError::MissionNotPermitted);
         }
@@ -1464,6 +1556,7 @@ impl GameState {
         let mut min_range = u32::MAX;
         let mut rep_tacair = 0i32;
         let mut can_strafe = false;
+        let mut can_strafe_armor = false;
         for g in sgsu.planes.iter().filter(|g| g.ready > 0) {
             if let Some(ac) = chart.and_then(|c| c.get(&g.aircraft_type)) {
                 min_range = min_range.min(ac.max_range());
@@ -1473,12 +1566,19 @@ impl GameState {
                         rep_tacair = ac.loadouts.first().map(|l| l.tac_air).unwrap_or(0);
                     }
                 }
+                if crate::rules::air::can_strafe_armor(&ac.missions) {
+                    can_strafe_armor = true;
+                }
             }
         }
         if min_range == u32::MAX {
             return Err(CommandError::NoReadyPlanes);
         }
         if !can_strafe {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        // §40.65: only armour-capable planes (Hurricane Mk.IID) may strafe tanks.
+        if matches!(strafe_target, StrafeTarget::Tanks) && !can_strafe_armor {
             return Err(CommandError::MissionNotPermitted);
         }
         if !crate::rules::air::can_fly(min_range, base.distance(target), false) {
@@ -1533,6 +1633,12 @@ impl GameState {
                 // §40.62: the result is the first-line attached Truck Points eliminated.
                 let removed = self.strafe_first_line_trucks(target, side, result);
                 if removed > 0 { StrafeEffect::TrucksEliminated { points: removed } } else { StrafeEffect::None }
+            }
+            StrafeTarget::Tanks => {
+                // §40.65: the result is the number of d6 to roll; their sum is the minimum Armour
+                // Protection Points removed from an enemy armored unit.
+                let removed = self.strafe_tank_loss(target, side, result);
+                if removed > 0 { StrafeEffect::TankPointsEliminated { points: removed } } else { StrafeEffect::None }
             }
             _ => StrafeEffect::None, // unreachable (guarded above)
         };
