@@ -5314,6 +5314,28 @@ mod tests {
     }
 
     #[test]
+    fn flak_destruction_41_33() {
+        use crate::reference::units::Side;
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let hex = HexCoord::new(4, 4);
+        // German "p" carries an Anti-Air rating (§4.46); as an Organic unit its whole TOE is AA-rated.
+        let u = g.spawn_unit(Nationality::German, "p", "flak", Composition::Organic { current_toe: 5 });
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(hex));
+
+        // §41.33: destroy 3 AA-rated TOE points (capped at the unit's TOE).
+        assert_eq!(g.destroy_flak_toe(hex, Side::Axis, 3), 3);
+        assert_eq!(g.unit(u).unwrap().total_toe(), 2);
+        // A wrong-side call finds no victim.
+        assert_eq!(g.destroy_flak_toe(hex, Side::Commonwealth, 3), 0);
+    }
+
+    #[test]
     fn scramble_interception_40_3() {
         use crate::reference::aircraft::{AircraftClass, BombingMission};
         use crate::reference::squadron::SquadronClass;

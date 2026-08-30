@@ -4221,6 +4221,11 @@ impl GameState {
                     }
                 }
             }
+            M::FlakDestruction => {
+                // §41.33: destroy `result` TOE Strength Points that carry an Anti-Air rating, from
+                // the first enemy AA-rated unit in the hex.
+                self.destroy_flak_toe(target, enemy, result);
+            }
             _ => {}
         }
     }
@@ -4241,6 +4246,63 @@ impl GameState {
                 Some(WeaponKind::Tank | WeaponKind::Artillery | WeaponKind::AntiTank)
             )
         })
+    }
+
+    /// §41.33: destroy up to `points` TOE Strength Points carrying an Anti-Air rating from the
+    /// first `victim_side` unit in `hex` that has AA — an Organic unit whose characteristics carry
+    /// an anti-air rating (whole-unit AA), or the anti-air weapon groups of a Weapons unit. Returns
+    /// the TOE points removed.
+    pub fn destroy_flak_toe(&mut self, hex: HexCoord, victim_side: Side, points: u32) -> u32 {
+        use crate::reference::units::WeaponKind;
+        let is_aa_system = |nat: Nationality, system: &str| -> bool {
+            matches!(
+                self.reference.weapons_systems.get(&nat).and_then(|m| m.get(system)).map(|w| w.kind),
+                Some(WeaponKind::AntiAir | WeaponKind::LightAntiAir | WeaponKind::HeavyAntiAir)
+            )
+        };
+        let victim = self.units.values().find_map(|u| {
+            if u.hex() != Some(hex) || u.nationality.side() != victim_side {
+                return None;
+            }
+            let has_aa = match &u.composition {
+                Composition::Organic { .. } => self
+                    .reference
+                    .unit_characteristics
+                    .get(&u.nationality)
+                    .and_then(|m| m.get(&u.id_code))
+                    .and_then(|c| c.anti_air)
+                    .is_some_and(|r| r.value > 0),
+                Composition::Weapons { groups } => groups.iter().any(|g| is_aa_system(u.nationality, &g.system)),
+            };
+            has_aa.then_some(u.id)
+        });
+        let Some(id) = victim else { return 0 };
+        let nat = self.units.get(&id).unwrap().nationality;
+        match &mut self.units.get_mut(&id).unwrap().composition {
+            Composition::Organic { current_toe } => {
+                let removed = points.min(*current_toe);
+                *current_toe -= removed;
+                removed
+            }
+            Composition::Weapons { groups } => {
+                let mut budget = points;
+                let mut removed = 0;
+                for g in groups.iter_mut() {
+                    if budget == 0 {
+                        break;
+                    }
+                    if !is_aa_system(nat, &g.system) {
+                        continue;
+                    }
+                    let n = budget.min(g.count);
+                    g.count -= n;
+                    budget -= n;
+                    removed += n;
+                }
+                groups.retain(|g| g.count > 0);
+                removed
+            }
+        }
     }
 
     /// The result of resolving a bombing mission (§39.0 procedure).
