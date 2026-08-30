@@ -1330,12 +1330,14 @@ impl GameState {
         }
         let side = sgsu.nationality.side();
         let nationality = sgsu.nationality;
-        let (origin, added, on_map) = self.flight_origin(squadron).ok_or(CommandError::SquadronNotBased)?;
-
+        if !self.squadron_is_based(squadron) {
+            return Err(CommandError::SquadronNotBased);
+        }
         let grounded = |g: &Self, h: HexCoord| matches!(g.weather_at(h), Weather::Sandstorm | Weather::Rainstorm);
-        if grounded(self, center) || (on_map && grounded(self, origin)) {
+        if grounded(self, center) || self.flight_base_weather_hex(squadron).is_some_and(|b| grounded(self, b)) {
             return Err(CommandError::WeatherGrounded);
         }
+        let distance = self.flight_distance(squadron, center);
         // Shortest range among ready plane types, and a representative fighter's TacAir/Maneuver.
         let chart = self.reference.aircraft_charts.get(&nationality);
         let mut min_range = u32::MAX;
@@ -1356,7 +1358,7 @@ impl GameState {
         if !can_cap {
             return Err(CommandError::MissionNotPermitted);
         }
-        if !crate::rules::air::can_fly(min_range, added + origin.distance(center), false) {
+        if !distance.is_some_and(|d| crate::rules::air::can_fly(min_range, d, false)) {
             return Err(CommandError::TargetOutOfRange);
         }
         let flown = self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?.fly(planes);
@@ -1730,12 +1732,14 @@ impl GameState {
         }
         let side = sgsu.nationality.side();
         let nationality = sgsu.nationality;
-        let (origin, added, on_map) = self.flight_origin(squadron).ok_or(CommandError::SquadronNotBased)?;
-
+        if !self.squadron_is_based(squadron) {
+            return Err(CommandError::SquadronNotBased);
+        }
         let grounded = |g: &Self, h: HexCoord| matches!(g.weather_at(h), Weather::Sandstorm | Weather::Rainstorm);
-        if grounded(self, target) || (on_map && grounded(self, origin)) {
+        if grounded(self, target) || self.flight_base_weather_hex(squadron).is_some_and(|b| grounded(self, b)) {
             return Err(CommandError::WeatherGrounded);
         }
+        let distance = self.flight_distance(squadron, target);
         // Shortest range and total strafing TacAir among ready, strafe-capable plane types.
         let chart = self.reference.aircraft_charts.get(&nationality);
         let mut min_range = u32::MAX;
@@ -1766,7 +1770,7 @@ impl GameState {
         if matches!(strafe_target, StrafeTarget::Tanks) && !can_strafe_armor {
             return Err(CommandError::MissionNotPermitted);
         }
-        if !crate::rules::air::can_fly(min_range, added + origin.distance(target), false) {
+        if !distance.is_some_and(|d| crate::rules::air::can_fly(min_range, d, false)) {
             return Err(CommandError::TargetOutOfRange);
         }
         let table = self.reference.strafing_table.as_ref().ok_or(CommandError::NoTable)?.clone();
@@ -1857,18 +1861,19 @@ impl GameState {
             return Err(CommandError::SquadronInTransit); // §43.14: grounded during transfer
         }
         let nationality = sgsu.nationality;
-        // §37.12/§36.53: flight origin (on-map base or off-map Box anchor) and distance to target.
-        let (origin, added, on_map) = self.flight_origin(squadron).ok_or(CommandError::SquadronNotBased)?;
-
+        if !self.squadron_is_based(squadron) {
+            return Err(CommandError::SquadronNotBased);
+        }
         // §37.22: no flight into a Sandstorm/Rainstorm target (or out of an on-map base in one).
         let grounded = |g: &Self, h: HexCoord| matches!(g.weather_at(h), Weather::Sandstorm | Weather::Rainstorm);
-        if grounded(self, target) || (on_map && grounded(self, origin)) {
+        if grounded(self, target) || self.flight_base_weather_hex(squadron).is_some_and(|b| grounded(self, b)) {
             return Err(CommandError::WeatherGrounded);
         }
 
-        // §37.12: distance (hexes) may not exceed the shortest range among the flying plane types,
-        // and (§39.42) at least one flying type must be able to bomb by day/night as required.
-        let distance = added + origin.distance(target);
+        // §37.12/§37.4: distance (hexes, from an on-map base or off-map Box) may not exceed the
+        // shortest range among the flying plane types, and (§39.42) at least one flying type must be
+        // able to bomb by day/night as required.
+        let distance = self.flight_distance(squadron, target);
         let chart = self.reference.aircraft_charts.get(&nationality);
         let mut min_range = u32::MAX;
         let mut any_can_bomb = false;
@@ -1886,8 +1891,8 @@ impl GameState {
         if min_range == u32::MAX {
             return Err(CommandError::NoReadyPlanes);
         }
-        if !crate::rules::air::can_fly(min_range, distance, false) {
-            return Err(CommandError::TargetOutOfRange);
+        if !distance.is_some_and(|d| crate::rules::air::can_fly(min_range, d, false)) {
+            return Err(CommandError::TargetOutOfRange); // out of range, or no §37.4 route from a Box
         }
         if !any_can_bomb {
             return Err(CommandError::MissionNotPermitted);

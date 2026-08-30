@@ -18,6 +18,7 @@ pub mod weather;
 pub mod logistics;
 pub mod aircraft;
 pub mod air_bombardment;
+pub mod air_distance;
 pub mod anti_aircraft;
 pub mod convoy;
 pub mod equivalent_weights;
@@ -94,6 +95,9 @@ pub struct ReferenceData {
     /// §56.18 Axis Naval Convoy Air Distance Chart (the six shipping lanes).
     #[serde(default)]
     pub shipping_lanes: Option<ports::ShippingLanesChart>,
+    /// §37.4 Air Distance Chart (off-map areas ↔ named strategic targets).
+    #[serde(default)]
+    pub air_distance: Option<air_distance::AirDistanceChart>,
     /// §56.4/§56.5 Axis Naval Convoy Level Chart + Capacity Table.
     #[serde(default)]
     pub convoy_levels: Option<convoy::ConvoyLevelChart>,
@@ -263,6 +267,12 @@ impl ReferenceData {
     /// Load the §44.41 Axis Strategic Airforce Commitment Chart.
     pub fn load_malta_commitment(&mut self, ron_str: &str) -> Result<(), ron::error::SpannedError> {
         self.malta_commitment = Some(ron::from_str(ron_str)?);
+        Ok(())
+    }
+
+    /// Load the §37.4 Air Distance Chart.
+    pub fn load_air_distance(&mut self, ron_str: &str) -> Result<(), ron::error::SpannedError> {
+        self.air_distance = Some(ron::from_str(ron_str)?);
         Ok(())
     }
 

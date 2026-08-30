@@ -29,15 +29,6 @@ pub enum MedBase {
     Crete,
 }
 
-/// §36.53/§37.4: how an off-map base connects to the map for flight — an on-map entry/exit hex plus
-/// the fixed air distance from the base to that hex. A Box→target flight distance is `air_distance`
-/// + the hex distance from `entry` to the target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MedBaseAnchor {
-    pub entry: HexCoord,
-    pub air_distance: u32,
-}
-
 /// A transfer destination for a squadron (§43.14): a Mediterranean Box, or an on-map (African) air
 /// facility hex.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

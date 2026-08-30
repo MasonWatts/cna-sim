@@ -5567,13 +5567,13 @@ mod tests {
     }
 
     #[test]
-    fn box_based_flight_36_53() {
+    fn box_based_flight_37_4() {
         use crate::reference::aircraft::{AircraftClass, BombingMission};
         use crate::reference::squadron::SquadronClass;
-        use crate::state::air::{MedBase, MedBaseAnchor, Sgsu, SquadronId};
+        use crate::state::air::{MedBase, Sgsu, SquadronId};
         use crate::state::command::{Command, CommandError, CommandOutcome};
         use crate::state::game::{GameState, Phase};
-        use crate::state::map::HexCoord;
+        use crate::state::map::{HexCoord, HexId};
 
         let mut refs = ReferenceData::new();
         refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
@@ -5585,11 +5585,14 @@ mod tests {
         kg.med_base = Some(MedBase::Crete);
         kg.add_planes("Ju.88D", AircraftClass::Bomber, 12, 1);
         g.sgsus.insert(SquadronId(1), kg);
-        for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
-            grp.refitted = grp.count;
-            grp.ready = grp.count;
-        }
-        let target = HexCoord::new(5, 7);
+        let ready = |g: &mut GameState| {
+            for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        };
+        ready(&mut g);
+        let derna = HexId::parse("B5925").unwrap().to_hex_coord();
         while g.phase != Phase::LandSupportAir {
             g.advance_phase();
         }
@@ -5598,18 +5601,15 @@ mod tests {
             planes: 12, bombload_per_plane: 20, night: false,
             flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
-        // With no anchor configured, a Box squadron has no flight origin.
-        assert_eq!(g.apply(bomb(target)), Err(CommandError::SquadronNotBased));
-        // §36.53: give the Crete Box an entry hex + air distance. Distance = 10 + dist(entry,target).
-        g.med_base_anchors.insert(MedBase::Crete, MedBaseAnchor { entry: HexCoord::new(5, 5), air_distance: 10 });
-        // entry(5,5)→target(5,7) is 2 hexes; 10 + 2 = 12 ≤ 118 → the mission flies.
-        assert!(matches!(g.apply(bomb(target)), Ok(CommandOutcome::BombingMission(_))));
-        // A far target exceeds range (10 + ~140 > 118).
-        for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
-            grp.refitted = grp.count;
-            grp.ready = grp.count;
-        }
-        assert_eq!(g.apply(bomb(HexCoord::new(5, 150))), Err(CommandError::TargetOutOfRange));
+        // With no §37.4 chart loaded, a Box squadron has no computable flight distance.
+        assert_eq!(g.apply(bomb(derna)), Err(CommandError::TargetOutOfRange));
+        // §37.4: Crete→Derna is 27 hexes (Ju.88D range 118) → the mission flies.
+        g.reference.load_air_distance(include_str!("../../../data/reference/air-distance.ron")).unwrap();
+        assert_eq!(g.box_flight_distance(MedBase::Crete, derna), Some(27));
+        assert!(matches!(g.apply(bomb(derna)), Ok(CommandOutcome::BombingMission(_))));
+        // A target far past every reference point exceeds the Ju.88D's 118-hex range.
+        ready(&mut g);
+        assert_eq!(g.apply(bomb(HexCoord::new(5, 400))), Err(CommandError::TargetOutOfRange));
     }
 
     #[test]

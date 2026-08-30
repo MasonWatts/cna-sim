@@ -687,11 +687,6 @@ pub struct GameState {
     /// no level may be used more Game-Turns than the commitment chart allows for the scenario.
     #[serde(default)]
     pub malta_level_used: std::collections::HashMap<u32, u32>,
-    /// §36.53/§37.4: the on-map entry hex + air distance for each off-map Mediterranean Box, letting
-    /// Box-based squadrons fly (a Box→target distance is the anchor's air distance plus the hex
-    /// distance from its entry hex). Empty until the §37.4 Air Distance Chart is loaded.
-    #[serde(default)]
-    pub med_base_anchors: std::collections::HashMap<crate::state::air::MedBase, crate::state::air::MedBaseAnchor>,
     /// Replacement Points consumed (absorbed) so far, per side — for the §64.74 unused-
     /// replacement victory points.
     #[serde(default)]
@@ -843,7 +838,6 @@ impl GameState {
             airdrop_last_stage: std::collections::HashMap::new(),
             scenario_name: default_scenario(),
             malta_level_used: std::collections::HashMap::new(),
-            med_base_anchors: std::collections::HashMap::new(),
             replacements_used: std::collections::HashMap::new(),
             withdrawn: std::collections::HashMap::new(),
             withdrawal_banked: 0,
@@ -4533,21 +4527,64 @@ impl GameState {
         }
     }
 
-    /// §37.12/§36.53: a squadron's flight origin — an on-map base (its `location`), or an off-map
-    /// Mediterranean Box resolved through its configured anchor (entry hex + air distance). Returns
-    /// `(range_origin_hex, added_distance, on_map)`: flight distance to a target is `added_distance`
-    /// plus the hex distance from `range_origin_hex`; `on_map` is false for a Box (no base weather).
-    /// `None` if the squadron is unbased, or Box-based with no anchor configured.
-    ///
-    /// (This makes flying *from* the Boxes possible; the §43.23 Crete→Suez timing and §43.24/§43.25
-    /// Box-bomber CAP coordination still layer on top and are not modeled.)
-    pub fn flight_origin(&self, squadron: SquadronId) -> Option<(HexCoord, u32, bool)> {
-        let s = self.sgsus.get(&squadron)?;
-        if let Some(hex) = s.location {
-            return Some((hex, 0, true));
+    /// §37.4/§36.53: air distance in hexes from a Mediterranean Box to a `target` hex, via the §37.4
+    /// Air Distance Chart. The chart lists Box→named-point distances; an arbitrary target is reached
+    /// by routing through the nearest on-map named reference point (chart distance to that point +
+    /// hex distance from it to the target), skipping Prohibited routes. Italy/Sicily takes the more
+    /// favourable of the two columns (the region is modeled as one, §43.12). `None` if no route
+    /// exists (all references prohibited) or the chart is not loaded.
+    pub fn box_flight_distance(&self, med_base: crate::state::air::MedBase, target: HexCoord) -> Option<u32> {
+        use crate::reference::air_distance::AirDist;
+        use crate::state::air::MedBase;
+        let chart = self.reference.air_distance.as_ref()?;
+        let sources: &[&str] = match med_base {
+            MedBase::Crete => &["Crete"],
+            MedBase::ItalySicily => &["Sicily", "Italy"],
+        };
+        // The §37.4 named targets that have a known on-map hex, used as routing references.
+        const REFS: [(&str, &str); 7] = [
+            ("Benghazi", "A4827"), ("Derna", "B5925"), ("Tobruk", "C4807"), ("Bardia", "C4321"),
+            ("Mersa Matruh", "D3714"), ("Alexandria", "E3613"), ("Nofilia", "A2703"),
+        ];
+        let mut best: Option<u32> = None;
+        for (name, hexid) in REFS {
+            let Some(rhex) = HexId::parse(hexid).map(|h| h.to_hex_coord()) else { continue };
+            let base_dist = sources
+                .iter()
+                .filter_map(|s| match chart.distance(s, name) {
+                    Some(AirDist::Hexes(n)) => Some(n),
+                    _ => None,
+                })
+                .min();
+            if let Some(bd) = base_dist {
+                let total = bd + rhex.distance(target);
+                best = Some(best.map_or(total, |b| b.min(total)));
+            }
         }
-        let anchor = self.med_base_anchors.get(&s.med_base?)?;
-        Some((anchor.entry, anchor.air_distance, false))
+        best
+    }
+
+    /// §37.12: a squadron's flight distance to `target` — hex distance from its on-map base, or the
+    /// §37.4 chart distance from its off-map Box. `None` if unbased or no route exists.
+    pub fn flight_distance(&self, squadron: SquadronId, target: HexCoord) -> Option<u32> {
+        let s = self.sgsus.get(&squadron)?;
+        match s.location {
+            Some(hex) => Some(hex.distance(target)),
+            None => self.box_flight_distance(s.med_base?, target),
+        }
+    }
+
+    /// The on-map hex whose weather grounds a squadron's flight (§37.22), or `None` for an off-map
+    /// Box base (no on-map weather).
+    pub fn flight_base_weather_hex(&self, squadron: SquadronId) -> Option<HexCoord> {
+        self.sgsus.get(&squadron).and_then(|s| s.location)
+    }
+
+    /// Whether a squadron has any flight base (on-map or an off-map Box).
+    pub fn squadron_is_based(&self, squadron: SquadronId) -> bool {
+        self.sgsus
+            .get(&squadron)
+            .is_some_and(|s| s.location.is_some() || s.med_base.is_some())
     }
 
     /// §43.0: total planes based in a Mediterranean Box (`region`) across all Axis squadrons — the
