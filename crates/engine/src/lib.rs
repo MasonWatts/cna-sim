@@ -6686,6 +6686,63 @@ mod tests {
     }
 
     #[test]
+    fn truck_and_infantry_production_20_78() {
+        use crate::reference::logistics::TruckKind;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, ReplacementClass};
+
+        let mut refs = ReferenceData::new();
+        refs.load_cw_truck_production(include_str!("../../../data/reference/cw-truck-production.ron")).unwrap();
+        refs.load_cw_infantry_production(include_str!("../../../data/reference/cw-infantry-production.ron")).unwrap();
+        refs.load_axis_truck_production(include_str!("../../../data/reference/axis-truck-production.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.game_turn = 5;
+        g.operations_stage = 1;
+
+        // Wrong phase (still InitiativeDetermination).
+        assert_eq!(
+            g.apply(Command::ProduceCommonwealthInfantry { roll: 12 }),
+            Err(CommandError::WrongPhase)
+        );
+        g.phase = Phase::Organization;
+
+        // §20.78A CW trucks (early era, GT5): light die4=4, medium die4=15, heavy die4=3; arrive GT9.
+        assert_eq!(
+            g.apply(Command::ProduceCommonwealthTrucks { light_die: 4, medium_die: 4, heavy_die: 4 }),
+            Ok(CommandOutcome::TrucksProduced { arrival_game_turn: 9, light: 4, medium: 15, heavy: 3 })
+        );
+        // §20.78B CW infantry (era GT3–30, roll 12): 20 Infantry Replacement Points, arrive GT9.
+        assert_eq!(
+            g.apply(Command::ProduceCommonwealthInfantry { roll: 12 }),
+            Ok(CommandOutcome::InfantryProduced { arrival_game_turn: 9, points: 20 })
+        );
+        assert!(g.pending_replacements.iter().any(|p| p.class == ReplacementClass::Infantry && p.count == 20 && p.game_turn == 9));
+
+        // §20.66a Axis trucks (planned): Light max/turn at GT5 is 4; a 4-point order is accepted,
+        // arriving GT7. A further point this turn exceeds the per-turn max.
+        assert_eq!(
+            g.apply(Command::ProduceAxisTrucks { kind: TruckKind::Light, count: 4 }),
+            Ok(CommandOutcome::TrucksProduced { arrival_game_turn: 7, light: 4, medium: 0, heavy: 0 })
+        );
+        assert_eq!(
+            g.apply(Command::ProduceAxisTrucks { kind: TruckKind::Light, count: 1 }),
+            Err(CommandError::ProductionRateExceeded)
+        );
+
+        // Drive the arrivals: at GT9 (Naval Convoy Arrival Phase) both the Axis GT7 delivery and the
+        // Commonwealth GT9 delivery land in their free-truck pools.
+        g.game_turn = 9;
+        g.operations_stage = 1;
+        g.process_truck_arrivals();
+        let cw = g.truck_pools.get(&Side::Commonwealth).copied().unwrap_or_default();
+        assert_eq!((cw.light, cw.medium, cw.heavy), (4, 15, 3));
+        let axis = g.truck_pools.get(&Side::Axis).copied().unwrap_or_default();
+        assert_eq!((axis.light, axis.medium, axis.heavy), (4, 0, 0));
+        assert!(g.pending_trucks.is_empty());
+    }
+
+    #[test]
     fn italian_production_chart() {
         use crate::reference::logistics::ProductionPeriod;
 

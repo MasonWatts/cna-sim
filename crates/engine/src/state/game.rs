@@ -410,6 +410,19 @@ pub struct PendingReplacement {
     pub assigned_to: Option<UnitId>,
 }
 
+/// Truck Points scheduled to arrive (§20.78A / §20.66a): both the Commonwealth rolled Truck
+/// Production and Axis planned Truck Production land in the side's free-truck pool at the Naval
+/// Convoy Arrival Phase of a future Operations Stage (CW +4 Game-Turns at Alexandria; Axis +2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingTruckDelivery {
+    pub side: Side,
+    pub kind: crate::reference::logistics::TruckKind,
+    pub count: u32,
+    pub game_turn: u32,
+    #[serde(default)]
+    pub stage: u32,
+}
+
 /// An accepted §20.66/§20.78C production order: `count` Replacement Points of `item` for
 /// `nationality`, planned on Game-Turn `game_turn` and due to arrive on `arrival_game_turn`
 /// (§20.21 delay), requiring `tonnage` Axis Naval Convoy tons (0 for Commonwealth production,
@@ -672,6 +685,17 @@ pub struct GameState {
     /// maxima across a game (§20.66 notes). Each records the Game-Turn it was planned.
     #[serde(default)]
     pub production_orders: Vec<ProductionOrder>,
+    /// Truck Points produced (§20.78A / §20.66a) awaiting arrival at their delivery city.
+    #[serde(default)]
+    pub pending_trucks: Vec<PendingTruckDelivery>,
+    /// Free Truck Points delivered by production and awaiting assignment to units, by side
+    /// (§20.78A trucks arrive at Alexandria; §20.66a Axis trucks at their entry port).
+    #[serde(default)]
+    pub truck_pools: std::collections::HashMap<Side, crate::state::unit::TruckPoints>,
+    /// Lifetime Truck Points planned per side per §20.66a row (Axis planned truck production), for
+    /// enforcing the row's lifetime total. Keyed by (side, TruckKind discriminant name).
+    #[serde(default)]
+    pub axis_truck_orders: Vec<PendingTruckDelivery>,
     /// Squadrons currently flying Combat Air Patrol (§40.2), reset at the start of each Operations
     /// Stage. Enemy missions entering an offensive patrol's coverage are intercepted (§40.26).
     #[serde(default)]
@@ -838,6 +862,9 @@ impl GameState {
             replacement_points: Vec::new(),
             pending_replacements: Vec::new(),
             production_orders: Vec::new(),
+            pending_trucks: Vec::new(),
+            truck_pools: std::collections::HashMap::new(),
+            axis_truck_orders: Vec::new(),
             cap_patrols: Vec::new(),
             pilots: Vec::new(),
             airdrop_last_stage: std::collections::HashMap::new(),
@@ -1719,6 +1746,43 @@ impl GameState {
         }
         for p in due {
             self.add_replacement_points(p.class, p.count, p.location, p.assigned_to);
+        }
+    }
+
+    /// Schedule `count` Truck Points of `kind` for `side` to arrive at the Naval Convoy Arrival
+    /// Phase of `game_turn`/`stage` (§20.78A CW +4 GT; §20.66a Axis +2 GT).
+    pub fn schedule_truck_delivery(
+        &mut self,
+        side: Side,
+        kind: crate::reference::logistics::TruckKind,
+        count: u32,
+        game_turn: u32,
+        stage: u32,
+    ) {
+        if count == 0 {
+            return;
+        }
+        self.pending_trucks.push(PendingTruckDelivery { side, kind, count, game_turn, stage });
+    }
+
+    /// Bring in any produced Truck Points now due (§20.78A / §20.66a) — called at the Naval Convoy
+    /// Arrival Phase. Each due delivery adds to its side's free-truck pool.
+    pub fn process_truck_arrivals(&mut self) {
+        use crate::reference::logistics::TruckKind;
+        let now = (self.game_turn, self.operations_stage as u32);
+        let mut i = 0;
+        while i < self.pending_trucks.len() {
+            if (self.pending_trucks[i].game_turn, self.pending_trucks[i].stage) <= now {
+                let d = self.pending_trucks.remove(i);
+                let pool = self.truck_pools.entry(d.side).or_default();
+                match d.kind {
+                    TruckKind::Light => pool.light += d.count,
+                    TruckKind::Medium => pool.medium += d.count,
+                    TruckKind::Heavy => pool.heavy += d.count,
+                }
+            } else {
+                i += 1;
+            }
         }
     }
 
@@ -5509,6 +5573,7 @@ impl GameState {
         if phase == Phase::NavalConvoyArrival {
             self.process_arrivals();
             self.process_replacement_arrivals();
+            self.process_truck_arrivals();
         }
     }
 

@@ -270,7 +270,10 @@ Breakdown §21.38, Repair §22, Equivalent Weights §54.5), and the **production
 German/Italian/CW production, Axis/CW truck production, CW infantry production, Replacement
 Conversion §20.3). All are deserialized and unit-tested; the Replacement-Point production charts
 are consulted by the `PlanProduction` command and the §20.3 Conversion chart by `absorb_replacement`
-(§8.7), though the truck/CW-infantry roll tables are not yet driven by game logic.
+(§8.7); the truck/CW-infantry production tables are now driven by the `ProduceCommonwealthTrucks`
+(§20.78A), `ProduceCommonwealthInfantry` (§20.78B), and `ProduceAxisTrucks` (§20.66a) commands.
+(Like every reference table, these load on demand — no scenario bootstrap auto-loads the reference
+layer yet, so a command returns `NoTable` until its chart is loaded.)
 
 ### 8.2 Turn driver / Sequence of Play — implemented
 `GameState`'s turn driver (`advance_phase`) walks the full per-Game-Turn sequence, not just
@@ -293,14 +296,15 @@ unused-replacement VP; §64.75 CW withdrawal VP; §64.76 band), with §64.71/§6
 including the one-full-turn objective-hold check. (The scenario-level §60.8 victory is not
 separately modeled.)
 
-### 8.3 Command boundary — ~54 commands, phase-gated
+### 8.3 Command boundary — ~57 commands, phase-gated
 `GameState::apply` covers land movement/combat, air, naval, logistics, and construction. Land:
 `MoveStep`/`FormationMove`, `Barrage`/`AntiArmor`/`CloseAssault`/`Retreat`, `React`,
 `MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply`, `PoisonWell`/`SweetenWell`.
 Logistics/construction (Organization phase): `LoadTrucks`/`UnloadTrucks`, `SiphonFuel`/
 `RefuelUnit`/`RearmUnit`, `BuildPipeline`/`BuildFortification`/`BuildRailroad`/`DemolishRailroad`/
 `BuildRoad`, `LayMinefield`/`ClearMinefield`, `WithdrawUnit`/`ReturnUnit`/`AbsorbReplacement`,
-`PlanProduction` (§20.66), `BlockHarbor`/`UnblockHarbor`, `Repair`. Naval: `PlanConvoy`/`BombConvoy`/
+`PlanProduction` (§20.66), `ProduceCommonwealthTrucks`/`ProduceCommonwealthInfantry`/
+`ProduceAxisTrucks` (§20.78A/B, §20.66a), `BlockHarbor`/`UnblockHarbor`, `Repair`. Naval: `PlanConvoy`/`BombConvoy`/
 `DeliverConvoy`/`ReconConvoyLane`, `AssignShip`/`RepairShip`, `ArtilleryBombardShip`/
 `SanGiorgioAttackShip`/`BombShip`/`OffShoreBombard`, `LayHarborMine`/`RemoveHarborMine`. Air:
 `AssignSquadronPlanes`, `AssignPilot` (§40.12), `TransferSquadron` (§43.14), `ReadySquadron`/
@@ -478,10 +482,18 @@ booked on convoys arriving that turn — would exceed that turn's convoy Shippin
 (`InsufficientConvoyCapacity`). Bounded model (D15 step 8): it uses the die-6 allowance *ceiling*
 (the turn's die roll is unknown two turns out at planning time) and subtracts only already-planned
 supply convoys; Commonwealth production (strategic-supply line, Alexandria) is exempt; with no
-Convoy Level Chart loaded the gate is skipped. **Still open in production:** the truck (§20.78A) /
-CW-infantry (§20.78B) roll tables remain reference-only. (The production item→class map's SP-gun/tankette Tank
-calls were owner-confirmed 2026-08-29; the §20.3 absorb classifier's special-infantry/armored-car
-distinctions remain provisional.)
+Convoy Level Chart loaded the gate is skipped. **Truck & Commonwealth-infantry production are now
+driven:** `ProduceCommonwealthTrucks` (§20.78A: one d6 per truck type → Truck Points arriving +4
+Game-Turns at Alexandria) and `ProduceCommonwealthInfantry` (§20.78B: 2d6 → Infantry Replacement
+Points arriving +4 Game-Turns, fed through the standard replacement lifecycle) roll their tables;
+`ProduceAxisTrucks` (§20.66a) plans against the row's lifetime total and per-Game-Turn maximum,
+delivering +2 Game-Turns. Produced Truck Points land in a per-side free-truck pool (`truck_pools`)
+at the Naval Convoy Arrival Phase, awaiting a future motorization/assignment command. **Still open
+in production:** the §20.78A "≤25% of the total per Game-Turn at Alexandria" throughput cap is not
+enforced (awaits a ruling on scoping), and Axis truck convoy tonnage is not yet cross-counted
+against the §20.62 replacement-shipping ceiling. (The production item→class map's SP-gun/tankette
+Tank calls were owner-confirmed 2026-08-29; the §20.3 absorb classifier's special-infantry/
+armored-car distinctions remain provisional.)
 
 ### 8.8 Scenario, map & OB
 The Scenario-1 order of battle and the full map are in: all five map sections (A–E) digitized,

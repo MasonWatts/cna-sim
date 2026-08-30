@@ -116,6 +116,18 @@ pub enum Command {
         item: String,
         count: u32,
     },
+    /// §20.78A ProduceCommonwealthTrucks: roll the Commonwealth Truck Production Table once
+    /// (Organization Phase) — one d6 per truck type. The produced Truck Points arrive four
+    /// Game-Turns later at Alexandria (into the Commonwealth free-truck pool).
+    ProduceCommonwealthTrucks { light_die: u32, medium_die: u32, heavy_die: u32 },
+    /// §20.78B ProduceCommonwealthInfantry: roll the Commonwealth Infantry Production Table once
+    /// (Organization Phase) with a 2d6 `roll` (2–12). The produced Infantry Replacement Points
+    /// arrive four Game-Turns later and begin Training.
+    ProduceCommonwealthInfantry { roll: u32 },
+    /// §20.66a ProduceAxisTrucks: plan `count` Truck Points of `kind` (Organization Phase),
+    /// validated against the Axis Truck Production row's lifetime total and per-Game-Turn maximum.
+    /// On success the trucks arrive two Game-Turns later (into the Axis free-truck pool).
+    ProduceAxisTrucks { kind: crate::reference::logistics::TruckKind, count: u32 },
     /// §55.22: block a port's harbour by scuttling (an engineer/CW-HQ must be present).
     BlockHarbor { port: String, has_engineer: bool },
     /// §55.26: remove one level of harbour blocking with the required engineer units.
@@ -492,6 +504,12 @@ pub enum CommandOutcome {
         class: crate::state::game::ReplacementClass,
         tonnage: u32,
     },
+    /// §20.78A: Commonwealth Truck Production rolled — the given Truck Points of each type were
+    /// produced and scheduled to arrive on `arrival_game_turn`.
+    TrucksProduced { arrival_game_turn: u32, light: u32, medium: u32, heavy: u32 },
+    /// §20.78B: Commonwealth Infantry Production rolled — `points` Infantry Replacement Points
+    /// were produced and scheduled to arrive on `arrival_game_turn` (0 = a "none" roll this era).
+    InfantryProduced { arrival_game_turn: u32, points: u32 },
     /// §40.2: a Combat Air Patrol was established — `fighters` planes flew to the patrolled hex.
     CapDesignated { fighters: u32 },
     /// §40.5–40.8: a strafing mission resolved with Strafing-Table `result` (0–3); `effect`
@@ -693,6 +711,13 @@ impl GameState {
             Command::PlanProduction { nationality, item, count } => {
                 self.cmd_plan_production(nationality, &item, count)
             }
+            Command::ProduceCommonwealthTrucks { light_die, medium_die, heavy_die } => {
+                self.cmd_produce_commonwealth_trucks(light_die, medium_die, heavy_die)
+            }
+            Command::ProduceCommonwealthInfantry { roll } => {
+                self.cmd_produce_commonwealth_infantry(roll)
+            }
+            Command::ProduceAxisTrucks { kind, count } => self.cmd_produce_axis_trucks(kind, count),
             Command::BlockHarbor { port, has_engineer } => self.cmd_block_harbor(&port, has_engineer),
             Command::UnblockHarbor { port, engineers } => self.cmd_unblock_harbor(&port, engineers),
             Command::AssignSquadronPlanes { squadron, aircraft_type, class, count } => {
@@ -1390,6 +1415,117 @@ impl GameState {
             .and_then(|s| self.resolve_entry(&s));
         self.plan_replacement(class, count, arrival_game_turn, self.operations_stage as u32, location, None);
         Ok(CommandOutcome::ProductionPlanned { arrival_game_turn, class, tonnage })
+    }
+
+    /// §20.78A ProduceCommonwealthTrucks: roll the Commonwealth Truck Production Table once, one d6
+    /// per truck type; the produced Truck Points arrive four Game-Turns later at Alexandria (into
+    /// the Commonwealth free-truck pool). Gated to the Organization Phase like the other production
+    /// commands. (The §20.78A "≤25% of the total per Game-Turn at Alexandria" throughput cap is not
+    /// yet enforced — it awaits a ruling on how "total produced" is scoped; flagged, D15.)
+    fn cmd_produce_commonwealth_trucks(
+        &mut self,
+        light_die: u32,
+        medium_die: u32,
+        heavy_die: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::logistics::TruckKind;
+        use crate::reference::units::Side;
+        self.require_phase(Phase::Organization)?;
+        let table = self.reference.cw_truck_production.as_ref().ok_or(CommandError::NoTable)?;
+        let gt = self.game_turn;
+        let light = table.produce(TruckKind::Light, gt, light_die);
+        let medium = table.produce(TruckKind::Medium, gt, medium_die);
+        let heavy = table.produce(TruckKind::Heavy, gt, heavy_die);
+        let arrival_game_turn = gt + 4;
+        let stage = self.operations_stage as u32;
+        self.schedule_truck_delivery(Side::Commonwealth, TruckKind::Light, light, arrival_game_turn, stage);
+        self.schedule_truck_delivery(Side::Commonwealth, TruckKind::Medium, medium, arrival_game_turn, stage);
+        self.schedule_truck_delivery(Side::Commonwealth, TruckKind::Heavy, heavy, arrival_game_turn, stage);
+        Ok(CommandOutcome::TrucksProduced { arrival_game_turn, light, medium, heavy })
+    }
+
+    /// §20.78B ProduceCommonwealthInfantry: roll the Commonwealth Infantry Production Table once
+    /// (2d6 sum, 2–12); the produced Infantry Replacement Points arrive four Game-Turns later and
+    /// begin Training via the standard replacement lifecycle. Gated to the Organization Phase.
+    fn cmd_produce_commonwealth_infantry(&mut self, roll: u32) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::units::Nationality;
+        use crate::state::game::ReplacementClass;
+        self.require_phase(Phase::Organization)?;
+        let table = self.reference.cw_infantry_production.as_ref().ok_or(CommandError::NoTable)?;
+        let gt = self.game_turn;
+        let points = table.produce(gt, roll);
+        let arrival_game_turn = gt + 4;
+        if points > 0 {
+            let location = self
+                .reference
+                .reinforcement_entry_hex(Nationality::Commonwealth)
+                .map(str::to_string)
+                .and_then(|s| self.resolve_entry(&s));
+            self.plan_replacement(
+                ReplacementClass::Infantry, points, arrival_game_turn, self.operations_stage as u32, location, None,
+            );
+        }
+        Ok(CommandOutcome::InfantryProduced { arrival_game_turn, points })
+    }
+
+    /// §20.66a ProduceAxisTrucks: plan `count` Truck Points of `kind`, validated against the Axis
+    /// Truck Production row's lifetime total and per-Game-Turn maximum. On success the trucks
+    /// arrive two Game-Turns later (§20.21 Axis delay) into the Axis free-truck pool. Gated to the
+    /// Organization Phase. (Bounded, D15: the row's convoy tonnage is not yet cross-counted against
+    /// the §20.62 replacement-shipping ceiling — a documented simplification.)
+    fn cmd_produce_axis_trucks(
+        &mut self,
+        kind: crate::reference::logistics::TruckKind,
+        count: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::units::Side;
+        use crate::state::game::PendingTruckDelivery;
+        self.require_phase(Phase::Organization)?;
+        if count == 0 {
+            return Err(CommandError::NoParticipants);
+        }
+        let gt = self.game_turn;
+        let row = self
+            .reference
+            .axis_truck_production
+            .as_ref()
+            .ok_or(CommandError::NoTable)?
+            .row(kind)
+            .clone();
+        // §20.66a lifetime total for this truck type.
+        let lifetime: u32 = self
+            .axis_truck_orders
+            .iter()
+            .filter(|o| o.side == Side::Axis && o.kind == kind)
+            .map(|o| o.count)
+            .sum();
+        if lifetime + count > row.total {
+            return Err(CommandError::ProductionExhausted);
+        }
+        // §20.66a per-Game-Turn maximum (orders are stamped with their plan Game-Turn here).
+        let this_turn: u32 = self
+            .axis_truck_orders
+            .iter()
+            .filter(|o| o.side == Side::Axis && o.kind == kind && o.game_turn == gt)
+            .map(|o| o.count)
+            .sum();
+        if this_turn + count > row.max_per_turn(gt) {
+            return Err(CommandError::ProductionRateExceeded);
+        }
+        // Record the order (stamped with the plan turn for the accounting above) and schedule the
+        // trucks to arrive two Game-Turns later.
+        self.axis_truck_orders.push(PendingTruckDelivery {
+            side: Side::Axis, kind, count, game_turn: gt, stage: self.operations_stage as u32,
+        });
+        let arrival_game_turn = gt + 2;
+        self.schedule_truck_delivery(Side::Axis, kind, count, arrival_game_turn, self.operations_stage as u32);
+        let (mut light, mut medium, mut heavy) = (0, 0, 0);
+        match kind {
+            crate::reference::logistics::TruckKind::Light => light = count,
+            crate::reference::logistics::TruckKind::Medium => medium = count,
+            crate::reference::logistics::TruckKind::Heavy => heavy = count,
+        }
+        Ok(CommandOutcome::TrucksProduced { arrival_game_turn, light, medium, heavy })
     }
 
     /// §40.2 DesignateCap: commit `planes` fighters of a located squadron to Combat Air Patrol over
