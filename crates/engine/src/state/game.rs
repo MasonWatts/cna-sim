@@ -463,6 +463,10 @@ pub struct Raider {
     /// §27.16: the Game-Turn on which an eliminated raider may re-form (0 = in play).
     #[serde(default)]
     pub reform_game_turn: u32,
+    /// §27.32/§27.33: whether the enemy can currently see this raider — hidden until it raids or is
+    /// spotted (§3.5 fog-of-war). Friendly players always see their own raiders.
+    #[serde(default)]
+    pub revealed: bool,
 }
 
 /// General Rommel's counter (§31): a non-combat vehicle (treated as a 4-wheel-drive medium truck,
@@ -5968,6 +5972,7 @@ impl GameState {
                     ammo: 0,
                     drew_water_this_gt: false,
                     reform_game_turn: 0,
+                    revealed: false,
                 });
                 self.raiders.len() - 1
             }
@@ -5984,6 +5989,7 @@ impl GameState {
         r.cpa_used = 0;
         r.reform_game_turn = 0;
         r.drew_water_this_gt = false;
+        r.revealed = false; // §27.33: a freshly formed raider is hidden again
         Some(idx)
     }
 

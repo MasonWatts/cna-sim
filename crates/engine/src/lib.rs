@@ -2669,7 +2669,7 @@ mod tests {
             });
             g.raiders = vec![Raider {
                 kind: RaiderKind::Lrdg, side: Side::Commonwealth, hex: Some(hex),
-                cpa_used: 0, fuel: 0, ammo: 0, drew_water_this_gt: false, reform_game_turn: 0,
+                cpa_used: 0, fuel: 0, ammo: 0, drew_water_this_gt: false, reform_game_turn: 0, revealed: false,
             }];
             g.raids_on_rommel = 0;
             g.rommel_raid_ai3_until_gt = 0;
@@ -2797,7 +2797,7 @@ mod tests {
         let place_raider = |g: &mut GameState| {
             g.raiders = vec![Raider {
                 kind: RaiderKind::Lrdg, side: Side::Commonwealth, hex: Some(hex),
-                cpa_used: 0, fuel: 0, ammo: 0, drew_water_this_gt: false, reform_game_turn: 0,
+                cpa_used: 0, fuel: 0, ammo: 0, drew_water_this_gt: false, reform_game_turn: 0, revealed: false,
             }];
         };
 
@@ -2866,7 +2866,7 @@ mod tests {
         });
         let mk = |water: bool| Raider {
             kind: RaiderKind::Lrdg, side: Side::Commonwealth, hex: Some(hex),
-            cpa_used: 0, fuel: 0, ammo: 0, drew_water_this_gt: water, reform_game_turn: 0,
+            cpa_used: 0, fuel: 0, ammo: 0, drew_water_this_gt: water, reform_game_turn: 0, revealed: false,
         };
         g.raiders = vec![mk(false), mk(true)]; // one un-watered, one watered
         g.phase = Phase::MovementAndCombat;
@@ -2976,7 +2976,7 @@ mod tests {
         let a = HexId::parse("C3617").unwrap().to_hex_coord();
         g.raiders.push(Raider {
             kind: RaiderKind::Lrdg, side: Side::Commonwealth, hex: Some(a),
-            cpa_used: 0, fuel: 2, ammo: 0, drew_water_this_gt: false, reform_game_turn: 0,
+            cpa_used: 0, fuel: 2, ammo: 0, drew_water_this_gt: false, reform_game_turn: 0, revealed: false,
         });
         // An Axis convoy adjacent (within range) and one far away (out of range).
         let near = g.map.neighbors(a).find(|&h| g.map.terrain(h).is_some()).unwrap();
@@ -3043,9 +3043,62 @@ mod tests {
         assert_eq!(g.effective_cpa(sas), Some(10), "base infantry CPA");
         g.raiders.push(Raider {
             kind: RaiderKind::Lrdg, side: Side::Commonwealth, hex: Some(hex),
-            cpa_used: 0, fuel: 2, ammo: 0, drew_water_this_gt: false, reform_game_turn: 0,
+            cpa_used: 0, fuel: 2, ammo: 0, drew_water_this_gt: false, reform_game_turn: 0, revealed: false,
         });
         assert_eq!(g.effective_cpa(sas), Some(30));
+    }
+
+    #[test]
+    fn observation_layer_hides_enemy_secrets_3_5() {
+        // §3.5/D5: a side sees enemy counters but not their TOE Strength, enemy dump contents, or
+        // hidden raiders.
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::game::{Commodities, GameState, Raider, RaiderKind, SupplyDump};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        let hex = HexCoord::new(3, 3);
+        let cw = g.spawn_unit(Nationality::Commonwealth, "k", "1 Bn", Composition::Organic { current_toe: 5 });
+        let ax = g.spawn_unit(Nationality::German, "k", "II/104", Composition::Organic { current_toe: 4 });
+        for id in [cw, ax] {
+            g.unit_mut(id).unwrap().location = Some(UnitLocation::OnMap(hex));
+        }
+
+        // §3.5: from the Commonwealth view, own strength is visible; the enemy's is hidden.
+        let units = g.observe_units(Side::Commonwealth);
+        let cw_view = units.iter().find(|v| v.id == cw).unwrap();
+        let ax_view = units.iter().find(|v| v.id == ax).unwrap();
+        assert_eq!((cw_view.friendly, cw_view.strength), (true, Some(5)));
+        assert_eq!((ax_view.friendly, ax_view.strength), (false, None), "enemy TOE Strength hidden");
+
+        // §32.18: enemy dump contents/dummy hidden; own dump shown in full.
+        g.supply_dumps.push(SupplyDump {
+            location: UnitLocation::OnMap(hex), side: Side::Commonwealth,
+            supply: Commodities { fuel: 9, ammo: 0, stores: 0, water: 0 }, dummy: false,
+        });
+        g.supply_dumps.push(SupplyDump {
+            location: UnitLocation::OnMap(hex), side: Side::Axis,
+            supply: Commodities { fuel: 7, ammo: 0, stores: 0, water: 0 }, dummy: true,
+        });
+        let dumps = g.observe_supply_dumps(Side::Commonwealth);
+        assert!(dumps.iter().any(|d| d.friendly && d.contents == Some(Commodities { fuel: 9, ammo: 0, stores: 0, water: 0 })));
+        let enemy_dump = dumps.iter().find(|d| !d.friendly).unwrap();
+        assert_eq!((enemy_dump.contents, enemy_dump.dummy), (None, None), "enemy dump contents/dummy hidden");
+
+        // §27.32: a hidden enemy raider is not observed; a revealed one is; own raiders always are.
+        let mk = |side, revealed| Raider {
+            kind: if side == Side::Commonwealth { RaiderKind::Lrdg } else { RaiderKind::Dsa },
+            side, hex: Some(hex), cpa_used: 0, fuel: 0, ammo: 0, drew_water_this_gt: false,
+            reform_game_turn: 0, revealed,
+        };
+        g.raiders.push(mk(Side::Commonwealth, false)); // own — always visible
+        g.raiders.push(mk(Side::Axis, false)); // enemy, hidden
+        let seen = g.observe_raiders(Side::Commonwealth);
+        assert_eq!(seen.len(), 1, "only the own raider is visible");
+        assert!(seen[0].friendly);
+        g.raiders[1].revealed = true; // §27.33: now spotted/raided
+        assert_eq!(g.observe_raiders(Side::Commonwealth).len(), 2, "revealed enemy raider now visible");
     }
 
     #[test]

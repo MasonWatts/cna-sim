@@ -12,4 +12,5 @@ pub mod map;
 pub mod naval;
 pub mod scenario;
 pub mod unit;
+pub mod view;
 pub mod zoc;

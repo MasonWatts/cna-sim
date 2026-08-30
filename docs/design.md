@@ -99,7 +99,7 @@ intel, deceptive dummy tank formations). For AI players this matters: an agent s
 act on what it *knows*, not ground truth. We keep the core state model clean now and
 add a thin per-player "knowledge/observation" layer later, rather than baking
 omniscience into the core. Retrofitting fog-of-war into an omniscient model is painful;
-anticipating it is cheap.
+anticipating it is cheap. *(A first cut of that layer now exists — see §8.10.)*
 
 ### 3.6 Explicit Sequence-of-Play state machine
 The turn structure (Game-Turn → 3 Operations Stages → Phases → Segments → Steps) is
@@ -184,7 +184,7 @@ Target: a legal, playable, machine-refereed simplified Land Game.
   ~~desert raiders & commandos (§27)~~ — **now fully implemented**. See §8.2/§8.9.)
 - Full construction/engineers/minefields/fortifications (§§23–26) — partial first.
 - Detailed prisoners (§28), repair (§22), breakdown (§21) — simplified first.
-- Fog-of-war enforcement (§3.5).
+- ~~Fog-of-war enforcement (§3.5)~~ — **first cut implemented** (per-side observation layer, §8.10).
 
 *(This Phase-1 cut is a starting proposal to refine, not a frozen boundary.)*
 
@@ -555,12 +555,25 @@ with the §27.84 three-stage supply window and raids grounded Axis planes (`Raid
 §27.85/86 via the §27.93 table, §27.87 ≥6-stage frequency), gaining CPA 30 when escorted by an LRDG
 (§27.88). §27.59 convoy interception (`InterceptTruckConvoy`) lets a raider within four hexes of a
 passing convoy attack it in the Truck Convoy Phase. Positions are tracked for real; the §27.32
-hidden-movement concealment awaits §3.5 fog-of-war. Flagged simplifications (D): §27.12 "trained to
+hidden-movement concealment is now enforced at the *view* layer (§8.10 — a hidden raider is absent
+from the enemy's observation). Flagged simplifications (D): §27.12 "trained to
 max Morale" precondition; per-hex fuel accounting (§27.38); all-replacement convoy auto-elimination
 (§27.58); facility/plane side-tagging (§27.53/54); and §27.59 range as hex distance ≤4 (proxy for
 "4 Movement CPs"). The §27.93 SAS Raid Table (0/10/25/25/33/50 by d6) is owner-confirmed (2026-08-30).
 
-## 9. Source-Material Transcription Practice
+### 8.10 Fog of war (§3.5 / D5) — first cut: per-side observation layer
+The core `GameState` holds ground truth; `crate::state::view` derives a **thin per-side view** of
+what a player is entitled to know (§3.5), so an AI agent or UI acts on knowledge, not omniscience.
+Non-mutating query methods: `observe_units(side)` shows every on-map counter but hides an enemy
+unit's current **TOE Strength** (`strength: None`); `observe_supply_dumps(side)` shows a friendly
+dump's contents/dummy flag but reveals only a marker for an enemy dump (§32.18); `observe_raiders(side)`
+shows own raiders always and enemy raiders only once **revealed** (a new `Raider.revealed` flag set
+when a raider raids or is spotted, §27.32/§27.33). This closes the §27.32 hidden-movement caveat for
+the enemy's *view*. **Still ground-truth-only (later increments):** well depletion/poisoning secrecy
+(§52.14), minefield real/dummy concealment (§26) at the view layer, exact convoy tonnage (already
+class-only via §42.53 recon), and a raider re-hiding after a reveal (currently stays revealed until
+re-formed). No command consumes the view yet — it is the query side of the §3.3 boundary, ready for
+Phase 2 agents.
 
 As we digitize physical game components (charts, tables, counters, OA sheets, scenario
 setups), we save a faithful, human-readable transcription so future agents and humans

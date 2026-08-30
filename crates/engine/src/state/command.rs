@@ -1992,6 +1992,7 @@ impl GameState {
         let over = {
             let rr = self.raiders.get_mut(raider).unwrap();
             rr.cpa_used += 100;
+            rr.revealed = true; // §27.33: the LRDG reveals itself
             rr.cpa_used > 500
         };
         // §27.64 table result.
@@ -2038,6 +2039,7 @@ impl GameState {
         let over = {
             let r = &mut self.raiders[raider];
             r.cpa_used += 50;
+            r.revealed = true; // §27.33: a raider reveals itself when it raids
             r.cpa_used > 500
         };
         if over {
