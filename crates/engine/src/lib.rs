@@ -4807,6 +4807,7 @@ mod tests {
             bombload_per_plane: 20,
             night: false,
             escort: None,
+            abort: false,
             flak_destroy_roll: 66,
             flak_abort_roll: 66,
             bomb_roll: 66,
@@ -4887,7 +4888,7 @@ mod tests {
         let bomb = |target: HexCoord| Command::FlyBombingMissionAt {
             squadron: SquadronId(2), target, mission: BombingMission::Personnel,
             planes: 6, bombload_per_plane: 20, night: false,
-            escort: None, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // A target OUTSIDE the 7-hex air ZOC is not intercepted (§40.23).
         let outside = HexCoord::new(14, 10); // 4 hexes from center
@@ -5344,7 +5345,7 @@ mod tests {
         let bomb = |mission| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission,
             planes: 12, bombload_per_plane: 20, night: false,
-            escort: None, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         match g.apply(bomb(BombingMission::Personnel)) {
             Ok(CommandOutcome::BombingMission(o)) => {
@@ -5455,7 +5456,7 @@ mod tests {
         }
         let bomb = |target, mission| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission, planes: 12, bombload_per_plane: 20,
-            night: false, escort: None, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            night: false, escort: None, abort: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
 
         // §41.37: bombing a placed Level-2 fortification knocks it down at most one level per stage.
@@ -5601,7 +5602,7 @@ mod tests {
         }
         let bomb = |escort| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
-            planes: 12, bombload_per_plane: 20, night: false, escort,
+            planes: 12, bombload_per_plane: 20, night: false, escort, abort: false,
             flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // A non-fighter escort (a bomber squadron) is not permitted (§45: fighters escort).
@@ -5629,11 +5630,69 @@ mod tests {
             g.apply(Command::FlyBombingMissionAt {
                 squadron: SquadronId(3), target: HexId::parse("B5925").unwrap().to_hex_coord(),
                 mission: BombingMission::Personnel, planes: 6, bombload_per_plane: 20, night: false,
-                escort: Some(SquadronId(2)),
+                escort: Some(SquadronId(2)), abort: false,
                 flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
             }),
             Err(CommandError::EscortNotPermitted)
         );
+    }
+
+    #[test]
+    fn voluntary_abort_39_3() {
+        use crate::reference::aircraft::{AircraftClass, BombingMission, CapType};
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        refs.load_aircraft_chart(Nationality::Commonwealth, include_str!("../../../data/reference/aircraft/commonwealth.ron")).unwrap();
+        refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+        refs.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(1, 1);
+        let target = HexCoord::new(3, 1);
+        // German bombers + a German fighter escort, and a Commonwealth CAP over the target.
+        let mut kg = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 26", 5, Some(base));
+        kg.add_planes("Ju.88D", AircraftClass::Bomber, 12, 1);
+        g.sgsus.insert(SquadronId(1), kg);
+        let mut esc = Sgsu::new(SquadronId(2), Nationality::German, SquadronClass::Fighter, "JG 27", 5, Some(base));
+        esc.add_planes("Bf.109F", AircraftClass::Fighter, 6, 1);
+        g.sgsus.insert(SquadronId(2), esc);
+        let mut cw = Sgsu::new(SquadronId(3), Nationality::Commonwealth, SquadronClass::Fighter, "252 Sqn", 5, Some(target));
+        cw.add_planes("Beaufighter Mk.IF", AircraftClass::Fighter, 6, 1);
+        g.sgsus.insert(SquadronId(3), cw);
+        let ready = |g: &mut GameState, id| {
+            for grp in g.sgsus.get_mut(&id).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        };
+        for id in [SquadronId(1), SquadronId(2), SquadronId(3)] { ready(&mut g, id); }
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+        // A Commonwealth offensive CAP of 4 fighters covers the target (§40.23 air ZOC).
+        assert!(matches!(
+            g.apply(Command::DesignateCap { squadron: SquadronId(3), center: target, cap_type: CapType::Offensive, planes: 4 }),
+            Ok(_)
+        ));
+
+        let abort = |escort| Command::FlyBombingMissionAt {
+            squadron: SquadronId(1), target, mission: BombingMission::Personnel,
+            planes: 12, bombload_per_plane: 20, night: false, escort, abort: true,
+            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+        };
+        // §39.36: with no escort screen and inferior Maneuver, the bombers may not abort.
+        assert_eq!(g.apply(abort(None)), Err(CommandError::AbortNotPermitted));
+        // §39.37: a sufficient fighter escort (6 ≥ 25% of 4) lets them abort — the CAP is not engaged.
+        match g.apply(abort(Some(SquadronId(2)))) {
+            Ok(CommandOutcome::MissionAborted { planes }) => assert_eq!(planes, 12),
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(g.cap_patrols[0].intercepts_used, 0, "an aborted mission does not engage CAP");
     }
 
     #[test]
@@ -5667,7 +5726,7 @@ mod tests {
         let bomb = Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target: derna, mission: BombingMission::Personnel,
             planes: 12, bombload_per_plane: 20, night: false,
-            escort: None, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // §43.23: in the first 4 Operations Stages of the month, Crete is committed to Suez.
         g.game_turn = 1;
@@ -5716,7 +5775,7 @@ mod tests {
         let bomb = |target| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 12, bombload_per_plane: 20, night: false,
-            escort: None, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // With no §37.4 chart loaded, a Box squadron has no computable flight distance.
         assert_eq!(g.apply(bomb(derna)), Err(CommandError::TargetOutOfRange));
@@ -5864,7 +5923,7 @@ mod tests {
         let bomb = Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 6, bombload_per_plane: 20, night: false,
-            escort: None, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
 
         // CW fighters based AT the target (distance 0 → Scramble Table success on any d6, §40.4).

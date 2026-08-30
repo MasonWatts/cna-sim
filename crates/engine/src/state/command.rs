@@ -379,6 +379,9 @@ pub enum Command {
         /// fight the escort before it can attack the bombers. (§43.24: a Crete-based bomber may not
         /// take an on-map/African escort.)
         escort: Option<crate::state::air::SquadronId>,
+        /// §39.3: voluntarily abort the mission before any combat (the bombers turn back). Allowed
+        /// only if the escort screen (§39.36/§39.37) or bomber Maneuver (§39.35) qualifies.
+        abort: bool,
         flak_destroy_roll: u32,
         flak_abort_roll: u32,
         bomb_roll: u32,
@@ -494,6 +497,8 @@ pub enum CommandOutcome {
     UnitAirdropped,
     /// §43.14: a squadron began a transfer (in transit for one Operations Stage).
     SquadronTransferred,
+    /// §39.3: a mission was voluntarily aborted before combat — `planes` bombers turned back.
+    MissionAborted { planes: u32 },
 }
 
 /// Why a command was rejected. The state is left unchanged on any error.
@@ -616,6 +621,9 @@ pub enum CommandError {
     /// §45/§43.24: the escort squadron is ineligible (not a friendly ready fighter, in transit, or
     /// an on-map fighter escorting a Crete-based bomber).
     EscortNotPermitted,
+    /// §39.36/§39.37: the mission may not voluntarily abort — no sufficient fighter screen and the
+    /// bombers' Maneuver does not qualify against the covering enemy CAP.
+    AbortNotPermitted,
     /// §38.36: no Stores Point is present at the squadron's base to pay for the refit attempt.
     InsufficientStores,
     /// §35.14: the SGSU lacks its own upkeep and may not repair (refit) its planes this stage.
@@ -1000,10 +1008,10 @@ impl GameState {
                 self.cmd_airdrop_unit(squadron, unit, target)
             }
             Command::FlyBombingMissionAt {
-                squadron, target, mission, planes, bombload_per_plane, night, escort,
+                squadron, target, mission, planes, bombload_per_plane, night, escort, abort,
                 flak_destroy_roll, flak_abort_roll, bomb_roll,
             } => self.cmd_fly_bombing_mission_at(
-                squadron, target, mission, planes, bombload_per_plane, night, escort,
+                squadron, target, mission, planes, bombload_per_plane, night, escort, abort,
                 flak_destroy_roll, flak_abort_roll, bomb_roll,
             ),
         }
@@ -1860,6 +1868,7 @@ impl GameState {
         bombload_per_plane: u32,
         night: bool,
         escort: Option<crate::state::air::SquadronId>,
+        abort: bool,
         flak_destroy_roll: u32,
         flak_abort_roll: u32,
         bomb_roll: u32,
@@ -1919,28 +1928,7 @@ impl GameState {
         }
 
         let group = crate::rules::air::bombing_target_group(mission).ok_or(CommandError::NoTable)?;
-        // §40.26/§40.27: an enemy offensive CAP whose air ZOC covers the target intercepts (using
-        // its one interception this stage); pick the first eligible patrol and consume its intercept.
         let enemy = nationality.side().opponent();
-        let mut interceptors = None;
-        let mut interceptor_sq = None;
-        if let Some(i) = self.cap_patrols.iter().position(|p| {
-            p.side == enemy
-                && matches!(p.cap_type, CapType::Offensive)
-                && p.intercepts_used < crate::rules::air::OFFENSIVE_CAP_INTERCEPTS_PER_STAGE
-                && p.covers(target)
-        }) {
-            self.cap_patrols[i].intercepts_used += 1;
-            interceptor_sq = Some(self.cap_patrols[i].squadron);
-            interceptors = Some(self.cap_patrols[i].flight);
-        }
-        // §40.3: with no CAP covering the target, an enemy fighter base may scramble to intercept.
-        if interceptors.is_none() {
-            if let Some((sq, fl)) = self.scramble_interception(target, nationality.side(), night) {
-                interceptor_sq = Some(sq);
-                interceptors = Some(fl);
-            }
-        }
         // §45/§43.24: an optional fighter escort — intercepting CAP must fight it before the bombers.
         let mut escort_sq = None;
         let escort_flight = if let Some(esq) = escort {
@@ -1979,6 +1967,54 @@ impl GameState {
         } else {
             None
         };
+        // §39.3 voluntary abort: before any combat, the bombers may turn back if a sufficient
+        // fighter escort screens them (§39.36/§39.37) or their Maneuver qualifies (§39.35). The
+        // decision is made against the covering offensive CAP, which is neither engaged nor consumed.
+        if abort {
+            let cap = self.cap_patrols.iter().find(|p| {
+                p.side == enemy
+                    && matches!(p.cap_type, CapType::Offensive)
+                    && p.intercepts_used < crate::rules::air::OFFENSIVE_CAP_INTERCEPTS_PER_STAGE
+                    && p.covers(target)
+            });
+            let cap_count = cap.map_or(0, |p| p.flight.count);
+            let cap_maneuver = cap.map(|p| p.flight.maneuver);
+            let escort_count = escort_flight.map_or(0, |f| f.count);
+            let sufficient = crate::rules::air::sufficient_fighter_screen(escort_count, cap_count);
+            let bomber_maneuver = self
+                .sgsus
+                .get(&squadron)
+                .and_then(|s| s.planes.first())
+                .and_then(|g| self.reference.aircraft_charts.get(&nationality).and_then(|c| c.get(&g.aircraft_type)))
+                .and_then(|a| a.loadouts.first())
+                .map_or(0, |l| l.maneuver);
+            if !crate::rules::air::nonfighter_may_abort(sufficient, bomber_maneuver, cap_maneuver) {
+                return Err(CommandError::AbortNotPermitted);
+            }
+            // §39.31/§39.33: the bombers fly and dump their bombload, but do not bomb or fight.
+            let flown = self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?.fly(planes);
+            return Ok(CommandOutcome::MissionAborted { planes: flown });
+        }
+        // §40.26/§40.27: an enemy offensive CAP whose air ZOC covers the target intercepts (consuming
+        // its one interception this stage); else a fighter base may scramble (§40.3).
+        let mut interceptors = None;
+        let mut interceptor_sq = None;
+        if let Some(i) = self.cap_patrols.iter().position(|p| {
+            p.side == enemy
+                && matches!(p.cap_type, CapType::Offensive)
+                && p.intercepts_used < crate::rules::air::OFFENSIVE_CAP_INTERCEPTS_PER_STAGE
+                && p.covers(target)
+        }) {
+            self.cap_patrols[i].intercepts_used += 1;
+            interceptor_sq = Some(self.cap_patrols[i].squadron);
+            interceptors = Some(self.cap_patrols[i].flight);
+        }
+        if interceptors.is_none() {
+            if let Some((sq, fl)) = self.scramble_interception(target, nationality.side(), night) {
+                interceptor_sq = Some(sq);
+                interceptors = Some(fl);
+            }
+        }
         // §46: flak fired by the enemy AA units in the target hex.
         let flak_points = self.hex_flak_points(target, nationality.side());
         let outcome = self

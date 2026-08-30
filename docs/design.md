@@ -393,8 +393,11 @@ mission in the first four Operations Stages of each month — the Suez commitmen
 (§45/§39.35–37):** a bombing mission may carry a fighter `escort` (`FlyBombingMissionAt`); intercepting
 CAP/scramble fights the escort first and only surviving interceptors reach the bombers (escort losses
 applied to the escort squadron), so §43.25's African-fighter escort of Italy/Sicily bombers works and
-§43.24 is enforced (a Crete-based bomber may not take an on-map/African escort). Still deferred: the
-§39.36/§39.37 25%-screen *voluntary abort* (there is no abort command). Land-unit air
+§43.24 is enforced (a Crete-based bomber may not take an on-map/African escort). **Voluntary abort
+(§39.3):** a bombing mission may set `abort` — before any combat the bombers turn back (planes fly,
+bombload dumped, no interception/flak/effect) if they qualify (§39.36/§39.37 a sufficient escort
+screen — ≥25% of the covering CAP — or §39.35 superior Maneuver); an aborted mission does not engage
+or consume the CAP. Partial abort (§39.34, some planes continuing) is not modeled. Land-unit air
 recon waits on fog-of-war. **Malta strategic-air commitment (§43/§44.41) is modeled:** each Axis
 Malta Availability Level (I–IV) is limited to the scenario's Game-Turn count (the §44.41 chart),
 tracked in `malta_level_used` and gated at `DetermineMaltaAvailability` (Level I unlimited, §44.25);
