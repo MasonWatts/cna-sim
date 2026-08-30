@@ -725,6 +725,14 @@ pub struct GameState {
     /// automatically in supply (its landing stage plus two more); `None` when the window is closed.
     #[serde(default)]
     pub layforce_free_supply_until: Option<(u32, u8)>,
+    /// §27.84: the (Game-Turn, Operations-Stage) through which a sea/air-transported SAS Brigade is
+    /// automatically in supply (transport stage + two more); `None` when closed.
+    #[serde(default)]
+    pub sas_free_supply_until: Option<(u32, u8)>,
+    /// §27.87: the (Game-Turn, Operations-Stage) of the SAS Brigade's last airfield raid, for the
+    /// once-a-month / ≥6-Operations-Stages-between-raids limit.
+    #[serde(default)]
+    pub sas_last_raid: Option<(u32, u8)>,
     /// §27.64: Raids on Rommel attempted so far (max four per Campaign Game).
     #[serde(default)]
     pub raids_on_rommel: u32,
@@ -950,6 +958,8 @@ impl GameState {
             raiders: Vec::new(),
             layforce_alexandria_since: None,
             layforce_free_supply_until: None,
+            sas_free_supply_until: None,
+            sas_last_raid: None,
             raids_on_rommel: 0,
             rommel_raid_ai3_until_gt: 0,
             first_turn_initiative: None,
@@ -1347,6 +1357,10 @@ impl GameState {
     /// when leg infantry is fully carried by attached Truck Points) if it applies, otherwise the
     /// unit's own basic CPA — plus the §31.4 Rommel +5 bonus for his designated unit.
     pub fn effective_cpa(&self, id: UnitId) -> Option<i32> {
+        // §27.88: an SAS Brigade escorted by an LRDG moves as an LRDG with a CPA of 30.
+        if self.is_sas(id) && self.sas_escorted_by_lrdg(id) {
+            return Some(30 + self.rommel_cpa_bonus(id));
+        }
         let base = self.unit_motorized_cpa(id).or_else(|| self.unit_cpa(id))?;
         Some(base + self.rommel_cpa_bonus(id))
     }
@@ -5124,6 +5138,10 @@ impl GameState {
         if self.is_layforce(id) && self.layforce_free_supply_active() {
             return true;
         }
+        // §27.84: a sea/air-transported SAS Brigade is in supply for three Operations Stages.
+        if self.is_sas(id) && self.sas_free_supply_active() {
+            return true;
+        }
         // The Tripoli/Tunisia boxes are unlimited Supply Dumps (§8.88).
         if u.location.as_ref().is_some_and(|l| l.off_map_node().is_some()) {
             return true;
@@ -6022,6 +6040,29 @@ impl GameState {
         } else {
             self.layforce_alexandria_since = None;
         }
+    }
+
+    /// §27.71/§27.8: whether `id` is a commando that is hidden/moves as an LRDG when escorted
+    /// (§27.88 SAS). Recognised by name.
+    pub fn is_sas(&self, id: UnitId) -> bool {
+        self.units.get(&id).is_some_and(|u| u.name.contains("SAS"))
+    }
+
+    /// §27.84: whether the SAS Brigade's post-transport free-supply window is still open.
+    pub fn sas_free_supply_active(&self) -> bool {
+        self.sas_free_supply_until
+            .is_some_and(|(gt, st)| (self.game_turn, self.operations_stage) <= (gt, st))
+    }
+
+    /// §27.88: whether the SAS Brigade at `id` is stacked with a friendly LRDG raider — it then
+    /// raises its Capability Point Allowance to 30 and moves as an LRDG.
+    pub fn sas_escorted_by_lrdg(&self, id: UnitId) -> bool {
+        let Some(hex) = self.unit(id).and_then(|u| u.hex()) else {
+            return false;
+        };
+        self.raiders
+            .iter()
+            .any(|r| r.kind == RaiderKind::Lrdg && r.hex == Some(hex))
     }
 
     /// §27.35 Game-Turn upkeep: eliminate any in-play raider that did not draw Water during the

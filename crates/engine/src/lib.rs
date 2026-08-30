@@ -2954,6 +2954,101 @@ mod tests {
     }
 
     #[test]
+    fn truck_convoy_interception_27_59() {
+        // §27.59: a raider within four Movement CPs of a passing enemy convoy may halt and attack it
+        // during the Truck Convoy Phase.
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{Commodities, GameState, Phase, Raider, RaiderKind, TruckConvoy};
+        use crate::state::map::HexId;
+        use crate::state::unit::TruckPoints;
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        for s in [
+            include_str!("../../../data/maps/section-a.ron"),
+            include_str!("../../../data/maps/section-b.ron"),
+            include_str!("../../../data/maps/section-c.ron"),
+            include_str!("../../../data/maps/section-d.ron"),
+            include_str!("../../../data/maps/section-e.ron"),
+        ] {
+            g.map.load_section(s).unwrap();
+        }
+        let a = HexId::parse("C3617").unwrap().to_hex_coord();
+        g.raiders.push(Raider {
+            kind: RaiderKind::Lrdg, side: Side::Commonwealth, hex: Some(a),
+            cpa_used: 0, fuel: 2, ammo: 0, drew_water_this_gt: false, reform_game_turn: 0,
+        });
+        // An Axis convoy adjacent (within range) and one far away (out of range).
+        let near = g.map.neighbors(a).find(|&h| g.map.terrain(h).is_some()).unwrap();
+        g.truck_convoys.push(TruckConvoy {
+            side: Side::Axis, hex: near, trucks: TruckPoints { light: 0, medium: 3, heavy: 0 },
+            cargo: Commodities::default(), cpa_used: 0, carries_replacements: false,
+        });
+        g.truck_convoys.push(TruckConvoy {
+            side: Side::Axis, hex: HexId::parse("E3613").unwrap().to_hex_coord(),
+            trucks: TruckPoints { light: 0, medium: 3, heavy: 0 },
+            cargo: Commodities::default(), cpa_used: 0, carries_replacements: false,
+        });
+
+        // The Truck Convoy Phase is the Axis (convoy owner's) phase; the CW raider reacts.
+        g.phase = Phase::TruckConvoy;
+        g.active_player = Side::Axis;
+        assert_eq!(
+            g.apply(Command::InterceptTruckConvoy { raider: 0, convoy: 0, roll: 1 }),
+            Ok(CommandOutcome::RaidResolved { success: true, raider_eliminated: false })
+        );
+        assert_eq!(g.truck_convoys[0].trucks.medium, 2, "one Truck Point destroyed");
+        // The far convoy is out of interception range.
+        assert_eq!(
+            g.apply(Command::InterceptTruckConvoy { raider: 0, convoy: 1, roll: 1 }),
+            Err(CommandError::RaiderCannotMove)
+        );
+    }
+
+    #[test]
+    fn sas_brigade_raid_and_escort_27_8() {
+        // §27.85/86/87 airfield raid via the §27.93 table, §27.88 LRDG-escort CPA 30.
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::air::{AirFacility, AirFacilityKind, Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, Raider, RaiderKind};
+        use crate::state::map::HexId;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        let hex = HexId::parse("C3617").unwrap().to_hex_coord();
+        let sas = g.spawn_unit(Nationality::Commonwealth, "k", "SAS Brigade", Composition::Organic { current_toe: 5 });
+        g.unit_mut(sas).unwrap().location = Some(UnitLocation::OnMap(hex));
+        g.air_facilities.push(AirFacility::new(AirFacilityKind::Airfield, hex));
+        let mut sq = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 26", 5, Some(hex));
+        assert!(sq.add_planes("Ju.88D", AircraftClass::Bomber, 12, 1), "planes added");
+        g.sgsus.insert(SquadronId(1), sq);
+        g.game_turn = 10;
+        g.operations_stage = 1;
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+
+        // §27.86: a d6 of 3 → 25% of the 12 grounded planes destroyed (3).
+        assert_eq!(
+            g.apply(Command::RaidAirfieldSas { unit: sas, roll: 3 }),
+            Ok(CommandOutcome::SasRaided { planes_pct: 25 })
+        );
+        assert_eq!(g.sgsus[&SquadronId(1)].plane_count(), 9);
+        // §27.87: a second raid within six Operations Stages is refused.
+        assert_eq!(g.apply(Command::RaidAirfieldSas { unit: sas, roll: 3 }), Err(CommandError::SasCannotAct));
+
+        // §27.88: stacked with an LRDG, the SAS Brigade moves as an LRDG (CPA 30).
+        assert_eq!(g.effective_cpa(sas), Some(10), "base infantry CPA");
+        g.raiders.push(Raider {
+            kind: RaiderKind::Lrdg, side: Side::Commonwealth, hex: Some(hex),
+            cpa_used: 0, fuel: 2, ammo: 0, drew_water_this_gt: false, reform_game_turn: 0,
+        });
+        assert_eq!(g.effective_cpa(sas), Some(30));
+    }
+
+    #[test]
     fn deploy_formation_builds_hierarchy() {
         use crate::state::game::GameState;
         use crate::state::map::HexCoord;

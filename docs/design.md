@@ -181,8 +181,7 @@ Target: a legal, playable, machine-refereed simplified Land Game.
 - ~~Full Logistics Game (§§48–58), Air Game (§§33–47)~~ — **now substantially built ahead
   of the original phasing** (D15; air, naval, and full-logistics status in §8.5–8.7).
 - Detailed naval fleet/coastal shipping/chariot raids (§30). (~~Rommel special rules (§31)~~,
-  ~~desert raiders & commandos (§27)~~ — **now implemented**; §27's SAS Brigade §27.8 is the one
-  deferred piece. See §8.2/§8.9.)
+  ~~desert raiders & commandos (§27)~~ — **now fully implemented**. See §8.2/§8.9.)
 - Full construction/engineers/minefields/fortifications (§§23–26) — partial first.
 - Detailed prisoners (§28), repair (§22), breakdown (§21) — simplified first.
 - Fog-of-war enforcement (§3.5).
@@ -312,7 +311,7 @@ unused-replacement VP; §64.75 CW withdrawal VP; §64.76 band), with §64.71/§6
 including the one-full-turn objective-hold check. (The scenario-level §60.8 victory is not
 separately modeled.)
 
-### 8.3 Command boundary — ~76 commands, phase-gated
+### 8.3 Command boundary — ~80 commands, phase-gated
 `GameState::apply` covers land movement/combat, air, naval, logistics, and construction. Land:
 `MoveStep`/`FormationMove`, `Barrage`/`AntiArmor`/`CloseAssault`/`Retreat`, `React`,
 `MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply`, `PoisonWell`/`SweetenWell`.
@@ -538,7 +537,7 @@ unassigned-flak lists are deferred) with all id codes assigned by unit category 
 Remaining unit-data promotion (Italian border force, CW rear, the deferred German lists) is tracked
 separately (§4.44 OB pipeline, D14).
 
-### 8.9 Desert raiders & commandos (§27) — implemented (bar the SAS Brigade)
+### 8.9 Desert raiders & commandos (§27) — implemented
 Desert raiders are a bespoke counter (`Raider`, LRDG ≤2 Commonwealth / DSA ≤1 German): a non-combat
 Recce vehicle with a 50-CP allowance, no ZOC/stacking, formed from a Recce/AC TOE point (§27.13,
 `FormRaider`) and re-forming four Game-Turns after elimination (§27.16). They move ignoring enemy ZOC
@@ -551,11 +550,15 @@ faithful **free truck convoys** (§8.98: unattached Truck Points hauling supply,
 `MoveTruckConvoy`, moving in the Truck Convoy Phase under the §10.29 ZOC rule). The **Layforce**
 commando (§27.7) lands amphibiously from Alexandria into any coastal hex after a full Game-Turn there
 (`LandLayforce`, §27.72/73), is auto-supplied for three Operations Stages (§27.74), and re-embarks to
-Alexandria (`EmbarkLayforce`, §27.77). Positions are tracked for real; the §27.32 hidden-movement
-concealment awaits §3.5 fog-of-war. **Deferred:** the §27.8 SAS Brigade (needs the §27.93 table) and
-§27.59 convoy-interception. Flagged simplifications (D): §27.12 "trained to max Morale" precondition,
-per-hex fuel accounting (§27.38), all-replacement convoy auto-elimination (§27.58), and facility/plane
-side-tagging (§27.53/54).
+Alexandria (`EmbarkLayforce`, §27.77). The **SAS Brigade** (§27.8) lands by sea (`LandSas`, §27.83)
+with the §27.84 three-stage supply window and raids grounded Axis planes (`RaidAirfieldSas`,
+§27.85/86 via the §27.93 table, §27.87 ≥6-stage frequency), gaining CPA 30 when escorted by an LRDG
+(§27.88). §27.59 convoy interception (`InterceptTruckConvoy`) lets a raider within four hexes of a
+passing convoy attack it in the Truck Convoy Phase. Positions are tracked for real; the §27.32
+hidden-movement concealment awaits §3.5 fog-of-war. Flagged simplifications (D): §27.12 "trained to
+max Morale" precondition; per-hex fuel accounting (§27.38); all-replacement convoy auto-elimination
+(§27.58); facility/plane side-tagging (§27.53/54); the §27.93 table's die-6 value (OCR-illegible,
+taken as 50%); and §27.59 range as hex distance ≤4 (proxy for "4 Movement CPs").
 
 ## 9. Source-Material Transcription Practice
 

@@ -61,6 +61,13 @@ pub enum Command {
     /// §27.77: re-embark the Layforce commando from its coastal hex onto its ship, which returns it
     /// to Alexandria (Movement & Combat Phase).
     EmbarkLayforce { unit: UnitId },
+    /// §27.83/§27.84: land the SAS Brigade by sea in any coastal hex `to` (Movement & Combat Phase),
+    /// costing 5 CP per 50 ship-hexes plus terrain; grants the §27.84 three-Operations-Stage supply.
+    LandSas { unit: UnitId, to: HexCoord, ship_hexes: u32 },
+    /// §27.85/§27.86: the SAS Brigade raids the Axis air facility in its hex (no Axis combat units
+    /// present), destroying the §27.93-table percentage of grounded planes; `roll` is a d6. Subject
+    /// to the §27.87 once-a-month / ≥6-Operations-Stage frequency limit.
+    RaidAirfieldSas { unit: UnitId, roll: u32 },
     /// §27.13: form a desert raider (LRDG / DSA) from a Friendly Recce/AC `from_unit`, removing one
     /// TOE Strength Point and placing the counter in its hex (Organization Phase).
     FormRaider { kind: crate::state::game::RaiderKind, from_unit: UnitId },
@@ -98,6 +105,9 @@ pub enum Command {
     /// `roll` of 1-2 destroys one Truck Point + its cargo. Replacement-carrying convoys add 1 to the
     /// roll and a 6 eliminates the raider (§27.58). Costs 5 CP.
     RaidTruckConvoy { raider: usize, convoy: usize, roll: u32 },
+    /// §27.59: during the enemy's Truck Convoy Phase, a raider within four Movement CPs of the
+    /// passing convoy at index `convoy` halts and attacks it (§27.58 mechanics, a d6 `roll`).
+    InterceptTruckConvoy { raider: usize, convoy: usize, roll: u32 },
     /// Move a whole formation (a parent counter plus its attached units) one hex. The
     /// parent counter moves and the attached units ride along; over-expenditure is judged
     /// against the formation CPA (§6.15, the slowest member).
@@ -552,6 +562,10 @@ pub enum CommandOutcome {
     LayforceLanded { hex: HexCoord },
     /// §27.77: the Layforce commando re-embarked and was returned to Alexandria.
     LayforceEmbarked,
+    /// §27.83: the SAS Brigade landed by sea at `hex`.
+    SasLanded { hex: HexCoord },
+    /// §27.86: an SAS airfield raid resolved — `planes_pct` of the grounded planes were destroyed.
+    SasRaided { planes_pct: u32 },
     /// §27.5: a raider raid resolved — `success` = the raid achieved its effect (pipeline blown,
     /// airfield level lost, planes/supply/truck destroyed); `raider_eliminated` = the raider was
     /// lost (spotted, over-extended §27.37, or a §27.5x elimination result).
@@ -657,6 +671,9 @@ pub enum CommandError {
     /// §27.7: the Layforce commando cannot make the requested landing/embarkation (not Layforce,
     /// not in Alexandria / not a full Game-Turn there, target not a coastal hex, or over its CPA).
     LayforceCannotLand,
+    /// §27.8: the SAS Brigade cannot act (not the SAS unit, no valid air facility / planes / clear
+    /// hex to raid, the §27.87 frequency limit, or an invalid sea landing).
+    SasCannotAct,
     WrongPhase,
     UnitNotOnMap,
     NotAdjacent,
@@ -817,6 +834,8 @@ impl GameState {
             Command::MoveTruckConvoy { convoy, to } => self.cmd_move_truck_convoy(convoy, to),
             Command::LandLayforce { unit, to, ship_hexes } => self.cmd_land_layforce(unit, to, ship_hexes),
             Command::EmbarkLayforce { unit } => self.cmd_embark_layforce(unit),
+            Command::LandSas { unit, to, ship_hexes } => self.cmd_land_sas(unit, to, ship_hexes),
+            Command::RaidAirfieldSas { unit, roll } => self.cmd_raid_airfield_sas(unit, roll),
             Command::FormRaider { kind, from_unit } => self.cmd_form_raider(kind, from_unit),
             Command::MoveRaider { raider, to, spot_roll } => self.cmd_move_raider(raider, to, spot_roll),
             Command::SpotRaider { raider, roll } => self.cmd_spot_raider(raider, roll),
@@ -829,6 +848,7 @@ impl GameState {
                 self.cmd_raid_supply_dump(raider, attack_roll, destroy_roll)
             }
             Command::RaidTruckConvoy { raider, convoy, roll } => self.cmd_raid_truck_convoy(raider, convoy, roll),
+            Command::InterceptTruckConvoy { raider, convoy, roll } => self.cmd_intercept_truck_convoy(raider, convoy, roll),
             Command::FormationMove { formation, to, mode } => {
                 self.formation_move(formation, to, mode)
             }
@@ -2160,23 +2180,43 @@ impl GameState {
     /// §27.57-58 RaidTruckConvoy: destroy a Truck Point (+cargo) of the enemy free convoy at index
     /// `convoy` in the raider's hex (a d6 1-2; replacement cargo adds 1 and a 6 eliminates the raider).
     fn cmd_raid_truck_convoy(&mut self, raider: usize, convoy: usize, roll: u32) -> Result<CommandOutcome, CommandError> {
-        use crate::state::game::Commodity;
         self.require_phase(Phase::MovementAndCombat)?;
         let (hex, side) = self.raider_raid_context(raider)?;
-        let enemy = side.opponent();
         let c = self.truck_convoys.get(convoy).ok_or(CommandError::RaiderCannotMove)?;
-        if c.hex != hex || c.side != enemy {
+        if c.hex != hex || c.side != side.opponent() {
             return Err(CommandError::RaiderCannotMove);
         }
-        let carries_repl = c.carries_replacements;
+        self.resolve_truck_convoy_raid(raider, convoy, roll)
+    }
+
+    /// §27.59 InterceptTruckConvoy: during the enemy's Truck Convoy Phase, a raider within four
+    /// Movement CPs of a passing convoy may halt and attack it (§27.58 mechanics). Distance is
+    /// approximated by hex range ≤ 4 (a documented simplification of "within 4 Movement CPs").
+    fn cmd_intercept_truck_convoy(&mut self, raider: usize, convoy: usize, roll: u32) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::TruckConvoy)?;
+        let r = self.raiders.get(raider).ok_or(CommandError::RaiderNotAvailable)?;
+        let rhex = r.hex.ok_or(CommandError::RaiderNotAvailable)?;
+        let rside = r.side;
+        let c = self.truck_convoys.get(convoy).ok_or(CommandError::RaiderCannotMove)?;
+        // The convoy must be the enemy's and within interception range of the raider.
+        if c.side != rside.opponent() || rhex.distance(c.hex) > 4 {
+            return Err(CommandError::RaiderCannotMove);
+        }
+        self.resolve_truck_convoy_raid(raider, convoy, roll)
+    }
+
+    /// Shared §27.58 truck-convoy raid resolution (used by both the direct raid and the §27.59
+    /// interception): 5 CP; a d6 1-2 destroys one Truck Point + its cargo share; replacement cargo
+    /// adds 1 to the roll and a resulting 6 eliminates the raider.
+    fn resolve_truck_convoy_raid(&mut self, raider: usize, convoy: usize, roll: u32) -> Result<CommandOutcome, CommandError> {
+        use crate::state::game::Commodity;
+        let carries_repl = self.truck_convoys[convoy].carries_replacements;
         let mut eliminated = self.raider_pay_raid_cp(raider);
-        // §27.58: replacement cargo adds 1 to the roll; a resulting 6 eliminates the raider.
         let eff = roll + u32::from(carries_repl);
         let success = (1..=2).contains(&eff);
         if success {
             let c = &mut self.truck_convoys[convoy];
             let total = c.trucks.light + c.trucks.medium + c.trucks.heavy;
-            // Destroy one Truck Point (heaviest present) and its share of the cargo.
             if c.trucks.heavy > 0 {
                 c.trucks.heavy -= 1;
             } else if c.trucks.medium > 0 {
@@ -2335,6 +2375,84 @@ impl GameState {
         }
         self.layforce_free_supply_until = None;
         Ok(CommandOutcome::LayforceEmbarked)
+    }
+
+    /// §27.83/§27.84 LandSas: land the SAS Brigade by sea in a coastal hex (Movement & Combat Phase),
+    /// costing 5 CP per 50 ship-hexes plus the hex's terrain entry cost (capped at its CPA) and
+    /// opening the §27.84 three-Operations-Stage supply window.
+    fn cmd_land_sas(&mut self, unit: UnitId, to: HexCoord, ship_hexes: u32) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::terrain::MoveCost;
+        use crate::rules::movement::{hex_entry_cost, MoveMode};
+        use crate::state::unit::UnitLocation;
+        self.require_phase(Phase::MovementAndCombat)?;
+        if !self.is_sas(unit) || !self.map.is_coastal(to) {
+            return Err(CommandError::SasCannotAct);
+        }
+        let ship_cp = ship_hexes.div_ceil(50) * 50;
+        let terrain = match hex_entry_cost(&self.reference, &self.map, to, MoveMode::NonMotorized) {
+            Some(MoveCost::Cost(f)) => f.0.max(0) as u32,
+            _ => return Err(CommandError::SasCannotAct),
+        };
+        let cap = self.effective_cpa(unit).unwrap_or(0).max(0) as u32 * 10;
+        if ship_cp + terrain > cap {
+            return Err(CommandError::SasCannotAct);
+        }
+        if let Some(u) = self.unit_mut(unit) {
+            u.location = Some(UnitLocation::OnMap(to));
+        }
+        let idx = self.game_turn * 3 + (self.operations_stage as u32 - 1) + 2;
+        self.sas_free_supply_until = Some((idx / 3, (idx % 3) as u8 + 1));
+        Ok(CommandOutcome::SasLanded { hex: to })
+    }
+
+    /// §27.85/§27.86 RaidAirfieldSas: the SAS Brigade destroys grounded Axis planes at the air
+    /// facility in its hex (no Axis combat units present), removing the §27.93-table percentage from
+    /// each enemy squadron. Subject to the §27.87 frequency limit (≥6 Operations Stages between raids).
+    fn cmd_raid_airfield_sas(&mut self, unit: UnitId, roll: u32) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::MovementAndCombat)?;
+        // §27.93 SAS Raid Table: % of grounded planes destroyed by a d6 (die 6 provisional — the OCR
+        // of §27.93 is legible only for 1-5 = 0/10/25/25/33; 6 taken as 50, flagged D).
+        const SAS_RAID_PCT: [u32; 6] = [0, 10, 25, 25, 33, 50];
+        if !self.is_sas(unit) {
+            return Err(CommandError::SasCannotAct);
+        }
+        let side = self.unit(unit).map(|u| u.nationality.side()).ok_or(CommandError::UnitNotFound)?;
+        if self.active_player != side {
+            return Err(CommandError::WrongPhase);
+        }
+        let hex = self.unit(unit).and_then(|u| u.hex()).ok_or(CommandError::SasCannotAct)?;
+        let enemy = side.opponent();
+        // §27.85: an Axis air facility in the hex, no Axis combat units present.
+        let has_facility = self.air_facilities.iter().any(|f| f.hex == hex);
+        if !has_facility || !self.enemy_units_in_hex(hex, side).is_empty() {
+            return Err(CommandError::SasCannotAct);
+        }
+        // §27.87: at least six Operations Stages since the last SAS raid.
+        let now_idx = self.game_turn * 3 + (self.operations_stage as u32 - 1);
+        if let Some((gt, st)) = self.sas_last_raid {
+            let last_idx = gt * 3 + (st as u32 - 1);
+            if now_idx < last_idx + 6 {
+                return Err(CommandError::SasCannotAct);
+            }
+        }
+        let pct = SAS_RAID_PCT[(roll.clamp(1, 6) - 1) as usize];
+        let targets: Vec<_> = self
+            .sgsus
+            .iter()
+            .filter(|(_, s)| s.location == Some(hex) && s.nationality.side() == enemy && s.plane_count() > 0)
+            .map(|(id, _)| *id)
+            .collect();
+        if targets.is_empty() {
+            return Err(CommandError::SasCannotAct);
+        }
+        for id in targets {
+            if let Some(s) = self.sgsus.get_mut(&id) {
+                let lost = (s.plane_count() * pct).div_ceil(100);
+                s.lose_planes(lost);
+            }
+        }
+        self.sas_last_raid = Some((self.game_turn, self.operations_stage));
+        Ok(CommandOutcome::SasRaided { planes_pct: pct })
     }
 
     /// §40.2 DesignateCap: commit `planes` fighters of a located squadron to Combat Air Patrol over
