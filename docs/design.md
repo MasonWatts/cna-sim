@@ -272,8 +272,12 @@ Conversion §20.3). All are deserialized and unit-tested; the Replacement-Point 
 are consulted by the `PlanProduction` command and the §20.3 Conversion chart by `absorb_replacement`
 (§8.7); the truck/CW-infantry production tables are now driven by the `ProduceCommonwealthTrucks`
 (§20.78A), `ProduceCommonwealthInfantry` (§20.78B), and `ProduceAxisTrucks` (§20.66a) commands.
-(Like every reference table, these load on demand — no scenario bootstrap auto-loads the reference
-layer yet, so a command returns `NoTable` until its chart is loaded.)
+**`ReferenceData::load_campaign()`** is the production bootstrap: it `include_str!`s and loads the
+entire reference layer (every chart/table/CRT + the per-nationality unit/weapon/aircraft/production
+datasets and the Italian/Commonwealth OB) in one call, so `GameState::new(ReferenceData::load_campaign(), seed)`
+yields an engine where every command has its data — rather than each table being loaded individually
+(as the unit tests still do). The German OB is not yet promoted to `data/ob/`, so it is the one
+dataset `load_campaign` omits.
 
 ### 8.2 Turn driver / Sequence of Play — implemented
 `GameState`'s turn driver (`advance_phase`) walks the full per-Game-Turn sequence, not just

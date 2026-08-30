@@ -179,6 +179,95 @@ impl ReferenceData {
         Self::default()
     }
 
+    /// Build a `ReferenceData` with the entire Campaign-Game reference layer loaded — every chart,
+    /// table, CRT, and per-nationality dataset under `data/reference/` and `data/ob/`. This is the
+    /// production bootstrap: `GameState::new(ReferenceData::load_campaign(), seed)` gives an engine
+    /// where every command has the data it needs, rather than one where each table must be loaded
+    /// individually (as the tests do).
+    ///
+    /// The `.ron` files are embedded at compile time (`include_str!`) and are already validated by
+    /// the per-loader unit tests, so a parse failure here is a build-time data regression — hence
+    /// `expect`. The German Order of Battle is not yet promoted to `data/ob/`, so only the Italian
+    /// and Commonwealth OBs load.
+    pub fn load_campaign() -> Self {
+        let mut r = Self::new();
+        macro_rules! load {
+            ($method:ident, $path:literal) => {
+                r.$method(include_str!($path)).expect(concat!("load ", $path));
+            };
+            ($method:ident, $nat:expr, $path:literal) => {
+                r.$method($nat, include_str!($path)).expect(concat!("load ", $path));
+            };
+        }
+
+        // Map, terrain, movement.
+        load!(load_terrain, "../../../../data/reference/terrain.ron");
+        load!(load_off_map_nodes, "../../../../data/reference/off-map-nodes.ron");
+        load!(load_weather_table, "../../../../data/reference/weather-table.ron");
+        load!(load_initiative_ratings, "../../../../data/reference/initiative-ratings.ron");
+        load!(load_reinforcement_entry, "../../../../data/reference/reinforcement-entry.ron");
+        load!(load_campaign_victory, "../../../../data/reference/campaign-victory.ron");
+
+        // Combat results tables.
+        load!(load_anti_armor_crt, "../../../../data/reference/crt/anti-armor.ron");
+        load!(load_barrage_crt, "../../../../data/reference/crt/barrage.ron");
+        load!(load_close_assault_crt, "../../../../data/reference/crt/close-assault.ron");
+        load!(load_morale_modifier_table, "../../../../data/reference/crt/morale-modifier.ron");
+        load!(load_prisoners_table, "../../../../data/reference/crt/prisoners.ron");
+
+        // Air game.
+        load!(load_aircraft_refit, "../../../../data/reference/aircraft-refit.ron");
+        load!(load_scramble_table, "../../../../data/reference/scramble-table.ron");
+        load!(load_strafing_table, "../../../../data/reference/strafing-table.ron");
+        load!(load_air_bombardment, "../../../../data/reference/air-bombardment.ron");
+        load!(load_mining_harbor, "../../../../data/reference/mining-harbor.ron");
+        load!(load_air_to_air, "../../../../data/reference/air-to-air.ron");
+        load!(load_anti_aircraft, "../../../../data/reference/anti-aircraft.ron");
+        load!(load_air_recon, "../../../../data/reference/air-recon.ron");
+        load!(load_air_distance, "../../../../data/reference/air-distance.ron");
+        load!(load_malta_availability, "../../../../data/reference/malta-availability.ron");
+        load!(load_malta_construction, "../../../../data/reference/malta-construction.ron");
+        load!(load_malta_commitment, "../../../../data/reference/malta-commitment.ron");
+
+        // Naval / convoy.
+        load!(load_ports_chart, "../../../../data/reference/port-capacity.ron");
+        load!(load_shipping_lanes, "../../../../data/reference/shipping-lanes.ron");
+        load!(load_convoy_levels, "../../../../data/reference/convoy-levels.ron");
+        load!(load_naval_recon, "../../../../data/reference/naval-recon.ron");
+        load!(load_equivalent_weights, "../../../../data/reference/equivalent-weights.ron");
+
+        // Logistics.
+        load!(load_ammo_consumption, "../../../../data/reference/ammo-consumption.ron");
+        load!(load_water_availability, "../../../../data/reference/water-availability.ron");
+        load!(load_truck_chart, "../../../../data/reference/truck-characteristics.ron");
+        load!(load_breakdown_table, "../../../../data/reference/breakdown-table.ron");
+        load!(load_repair_table, "../../../../data/reference/repair-table.ron");
+
+        // Production (§20).
+        load!(load_axis_truck_production, "../../../../data/reference/axis-truck-production.ron");
+        load!(load_cw_truck_production, "../../../../data/reference/cw-truck-production.ron");
+        load!(load_cw_infantry_production, "../../../../data/reference/cw-infantry-production.ron");
+        load!(load_replacement_conversion, "../../../../data/reference/replacement-conversion.ron");
+        load!(load_production_chart, Nationality::German, "../../../../data/reference/german-production.ron");
+        load!(load_production_chart, Nationality::Italian, "../../../../data/reference/italian-production.ron");
+        load!(load_production_chart, Nationality::Commonwealth, "../../../../data/reference/cw-production.ron");
+
+        // Per-nationality unit / weapon / aircraft / OB datasets.
+        load!(load_unit_characteristics, Nationality::German, "../../../../data/reference/unit-characteristics/german.ron");
+        load!(load_unit_characteristics, Nationality::Italian, "../../../../data/reference/unit-characteristics/italian.ron");
+        load!(load_unit_characteristics, Nationality::Commonwealth, "../../../../data/reference/unit-characteristics/commonwealth.ron");
+        load!(load_weapons_systems, Nationality::German, "../../../../data/reference/weapons/german.ron");
+        load!(load_weapons_systems, Nationality::Italian, "../../../../data/reference/weapons/italian.ron");
+        load!(load_weapons_systems, Nationality::Commonwealth, "../../../../data/reference/weapons/commonwealth.ron");
+        load!(load_aircraft_chart, Nationality::German, "../../../../data/reference/aircraft/german.ron");
+        load!(load_aircraft_chart, Nationality::Italian, "../../../../data/reference/aircraft/italian.ron");
+        load!(load_aircraft_chart, Nationality::Commonwealth, "../../../../data/reference/aircraft/commonwealth.ron");
+        load!(load_order_of_battle, Nationality::Italian, "../../../../data/ob/italian.ron");
+        load!(load_order_of_battle, Nationality::Commonwealth, "../../../../data/ob/commonwealth.ron");
+
+        r
+    }
+
     /// Load terrain + hexside parameters from a `terrain.ron` string.
     pub fn load_terrain(&mut self, ron_str: &str) -> Result<(), ron::error::SpannedError> {
         let f: TerrainFile = ron::from_str(ron_str)?;

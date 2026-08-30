@@ -6810,6 +6810,69 @@ mod tests {
     }
 
     #[test]
+    fn load_campaign_populates_full_reference_layer() {
+        use crate::reference::units::Nationality;
+        let r = ReferenceData::load_campaign();
+
+        // Per-nationality datasets for all three nationalities.
+        for n in [Nationality::German, Nationality::Italian, Nationality::Commonwealth] {
+            assert!(r.unit_characteristics.contains_key(&n), "unit chars {n:?}");
+            assert!(r.weapons_systems.contains_key(&n), "weapons {n:?}");
+            assert!(r.aircraft_charts.contains_key(&n), "aircraft {n:?}");
+            assert!(r.production_charts.contains_key(&n), "production {n:?}");
+        }
+        // Italian + Commonwealth OB loaded; German OB is not yet promoted to data/ob/.
+        assert!(r.orders_of_battle.contains_key(&Nationality::Italian));
+        assert!(r.orders_of_battle.contains_key(&Nationality::Commonwealth));
+        assert!(!r.orders_of_battle.contains_key(&Nationality::German));
+        assert!(!r.terrain.is_empty() && !r.hexsides.is_empty());
+        assert!(!r.reinforcement_entry.is_empty());
+
+        // Every optional chart/table is present (each previously required an on-demand load).
+        let checks: [(&str, bool); 36] = [
+            ("aircraft_refit", r.aircraft_refit.is_some()),
+            ("scramble_table", r.scramble_table.is_some()),
+            ("strafing_table", r.strafing_table.is_some()),
+            ("air_bombardment", r.air_bombardment.is_some()),
+            ("mining_harbor", r.mining_harbor.is_some()),
+            ("air_to_air", r.air_to_air.is_some()),
+            ("anti_aircraft", r.anti_aircraft.is_some()),
+            ("air_recon", r.air_recon.is_some()),
+            ("ports_chart", r.ports_chart.is_some()),
+            ("malta_availability", r.malta_availability.is_some()),
+            ("malta_construction", r.malta_construction.is_some()),
+            ("malta_commitment", r.malta_commitment.is_some()),
+            ("shipping_lanes", r.shipping_lanes.is_some()),
+            ("air_distance", r.air_distance.is_some()),
+            ("convoy_levels", r.convoy_levels.is_some()),
+            ("naval_recon", r.naval_recon.is_some()),
+            ("equivalent_weights", r.equivalent_weights.is_some()),
+            ("anti_armor_crt", r.anti_armor_crt.is_some()),
+            ("barrage_crt", r.barrage_crt.is_some()),
+            ("morale_modifier_table", r.morale_modifier_table.is_some()),
+            ("close_assault_crt", r.close_assault_crt.is_some()),
+            ("prisoners_table", r.prisoners_table.is_some()),
+            ("initiative_ratings", r.initiative_ratings.is_some()),
+            ("off_map", r.off_map.is_some()),
+            ("weather_table", r.weather_table.is_some()),
+            ("campaign_victory", r.campaign_victory.is_some()),
+            ("ammo_rates", r.ammo_rates.is_some()),
+            ("water_table", r.water_table.is_some()),
+            ("truck_chart", r.truck_chart.is_some()),
+            ("breakdown_table", r.breakdown_table.is_some()),
+            ("repair_table", r.repair_table.is_some()),
+            ("axis_truck_production", r.axis_truck_production.is_some()),
+            ("cw_truck_production", r.cw_truck_production.is_some()),
+            ("cw_infantry_production", r.cw_infantry_production.is_some()),
+            ("replacement_conversion", r.replacement_conversion.is_some()),
+            ("convoy_levels_flows", r.convoy_levels.as_ref().and_then(|c| c.max_tonnage_for(1940, 9)).is_some()),
+        ];
+        for (name, ok) in checks {
+            assert!(ok, "load_campaign left {name} unloaded");
+        }
+    }
+
+    #[test]
     fn italian_production_chart() {
         use crate::reference::logistics::ProductionPeriod;
 
