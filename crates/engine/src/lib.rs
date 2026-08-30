@@ -2719,6 +2719,59 @@ mod tests {
     }
 
     #[test]
+    fn free_truck_convoy_form_and_move_8_98() {
+        // §8.97/§8.98: detach first-line trucks into a free convoy and move it in the Truck Convoy
+        // Phase, spending its supply CPA and observing the §10.29 ZOC restriction.
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexId;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        for s in [
+            include_str!("../../../data/maps/section-a.ron"),
+            include_str!("../../../data/maps/section-b.ron"),
+            include_str!("../../../data/maps/section-c.ron"),
+            include_str!("../../../data/maps/section-d.ron"),
+            include_str!("../../../data/maps/section-e.ron"),
+        ] {
+            g.map.load_section(s).unwrap();
+        }
+        let base = HexId::parse("C3617").unwrap().to_hex_coord();
+        let u = g.spawn_unit(Nationality::Commonwealth, "k", "supply col", Composition::Organic { current_toe: 5 });
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(base));
+        g.unit_mut(u).unwrap().trucks = TruckPoints { light: 0, medium: 10, heavy: 0 };
+
+        g.phase = Phase::Organization;
+        // Detach 6 Medium Truck Points into a free convoy.
+        let convoy = match g.apply(Command::FormTruckConvoy { from_unit: u, light: 0, medium: 6, heavy: 0 }) {
+            Ok(CommandOutcome::TruckConvoyFormed { convoy }) => convoy,
+            other => panic!("unexpected: {other:?}"),
+        };
+        assert_eq!(g.unit(u).unwrap().trucks.medium, 4, "trucks left the unit");
+        assert_eq!(g.truck_convoys[convoy].trucks.medium, 6);
+        assert_eq!(g.truck_convoys[convoy].hex, base);
+
+        // Move it one hex in the Truck Convoy Phase; it spends supply CPA.
+        g.phase = Phase::TruckConvoy;
+        g.active_player = Side::Commonwealth;
+        let target = g.map.neighbors(base).find(|&h| g.map.terrain(h).is_some()).unwrap();
+        match g.apply(Command::MoveTruckConvoy { convoy, to: target }) {
+            Ok(CommandOutcome::TruckConvoyMoved { hex, cpa_used }) => {
+                assert_eq!(hex, target);
+                assert!(cpa_used > 0);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // A non-adjacent target is rejected.
+        assert_eq!(
+            g.apply(Command::MoveTruckConvoy { convoy, to: HexId::parse("E3613").unwrap().to_hex_coord() }),
+            Err(CommandError::TruckConvoyCannotMove)
+        );
+    }
+
+    #[test]
     fn deploy_formation_builds_hierarchy() {
         use crate::state::game::GameState;
         use crate::state::map::HexCoord;

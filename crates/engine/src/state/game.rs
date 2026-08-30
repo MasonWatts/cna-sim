@@ -410,6 +410,25 @@ pub struct PendingReplacement {
     pub assigned_to: Option<UnitId>,
 }
 
+/// A free (unattached) Truck-Point convoy on the map (§8.98/§8.99): Truck Points not attached to a
+/// unit, hauling supply `cargo`, that move in the Truck Convoy Phase (§53) respecting their CPA
+/// (§8.98) and the §10.29 ZOC restriction. Detached from a unit's first-line trucks (§8.97). This is
+/// the counter desert-raider truck-convoy raids target (§27.57-59).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TruckConvoy {
+    pub side: Side,
+    pub hex: HexCoord,
+    pub trucks: crate::state::unit::TruckPoints,
+    #[serde(default)]
+    pub cargo: Commodities,
+    /// Movement expended this Truck Convoy Phase, tenths of a CP (§8.98 CPA cap).
+    #[serde(default)]
+    pub cpa_used: u32,
+    /// §27.57: whether any of the hauled cargo is Replacement Points (affects the §27.58 raid roll).
+    #[serde(default)]
+    pub carries_replacements: bool,
+}
+
 /// The two kinds of desert-raider counter (§27): the Commonwealth Long Range Desert Group (§27.1,
 /// up to two) and the Axis Die Sonderkommando Almasy (§27.2, one, German-formed only).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -692,6 +711,9 @@ pub struct GameState {
     /// (§7.2), the §31.3 stack-morale bonus, and the §31.4 CPA bonus — see `rommel_on_map`.
     #[serde(default)]
     pub rommel: Option<RommelState>,
+    /// Free (unattached) Truck-Point convoys on the map (§8.98/§53), moved in the Truck Convoy Phase.
+    #[serde(default)]
+    pub truck_convoys: Vec<TruckConvoy>,
     /// Desert-raider counters in play or awaiting re-form (§27): up to two LRDG + one DSA.
     #[serde(default)]
     pub raiders: Vec<Raider>,
@@ -916,6 +938,7 @@ impl GameState {
             active_player: Side::Commonwealth,
             player_a: Side::Commonwealth,
             rommel: None,
+            truck_convoys: Vec::new(),
             raiders: Vec::new(),
             raids_on_rommel: 0,
             rommel_raid_ai3_until_gt: 0,
@@ -5601,6 +5624,10 @@ impl GameState {
         for raider in self.raiders.iter_mut() {
             raider.cpa_used = 0;
         }
+        // §8.98: refresh each free truck convoy's Movement Allowance for the new Truck Convoy Phase.
+        for convoy in self.truck_convoys.iter_mut() {
+            convoy.cpa_used = 0;
+        }
         // §52.24: reset the per-stage pipeline-construction allowance.
         self.pipeline_built_this_stage.clear();
         // §26.23: dummy minefields revealed last stage are now removed.
@@ -5921,6 +5948,27 @@ impl GameState {
         r.reform_game_turn = 0;
         r.drew_water_this_gt = false;
         Some(idx)
+    }
+
+    /// §8.98: a free truck convoy's Movement Allowance (tenths of a CP) — the slowest supply CPA
+    /// (§54.2 `cpa_supplies`) among the truck types it contains. 0 if the Truck Chart is unloaded or
+    /// the convoy is empty.
+    pub fn truck_convoy_cpa(&self, convoy: &TruckConvoy) -> u32 {
+        let Some(chart) = self.reference.truck_chart.as_ref() else {
+            return 0;
+        };
+        let t = &convoy.trucks;
+        let cpa = [
+            (t.light, chart.light.cpa_supplies),
+            (t.medium, chart.medium.cpa_supplies),
+            (t.heavy, chart.heavy.cpa_supplies),
+        ]
+        .into_iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(_, cpa)| cpa)
+        .min()
+        .unwrap_or(0);
+        cpa.max(0) as u32 * 10
     }
 
     /// §27.16: eliminate the raider at `index` — remove it from the map and start its four-Game-Turn

@@ -47,6 +47,13 @@ pub enum Command {
     /// §31.4: designate the co-located `unit` to receive Rommel's +5 CPA this Operations Stage
     /// (he must be with it at the start of the stage and remain — see `rommel_cpa_bonus`).
     DesignateRommelUnit { unit: UnitId },
+    /// §8.97/§8.98: detach `light`/`medium`/`heavy` first-line Truck Points (and their loaded cargo)
+    /// from `from_unit` into a new free truck convoy in the unit's hex (Organization Phase).
+    FormTruckConvoy { from_unit: UnitId, light: u32, medium: u32, heavy: u32 },
+    /// §8.98/§53: move the free truck convoy at index `convoy` one hex to adjacent `to` (Truck
+    /// Convoy Phase). It spends its supply CPA and may not enter an enemy ZOC unoccupied by a
+    /// Friendly unit (§10.29).
+    MoveTruckConvoy { convoy: usize, to: HexCoord },
     /// §27.13: form a desert raider (LRDG / DSA) from a Friendly Recce/AC `from_unit`, removing one
     /// TOE Strength Point and placing the counter in its hex (Organization Phase).
     FormRaider { kind: crate::state::game::RaiderKind, from_unit: UnitId },
@@ -505,6 +512,10 @@ pub enum CommandOutcome {
     /// §27.6/§27.64: a Raid on Rommel resolved — `raider_eliminated` (§27.64 "LRDG elim"),
     /// `rommel_removed` ("AI perm 3", captured), and `axis_temp3` ("AI temp 3", two-turn rating drop).
     RommelRaided { raider_eliminated: bool, rommel_removed: bool, axis_temp3: bool },
+    /// §8.97: a free truck convoy was formed; carries its index in `truck_convoys`.
+    TruckConvoyFormed { convoy: usize },
+    /// §8.98: a free truck convoy moved to `hex`, with `cpa_used` tenths of a CP spent this phase.
+    TruckConvoyMoved { hex: HexCoord, cpa_used: u32 },
     /// §52.16/§52.17: whether a well was poisoned / sweetened.
     WellPoisoned(bool),
     WellSweetened(bool),
@@ -600,6 +611,9 @@ pub enum CommandError {
     /// §27.3: the raider cannot make the requested move (not adjacent/on-map, or into an
     /// Enemy-occupied hex without raiding, or over its 50-CP Movement Allowance).
     RaiderCannotMove,
+    /// §8.98/§10.29: the free truck convoy cannot make the requested move (bad index, not
+    /// adjacent/on-map, blocked by an enemy ZOC, or over its Movement Allowance).
+    TruckConvoyCannotMove,
     WrongPhase,
     UnitNotOnMap,
     NotAdjacent,
@@ -754,6 +768,10 @@ impl GameState {
             Command::MoveRommel { to } => self.cmd_move_rommel(to, false),
             Command::RetreatRommel { to } => self.cmd_move_rommel(to, true),
             Command::DesignateRommelUnit { unit } => self.cmd_designate_rommel_unit(unit),
+            Command::FormTruckConvoy { from_unit, light, medium, heavy } => {
+                self.cmd_form_truck_convoy(from_unit, light, medium, heavy)
+            }
+            Command::MoveTruckConvoy { convoy, to } => self.cmd_move_truck_convoy(convoy, to),
             Command::FormRaider { kind, from_unit } => self.cmd_form_raider(kind, from_unit),
             Command::MoveRaider { raider, to, spot_roll } => self.cmd_move_raider(raider, to, spot_roll),
             Command::SpotRaider { raider, roll } => self.cmd_spot_raider(raider, roll),
@@ -1893,6 +1911,83 @@ impl GameState {
             self.eliminate_raider(raider);
         }
         Ok(CommandOutcome::RommelRaided { raider_eliminated, rommel_removed, axis_temp3 })
+    }
+
+    /// §8.97/§8.98 FormTruckConvoy: detach first-line Truck Points (and their loaded cargo) from a
+    /// unit into a new free truck convoy in the unit's hex (Organization Phase).
+    fn cmd_form_truck_convoy(
+        &mut self,
+        from_unit: UnitId,
+        light: u32,
+        medium: u32,
+        heavy: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::state::game::TruckConvoy;
+        self.require_phase(Phase::Organization)?;
+        let u = self.unit(from_unit).ok_or(CommandError::UnitNotFound)?;
+        let hex = u.hex().ok_or(CommandError::UnitNotFound)?;
+        let side = u.nationality.side();
+        if u.trucks.light < light || u.trucks.medium < medium || u.trucks.heavy < heavy {
+            return Err(CommandError::InsufficientTrucks);
+        }
+        if light + medium + heavy == 0 {
+            return Err(CommandError::InsufficientTrucks);
+        }
+        // Detach the trucks and carry over the unit's loaded truck cargo into the convoy.
+        let cargo = {
+            let um = self.unit_mut(from_unit).unwrap();
+            um.trucks.light -= light;
+            um.trucks.medium -= medium;
+            um.trucks.heavy -= heavy;
+            std::mem::take(&mut um.truck_cargo)
+        };
+        self.truck_convoys.push(TruckConvoy {
+            side,
+            hex,
+            trucks: crate::state::unit::TruckPoints { light, medium, heavy },
+            cargo,
+            cpa_used: 0,
+            carries_replacements: false,
+        });
+        Ok(CommandOutcome::TruckConvoyFormed { convoy: self.truck_convoys.len() - 1 })
+    }
+
+    /// §8.98/§10.29 MoveTruckConvoy: move a free truck convoy one hex (Truck Convoy Phase, on its
+    /// owner's turn), spending its supply CPA and observing the §10.29 ZOC restriction.
+    fn cmd_move_truck_convoy(&mut self, convoy: usize, to: HexCoord) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::terrain::MoveCost;
+        use crate::rules::movement::{step_cost, MoveMode};
+        self.require_phase(Phase::TruckConvoy)?;
+        let c = self.truck_convoys.get(convoy).ok_or(CommandError::TruckConvoyCannotMove)?;
+        let from = c.hex;
+        let side = c.side;
+        if self.active_player != side {
+            return Err(CommandError::WrongPhase);
+        }
+        if !self.map.neighbors(from).any(|n| n == to) {
+            return Err(CommandError::TruckConvoyCannotMove);
+        }
+        // §10.29: a truck convoy may not enter an enemy ZOC unless a Friendly unit already holds it.
+        let enemy = side.opponent();
+        let friendly = self
+            .units_in_hex(to)
+            .into_iter()
+            .any(|x| self.unit(x).is_some_and(|u| u.nationality.side() == side));
+        if self.hex_in_zoc_of(to, enemy) && !friendly {
+            return Err(CommandError::TruckConvoyCannotMove);
+        }
+        let cost = match step_cost(&self.reference, &self.map, from, to, MoveMode::Motorized) {
+            Some(MoveCost::Cost(f)) => f.0.max(0) as u32,
+            _ => return Err(CommandError::TruckConvoyCannotMove),
+        };
+        let cpa = self.truck_convoy_cpa(&self.truck_convoys[convoy]);
+        let c = self.truck_convoys.get_mut(convoy).unwrap();
+        if c.cpa_used + cost > cpa {
+            return Err(CommandError::TruckConvoyCannotMove); // §8.98: may not exceed CPA
+        }
+        c.cpa_used += cost;
+        c.hex = to;
+        Ok(CommandOutcome::TruckConvoyMoved { hex: to, cpa_used: c.cpa_used })
     }
 
     /// §40.2 DesignateCap: commit `planes` fighters of a located squadron to Combat Air Patrol over
