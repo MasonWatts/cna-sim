@@ -1739,6 +1739,8 @@ impl GameState {
                 self.credit_pilot_kills(sq, outcome.intercepted);
             }
         }
+        // §41.3x: apply the mission's land effect (pin / supply-dump destruction) at the target.
+        self.apply_land_bombing_effect(mission, target, nationality.side(), outcome.result.max(0) as u32);
         Ok(CommandOutcome::BombingMission(outcome))
     }
 

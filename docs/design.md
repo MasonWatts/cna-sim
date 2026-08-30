@@ -341,7 +341,12 @@ or target (§37.22); deriving the target's **flak** (§46) from the enemy AA uni
 on Combat Air Patrol (§40.2) over a hex (validating CAP capability §40.21, range, and weather), an
 offensive patrol of ≥3 fighters projects an air ZOC (§40.23, centre + six neighbours), and a
 bombing mission entering an enemy offensive patrol's coverage is intercepted, spending that
-patrol's one interception per stage (§40.26/§40.27). Patrols reset each Operations Stage.
+patrol's one interception per stage (§40.26/§40.27). Patrols reset each Operations Stage. The
+resolved mission then **applies its §41.3x land effect** (`apply_land_bombing_effect`): **Personnel**
+pins battalion-equivalents in the hex (tank/gun units cost two, §41.31) and **Supply Dump** destroys
+`result`% of each commodity in the target's enemy dumps (§41.35); the ship (§41.34) and air-facility
+(§41.36) effects have dedicated commands, and city/fortification (§41.37, needs fortifications),
+road/railroad (§41.38) and truck-convoy (§41.32) effects remain unmodelled.
 The `Strafe` command (§40.5–40.8) flies a map-validated strafing mission and resolves it on the
 Strafing Table with the §40.8 column shift, applying the effect for **supply dumps** (§40.64, r×10%
 of each commodity destroyed), **water pipelines** (§40.67, destroyed on r≥2), **infantry** (§40.6,

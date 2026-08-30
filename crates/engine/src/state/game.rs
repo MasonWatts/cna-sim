@@ -4174,6 +4174,75 @@ impl GameState {
         Some((id, Flight { count: flown, tacair, pilot: self.squadron_pilot_bonus(id), maneuver }))
     }
 
+    /// Apply the §41.3x land-support bombing effect of a mission whose Air Bombardment CRT result
+    /// is `result`, against `target` for a bomber of `bomber_side`:
+    /// - **Personnel (§41.31):** Pin up to `result` battalion-equivalents in the hex (each tank or
+    ///   gun — artillery/anti-tank — unit costs two of the count).
+    /// - **Supply Dump (§41.35):** destroy `result` percent of every commodity in the target's
+    ///   enemy Supply Dumps.
+    /// Other missions (ships/air facilities have dedicated commands; city/fortification, road/
+    /// railroad, and truck-convoy effects are not yet modeled) are no-ops here.
+    pub fn apply_land_bombing_effect(
+        &mut self,
+        mission: crate::reference::aircraft::BombingMission,
+        target: HexCoord,
+        bomber_side: Side,
+        result: u32,
+    ) {
+        use crate::reference::aircraft::BombingMission as M;
+        let enemy = bomber_side.opponent();
+        match mission {
+            M::Personnel => {
+                let mut budget = result;
+                let ids: Vec<UnitId> = self
+                    .units_in_hex(target)
+                    .into_iter()
+                    .filter(|&id| self.unit(id).is_some_and(|u| u.nationality.side() == enemy))
+                    .collect();
+                for id in ids {
+                    let cost = if self.unit_is_tank_or_gun(id) { 2 } else { 1 };
+                    if budget < cost {
+                        continue; // a tank/gun needs two of the pin count (§41.31)
+                    }
+                    if let Some(u) = self.unit_mut(id) {
+                        u.status.pinned = true;
+                    }
+                    budget -= cost;
+                }
+            }
+            M::SupplyDump => {
+                let pct = result.min(100);
+                for d in self.supply_dumps.iter_mut().filter(|d| {
+                    d.side == enemy && !d.dummy && d.location.hex() == Some(target)
+                }) {
+                    for c in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
+                        let have = d.supply.get(c);
+                        *d.supply.get_mut(c) = have - have * pct / 100;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Whether a unit is a tank or gun (artillery/anti-tank) unit — a Weapons unit holding at least
+    /// one Tank/Artillery/Anti-Tank weapon system (counts double for §41.31 bombing pins).
+    fn unit_is_tank_or_gun(&self, id: UnitId) -> bool {
+        use crate::reference::units::WeaponKind;
+        let Some(u) = self.units.get(&id) else { return false };
+        let Composition::Weapons { groups } = &u.composition else { return false };
+        groups.iter().any(|g| {
+            matches!(
+                self.reference
+                    .weapons_systems
+                    .get(&u.nationality)
+                    .and_then(|m| m.get(&g.system))
+                    .map(|w| w.kind),
+                Some(WeaponKind::Tank | WeaponKind::Artillery | WeaponKind::AntiTank)
+            )
+        })
+    }
+
     /// The result of resolving a bombing mission (§39.0 procedure).
     pub fn resolve_bombing_mission(
         &mut self,

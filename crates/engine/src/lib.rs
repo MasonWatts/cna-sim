@@ -5253,6 +5253,67 @@ mod tests {
     }
 
     #[test]
+    fn land_bombing_effects_41() {
+        use crate::reference::aircraft::{AircraftClass, BombingMission};
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::units::Side;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{Commodities, GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+        refs.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(1, 1);
+        let target = HexCoord::new(3, 1);
+        let mut sq = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 26", 5, Some(base));
+        sq.add_planes("Ju.88D", AircraftClass::Bomber, 12, 1);
+        g.sgsus.insert(SquadronId(1), sq);
+        let ready = |g: &mut GameState| {
+            for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        };
+        ready(&mut g);
+        let cw = g.spawn_unit(Nationality::Commonwealth, "h", "target", Composition::Organic { current_toe: 5 });
+        g.unit_mut(cw).unwrap().location = Some(UnitLocation::OnMap(target));
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+
+        // §41.31 Personnel bombing pins battalion-equivalents in the target hex.
+        let bomb = |mission| Command::FlyBombingMissionAt {
+            squadron: SquadronId(1), target, mission,
+            planes: 12, bombload_per_plane: 20, night: false,
+            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+        };
+        match g.apply(bomb(BombingMission::Personnel)) {
+            Ok(CommandOutcome::BombingMission(o)) => {
+                assert_eq!(g.unit(cw).unwrap().status.pinned, o.result > 0);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        // §41.35 Supply-dump bombing destroys `result` percent of each commodity.
+        ready(&mut g);
+        g.add_supply_dump_full(UnitLocation::OnMap(target), Side::Commonwealth, Commodities { fuel: 100, ammo: 100, stores: 100, water: 100 });
+        match g.apply(bomb(BombingMission::SupplyDump)) {
+            Ok(CommandOutcome::BombingMission(o)) => {
+                let pct = (o.result.max(0) as u32).min(100);
+                let dump = g.supply_dumps.iter().find(|d| d.location.hex() == Some(target)).unwrap();
+                assert_eq!(dump.supply.fuel, 100 - 100 * pct / 100);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
     fn scramble_interception_40_3() {
         use crate::reference::aircraft::{AircraftClass, BombingMission};
         use crate::reference::squadron::SquadronClass;
