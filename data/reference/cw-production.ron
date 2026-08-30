@@ -5,8 +5,9 @@
 // Transcription in docs/source-materials/replacements.md.
 // VERIFIED against the §20.78C chart image (2026-08-29): all rows match. The chart prints
 // Churchill's Max as "-" (no per-turn cap); modeled as max 1 since only 1 is ever produced.
-// (This production chart does NOT label each item's Replacement-Point *class*, so the production
-// item->class inference in replacement_class_for_item remains unverified — see D14 / replacements.md.)
+// (This production chart does NOT label each item's Replacement-Point *class*; those calls in
+// replacement_class_for_item — incl. the SP-gun/tankette Tank classifications — were confirmed by
+// the project owner on 2026-08-29.)
 (
     items: [
         (item: "Armored Recce",     total: 90,  max: 2, first_gt: 3),

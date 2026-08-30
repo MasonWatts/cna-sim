@@ -424,10 +424,9 @@ pub struct ProductionOrder {
 /// classes (§20.2). Order matters: Recce → Infantry → Tank (incl. tracked SP guns) → Gun
 /// (the artillery/AA/anti-tank remainder). Returns `None` only for an unrecognized name.
 ///
-/// NOTE (cf. D14): the SP-gun / tankette calls (Marder, Semovente, `SP …`) are **inferred** —
-/// they are tracked, gun-armed AFVs, classified here as Tank (6 Training stages, §20.43) rather
-/// than Gun (1 stage). This materially changes training time and must be verified against the
-/// physical §20.66 chart in a faithfulness pass.
+/// The SP-gun / tankette calls (Marder, Semovente, `SP …`, the Italian CV/CA light tanks) are
+/// classified as Tank — tracked, gun-armed AFVs take Tank Replacement Points (6 Training stages,
+/// §20.43), not Gun. Confirmed by the project owner (2026-08-29) against the production charts.
 pub fn replacement_class_for_item(item: &str) -> Option<ReplacementClass> {
     if item.contains("Recce") || item.contains("Reconnaissance") {
         return Some(ReplacementClass::Recce);
@@ -438,11 +437,11 @@ pub fn replacement_class_for_item(item: &str) -> Option<ReplacementClass> {
     let is_tank = item.starts_with("Pz")
         || item.starts_with("CA ")
         || item.starts_with("CV ")
-        || item.starts_with("SP ") // inferred: self-propelled guns as tracked AFVs
+        || item.starts_with("SP ") // self-propelled guns take Tank points (§20.3, owner-confirmed)
         || item.contains("Cruiser")
         || item.contains("Crusader")
-        || item.contains("Semovente") // inferred (SP)
-        || item.contains("Marder") // inferred (SP anti-tank)
+        || item.contains("Semovente")
+        || item.contains("Marder")
         || matches!(
             item,
             "Matilda" | "Valentine" | "Stuart" | "Grant" | "Sherman" | "Churchill" | "Mark VI Light"

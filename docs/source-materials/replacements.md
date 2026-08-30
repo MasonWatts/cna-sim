@@ -84,7 +84,9 @@ Axis points train in Tripoli or any Major City; Commonwealth per §17.32.
   Weapons) and Armored-Reconnaissance vs Armored-Car vs Motorcycle/Camel distinctions are not
   derivable from the OB data and default to the generic row (Commando / Bersaglieri / Paratroop are
   caught by unit name). With no chart loaded, absorption falls back to the legacy 1:1.
-- **Still deferred:** the production item→class map flags SP-gun/tankette calls as *inferred*
-  (verify vs the physical §20.66 chart, cf. D14); the recorded convoy tonnage does not yet consume
-  Axis convoy capacity; the §20.78A truck / §20.78B CW-infantry roll tables remain reference-only;
-  and the §20.42 restrictions/morale and §20.5 upgrades are not modelled.
+- **Production item→class map:** the SP-gun/tankette Tank classifications were confirmed by the
+  project owner (2026-08-29); no longer inferred.
+- **Still deferred:** the recorded convoy tonnage does not yet consume Axis convoy capacity; the
+  §20.78A truck / §20.78B CW-infantry roll tables remain reference-only; the §20.3 absorb classifier's
+  special-infantry / armored-car distinctions remain provisional (need the §4.46 counters); and the
+  §20.42 restrictions/morale and §20.5 upgrades are not modelled.

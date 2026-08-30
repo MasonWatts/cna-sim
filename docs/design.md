@@ -419,10 +419,11 @@ affordable `options` set (plus a Stores Point when flagged) drawn from co-locate
 with requirement kinds collapsed onto the four pool classes — using a **provisional** unit→row
 classifier (`conversion_row_for_unit`, flagged cf. D14; special-infantry and armored-recce/car
 distinctions default to the generic row, with Commando/Bersaglieri/Paratroop caught by name). With
-no §20.3 chart loaded it falls back to legacy 1:1. **Still open in production:** the production
-item→class map flags the SP-gun/tankette calls as *inferred* (cf. D14) pending physical-chart
-verification; the recorded convoy tonnage does not yet consume Axis convoy capacity (D15 step 8);
-and the truck (§20.78A) / CW-infantry (§20.78B) roll tables remain reference-only.
+no §20.3 chart loaded it falls back to legacy 1:1. **Still open in production:** the recorded convoy
+tonnage does not yet consume Axis convoy capacity (D15 step 8); and the truck (§20.78A) / CW-infantry
+(§20.78B) roll tables remain reference-only. (The production item→class map's SP-gun/tankette Tank
+calls were owner-confirmed 2026-08-29; the §20.3 absorb classifier's special-infantry/armored-car
+distinctions remain provisional.)
 
 ### 8.8 Scenario, map & OB
 The Scenario-1 order of battle and the full map are in: all five map sections (A–E) digitized,

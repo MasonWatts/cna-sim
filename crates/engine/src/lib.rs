@@ -5977,7 +5977,7 @@ mod tests {
         assert_eq!(replacement_class_for_item("CA M 13/40"), Some(ReplacementClass::Tank));
         assert_eq!(replacement_class_for_item("Crusader Mk III"), Some(ReplacementClass::Tank));
         assert_eq!(replacement_class_for_item("Matilda"), Some(ReplacementClass::Tank));
-        // Inferred SP-gun / tankette calls (flagged for verification).
+        // SP-gun / tankette calls (owner-confirmed 2026-08-29): tracked AFVs take Tank points.
         assert_eq!(replacement_class_for_item("Marder III"), Some(ReplacementClass::Tank));
         assert_eq!(replacement_class_for_item("SP 6-pounders"), Some(ReplacementClass::Tank));
         assert_eq!(
