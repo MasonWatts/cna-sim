@@ -92,7 +92,20 @@ Axis points train in Tripoli or any Major City; Commonwealth per §17.32.
   §20.3 footnotes for name-based calls (Commando = Layforce/SAS; Paratroop = Folgore/Ramcke;
   Engineer incl. Australian Pioneer; Machinegun / recce rows by name).
 - **Still deferred:** the recorded convoy tonnage does not yet consume Axis convoy capacity; the
-  §20.78A truck / §20.78B CW-infantry roll tables remain reference-only; a Machinegun/Heavy-Weapons
-  or plain-vs-armored recce unit not identifiable by name still falls to the generic row (needs the
-  §4.46 counter type/size symbols); and the §20.42 restrictions/morale and §20.5 upgrades are not
-  modelled.
+  §20.78A truck / §20.78B CW-infantry roll tables remain reference-only; and the §20.42
+  restrictions/morale and §20.5 upgrades are not modelled.
+
+### Future improvement — counter-symbol-driven §20.3 rows
+
+`conversion_row_for_unit` currently picks the §20.3 row from the unit's generic `unit_type` label
+plus name keywords, defaulting to the generic row when neither says otherwise. A unit's **counter**
+carries the exact answer (confirmed by inspecting the Pistoia-division counters, 2026-08-29): the
+top symbol is its §9.2 **size** (XX/III/II) and the **in-box unit-type symbol** distinguishes
+Machinegun / Heavy-Weapons / motorized-recce / Bersaglieri / Armored-Car from plain infantry — this
+is exactly footnote c's "motorized symbol." The OB data (`unit-characteristics/*.ron`) does not
+carry that symbol today, so those distinctions are guessed for units whose *name* doesn't reveal
+them (only the absorb *cost* differs: Machinegun 2 Inf vs 1; Heavy Weapons 1 Inf + 1 Gun vs 1 Inf;
+non-armored recce 2 Inf/Infantry-class vs ArmR/Recce-class). **To resolve fully:** transcribe each
+Scenario-1 unit's counter type symbol into a per-unit `conversion_type` (or unit-type) field and key
+the classifier off that instead of the guess. Deferred by project owner (2026-08-29) — the affected
+Scenario-1 unit count is expected to be small; revisit if replacement fidelity matters.
