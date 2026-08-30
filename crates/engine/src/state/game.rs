@@ -125,6 +125,8 @@ pub struct BombingMissionOutcome {
     pub aborted: u32,
     pub delivered_bomb_points: u32,
     pub result: i32,
+    /// §45: escort fighters lost defending the bombers against intercepting CAP.
+    pub escort_losses: u32,
 }
 
 /// A body of fighters engaging in air-to-air combat (§45): its plane count and the per-plane
@@ -4671,6 +4673,7 @@ impl GameState {
         bombload_per_plane: u32,
         group: crate::reference::air_bombardment::TargetGroup,
         interceptors: Option<Flight>,
+        escort: Option<Flight>,
         flak_points: u32,
         flak_destroy_roll: u32,
         flak_abort_roll: u32,
@@ -4685,30 +4688,43 @@ impl GameState {
             return Some(BombingMissionOutcome::default());
         }
         let mut alive = flown;
-        // §39.0(c/d) / §45: intercepting CAP attacks the (unescorted) bombers before flak. The
-        // bombers defend with the TacAir/Maneuver of their type (§41.15).
+        // §39.0(c/d) / §45: intercepting CAP attacks the bombers before flak. The bombers defend
+        // with the TacAir/Maneuver of their type (§41.15).
         let mut intercepted = 0;
+        let mut escort_losses = 0;
         if let Some(cap) = interceptors {
-            let (b_tacair, b_maneuver) = {
-                let atype = self.sgsus.get(&squadron)?.planes.first().map(|g| g.aircraft_type.clone());
-                atype
-                    .and_then(|t| {
-                        self.reference
-                            .aircraft_charts
-                            .get(&self.sgsus.get(&squadron)?.nationality)
-                            .and_then(|c| c.get(&t))
-                            .and_then(|a| a.loadouts.first())
-                            .map(|l| (l.tac_air, l.maneuver))
-                    })
-                    .unwrap_or((0, 0))
-            };
-            let bombers = Flight { count: alive, tacair: b_tacair, pilot: 0, maneuver: b_maneuver };
-            if let Some(a2a) = self.resolve_air_to_air(cap, bombers) {
-                intercepted = a2a.defender_losses.min(alive);
-                if intercepted > 0 {
-                    self.sgsus.get_mut(&squadron)?.lose_planes(intercepted);
+            // §45: fighter-vs-escort combat first — only interceptors surviving the escort/screen
+            // may then attack the bombers.
+            let mut attackers = cap;
+            if let Some(esc) = escort {
+                if let Some(a2a) = self.resolve_air_to_air(cap, esc) {
+                    escort_losses = a2a.defender_losses.min(esc.count);
+                    let cap_lost = a2a.attacker_losses.min(cap.count);
+                    attackers = Flight { count: cap.count - cap_lost, ..cap };
                 }
-                alive -= intercepted;
+            }
+            if attackers.count > 0 {
+                let (b_tacair, b_maneuver) = {
+                    let atype = self.sgsus.get(&squadron)?.planes.first().map(|g| g.aircraft_type.clone());
+                    atype
+                        .and_then(|t| {
+                            self.reference
+                                .aircraft_charts
+                                .get(&self.sgsus.get(&squadron)?.nationality)
+                                .and_then(|c| c.get(&t))
+                                .and_then(|a| a.loadouts.first())
+                                .map(|l| (l.tac_air, l.maneuver))
+                        })
+                        .unwrap_or((0, 0))
+                };
+                let bombers = Flight { count: alive, tacair: b_tacair, pilot: 0, maneuver: b_maneuver };
+                if let Some(a2a) = self.resolve_air_to_air(attackers, bombers) {
+                    intercepted = a2a.defender_losses.min(alive);
+                    if intercepted > 0 {
+                        self.sgsus.get_mut(&squadron)?.lose_planes(intercepted);
+                    }
+                    alive -= intercepted;
+                }
             }
         }
         // §46 / §39.0(e): anti-aircraft fire — planes destroyed and aborted (two rolls, §46.0).
@@ -4736,7 +4752,7 @@ impl GameState {
             .air_bombardment
             .as_ref()
             .map_or(0, |t| t.result(group, WeaponPoints::Bomb, delivered, bomb_roll));
-        Some(BombingMissionOutcome { flown, intercepted, destroyed, aborted, delivered_bomb_points: delivered, result })
+        Some(BombingMissionOutcome { flown, intercepted, destroyed, aborted, delivered_bomb_points: delivered, result, escort_losses })
     }
 
     /// §45: resolve fighter-vs-fighter combat between an `attacker` and `defender` flight, one duel

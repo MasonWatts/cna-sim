@@ -4806,6 +4806,7 @@ mod tests {
             planes: 12,
             bombload_per_plane: 20,
             night: false,
+            escort: None,
             flak_destroy_roll: 66,
             flak_abort_roll: 66,
             bomb_roll: 66,
@@ -4886,7 +4887,7 @@ mod tests {
         let bomb = |target: HexCoord| Command::FlyBombingMissionAt {
             squadron: SquadronId(2), target, mission: BombingMission::Personnel,
             planes: 6, bombload_per_plane: 20, night: false,
-            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // A target OUTSIDE the 7-hex air ZOC is not intercepted (§40.23).
         let outside = HexCoord::new(14, 10); // 4 hexes from center
@@ -4995,7 +4996,6 @@ mod tests {
     fn strafe_infantry_and_grounded_aircraft_40_6() {
         use crate::reference::aircraft::AircraftClass;
         use crate::reference::squadron::SquadronClass;
-        use crate::reference::units::Side;
         use crate::rules::air::StrafeTarget;
         use crate::state::air::{Sgsu, SquadronId};
         use crate::state::command::{Command, CommandOutcome};
@@ -5216,7 +5216,7 @@ mod tests {
         use crate::reference::aircraft::AircraftClass;
         use crate::reference::squadron::SquadronClass;
         use crate::state::air::{AirFacility, AirFacilityKind, Sgsu, SquadronId};
-        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::command::{Command, CommandOutcome};
         use crate::state::game::{GameState, Phase};
         use crate::state::map::HexCoord;
         use crate::state::unit::{Composition, UnitLocation};
@@ -5344,7 +5344,7 @@ mod tests {
         let bomb = |mission| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission,
             planes: 12, bombload_per_plane: 20, night: false,
-            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         match g.apply(bomb(BombingMission::Personnel)) {
             Ok(CommandOutcome::BombingMission(o)) => {
@@ -5455,7 +5455,7 @@ mod tests {
         }
         let bomb = |target, mission| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission, planes: 12, bombload_per_plane: 20,
-            night: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            night: false, escort: None, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
 
         // §41.37: bombing a placed Level-2 fortification knocks it down at most one level per stage.
@@ -5567,6 +5567,76 @@ mod tests {
     }
 
     #[test]
+    fn bomber_escort_45_43_24() {
+        use crate::reference::aircraft::{AircraftClass, BombingMission};
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{MedBase, Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::{HexCoord, HexId};
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+        refs.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+        refs.load_air_to_air(include_str!("../../../data/reference/air-to-air.ron")).unwrap();
+        refs.load_air_distance(include_str!("../../../data/reference/air-distance.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(1, 1);
+        let target = HexCoord::new(3, 1);
+        let mut kg = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 26", 5, Some(base));
+        kg.add_planes("Ju.88D", AircraftClass::Bomber, 12, 1);
+        g.sgsus.insert(SquadronId(1), kg);
+        let mut jg = Sgsu::new(SquadronId(2), Nationality::German, SquadronClass::Fighter, "JG 27", 5, Some(base));
+        jg.add_planes("Bf.109F", AircraftClass::Fighter, 6, 1);
+        g.sgsus.insert(SquadronId(2), jg);
+        for id in [SquadronId(1), SquadronId(2)] {
+            for grp in g.sgsus.get_mut(&id).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        }
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+        let bomb = |escort| Command::FlyBombingMissionAt {
+            squadron: SquadronId(1), target, mission: BombingMission::Personnel,
+            planes: 12, bombload_per_plane: 20, night: false, escort,
+            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+        };
+        // A non-fighter escort (a bomber squadron) is not permitted (§45: fighters escort).
+        assert_eq!(g.apply(bomb(Some(SquadronId(1)))), Err(CommandError::EscortNotPermitted));
+        // A valid fighter escort flies with the bombers (its ready planes leave for the mission).
+        assert!(matches!(g.apply(bomb(Some(SquadronId(2)))), Ok(CommandOutcome::BombingMission(_))));
+        assert_eq!(g.sgsus[&SquadronId(2)].ready_planes(), 0, "the escort flew");
+
+        // §43.24: a Crete-based bomber may not take an on-map (African) fighter escort.
+        let mut crete = Sgsu::new(SquadronId(3), Nationality::German, SquadronClass::Bomber, "KG 100", 5, None);
+        crete.med_base = Some(MedBase::Crete);
+        crete.add_planes("Ju.88D", AircraftClass::Bomber, 6, 1);
+        g.sgsus.insert(SquadronId(3), crete);
+        for grp in g.sgsus.get_mut(&SquadronId(3)).unwrap().planes.iter_mut() {
+            grp.refitted = grp.count;
+            grp.ready = grp.count;
+        }
+        for grp in g.sgsus.get_mut(&SquadronId(2)).unwrap().planes.iter_mut() {
+            grp.refitted = grp.count;
+            grp.ready = grp.count;
+        }
+        g.game_turn = 2; // out of the §43.23 Suez window
+        g.operations_stage = 2;
+        assert_eq!(
+            g.apply(Command::FlyBombingMissionAt {
+                squadron: SquadronId(3), target: HexId::parse("B5925").unwrap().to_hex_coord(),
+                mission: BombingMission::Personnel, planes: 6, bombload_per_plane: 20, night: false,
+                escort: Some(SquadronId(2)),
+                flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            }),
+            Err(CommandError::EscortNotPermitted)
+        );
+    }
+
+    #[test]
     fn crete_suez_commitment_43_23() {
         use crate::reference::aircraft::{AircraftClass, BombingMission};
         use crate::reference::squadron::SquadronClass;
@@ -5597,7 +5667,7 @@ mod tests {
         let bomb = Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target: derna, mission: BombingMission::Personnel,
             planes: 12, bombload_per_plane: 20, night: false,
-            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // §43.23: in the first 4 Operations Stages of the month, Crete is committed to Suez.
         g.game_turn = 1;
@@ -5646,7 +5716,7 @@ mod tests {
         let bomb = |target| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 12, bombload_per_plane: 20, night: false,
-            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // With no §37.4 chart loaded, a Box squadron has no computable flight distance.
         assert_eq!(g.apply(bomb(derna)), Err(CommandError::TargetOutOfRange));
@@ -5700,7 +5770,6 @@ mod tests {
         use crate::state::air::{MedBase, Sgsu, SquadronId};
         use crate::state::command::{Command, CommandOutcome};
         use crate::state::game::{GameState, Phase};
-        use crate::state::map::HexCoord;
 
         let mut refs = ReferenceData::new();
         refs.load_aircraft_chart(Nationality::Italian, include_str!("../../../data/reference/aircraft/italian.ron")).unwrap();
@@ -5795,7 +5864,7 @@ mod tests {
         let bomb = Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 6, bombload_per_plane: 20, night: false,
-            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
 
         // CW fighters based AT the target (distance 0 → Scramble Table success on any d6, §40.4).

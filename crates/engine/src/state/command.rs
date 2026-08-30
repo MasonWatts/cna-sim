@@ -375,6 +375,10 @@ pub enum Command {
         planes: u32,
         bombload_per_plane: u32,
         night: bool,
+        /// §45: an optional friendly fighter squadron escorting the bombers — intercepting CAP must
+        /// fight the escort before it can attack the bombers. (§43.24: a Crete-based bomber may not
+        /// take an on-map/African escort.)
+        escort: Option<crate::state::air::SquadronId>,
         flak_destroy_roll: u32,
         flak_abort_roll: u32,
         bomb_roll: u32,
@@ -609,6 +613,9 @@ pub enum CommandError {
     SquadronInTransit,
     /// §43.23: a Crete-based bomber may not fly (committed to Suez) this Operations Stage.
     CreteSuezCommitment,
+    /// §45/§43.24: the escort squadron is ineligible (not a friendly ready fighter, in transit, or
+    /// an on-map fighter escorting a Crete-based bomber).
+    EscortNotPermitted,
     /// §38.36: no Stores Point is present at the squadron's base to pay for the refit attempt.
     InsufficientStores,
     /// §35.14: the SGSU lacks its own upkeep and may not repair (refit) its planes this stage.
@@ -878,7 +885,7 @@ impl GameState {
                     .resolve_bombing_mission(
                         squadron, planes, bombload_per_plane,
                         crate::reference::air_bombardment::TargetGroup::AirfieldPortStrip,
-                        interceptors, flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, false,
+                        interceptors, None, flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, false,
                     )
                     .ok_or(CommandError::NoSuchSquadron)?;
                 // §44.12/§44.21: the result reduces the base's capacity levels (never destroyed).
@@ -914,7 +921,7 @@ impl GameState {
                     .resolve_bombing_mission(
                         squadron, planes, bombload_per_plane,
                         crate::reference::air_bombardment::TargetGroup::Units,
-                        interceptors, flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, false,
+                        interceptors, None, flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, false,
                     )
                     .ok_or(CommandError::NoSuchSquadron)?;
                 self.fleet[ship_index].damage(outcome.result.max(0) as u32);
@@ -969,7 +976,7 @@ impl GameState {
                 let group = crate::rules::air::bombing_target_group(mission)
                     .ok_or(CommandError::NoTable)?; // mining harbours use their own table
                 self.resolve_bombing_mission(
-                    squadron, planes, bombload_per_plane, group, interceptors,
+                    squadron, planes, bombload_per_plane, group, interceptors, None,
                     flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, night,
                 )
                 .map(CommandOutcome::BombingMission)
@@ -993,10 +1000,10 @@ impl GameState {
                 self.cmd_airdrop_unit(squadron, unit, target)
             }
             Command::FlyBombingMissionAt {
-                squadron, target, mission, planes, bombload_per_plane, night,
+                squadron, target, mission, planes, bombload_per_plane, night, escort,
                 flak_destroy_roll, flak_abort_roll, bomb_roll,
             } => self.cmd_fly_bombing_mission_at(
-                squadron, target, mission, planes, bombload_per_plane, night,
+                squadron, target, mission, planes, bombload_per_plane, night, escort,
                 flak_destroy_roll, flak_abort_roll, bomb_roll,
             ),
         }
@@ -1843,6 +1850,7 @@ impl GameState {
     /// (§46) from the enemy AA units present; resolves interception (§40.26) against enemy offensive
     /// CAP covering the target; then delegates to `resolve_bombing_mission`.
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     fn cmd_fly_bombing_mission_at(
         &mut self,
         squadron: crate::state::air::SquadronId,
@@ -1851,6 +1859,7 @@ impl GameState {
         planes: u32,
         bombload_per_plane: u32,
         night: bool,
+        escort: Option<crate::state::air::SquadronId>,
         flak_destroy_roll: u32,
         flak_abort_roll: u32,
         bomb_roll: u32,
@@ -1932,11 +1941,49 @@ impl GameState {
                 interceptors = Some(fl);
             }
         }
+        // §45/§43.24: an optional fighter escort — intercepting CAP must fight it before the bombers.
+        let mut escort_sq = None;
+        let escort_flight = if let Some(esq) = escort {
+            let bomber_on_crete =
+                self.sgsus.get(&squadron).and_then(|s| s.med_base) == Some(crate::state::air::MedBase::Crete);
+            let es = self.sgsus.get(&esq).ok_or(CommandError::NoSuchSquadron)?;
+            // A friendly, based, not-in-transit fighter squadron with ready CAP-capable planes.
+            if es.nationality.side() != nationality.side() || es.in_transit() {
+                return Err(CommandError::EscortNotPermitted);
+            }
+            // §43.24: a Crete-based bomber may not be escorted by an on-map (African) fighter.
+            if bomber_on_crete && es.location.is_some() {
+                return Err(CommandError::EscortNotPermitted);
+            }
+            let echart = self.reference.aircraft_charts.get(&es.nationality);
+            let mut rep: Option<(i32, i32)> = None;
+            let mut cap_capable = false;
+            for g in es.planes.iter().filter(|g| g.ready > 0) {
+                if let Some(ac) = echart.and_then(|c| c.get(&g.aircraft_type)) {
+                    if crate::rules::air::can_fly_cap(&ac.missions) {
+                        cap_capable = true;
+                        rep = rep.or_else(|| ac.loadouts.first().map(|l| (l.tac_air, l.maneuver)));
+                    }
+                }
+            }
+            if !cap_capable {
+                return Err(CommandError::EscortNotPermitted);
+            }
+            let flown = self.sgsus.get_mut(&esq).ok_or(CommandError::NoSuchSquadron)?.fly(u32::MAX);
+            if flown == 0 {
+                return Err(CommandError::NoReadyPlanes);
+            }
+            let (tacair, maneuver) = rep.unwrap_or((0, 0));
+            escort_sq = Some(esq);
+            Some(crate::state::game::Flight { count: flown, tacair, pilot: self.squadron_pilot_bonus(esq), maneuver })
+        } else {
+            None
+        };
         // §46: flak fired by the enemy AA units in the target hex.
         let flak_points = self.hex_flak_points(target, nationality.side());
         let outcome = self
             .resolve_bombing_mission(
-                squadron, planes, bombload_per_plane, group, interceptors,
+                squadron, planes, bombload_per_plane, group, interceptors, escort_flight,
                 flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, night,
             )
             .ok_or(CommandError::NoSuchSquadron)?;
@@ -1944,6 +1991,14 @@ impl GameState {
         if let Some(sq) = interceptor_sq {
             if outcome.intercepted > 0 {
                 self.credit_pilot_kills(sq, outcome.intercepted);
+            }
+        }
+        // §45: apply escort losses to the escorting squadron.
+        if let Some(esq) = escort_sq {
+            if outcome.escort_losses > 0 {
+                if let Some(s) = self.sgsus.get_mut(&esq) {
+                    s.lose_planes(outcome.escort_losses);
+                }
             }
         }
         // §41.3x: apply the mission's land effect (pin / supply-dump destruction) at the target.
