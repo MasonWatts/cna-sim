@@ -568,12 +568,14 @@ Non-mutating query methods: `observe_units(side)` shows every on-map counter but
 unit's current **TOE Strength** (`strength: None`); `observe_supply_dumps(side)` shows a friendly
 dump's contents/dummy flag but reveals only a marker for an enemy dump (§32.18); `observe_raiders(side)`
 shows own raiders always and enemy raiders only once **revealed** (a new `Raider.revealed` flag set
-when a raider raids or is spotted, §27.32/§27.33). This closes the §27.32 hidden-movement caveat for
-the enemy's *view*. **Still ground-truth-only (later increments):** well depletion/poisoning secrecy
-(§52.14), minefield real/dummy concealment (§26) at the view layer, exact convoy tonnage (already
-class-only via §42.53 recon), and a raider re-hiding after a reveal (currently stays revealed until
-re-formed). No command consumes the view yet — it is the query side of the §3.3 boundary, ready for
-Phase 2 agents.
+when a raider raids or is spotted, §27.32/§27.33, and cleared at the next Operations Stage so a
+revealed raider re-hides). `observe_minefields(side)` shows each marker + owner but hides real/dummy
+status until the field is the viewer's own or has been revealed (§26.15/§26.23). This closes the
+§27.32 hidden-movement caveat for the enemy's *view*. **Still ground-truth-only (later increment):**
+well depletion/poisoning secrecy (§52.14 — secret to *both* players until drawn, so it needs a
+"discovered" model rather than a per-side filter); exact convoy tonnage is already class-only via
+§42.53 recon. No command consumes the view yet — it is the query side of the §3.3 boundary, ready
+for Phase 2 agents.
 
 As we digitize physical game components (charts, tables, counters, OA sheets, scenario
 setups), we save a faithful, human-readable transcription so future agents and humans

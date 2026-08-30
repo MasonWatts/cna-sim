@@ -51,6 +51,18 @@ pub struct RaiderView {
     pub friendly: bool,
 }
 
+/// What a viewing side knows about a minefield (§26): the marker's hex and owner are visible, but
+/// whether it is real or a dummy is hidden until it is the viewer's own or has been revealed by an
+/// enemy unit entering it (§26.15/§26.23).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MinefieldView {
+    pub hex: HexCoord,
+    pub side: Side,
+    pub friendly: bool,
+    /// Dummy flag — `Some` only when the viewer owns the field or it has been revealed.
+    pub dummy: Option<bool>,
+}
+
 impl GameState {
     /// §3.5: the units `viewer` can observe — every on-map counter (its own with full TOE Strength,
     /// the enemy's with `strength = None`). Off-map units (holding boxes) are included like the map.
@@ -103,6 +115,23 @@ impl GameState {
                 side: r.side,
                 hex: r.hex,
                 friendly: r.side == viewer,
+            })
+            .collect()
+    }
+
+    /// §26: the minefields `viewer` can observe — the marker and owner of each, with its real/dummy
+    /// status disclosed only for the viewer's own fields or ones already revealed (§26.15/§26.23).
+    pub fn observe_minefields(&self, viewer: Side) -> Vec<MinefieldView> {
+        self.minefields
+            .iter()
+            .map(|(&hex, mf)| {
+                let known = mf.side == viewer || self.revealed_minefields.contains(&hex);
+                MinefieldView {
+                    hex,
+                    side: mf.side,
+                    friendly: mf.side == viewer,
+                    dummy: known.then_some(mf.dummy),
+                }
             })
             .collect()
     }

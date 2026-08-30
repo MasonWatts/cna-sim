@@ -5657,9 +5657,11 @@ impl GameState {
             r.stage_start_hex = r.hex;
             r.cpa_unit = None;
         }
-        // §27.37: refresh each raider's 50-CP Movement Allowance for the new stage.
+        // §27.37: refresh each raider's 50-CP Movement Allowance for the new stage. §27.33: a raider
+        // revealed by last stage's raid/spotting slips back into hiding for the new stage.
         for raider in self.raiders.iter_mut() {
             raider.cpa_used = 0;
+            raider.revealed = false;
         }
         // §8.98: refresh each free truck convoy's Movement Allowance for the new Truck Convoy Phase.
         for convoy in self.truck_convoys.iter_mut() {

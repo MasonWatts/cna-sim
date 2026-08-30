@@ -3099,6 +3099,37 @@ mod tests {
         assert!(seen[0].friendly);
         g.raiders[1].revealed = true; // §27.33: now spotted/raided
         assert_eq!(g.observe_raiders(Side::Commonwealth).len(), 2, "revealed enemy raider now visible");
+
+        // §27.33: a revealed raider slips back into hiding at the start of the next Operations Stage.
+        g.begin_operations_stage();
+        assert!(!g.raiders[1].revealed);
+        assert_eq!(g.observe_raiders(Side::Commonwealth).len(), 1, "enemy raider hidden again");
+    }
+
+    #[test]
+    fn observation_minefields_26() {
+        // §26: a minefield marker + owner are visible, but real/dummy is hidden until it is the
+        // viewer's own or has been revealed.
+        use crate::reference::units::Side;
+        use crate::state::game::{GameState, Minefield};
+        use crate::state::map::HexCoord;
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        let own = HexCoord::new(1, 1);
+        let enemy = HexCoord::new(2, 2);
+        g.minefields.insert(own, Minefield { side: Side::Commonwealth, dummy: false });
+        g.minefields.insert(enemy, Minefield { side: Side::Axis, dummy: true });
+
+        let mf = g.observe_minefields(Side::Commonwealth);
+        let own_v = mf.iter().find(|m| m.hex == own).unwrap();
+        let enemy_v = mf.iter().find(|m| m.hex == enemy).unwrap();
+        assert_eq!((own_v.friendly, own_v.dummy), (true, Some(false)));
+        assert_eq!((enemy_v.friendly, enemy_v.dummy), (false, None), "enemy real/dummy hidden");
+
+        // §26.15: once an enemy field is revealed, its dummy status becomes known.
+        g.revealed_minefields.insert(enemy);
+        let enemy_v = g.observe_minefields(Side::Commonwealth).into_iter().find(|m| m.hex == enemy).unwrap();
+        assert_eq!(enemy_v.dummy, Some(true));
     }
 
     #[test]
