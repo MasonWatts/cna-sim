@@ -388,8 +388,11 @@ flight (§37.4):** a squadron with no on-map base flies from its off-map Box usi
 arbitrary target through the nearest on-map reference point (chart distance + hex distance),
 respecting the chart's Prohibited routes; the bombing/CAP/strafe commands use `flight_distance` for
 range (unchanged for on-map bases). Italy/Sicily takes the more favourable of the two §37.4 columns
-(the region is modeled as one, §43.12). The §43.23 Crete→Suez timing and §43.24/§43.25 Box-bomber CAP
-coordination still layer on top. Land-unit air
+(the region is modeled as one, §43.12). **§43.23** is enforced (a Crete bomber may not fly a bombing
+mission in the first four Operations Stages of each month — the Suez commitment). §43.24 (Crete
+bombers fly without escort) is already satisfied — the model has no protective-CAP escort, so all
+bombers defend with their own TacAir; §43.25's Malta raids work, and its African-fighter *escort*
+coordination awaits a §39.35–37 escort/screening subsystem. Land-unit air
 recon waits on fog-of-war. **Malta strategic-air commitment (§43/§44.41) is modeled:** each Axis
 Malta Availability Level (I–IV) is limited to the scenario's Game-Turn count (the §44.41 chart),
 tracked in `malta_level_used` and gated at `DetermineMaltaAvailability` (Level I unlimited, §44.25);

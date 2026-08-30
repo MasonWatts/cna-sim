@@ -5567,6 +5567,50 @@ mod tests {
     }
 
     #[test]
+    fn crete_suez_commitment_43_23() {
+        use crate::reference::aircraft::{AircraftClass, BombingMission};
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{MedBase, Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexId;
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+        refs.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+        refs.load_air_distance(include_str!("../../../data/reference/air-distance.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let mut kg = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 26", 5, None);
+        kg.med_base = Some(MedBase::Crete);
+        kg.add_planes("Ju.88D", AircraftClass::Bomber, 12, 1);
+        g.sgsus.insert(SquadronId(1), kg);
+        let ready = |g: &mut GameState| {
+            for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        };
+        ready(&mut g);
+        let derna = HexId::parse("B5925").unwrap().to_hex_coord();
+        g.phase = Phase::LandSupportAir;
+        let bomb = Command::FlyBombingMissionAt {
+            squadron: SquadronId(1), target: derna, mission: BombingMission::Personnel,
+            planes: 12, bombload_per_plane: 20, night: false,
+            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+        };
+        // §43.23: in the first 4 Operations Stages of the month, Crete is committed to Suez.
+        g.game_turn = 1;
+        g.operations_stage = 1; // op-stage-of-month 1 → in the window
+        assert_eq!(g.apply(bomb.clone()), Err(CommandError::CreteSuezCommitment));
+        // Later in the month (op-stage-of-month 5) the Crete bombers are free.
+        g.game_turn = 2;
+        g.operations_stage = 2; // (2-1)%4*3 + 2 = 5 → out of the window
+        ready(&mut g);
+        assert!(matches!(g.apply(bomb), Ok(CommandOutcome::BombingMission(_))));
+    }
+
+    #[test]
     fn box_based_flight_37_4() {
         use crate::reference::aircraft::{AircraftClass, BombingMission};
         use crate::reference::squadron::SquadronClass;
@@ -5596,6 +5640,9 @@ mod tests {
         while g.phase != Phase::LandSupportAir {
             g.advance_phase();
         }
+        // Move outside the §43.23 Crete→Suez window so this Crete squadron may bomb.
+        g.game_turn = 2;
+        g.operations_stage = 2;
         let bomb = |target| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 12, bombload_per_plane: 20, night: false,

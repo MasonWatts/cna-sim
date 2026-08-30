@@ -607,6 +607,8 @@ pub enum CommandError {
     BasingRequirementViolated,
     /// §43.14: the squadron is in transfer transit this Operations Stage and may not fly.
     SquadronInTransit,
+    /// §43.23: a Crete-based bomber may not fly (committed to Suez) this Operations Stage.
+    CreteSuezCommitment,
     /// §38.36: no Stores Point is present at the squadron's base to pay for the refit attempt.
     InsufficientStores,
     /// §35.14: the SGSU lacks its own upkeep and may not repair (refit) its planes this stage.
@@ -1863,6 +1865,10 @@ impl GameState {
         let nationality = sgsu.nationality;
         if !self.squadron_is_based(squadron) {
             return Err(CommandError::SquadronNotBased);
+        }
+        // §43.23: Crete bombers are committed to Suez for four Operations Stages a month.
+        if sgsu.med_base == Some(crate::state::air::MedBase::Crete) && self.crete_suez_window() {
+            return Err(CommandError::CreteSuezCommitment);
         }
         // §37.22: no flight into a Sandstorm/Rainstorm target (or out of an on-map base in one).
         let grounded = |g: &Self, h: HexCoord| matches!(g.weather_at(h), Weather::Sandstorm | Weather::Rainstorm);

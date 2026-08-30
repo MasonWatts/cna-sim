@@ -4580,6 +4580,16 @@ impl GameState {
         self.sgsus.get(&squadron).and_then(|s| s.location)
     }
 
+    /// §43.23: whether the current Operations Stage falls in the Crete→Suez commitment window — the
+    /// first four of a month's twelve Operations Stages, during which no bombing missions may be
+    /// flown from Crete (the Suez raids themselves have no game effect). A fixed-window model of the
+    /// rule's "four OpStages within a given month" (a month = four Game-Turns).
+    pub fn crete_suez_window(&self) -> bool {
+        let week_of_month = self.game_turn.saturating_sub(1) % 4; // 0..3
+        let opstage_of_month = week_of_month * 3 + self.operations_stage as u32; // 1..12
+        opstage_of_month <= 4
+    }
+
     /// Whether a squadron has any flight base (on-map or an off-map Box).
     pub fn squadron_is_based(&self, squadron: SquadronId) -> bool {
         self.sgsus
