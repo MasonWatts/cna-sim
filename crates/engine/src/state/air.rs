@@ -29,6 +29,15 @@ pub enum MedBase {
     Crete,
 }
 
+/// A transfer destination for a squadron (§43.14): a Mediterranean Box, or an on-map (African) air
+/// facility hex.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MedBaseDest {
+    ItalySicily,
+    Crete,
+    Africa { hex: HexCoord },
+}
+
 /// A group of identical planes attached to a squadron: a key into the nationality's aircraft chart
 /// plus a count. A squadron may hold several types so long as they share the squadron's class
 /// (§35.21). Readiness (§38) is tracked as nested counts: `refitted` planes have been repaired
@@ -116,6 +125,10 @@ pub struct Sgsu {
     /// `None` for an on-map (African) squadron. Med-based bombers are auto-supplied (§43.21).
     #[serde(default)]
     pub med_base: Option<MedBase>,
+    /// §43.14: Operations Stages of transfer transit remaining — a squadron that has just changed
+    /// base region may not fly until this reaches 0 (one OpStage per Italy↔Sicily↔Crete move).
+    #[serde(default)]
+    pub transfer_remaining: u32,
 }
 
 fn default_true() -> bool {
@@ -148,7 +161,13 @@ impl Sgsu {
             planes: Vec::new(),
             supplied: true,
             med_base: None,
+            transfer_remaining: 0,
         }
+    }
+
+    /// §43.14: whether the squadron is grounded in transfer transit and may not fly this stage.
+    pub fn in_transit(&self) -> bool {
+        self.transfer_remaining > 0
     }
 
     /// Ready/reserve capacity for this squadron at `game_turn` (§35.23).

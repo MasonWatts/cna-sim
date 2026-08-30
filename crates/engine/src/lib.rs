@@ -5502,6 +5502,71 @@ mod tests {
     }
 
     #[test]
+    fn squadron_transfer_and_basing_43() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{AirFacility, AirFacilityKind, MedBase, MedBaseDest, Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let afr = HexCoord::new(5, 5);
+        g.air_facilities.push(AirFacility::new(AirFacilityKind::Airfield, afr));
+        // Strategic bombers: 4 He.111 in the Italy/Sicily Box, 1 in Africa → 80% Med (§43.11 ok).
+        let mut kg1 = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 1", 5, None);
+        kg1.med_base = Some(MedBase::ItalySicily);
+        kg1.add_planes("He.111", AircraftClass::Bomber, 4, 1);
+        g.sgsus.insert(SquadronId(1), kg1);
+        let mut kg2 = Sgsu::new(SquadronId(2), Nationality::German, SquadronClass::Bomber, "KG 2", 5, Some(afr));
+        kg2.add_planes("He.111", AircraftClass::Bomber, 1, 1);
+        g.sgsus.insert(SquadronId(2), kg2);
+
+        g.phase = Phase::Organization;
+        // §43.11: moving the 4-bomber Italy/Sicily squadron to Africa drops Med to 0% → refused, and
+        // the squadron is left where it was.
+        assert_eq!(
+            g.apply(Command::TransferSquadron { squadron: SquadronId(1), to: MedBaseDest::Africa { hex: afr } }),
+            Err(CommandError::BasingRequirementViolated)
+        );
+        assert_eq!(g.sgsus[&SquadronId(1)].med_base, Some(MedBase::ItalySicily));
+        assert_eq!(g.sgsus[&SquadronId(1)].transfer_remaining, 0);
+        // A legal transfer (Africa → Crete keeps 100% Med) starts one stage of transit (§43.14).
+        assert_eq!(
+            g.apply(Command::TransferSquadron { squadron: SquadronId(2), to: MedBaseDest::Crete }),
+            Ok(CommandOutcome::SquadronTransferred)
+        );
+        assert_eq!(g.sgsus[&SquadronId(2)].med_base, Some(MedBase::Crete));
+        assert!(g.sgsus[&SquadronId(2)].in_transit());
+        // An African destination with no air facility is rejected.
+        assert_eq!(
+            g.apply(Command::TransferSquadron { squadron: SquadronId(1), to: MedBaseDest::Africa { hex: HexCoord::new(9, 9) } }),
+            Err(CommandError::NoSuchFacility)
+        );
+
+        // §43.14 transit gate: transfer a fighter to Africa, then it may not fly until it arrives.
+        let mut jg = Sgsu::new(SquadronId(3), Nationality::German, SquadronClass::Fighter, "JG 27", 5, None);
+        jg.med_base = Some(MedBase::ItalySicily);
+        jg.add_planes("Bf.109F", AircraftClass::Fighter, 6, 1);
+        g.sgsus.insert(SquadronId(3), jg);
+        for grp in g.sgsus.get_mut(&SquadronId(3)).unwrap().planes.iter_mut() {
+            grp.refitted = grp.count;
+            grp.ready = grp.count;
+        }
+        assert!(matches!(
+            g.apply(Command::TransferSquadron { squadron: SquadronId(3), to: MedBaseDest::Africa { hex: afr } }),
+            Ok(_)
+        ));
+        g.phase = Phase::LandSupportAir;
+        assert_eq!(
+            g.apply(Command::DesignateCap { squadron: SquadronId(3), center: afr, cap_type: crate::reference::aircraft::CapType::Offensive, planes: 4 }),
+            Err(CommandError::SquadronInTransit)
+        );
+    }
+
+    #[test]
     fn malta_raid_plane_count_43() {
         use crate::reference::aircraft::AircraftClass;
         use crate::reference::squadron::SquadronClass;

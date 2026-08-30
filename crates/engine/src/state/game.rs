@@ -4537,6 +4537,22 @@ impl GameState {
             .sum()
     }
 
+    /// §43.11: whether at least 75% of Germany's strategic bombers (He.111 / Ju.88D / Fw.200) are
+    /// based in a Mediterranean Box. `true` when none are in play. (The §43.12/§43.13 date-banded
+    /// all-bomber and Crete requirements are not yet enforced.)
+    pub fn german_strategic_bombers_med_ok(&self) -> bool {
+        let is_strat = |t: &str| matches!(t, "He.111" | "Ju.88D" | "Fw.200 C");
+        let (mut med, mut total) = (0u32, 0u32);
+        for s in self.sgsus.values().filter(|s| s.nationality == Nationality::German) {
+            let n: u32 = s.planes.iter().filter(|g| is_strat(&g.aircraft_type)).map(|g| g.count).sum();
+            total += n;
+            if s.med_base.is_some() {
+                med += n;
+            }
+        }
+        total == 0 || med * 100 >= total * 75
+    }
+
     /// The result of resolving a bombing mission (§39.0 procedure).
     pub fn resolve_bombing_mission(
         &mut self,
@@ -5269,6 +5285,10 @@ impl GameState {
         // §40.13/§40.14/§40.17: advance each pilot's reassignment/retraining/recovery countdown.
         for p in self.pilots.iter_mut() {
             p.advance_stage();
+        }
+        // §43.14: advance each squadron's transfer transit countdown.
+        for s in self.sgsus.values_mut() {
+            s.transfer_remaining = s.transfer_remaining.saturating_sub(1);
         }
         // §35.14: each SGSU consumes its own upkeep (Fuel + Water per stage, Stores per turn).
         self.consume_sgsu_upkeep();

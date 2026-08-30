@@ -322,6 +322,14 @@ pub enum Command {
     /// (Organization Phase). The best flyable assigned pilot's Rating adds to the squadron's TacAir
     /// in air-to-air combat.
     AssignPilot { rating: u32, squadron: crate::state::air::SquadronId },
+    /// §43.14: transfer a squadron between the Mediterranean Boxes (Italy/Sicily, Crete) and on-map
+    /// Africa. Takes one Operations Stage of transit (the squadron may not fly until it arrives),
+    /// and may not leave the Med if it would break the §43.11 strategic-bomber basing requirement.
+    /// (Organization Phase.)
+    TransferSquadron {
+        squadron: crate::state::air::SquadronId,
+        to: crate::state::air::MedBaseDest,
+    },
     /// §42.4/§42.46: airdrop `amount` of `commodity` (Ammo or Stores only) from the squadron's base
     /// dumps into a `target` hex, using `planes` transport-capable planes. Validates transport
     /// capability, flight range (§37.12), weather (§42.45), and the §42.43/§42.44 drop-zone legality
@@ -480,6 +488,8 @@ pub enum CommandOutcome {
     UnitTransported,
     /// §42.4: an airborne unit was airdropped into the target hex.
     UnitAirdropped,
+    /// §43.14: a squadron began a transfer (in transit for one Operations Stage).
+    SquadronTransferred,
 }
 
 /// Why a command was rejected. The state is left unchanged on any error.
@@ -592,6 +602,11 @@ pub enum CommandError {
     /// §44.23/§44.41: this Malta Availability Level is not allowed for the scenario, or has already
     /// been used its maximum number of Game-Turns.
     MaltaLevelUnavailable,
+    /// §43.11: the transfer would drop German strategic bombers below the 75% Mediterranean basing
+    /// requirement.
+    BasingRequirementViolated,
+    /// §43.14: the squadron is in transfer transit this Operations Stage and may not fly.
+    SquadronInTransit,
     /// §38.36: no Stores Point is present at the squadron's base to pay for the refit attempt.
     InsufficientStores,
     /// §35.14: the SGSU lacks its own upkeep and may not repair (refit) its planes this stage.
@@ -965,6 +980,7 @@ impl GameState {
                 self.cmd_strafe(squadron, target, strafe_target, planes, roll)
             }
             Command::AssignPilot { rating, squadron } => self.cmd_assign_pilot(rating, squadron),
+            Command::TransferSquadron { squadron, to } => self.cmd_transfer_squadron(squadron, to),
             Command::AirdropSupplies { squadron, target, commodity, amount, planes } => {
                 self.cmd_airdrop_supplies(squadron, target, commodity, amount, planes)
             }
@@ -1310,6 +1326,9 @@ impl GameState {
         self.require_phase(Phase::LandSupportAir)?;
         let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
         let base = sgsu.location.ok_or(CommandError::SquadronNotBased)?;
+        if sgsu.in_transit() {
+            return Err(CommandError::SquadronInTransit); // §43.14: grounded during transfer
+        }
         let side = sgsu.nationality.side();
         let nationality = sgsu.nationality;
 
@@ -1375,6 +1394,47 @@ impl GameState {
         Ok(CommandOutcome::PilotAssigned)
     }
 
+    /// §43.14 TransferSquadron: move a squadron to a Mediterranean Box or on-map Africa, with one
+    /// Operations Stage of transit, refusing a move that would break the §43.11 basing requirement.
+    fn cmd_transfer_squadron(
+        &mut self,
+        squadron: crate::state::air::SquadronId,
+        to: crate::state::air::MedBaseDest,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::state::air::{MedBase, MedBaseDest};
+        self.require_phase(Phase::Organization)?;
+        // An African destination must be a friendly air facility (§43 — the planes must land).
+        if let MedBaseDest::Africa { hex } = to {
+            if !self.air_facilities.iter().any(|f| f.hex == hex) {
+                return Err(CommandError::NoSuchFacility);
+            }
+        }
+        let sgsu = self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+        let prior = (sgsu.med_base, sgsu.location, sgsu.transfer_remaining);
+        match to {
+            MedBaseDest::ItalySicily => {
+                sgsu.med_base = Some(MedBase::ItalySicily);
+                sgsu.location = None;
+            }
+            MedBaseDest::Crete => {
+                sgsu.med_base = Some(MedBase::Crete);
+                sgsu.location = None;
+            }
+            MedBaseDest::Africa { hex } => {
+                sgsu.med_base = None;
+                sgsu.location = Some(hex);
+            }
+        }
+        sgsu.transfer_remaining = 1; // §43.14: one Operations Stage of transit.
+        // §43.11: the move may not drop German strategic bombers below the 75% Med requirement.
+        if !self.german_strategic_bombers_med_ok() {
+            let sgsu = self.sgsus.get_mut(&squadron).expect("just borrowed");
+            (sgsu.med_base, sgsu.location, sgsu.transfer_remaining) = prior;
+            return Err(CommandError::BasingRequirementViolated);
+        }
+        Ok(CommandOutcome::SquadronTransferred)
+    }
+
     /// §42.4/§42.46 AirdropSupplies: drop Ammo/Stores from the squadron's base dumps into a target
     /// hex, validating transport capability, range, weather, and the §42.43/§42.44 drop-zone rules.
     fn cmd_airdrop_supplies(
@@ -1395,6 +1455,9 @@ impl GameState {
         }
         let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
         let base = sgsu.location.ok_or(CommandError::SquadronNotBased)?;
+        if sgsu.in_transit() {
+            return Err(CommandError::SquadronInTransit); // §43.14: grounded during transfer
+        }
         let side = sgsu.nationality.side();
         let nationality = sgsu.nationality;
 
@@ -1475,6 +1538,9 @@ impl GameState {
         self.require_phase(Phase::LandSupportAir)?;
         let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
         let base = sgsu.location.ok_or(CommandError::SquadronNotBased)?;
+        if sgsu.in_transit() {
+            return Err(CommandError::SquadronInTransit); // §43.14: grounded during transfer
+        }
         let nationality = sgsu.nationality;
         // §42.33: transports must land at a Friendly air facility.
         if !self.air_facilities.iter().any(|f| f.hex == target) {
@@ -1550,6 +1616,9 @@ impl GameState {
         self.require_phase(Phase::LandSupportAir)?;
         let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
         let base = sgsu.location.ok_or(CommandError::SquadronNotBased)?;
+        if sgsu.in_transit() {
+            return Err(CommandError::SquadronInTransit); // §43.14: grounded during transfer
+        }
         let nationality = sgsu.nationality;
         let side = nationality.side();
 
@@ -1657,6 +1726,9 @@ impl GameState {
         }
         let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
         let base = sgsu.location.ok_or(CommandError::SquadronNotBased)?;
+        if sgsu.in_transit() {
+            return Err(CommandError::SquadronInTransit); // §43.14: grounded during transfer
+        }
         let side = sgsu.nationality.side();
         let nationality = sgsu.nationality;
 
@@ -1782,6 +1854,9 @@ impl GameState {
         self.require_phase(Phase::LandSupportAir)?;
         let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
         let base = sgsu.location.ok_or(CommandError::SquadronNotBased)?;
+        if sgsu.in_transit() {
+            return Err(CommandError::SquadronInTransit); // §43.14: grounded during transfer
+        }
         let nationality = sgsu.nationality;
 
         // §37.22: no flight into/out of a Sandstorm or Rainstorm hex.
