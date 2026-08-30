@@ -1749,6 +1749,45 @@ impl GameState {
         }
     }
 
+    /// Axis Naval Convoy tons to ship `count` Truck Points of `kind` (§20.66a row tonnage per
+    /// point); 0 if the Axis Truck Production Chart is not loaded.
+    pub fn axis_truck_tonnage(&self, kind: crate::reference::logistics::TruckKind, count: u32) -> u32 {
+        self.reference
+            .axis_truck_production
+            .as_ref()
+            .map(|c| c.row(kind).tonnage * count)
+            .unwrap_or(0)
+    }
+
+    /// §20.62: total Axis convoy Shipping Tonnage already committed to arrive on `arrival_gt` —
+    /// replacement-production tonnage (arrives that turn), Axis planned-truck tonnage (planned two
+    /// turns earlier, §20.66a), and supply tonnage booked on convoys arriving that turn. Replacement
+    /// Points and Truck Points share the same per-Game-Turn allowance, so all three compete.
+    pub fn axis_shipping_committed(&self, arrival_gt: u32) -> u32 {
+        use crate::reference::units::Side;
+        let replacement: u32 = self
+            .production_orders
+            .iter()
+            .filter(|o| o.nationality.side() == Side::Axis && o.arrival_game_turn == arrival_gt)
+            .map(|o| o.tonnage)
+            .sum();
+        let trucks: u32 = self
+            .axis_truck_orders
+            .iter()
+            .filter(|o| o.side == Side::Axis && o.game_turn + 2 == arrival_gt)
+            .map(|o| self.axis_truck_tonnage(o.kind, o.count))
+            .sum();
+        // Supply tonnage (fuel/ammo/stores) on convoys arriving that turn; replacement_tons is
+        // excluded — that lift is tracked via the production/truck orders above.
+        let supply: u32 = self
+            .convoys
+            .iter()
+            .filter(|c| !c.cancelled && c.arrival_gt == arrival_gt)
+            .map(|c| c.fuel_tons + c.ammo_tons + c.stores_tons)
+            .sum();
+        replacement + trucks + supply
+    }
+
     /// Schedule `count` Truck Points of `kind` for `side` to arrive at the Naval Convoy Arrival
     /// Phase of `game_turn`/`stage` (§20.78A CW +4 GT; §20.66a Axis +2 GT).
     pub fn schedule_truck_delivery(

@@ -475,14 +475,15 @@ affordable `options` set (plus a Stores Point when flagged) drawn from co-locate
 with requirement kinds collapsed onto the four pool classes — using a **provisional** unit→row
 classifier (`conversion_row_for_unit`, flagged cf. D14; special-infantry and armored-recce/car
 distinctions default to the generic row, with Commando/Bersaglieri/Paratroop caught by name). With
-no §20.3 chart loaded it falls back to legacy 1:1. **Axis Replacement-Point tonnage now consumes
-convoy capacity (§20.62):** `PlanProduction` rejects an Axis order whose tonnage — added to the
-Axis replacement tonnage already committed to its arrival Game-Turn and any supply tonnage already
-booked on convoys arriving that turn — would exceed that turn's convoy Shipping Tonnage allowance
-(`InsufficientConvoyCapacity`). Bounded model (D15 step 8): it uses the die-6 allowance *ceiling*
-(the turn's die roll is unknown two turns out at planning time) and subtracts only already-planned
-supply convoys; Commonwealth production (strategic-supply line, Alexandria) is exempt; with no
-Convoy Level Chart loaded the gate is skipped. **Truck & Commonwealth-infantry production are now
+no §20.3 chart loaded it falls back to legacy 1:1. **Axis Replacement-Point and Truck-Point tonnage
+consume convoy capacity (§20.62):** `PlanProduction` and `ProduceAxisTrucks` both reject an order
+whose tonnage — added to everything already committed to its arrival Game-Turn (replacement
+production, Axis planned-truck production, and supply convoys, via `axis_shipping_committed`) —
+would exceed that turn's convoy Shipping Tonnage allowance (`InsufficientConvoyCapacity`); the two
+production streams compete for the same allowance. Bounded model (D15 step 8): it uses the die-6
+allowance *ceiling* (the turn's die roll is unknown two turns out at planning time); Commonwealth
+production (strategic-supply line, Alexandria) is exempt; with no Convoy Level Chart loaded the gate
+is skipped. **Truck & Commonwealth-infantry production are now
 driven:** `ProduceCommonwealthTrucks` (§20.78A: one d6 per truck type → Truck Points arriving +4
 Game-Turns at Alexandria) and `ProduceCommonwealthInfantry` (§20.78B: 2d6 → Infantry Replacement
 Points arriving +4 Game-Turns, fed through the standard replacement lifecycle) roll their tables;
@@ -491,11 +492,12 @@ delivering +2 Game-Turns. Produced Truck Points land in a per-side free-truck po
 at the Naval Convoy Arrival Phase, awaiting a future motorization/assignment command. The §20.78A
 **"≤25% of the total trucks produced may arrive per Game-Turn"** cap is enforced (owner ruling
 2026-08-30: scoped to the roll's own batch) — each Commonwealth truck type is divided as evenly as
-possible across four Game-Turns (GT+4…GT+7), matching §20.74's "as evenly as possible" smoothing.
-**Still open in production:** Axis truck convoy tonnage is not yet cross-counted against the §20.62
-replacement-shipping ceiling; §20.74's separate intra-turn OpStage division is not modeled. (The production item→class map's SP-gun/tankette
-Tank calls were owner-confirmed 2026-08-29; the §20.3 absorb classifier's special-infantry/
-armored-car distinctions remain provisional.)
+possible across four Game-Turns (GT+4…GT+7). **§20.74 OpStage division** is also modeled for
+Commonwealth production: within each arrival Game-Turn the arriving Truck Points / Infantry
+Replacement Points are divided among the three OpStages as evenly as possible (Axis production is
+exempt — §20.62 lets it arrive in any one OpStage). (The production item→class map's
+SP-gun/tankette Tank calls were owner-confirmed 2026-08-29; the §20.3 absorb classifier's
+special-infantry/armored-car distinctions remain provisional.)
 
 ### 8.8 Scenario, map & OB
 The Scenario-1 order of battle and the full map are in: all five map sections (A–E) digitized,

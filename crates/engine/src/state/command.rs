@@ -1363,36 +1363,20 @@ impl GameState {
 
         // §20.62: each Axis Replacement Point is counted against the convoy Shipping Tonnage
         // allowance for its arrival Game-Turn — it rides the Axis naval convoys and competes with
-        // supplies for the same tonnage. Reject if this order, plus the Axis replacement tonnage
-        // already committed to that Game-Turn, plus any supply tonnage already scheduled on convoys
-        // arriving that turn, would exceed the best-case (die-6) allowance for the turn's month.
-        // Commonwealth production lands via the strategic supply line (Alexandria), not Axis
-        // convoys, so it is not gated. (Bounded model, D15 step 8: uses the die-6 ceiling rather
-        // than the turn's actual die roll — which is unknown two turns out at planning time — and
-        // subtracts only already-planned supply convoys. With no Convoy Level Chart loaded the gate
-        // is skipped.)
+        // planned truck production (§20.66a) and supplies for the same tonnage. Reject if this
+        // order, plus everything already committed to that Game-Turn (replacement production, Axis
+        // truck production, and supply convoys — see `axis_shipping_committed`), would exceed the
+        // best-case (die-6) allowance for the turn's month. Commonwealth production lands via the
+        // strategic supply line (Alexandria), not Axis convoys, so it is not gated. (Bounded model,
+        // D15 step 8: uses the die-6 ceiling rather than the turn's actual die roll — unknown two
+        // turns out at planning time. With no Convoy Level Chart loaded the gate is skipped.)
         if side == crate::reference::units::Side::Axis && tonnage > 0 {
             if let Some(chart) = self.reference.convoy_levels.as_ref() {
                 let d = crate::state::game::date_of(arrival_game_turn);
                 if let Some(ceiling) = chart.max_tonnage_for(d.year, d.month) {
-                    let committed_replacement: u32 = self
-                        .production_orders
-                        .iter()
-                        .filter(|o| {
-                            o.nationality.side() == crate::reference::units::Side::Axis
-                                && o.arrival_game_turn == arrival_game_turn
-                        })
-                        .map(|o| o.tonnage)
-                        .sum();
-                    // Supply tonnage (fuel/ammo/stores) already booked on convoys arriving that turn;
-                    // replacement_tons is excluded here — that lift is tracked via production orders.
-                    let planned_supply: u32 = self
-                        .convoys
-                        .iter()
-                        .filter(|c| !c.cancelled && c.arrival_gt == arrival_game_turn)
-                        .map(|c| c.fuel_tons + c.ammo_tons + c.stores_tons)
-                        .sum();
-                    if committed_replacement + planned_supply + tonnage > ceiling {
+                    // Replacement production, Axis planned-truck production, and supply convoys all
+                    // draw from the arrival turn's allowance (§20.62).
+                    if self.axis_shipping_committed(arrival_game_turn) + tonnage > ceiling {
                         return Err(CommandError::InsufficientConvoyCapacity);
                     }
                 }
@@ -1442,13 +1426,17 @@ impl GameState {
         let medium = table.produce(TruckKind::Medium, gt, medium_die);
         let heavy = table.produce(TruckKind::Heavy, gt, heavy_die);
         let first_arrival = gt + 4;
-        let stage = self.operations_stage as u32;
-        // Spread each type over four Game-Turns (≤25%/GT), remainders on the earliest turns.
+        // §20.78A: spread each type over four Game-Turns (≤25%/GT), remainders on the earliest
+        // turns. §20.74: within each of those Game-Turns, divide the arriving Truck Points among the
+        // three OpStages as evenly as possible (remainders on the earliest stages).
         const BUCKETS: u32 = 4;
         for (kind, total) in [(TruckKind::Light, light), (TruckKind::Medium, medium), (TruckKind::Heavy, heavy)] {
             for b in 0..BUCKETS {
-                let share = total / BUCKETS + u32::from(b < total % BUCKETS);
-                self.schedule_truck_delivery(Side::Commonwealth, kind, share, first_arrival + b, stage);
+                let turn_share = total / BUCKETS + u32::from(b < total % BUCKETS);
+                for s in 1..=3u32 {
+                    let stage_share = turn_share / 3 + u32::from(s - 1 < turn_share % 3);
+                    self.schedule_truck_delivery(Side::Commonwealth, kind, stage_share, first_arrival + b, s);
+                }
             }
         }
         Ok(CommandOutcome::TrucksProduced { arrival_game_turn: first_arrival, light, medium, heavy })
@@ -1471,9 +1459,16 @@ impl GameState {
                 .reinforcement_entry_hex(Nationality::Commonwealth)
                 .map(str::to_string)
                 .and_then(|s| self.resolve_entry(&s));
-            self.plan_replacement(
-                ReplacementClass::Infantry, points, arrival_game_turn, self.operations_stage as u32, location, None,
-            );
+            // §20.74: divide the arriving Infantry Replacement Points among the arrival turn's three
+            // OpStages as evenly as possible (remainders on the earliest stages).
+            for s in 1..=3u32 {
+                let stage_share = points / 3 + u32::from(s - 1 < points % 3);
+                if stage_share > 0 {
+                    self.plan_replacement(
+                        ReplacementClass::Infantry, stage_share, arrival_game_turn, s, location.clone(), None,
+                    );
+                }
+            }
         }
         Ok(CommandOutcome::InfantryProduced { arrival_game_turn, points })
     }
@@ -1522,12 +1517,26 @@ impl GameState {
         if this_turn + count > row.max_per_turn(gt) {
             return Err(CommandError::ProductionRateExceeded);
         }
+        let arrival_game_turn = gt + 2;
+        // §20.62: Axis Truck Points ride the naval convoys too and share the arrival turn's Shipping
+        // Tonnage allowance with replacement production and supplies. Reject if this order's tonnage,
+        // added to everything already committed to that turn, exceeds the (die-6) allowance ceiling.
+        let tonnage = row.tonnage * count;
+        if tonnage > 0 {
+            if let Some(chart) = self.reference.convoy_levels.as_ref() {
+                let d = crate::state::game::date_of(arrival_game_turn);
+                if let Some(ceiling) = chart.max_tonnage_for(d.year, d.month) {
+                    if self.axis_shipping_committed(arrival_game_turn) + tonnage > ceiling {
+                        return Err(CommandError::InsufficientConvoyCapacity);
+                    }
+                }
+            }
+        }
         // Record the order (stamped with the plan turn for the accounting above) and schedule the
         // trucks to arrive two Game-Turns later.
         self.axis_truck_orders.push(PendingTruckDelivery {
             side: Side::Axis, kind, count, game_turn: gt, stage: self.operations_stage as u32,
         });
-        let arrival_game_turn = gt + 2;
         self.schedule_truck_delivery(Side::Axis, kind, count, arrival_game_turn, self.operations_stage as u32);
         let (mut light, mut medium, mut heavy) = (0, 0, 0);
         match kind {

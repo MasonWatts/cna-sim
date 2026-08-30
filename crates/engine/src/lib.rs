@@ -6718,7 +6718,16 @@ mod tests {
             g.apply(Command::ProduceCommonwealthInfantry { roll: 12 }),
             Ok(CommandOutcome::InfantryProduced { arrival_game_turn: 9, points: 20 })
         );
-        assert!(g.pending_replacements.iter().any(|p| p.class == ReplacementClass::Infantry && p.count == 20 && p.game_turn == 9));
+        // §20.74: the 20 points are divided among GT9's three OpStages as evenly as possible (7/7/6).
+        let inf_gt9: Vec<_> = g
+            .pending_replacements
+            .iter()
+            .filter(|p| p.class == ReplacementClass::Infantry && p.game_turn == 9)
+            .collect();
+        assert_eq!(inf_gt9.iter().map(|p| p.count).sum::<u32>(), 20);
+        let mut stages: Vec<_> = inf_gt9.iter().map(|p| (p.stage, p.count)).collect();
+        stages.sort();
+        assert_eq!(stages, vec![(1, 7), (2, 7), (3, 6)]);
 
         // §20.66a Axis trucks (planned): Light max/turn at GT5 is 4; a 4-point order is accepted,
         // arriving GT7. A further point this turn exceeds the per-turn max.
@@ -6731,26 +6740,73 @@ mod tests {
             Err(CommandError::ProductionRateExceeded)
         );
 
-        // Drive the arrivals. At GT9 the Axis GT7 delivery lands in full and only the first quarter
-        // of the CW batch arrives (§20.78A ≤25%/GT): light 4→[1,1,1,1], medium 15→[4,4,4,3],
-        // heavy 3→[1,1,1,0].
+        // Drive the arrivals. The CW batch spreads over four Game-Turns (§20.78A ≤25%/GT) and, within
+        // each, over three OpStages (§20.74): at GT9 OpStage 1 only the first (turn, stage) fragment
+        // lands — light bucket 1→stage[1,0,0]=1; medium bucket 4→stage[2,1,1]=2; heavy bucket 1→1.
+        // Meanwhile the Axis GT7 delivery (single stage) has fully landed.
         g.game_turn = 9;
         g.operations_stage = 1;
         g.process_truck_arrivals();
         let cw = g.truck_pools.get(&Side::Commonwealth).copied().unwrap_or_default();
-        assert_eq!((cw.light, cw.medium, cw.heavy), (1, 4, 1), "only the first quarter has arrived");
+        assert_eq!((cw.light, cw.medium, cw.heavy), (1, 2, 1), "only GT9 OpStage 1 has arrived");
         let axis = g.truck_pools.get(&Side::Axis).copied().unwrap_or_default();
         assert_eq!((axis.light, axis.medium, axis.heavy), (4, 0, 0));
-        assert!(!g.pending_trucks.is_empty(), "three CW quarters still pending");
+        assert!(!g.pending_trucks.is_empty(), "later fragments still pending");
 
-        // Process the remaining three Game-Turns; the full CW batch has now landed.
-        for gt in [10, 11, 12] {
+        // Process the full four Game-Turns (each through OpStage 3); the whole CW batch has landed.
+        for gt in [9, 10, 11, 12] {
             g.game_turn = gt;
+            g.operations_stage = 3;
             g.process_truck_arrivals();
         }
         let cw = g.truck_pools.get(&Side::Commonwealth).copied().unwrap_or_default();
         assert_eq!((cw.light, cw.medium, cw.heavy), (4, 15, 3));
         assert!(g.pending_trucks.is_empty());
+    }
+
+    #[test]
+    fn axis_trucks_and_production_share_convoy_capacity_20_62() {
+        // §20.62: Axis Truck Production and Replacement Production draw from the same arrival-turn
+        // convoy Shipping Tonnage allowance, so they compete.
+        use crate::reference::logistics::TruckKind;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{date_of, GameState, Phase};
+
+        let mut refs = ReferenceData::new();
+        refs.load_production_chart(
+            Nationality::German,
+            include_str!("../../../data/reference/german-production.ron"),
+        )
+        .unwrap();
+        refs.load_axis_truck_production(include_str!("../../../data/reference/axis-truck-production.ron")).unwrap();
+        refs.load_convoy_levels(include_str!("../../../data/reference/convoy-levels.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.game_turn = 40;
+        g.phase = Phase::Organization;
+
+        // Both a truck order and an infantry order planned at GT40 arrive at GT42 (Axis +2).
+        let d = date_of(42);
+        let ceiling = g.reference.convoy_levels.as_ref().unwrap().max_tonnage_for(d.year, d.month).unwrap();
+        // Book supply convoys arriving GT42 leaving only 200 tons of headroom.
+        assert!(g.plan_convoy(4, "Tripoli", 42, 0, 0, ceiling - 200, 0, ceiling));
+
+        // A Heavy truck costs 150 convoy tons/point (axis-truck-production.ron). One point fits the
+        // 200-ton headroom and consumes 150 of it.
+        assert!(matches!(
+            g.apply(Command::ProduceAxisTrucks { kind: TruckKind::Heavy, count: 1 }),
+            Ok(CommandOutcome::TrucksProduced { .. })
+        ));
+        // Only ~50 tons remain, so 2 German Infantry points (60 tons) no longer fit — the truck
+        // tonnage was counted against the same GT42 allowance.
+        assert_eq!(
+            g.apply(Command::PlanProduction { nationality: Nationality::German, item: "Infantry".into(), count: 2 }),
+            Err(CommandError::InsufficientConvoyCapacity)
+        );
+        // A single Infantry point (30 tons) still fits.
+        assert!(matches!(
+            g.apply(Command::PlanProduction { nationality: Nationality::German, item: "Infantry".into(), count: 1 }),
+            Ok(CommandOutcome::ProductionPlanned { .. })
+        ));
     }
 
     #[test]
