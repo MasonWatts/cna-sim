@@ -3133,6 +3133,36 @@ mod tests {
     }
 
     #[test]
+    fn well_depletion_secrecy_52_14() {
+        // §52.14: a depleted/poisoned well is secret to everyone but the side that caused it, until
+        // an opposing draw reveals it publicly.
+        use crate::reference::units::Side;
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        let hex = HexCoord::new(3, 3);
+        g.depleted_wells.insert(hex);
+        g.well_known_by.insert(hex, Side::Axis); // the Axis drew it dry and notes it secretly
+
+        assert_eq!(g.observe_well_depleted(Side::Axis, hex), Some(true), "the depleting side knows");
+        assert_eq!(g.observe_well_depleted(Side::Commonwealth, hex), None, "secret to the enemy");
+        // A well the viewer knows nothing about reads None (not "not depleted").
+        assert_eq!(g.observe_well_depleted(Side::Commonwealth, HexCoord::new(9, 9)), None);
+
+        // §52.14: once revealed (an opposing unit drew there), the marker is public.
+        g.revealed_wells.insert(hex);
+        assert_eq!(g.observe_well_depleted(Side::Commonwealth, hex), Some(true));
+
+        // §52.16 poison secrecy works the same way.
+        let bir = HexCoord::new(4, 4);
+        g.poisoned_wells.insert(bir);
+        g.well_known_by.insert(bir, Side::Commonwealth);
+        assert_eq!(g.observe_well_poisoned(Side::Commonwealth, bir), Some(true));
+        assert_eq!(g.observe_well_poisoned(Side::Axis, bir), None, "secret to the enemy");
+    }
+
+    #[test]
     fn deploy_formation_builds_hierarchy() {
         use crate::state::game::GameState;
         use crate::state::map::HexCoord;

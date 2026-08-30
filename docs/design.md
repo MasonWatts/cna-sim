@@ -184,7 +184,8 @@ Target: a legal, playable, machine-refereed simplified Land Game.
   ~~desert raiders & commandos (§27)~~ — **now fully implemented**. See §8.2/§8.9.)
 - Full construction/engineers/minefields/fortifications (§§23–26) — partial first.
 - Detailed prisoners (§28), repair (§22), breakdown (§21) — simplified first.
-- ~~Fog-of-war enforcement (§3.5)~~ — **first cut implemented** (per-side observation layer, §8.10).
+- ~~Fog-of-war enforcement (§3.5)~~ — **observation layer implemented** (units/dumps/raiders/
+  minefields/wells, §8.10); command-side *enforcement* is a Phase-2 agent concern.
 
 *(This Phase-1 cut is a starting proposal to refine, not a frozen boundary.)*
 
@@ -561,7 +562,7 @@ max Morale" precondition; per-hex fuel accounting (§27.38); all-replacement con
 (§27.58); facility/plane side-tagging (§27.53/54); and §27.59 range as hex distance ≤4 (proxy for
 "4 Movement CPs"). The §27.93 SAS Raid Table (0/10/25/25/33/50 by d6) is owner-confirmed (2026-08-30).
 
-### 8.10 Fog of war (§3.5 / D5) — first cut: per-side observation layer
+### 8.10 Fog of war (§3.5 / D5) — per-side observation layer implemented
 The core `GameState` holds ground truth; `crate::state::view` derives a **thin per-side view** of
 what a player is entitled to know (§3.5), so an AI agent or UI acts on knowledge, not omniscience.
 Non-mutating query methods: `observe_units(side)` shows every on-map counter but hides an enemy
@@ -571,11 +572,15 @@ shows own raiders always and enemy raiders only once **revealed** (a new `Raider
 when a raider raids or is spotted, §27.32/§27.33, and cleared at the next Operations Stage so a
 revealed raider re-hides). `observe_minefields(side)` shows each marker + owner but hides real/dummy
 status until the field is the viewer's own or has been revealed (§26.15/§26.23). This closes the
-§27.32 hidden-movement caveat for the enemy's *view*. **Still ground-truth-only (later increment):**
-well depletion/poisoning secrecy (§52.14 — secret to *both* players until drawn, so it needs a
-"discovered" model rather than a per-side filter); exact convoy tonnage is already class-only via
-§42.53 recon. No command consumes the view yet — it is the query side of the §3.3 boundary, ready
-for Phase 2 agents.
+§27.32 hidden-movement caveat for the enemy's *view*. **Well secrecy (§52.14/§52.16)** is modeled
+with a "discovered" scheme: `well_known_by` records the side that drew a well dry or poisoned it (it
+alone knows), and an opposing draw in `expend_water` flips the well into the public `revealed_wells`
+set (§52.14's placed marker); `observe_well_depleted(side, hex)` / `observe_well_poisoned` return
+`Some(status)` only to a knower or once revealed, else `None`. Rainstorm replenish (§52.15) and
+sweetening (§52.17) clear that bookkeeping. (Exact convoy tonnage is already class-only via §42.53
+recon.) The view layer now covers every major hidden-info category — units, dumps, raiders,
+minefields, wells. No command *enforces* acting only on observed info (rules resolution legitimately
+uses ground truth); consuming the view is a Phase-2 agent concern.
 
 As we digitize physical game components (charts, tables, counters, OA sheets, scenario
 setups), we save a faithful, human-readable transcription so future agents and humans

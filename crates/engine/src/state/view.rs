@@ -119,6 +119,27 @@ impl GameState {
             .collect()
     }
 
+    /// §52.14: whether `viewer` knows a well at `hex` is depleted (`Some(true/false)`), or cannot
+    /// tell (`None`). A side knows only its own secret (it drew the well dry) or a publicly revealed
+    /// well. Wells the viewer has no knowledge of read `None` even when actually depleted.
+    pub fn observe_well_depleted(&self, viewer: Side, hex: HexCoord) -> Option<bool> {
+        if self.revealed_wells.contains(&hex) || self.well_known_by.get(&hex) == Some(&viewer) {
+            Some(self.depleted_wells.contains(&hex))
+        } else {
+            None
+        }
+    }
+
+    /// §52.14/§52.16: whether `viewer` knows a well at `hex` is poisoned (`Some`), or cannot tell
+    /// (`None`) — same secrecy rule as depletion.
+    pub fn observe_well_poisoned(&self, viewer: Side, hex: HexCoord) -> Option<bool> {
+        if self.revealed_wells.contains(&hex) || self.well_known_by.get(&hex) == Some(&viewer) {
+            Some(self.poisoned_wells.contains(&hex))
+        } else {
+            None
+        }
+    }
+
     /// §26: the minefields `viewer` can observe — the marker and owner of each, with its real/dummy
     /// status disclosed only for the viewer's own fields or ones already revealed (§26.15/§26.23).
     pub fn observe_minefields(&self, viewer: Side) -> Vec<MinefieldView> {

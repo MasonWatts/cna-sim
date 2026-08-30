@@ -775,6 +775,14 @@ pub struct GameState {
     /// Village/Bir wells that have been poisoned (§52.16); un-poisoned by sweetening (§52.17).
     #[serde(default)]
     pub poisoned_wells: std::collections::HashSet<HexCoord>,
+    /// §52.14: the side that secretly knows a well is depleted/poisoned — the one that drew it dry
+    /// or poisoned it. Until it is publicly revealed, only this side observes the well's true state.
+    #[serde(default)]
+    pub well_known_by: std::collections::HashMap<HexCoord, Side>,
+    /// §52.14: wells whose depleted/poisoned state has been publicly revealed (a "depleted marker"
+    /// placed) — an opposing unit drew there and was told. Known to everyone thereafter.
+    #[serde(default)]
+    pub revealed_wells: std::collections::HashSet<HexCoord>,
     /// Hexes containing a constructed Water Pipeline (§52.2). A pipeline connected back to a major
     /// city is an unlimited water source.
     #[serde(default)]
@@ -975,6 +983,8 @@ impl GameState {
             axis_objective_held_since: None,
             depleted_wells: std::collections::HashSet::new(),
             poisoned_wells: std::collections::HashSet::new(),
+            well_known_by: std::collections::HashMap::new(),
+            revealed_wells: std::collections::HashSet::new(),
             pipelines: std::collections::HashSet::new(),
             pipeline_built_this_stage: std::collections::HashSet::new(),
             repair_facilities: std::collections::HashMap::new(),
@@ -3472,6 +3482,8 @@ impl GameState {
         }
         if die == 1 {
             self.poisoned_wells.insert(hex);
+            // §52.14/§52.16: the poisoning side knows secretly (the active player does the poisoning).
+            self.well_known_by.insert(hex, self.active_player);
             true
         } else {
             false
@@ -3483,6 +3495,11 @@ impl GameState {
     pub fn sweeten_well(&mut self, hex: HexCoord, die: u8) -> bool {
         if (1..=3).contains(&die) {
             self.poisoned_wells.remove(&hex);
+            // §52.14 bookkeeping: a sweetened well is clean again — clear its secret/revealed state.
+            if !self.depleted_wells.contains(&hex) {
+                self.well_known_by.remove(&hex);
+                self.revealed_wells.remove(&hex);
+            }
             true
         } else {
             false
@@ -3542,6 +3559,13 @@ impl GameState {
                             } else {
                                 WaterSource::Bir
                             };
+                            // §52.14: an opposing unit drawing at a well whose depletion/poison it
+                            // does not already know reveals it publicly (a marker is placed).
+                            if (self.depleted_wells.contains(&h) || self.poisoned_wells.contains(&h))
+                                && side.is_some_and(|s| self.well_known_by.get(&h) != Some(&s))
+                            {
+                                self.revealed_wells.insert(h);
+                            }
                             if let Some(table) = self.reference.water_table.clone() {
                                 let die = self.rng.d6() as u32;
                                 let (points, check) = table.draw(source, die);
@@ -3550,6 +3574,10 @@ impl GameState {
                                 }
                                 if check && self.rng.d6() == 1 {
                                     self.depleted_wells.insert(h);
+                                    // §52.14: the drawing side notes the depletion secretly.
+                                    if let Some(s) = side {
+                                        self.well_known_by.insert(h, s);
+                                    }
                                 }
                             }
                         }
@@ -3866,8 +3894,13 @@ impl GameState {
             .map(|(&s, _)| s)
             .collect();
         if !rain_sections.is_empty() {
-            self.depleted_wells
-                .retain(|h| !rain_sections.contains(&crate::state::map::section_char_of_col(h.col)));
+            let replenished = |h: &HexCoord| rain_sections.contains(&crate::state::map::section_char_of_col(h.col));
+            self.depleted_wells.retain(|h| !replenished(h));
+            // §52.14 bookkeeping: a replenished (no longer poisoned) well loses its secret/revealed
+            // state; a still-poisoned well keeps it.
+            let poisoned = self.poisoned_wells.clone();
+            self.well_known_by.retain(|h, _| !replenished(h) || poisoned.contains(h));
+            self.revealed_wells.retain(|h| !replenished(h) || poisoned.contains(h));
         }
     }
 
