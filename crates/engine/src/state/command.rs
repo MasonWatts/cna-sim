@@ -504,8 +504,9 @@ pub enum CommandOutcome {
         class: crate::state::game::ReplacementClass,
         tonnage: u32,
     },
-    /// §20.78A: Commonwealth Truck Production rolled — the given Truck Points of each type were
-    /// produced and scheduled to arrive on `arrival_game_turn`.
+    /// §20.78A/§20.66a: Truck Production resolved — the given Truck Points of each type were
+    /// produced. `arrival_game_turn` is the *first* delivery Game-Turn; Commonwealth batches then
+    /// spread over four Game-Turns (§20.78A ≤25%/GT), Axis trucks arrive in one (§20.66a +2 GT).
     TrucksProduced { arrival_game_turn: u32, light: u32, medium: u32, heavy: u32 },
     /// §20.78B: Commonwealth Infantry Production rolled — `points` Infantry Replacement Points
     /// were produced and scheduled to arrive on `arrival_game_turn` (0 = a "none" roll this era).
@@ -1418,10 +1419,14 @@ impl GameState {
     }
 
     /// §20.78A ProduceCommonwealthTrucks: roll the Commonwealth Truck Production Table once, one d6
-    /// per truck type; the produced Truck Points arrive four Game-Turns later at Alexandria (into
-    /// the Commonwealth free-truck pool). Gated to the Organization Phase like the other production
-    /// commands. (The §20.78A "≤25% of the total per Game-Turn at Alexandria" throughput cap is not
-    /// yet enforced — it awaits a ruling on how "total produced" is scoped; flagged, D15.)
+    /// per truck type; the produced Truck Points arrive at Alexandria (into the Commonwealth
+    /// free-truck pool) beginning four Game-Turns later. Gated to the Organization Phase like the
+    /// other production commands.
+    ///
+    /// §20.78A "no more than 25% of the total trucks produced may arrive… during the Game-Turn"
+    /// (project-owner ruling 2026-08-30: read as *this roll's batch*): each type's produced count is
+    /// divided as evenly as possible across four consecutive Game-Turns (GT+4…GT+7), so no more than
+    /// ~25% lands per Game-Turn — matching §20.74's "divided… as evenly as possible" smoothing.
     fn cmd_produce_commonwealth_trucks(
         &mut self,
         light_die: u32,
@@ -1436,12 +1441,17 @@ impl GameState {
         let light = table.produce(TruckKind::Light, gt, light_die);
         let medium = table.produce(TruckKind::Medium, gt, medium_die);
         let heavy = table.produce(TruckKind::Heavy, gt, heavy_die);
-        let arrival_game_turn = gt + 4;
+        let first_arrival = gt + 4;
         let stage = self.operations_stage as u32;
-        self.schedule_truck_delivery(Side::Commonwealth, TruckKind::Light, light, arrival_game_turn, stage);
-        self.schedule_truck_delivery(Side::Commonwealth, TruckKind::Medium, medium, arrival_game_turn, stage);
-        self.schedule_truck_delivery(Side::Commonwealth, TruckKind::Heavy, heavy, arrival_game_turn, stage);
-        Ok(CommandOutcome::TrucksProduced { arrival_game_turn, light, medium, heavy })
+        // Spread each type over four Game-Turns (≤25%/GT), remainders on the earliest turns.
+        const BUCKETS: u32 = 4;
+        for (kind, total) in [(TruckKind::Light, light), (TruckKind::Medium, medium), (TruckKind::Heavy, heavy)] {
+            for b in 0..BUCKETS {
+                let share = total / BUCKETS + u32::from(b < total % BUCKETS);
+                self.schedule_truck_delivery(Side::Commonwealth, kind, share, first_arrival + b, stage);
+            }
+        }
+        Ok(CommandOutcome::TrucksProduced { arrival_game_turn: first_arrival, light, medium, heavy })
     }
 
     /// §20.78B ProduceCommonwealthInfantry: roll the Commonwealth Infantry Production Table once

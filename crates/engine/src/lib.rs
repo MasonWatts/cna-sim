@@ -6707,7 +6707,8 @@ mod tests {
         );
         g.phase = Phase::Organization;
 
-        // §20.78A CW trucks (early era, GT5): light die4=4, medium die4=15, heavy die4=3; arrive GT9.
+        // §20.78A CW trucks (early era, GT5): light die4=4, medium die4=15, heavy die4=3; first
+        // arrival GT9, then spread over four Game-Turns (≤25%/GT).
         assert_eq!(
             g.apply(Command::ProduceCommonwealthTrucks { light_die: 4, medium_die: 4, heavy_die: 4 }),
             Ok(CommandOutcome::TrucksProduced { arrival_game_turn: 9, light: 4, medium: 15, heavy: 3 })
@@ -6730,15 +6731,25 @@ mod tests {
             Err(CommandError::ProductionRateExceeded)
         );
 
-        // Drive the arrivals: at GT9 (Naval Convoy Arrival Phase) both the Axis GT7 delivery and the
-        // Commonwealth GT9 delivery land in their free-truck pools.
+        // Drive the arrivals. At GT9 the Axis GT7 delivery lands in full and only the first quarter
+        // of the CW batch arrives (§20.78A ≤25%/GT): light 4→[1,1,1,1], medium 15→[4,4,4,3],
+        // heavy 3→[1,1,1,0].
         g.game_turn = 9;
         g.operations_stage = 1;
         g.process_truck_arrivals();
         let cw = g.truck_pools.get(&Side::Commonwealth).copied().unwrap_or_default();
-        assert_eq!((cw.light, cw.medium, cw.heavy), (4, 15, 3));
+        assert_eq!((cw.light, cw.medium, cw.heavy), (1, 4, 1), "only the first quarter has arrived");
         let axis = g.truck_pools.get(&Side::Axis).copied().unwrap_or_default();
         assert_eq!((axis.light, axis.medium, axis.heavy), (4, 0, 0));
+        assert!(!g.pending_trucks.is_empty(), "three CW quarters still pending");
+
+        // Process the remaining three Game-Turns; the full CW batch has now landed.
+        for gt in [10, 11, 12] {
+            g.game_turn = gt;
+            g.process_truck_arrivals();
+        }
+        let cw = g.truck_pools.get(&Side::Commonwealth).copied().unwrap_or_default();
+        assert_eq!((cw.light, cw.medium, cw.heavy), (4, 15, 3));
         assert!(g.pending_trucks.is_empty());
     }
 

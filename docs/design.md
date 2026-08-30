@@ -488,10 +488,12 @@ Game-Turns at Alexandria) and `ProduceCommonwealthInfantry` (§20.78B: 2d6 → I
 Points arriving +4 Game-Turns, fed through the standard replacement lifecycle) roll their tables;
 `ProduceAxisTrucks` (§20.66a) plans against the row's lifetime total and per-Game-Turn maximum,
 delivering +2 Game-Turns. Produced Truck Points land in a per-side free-truck pool (`truck_pools`)
-at the Naval Convoy Arrival Phase, awaiting a future motorization/assignment command. **Still open
-in production:** the §20.78A "≤25% of the total per Game-Turn at Alexandria" throughput cap is not
-enforced (awaits a ruling on scoping), and Axis truck convoy tonnage is not yet cross-counted
-against the §20.62 replacement-shipping ceiling. (The production item→class map's SP-gun/tankette
+at the Naval Convoy Arrival Phase, awaiting a future motorization/assignment command. The §20.78A
+**"≤25% of the total trucks produced may arrive per Game-Turn"** cap is enforced (owner ruling
+2026-08-30: scoped to the roll's own batch) — each Commonwealth truck type is divided as evenly as
+possible across four Game-Turns (GT+4…GT+7), matching §20.74's "as evenly as possible" smoothing.
+**Still open in production:** Axis truck convoy tonnage is not yet cross-counted against the §20.62
+replacement-shipping ceiling; §20.74's separate intra-turn OpStage division is not modeled. (The production item→class map's SP-gun/tankette
 Tank calls were owner-confirmed 2026-08-29; the §20.3 absorb classifier's special-infantry/
 armored-car distinctions remain provisional.)
 
