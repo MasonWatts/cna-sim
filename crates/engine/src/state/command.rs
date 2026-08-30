@@ -47,6 +47,17 @@ pub enum Command {
     /// §31.4: designate the co-located `unit` to receive Rommel's +5 CPA this Operations Stage
     /// (he must be with it at the start of the stage and remain — see `rommel_cpa_bonus`).
     DesignateRommelUnit { unit: UnitId },
+    /// §27.13: form a desert raider (LRDG / DSA) from a Friendly Recce/AC `from_unit`, removing one
+    /// TOE Strength Point and placing the counter in its hex (Organization Phase).
+    FormRaider { kind: crate::state::game::RaiderKind, from_unit: UnitId },
+    /// §27.3: move the raider at index `raider` one hex to adjacent `to` (Movement & Combat Phase).
+    /// Raiders ignore enemy Zones of Control (§27.34) but may not enter an Enemy-occupied hex except
+    /// to raid (§27.42). Entering an enemy-controlled (ZOC) hex risks being spotted: `spot_roll` is a
+    /// d6 and a 6 eliminates the raider (§27.41/§27.43).
+    MoveRaider { raider: usize, to: HexCoord, spot_roll: u32 },
+    /// §27.44: an Enemy attempts to spot the raider at index `raider` (spending 1 CP); `roll` is a
+    /// d6 and a 6 eliminates it (§27.43).
+    SpotRaider { raider: usize, roll: u32 },
     /// Move a whole formation (a parent counter plus its attached units) one hex. The
     /// parent counter moves and the attached units ride along; over-expenditure is judged
     /// against the formation CPA (§6.15, the slowest member).
@@ -481,6 +492,13 @@ pub enum CommandOutcome {
     RommelMoved { hex: HexCoord, mcp_left: u32 },
     /// §31.4: a unit was designated to receive Rommel's +5 CPA this Operations Stage.
     RommelUnitDesignated,
+    /// §27.13: a desert raider was formed; carries its index in `raiders`.
+    RaiderFormed { raider: usize },
+    /// §27.3: a raider moved to `hex`; `eliminated` = it was removed (spotted §27.43, or forced over
+    /// its 50-CP allowance §27.37); `cpa_used` is tenths of a CP spent this Operations Stage.
+    RaiderMoved { hex: HexCoord, eliminated: bool, cpa_used: u32 },
+    /// §27.43/§27.44: a spotting attempt resolved; `eliminated` = the raider was spotted and removed.
+    RaiderSpotChecked { eliminated: bool },
     /// §52.16/§52.17: whether a well was poisoned / sweetened.
     WellPoisoned(bool),
     WellSweetened(bool),
@@ -570,6 +588,12 @@ pub enum CommandError {
     /// §31: Rommel cannot make the requested move (target not adjacent/on-map, blocked by an enemy
     /// Zone of Control, or not enough Movement Allowance left this stage).
     RommelCannotMove,
+    /// §27: a desert raider could not be formed (invalid Recce/AC source, or the §27.11/§27.2a pool
+    /// is full), or the referenced raider index is not in play.
+    RaiderNotAvailable,
+    /// §27.3: the raider cannot make the requested move (not adjacent/on-map, or into an
+    /// Enemy-occupied hex without raiding, or over its 50-CP Movement Allowance).
+    RaiderCannotMove,
     WrongPhase,
     UnitNotOnMap,
     NotAdjacent,
@@ -724,6 +748,9 @@ impl GameState {
             Command::MoveRommel { to } => self.cmd_move_rommel(to, false),
             Command::RetreatRommel { to } => self.cmd_move_rommel(to, true),
             Command::DesignateRommelUnit { unit } => self.cmd_designate_rommel_unit(unit),
+            Command::FormRaider { kind, from_unit } => self.cmd_form_raider(kind, from_unit),
+            Command::MoveRaider { raider, to, spot_roll } => self.cmd_move_raider(raider, to, spot_roll),
+            Command::SpotRaider { raider, roll } => self.cmd_spot_raider(raider, roll),
             Command::FormationMove { formation, to, mode } => {
                 self.formation_move(formation, to, mode)
             }
@@ -1724,6 +1751,84 @@ impl GameState {
         }
         self.rommel.as_mut().unwrap().cpa_unit = Some(unit);
         Ok(CommandOutcome::RommelUnitDesignated)
+    }
+
+    /// §27.13 FormRaider: form a desert raider from a Friendly Recce/AC unit (Organization Phase).
+    fn cmd_form_raider(
+        &mut self,
+        kind: crate::state::game::RaiderKind,
+        from_unit: UnitId,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::Organization)?;
+        self.form_raider(kind, from_unit)
+            .map(|raider| CommandOutcome::RaiderFormed { raider })
+            .ok_or(CommandError::RaiderNotAvailable)
+    }
+
+    /// §27.3 MoveRaider: move a raider one hex (Movement & Combat Phase, on its owner's turn). It
+    /// ignores enemy ZOC (§27.34) but may not enter an Enemy-occupied hex except to raid (§27.42);
+    /// exceeding its 50-CP allowance eliminates it (§27.37); entering an enemy-controlled hex risks a
+    /// §27.43 spot (a `spot_roll` of 6 eliminates it).
+    fn cmd_move_raider(
+        &mut self,
+        raider: usize,
+        to: HexCoord,
+        spot_roll: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::terrain::MoveCost;
+        use crate::rules::movement::{step_cost, MoveMode};
+        self.require_phase(Phase::MovementAndCombat)?;
+        let r = self.raiders.get(raider).ok_or(CommandError::RaiderNotAvailable)?;
+        let from = r.hex.ok_or(CommandError::RaiderNotAvailable)?;
+        let side = r.side;
+        if self.active_player != side {
+            return Err(CommandError::WrongPhase);
+        }
+        if !self.map.neighbors(from).any(|n| n == to) {
+            return Err(CommandError::RaiderCannotMove);
+        }
+        let enemy = side.opponent();
+        // §27.42: a normal move may not enter an Enemy-occupied hex (that would be a raid).
+        let enemy_occupied = self
+            .units_in_hex(to)
+            .into_iter()
+            .any(|x| self.unit(x).is_some_and(|u| u.nationality.side() == enemy));
+        if enemy_occupied {
+            return Err(CommandError::RaiderCannotMove);
+        }
+        let cost = match step_cost(&self.reference, &self.map, from, to, MoveMode::Motorized) {
+            Some(MoveCost::Cost(f)) => f.0.max(0) as u32,
+            _ => return Err(CommandError::RaiderCannotMove),
+        };
+        let controlled = self.hex_in_zoc_of(to, enemy);
+        let r = self.raiders.get_mut(raider).unwrap();
+        r.cpa_used += cost;
+        r.hex = Some(to);
+        let cpa_used = r.cpa_used;
+        // §27.37: exceeding the 50-CP (500-tenths) allowance eliminates the raider.
+        let over = cpa_used > 500;
+        // §27.41/§27.43: entering an enemy-controlled hex risks being spotted.
+        let spotted = controlled && spot_roll == 6;
+        let eliminated = over || spotted;
+        if eliminated {
+            self.eliminate_raider(raider);
+        }
+        Ok(CommandOutcome::RaiderMoved { hex: to, eliminated, cpa_used })
+    }
+
+    /// §27.44 SpotRaider: an Enemy unit attempts to spot the raider in its hex (§27.43 — a `roll` of
+    /// 6 eliminates it). The 1-CP cost and once-per-stage limit (§27.44) are not tracked here.
+    fn cmd_spot_raider(&mut self, raider: usize, roll: u32) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::MovementAndCombat)?;
+        let present = self.raiders.get(raider).is_some_and(|r| r.hex.is_some());
+        if !present {
+            return Err(CommandError::RaiderNotAvailable);
+        }
+        let eliminated = roll == 6;
+        if eliminated {
+            self.eliminate_raider(raider);
+        }
+        Ok(CommandOutcome::RaiderSpotChecked { eliminated })
     }
 
     /// §40.2 DesignateCap: commit `planes` fighters of a located squadron to Combat Air Patrol over

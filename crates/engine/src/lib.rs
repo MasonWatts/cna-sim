@@ -2566,6 +2566,85 @@ mod tests {
     }
 
     #[test]
+    fn desert_raider_form_move_spot_27() {
+        // §27.1/§27.13 formation limits, §27.3/§27.34 ZOC-ignoring movement, §27.43 spotting, and
+        // §27.16 four-Game-Turn re-form cooldown.
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, RaiderKind};
+        use crate::state::map::HexId;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        for s in [
+            include_str!("../../../data/maps/section-a.ron"),
+            include_str!("../../../data/maps/section-b.ron"),
+            include_str!("../../../data/maps/section-c.ron"),
+            include_str!("../../../data/maps/section-d.ron"),
+            include_str!("../../../data/maps/section-e.ron"),
+        ] {
+            g.map.load_section(s).unwrap();
+        }
+        let base = HexId::parse("C3617").unwrap().to_hex_coord();
+        // A Commonwealth reconnaissance unit ("hh") and a plain infantry unit ("k").
+        let recce = g.spawn_unit(Nationality::Commonwealth, "hh", "KDG", Composition::Organic { current_toe: 6 });
+        g.unit_mut(recce).unwrap().location = Some(UnitLocation::OnMap(base));
+        let inf = g.spawn_unit(Nationality::Commonwealth, "k", "1 Bn", Composition::Organic { current_toe: 6 });
+        g.unit_mut(inf).unwrap().location = Some(UnitLocation::OnMap(base));
+
+        g.phase = Phase::Organization;
+        // §27.13: infantry cannot form an LRDG; a Recce unit can (consuming one TOE point).
+        assert_eq!(g.apply(Command::FormRaider { kind: RaiderKind::Lrdg, from_unit: inf }), Err(CommandError::RaiderNotAvailable));
+        let idx = match g.apply(Command::FormRaider { kind: RaiderKind::Lrdg, from_unit: recce }) {
+            Ok(CommandOutcome::RaiderFormed { raider }) => raider,
+            other => panic!("unexpected: {other:?}"),
+        };
+        assert_eq!(g.unit(recce).unwrap().total_toe(), 5, "one TOE point removed");
+        assert_eq!(g.raiders_in_play(RaiderKind::Lrdg), 1);
+        assert_eq!(g.raiders[idx].hex, Some(base));
+
+        // Move the raider one hex on the Commonwealth turn, ignoring enemy ZOC.
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let target = g.map.neighbors(base).find(|&h| g.map.terrain(h).is_some()).unwrap();
+        // Put an Axis unit adjacent to `target` so `target` lies in an Axis ZOC.
+        let axis_hex = g.map.neighbors(target).find(|&h| h != base && g.map.terrain(h).is_some()).unwrap();
+        let axis = g.spawn_unit(Nationality::German, "k", "guard", Composition::Organic { current_toe: 5 });
+        g.unit_mut(axis).unwrap().location = Some(UnitLocation::OnMap(axis_hex));
+
+        let controlled = g.hex_in_zoc_of(target, Side::Axis);
+        // A non-6 spot roll: the raider moves (through the ZOC) and survives.
+        match g.apply(Command::MoveRaider { raider: idx, to: target, spot_roll: 1 }) {
+            Ok(CommandOutcome::RaiderMoved { hex, eliminated, .. }) => {
+                assert_eq!(hex, target);
+                assert!(!eliminated);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        if controlled {
+            // §27.43: a 6 while in an enemy-controlled hex spots and eliminates the raider.
+            let back = base;
+            match g.apply(Command::MoveRaider { raider: idx, to: back, spot_roll: 1 }) {
+                Ok(CommandOutcome::RaiderMoved { .. }) => {}
+                other => panic!("unexpected: {other:?}"),
+            }
+            match g.apply(Command::MoveRaider { raider: idx, to: target, spot_roll: 6 }) {
+                Ok(CommandOutcome::RaiderMoved { eliminated, .. }) => assert!(eliminated),
+                other => panic!("unexpected: {other:?}"),
+            }
+            assert_eq!(g.raiders_in_play(RaiderKind::Lrdg), 0, "spotted raider removed");
+
+            // §27.16: cannot re-form this Game-Turn; can four Game-Turns later.
+            g.phase = Phase::Organization;
+            g.unit_mut(recce).unwrap().composition = Composition::Organic { current_toe: 5 };
+            assert_eq!(g.apply(Command::FormRaider { kind: RaiderKind::Lrdg, from_unit: recce }), Err(CommandError::RaiderNotAvailable));
+            g.game_turn += 4;
+            assert!(matches!(g.apply(Command::FormRaider { kind: RaiderKind::Lrdg, from_unit: recce }), Ok(CommandOutcome::RaiderFormed { .. })));
+        }
+    }
+
+    #[test]
     fn deploy_formation_builds_hierarchy() {
         use crate::state::game::GameState;
         use crate::state::map::HexCoord;

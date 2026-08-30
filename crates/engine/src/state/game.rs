@@ -410,6 +410,42 @@ pub struct PendingReplacement {
     pub assigned_to: Option<UnitId>,
 }
 
+/// The two kinds of desert-raider counter (§27): the Commonwealth Long Range Desert Group (§27.1,
+/// up to two) and the Axis Die Sonderkommando Almasy (§27.2, one, German-formed only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RaiderKind {
+    Lrdg,
+    Dsa,
+}
+
+/// A desert-raider counter (§27): a hidden vehicle (Recce type) with a 50-CP Movement Allowance and
+/// no combat ratings, no ZOC, and no Stacking Points (§27.14/§27.34). Formed from a trained Recce/AC
+/// TOE point (§27.13); on elimination it may re-form four Game-Turns later (§27.16). Position is
+/// tracked for real; concealment (§27.32) awaits the §3.5 fog-of-war layer. Supply is special
+/// (§27.35): it carries `fuel`/`ammo`, must draw water each Game-Turn (`drew_water_this_gt`) or be
+/// eliminated, and needs 2 Fuel Points to move in a Game-Turn.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Raider {
+    pub kind: RaiderKind,
+    pub side: Side,
+    /// Current hex while in play; `None` while eliminated and awaiting the §27.16 re-form cooldown.
+    #[serde(default)]
+    pub hex: Option<HexCoord>,
+    /// Movement expended this Operations Stage, tenths of a CP (§27.37 cap: 500 = 50 CP).
+    #[serde(default)]
+    pub cpa_used: u32,
+    #[serde(default)]
+    pub fuel: u32,
+    #[serde(default)]
+    pub ammo: u32,
+    /// §27.35: whether the raider has drawn Water this Game-Turn (else eliminated at Game-Turn end).
+    #[serde(default)]
+    pub drew_water_this_gt: bool,
+    /// §27.16: the Game-Turn on which an eliminated raider may re-form (0 = in play).
+    #[serde(default)]
+    pub reform_game_turn: u32,
+}
+
 /// General Rommel's counter (§31): a non-combat vehicle (treated as a 4-wheel-drive medium truck,
 /// §31.0-1) with a 60-CP Movement Allowance and no combat ratings. He enters at `arrival_game_turn`
 /// at `start_hex` (scenario-placed), then occupies `hex`. `in_germany` is set for a Game-Turn by the
@@ -656,6 +692,9 @@ pub struct GameState {
     /// (§7.2), the §31.3 stack-morale bonus, and the §31.4 CPA bonus — see `rommel_on_map`.
     #[serde(default)]
     pub rommel: Option<RommelState>,
+    /// Desert-raider counters in play or awaiting re-form (§27): up to two LRDG + one DSA.
+    #[serde(default)]
+    pub raiders: Vec<Raider>,
     /// The predetermined Initiative for the first Game-Turn (§7.15), if the scenario sets
     /// it; otherwise the first turn is rolled like any other.
     #[serde(default)]
@@ -870,6 +909,7 @@ impl GameState {
             active_player: Side::Commonwealth,
             player_a: Side::Commonwealth,
             rommel: None,
+            raiders: Vec::new(),
             first_turn_initiative: None,
             weather: Weather::Normal,
             weather_by_section: HashMap::new(),
@@ -5548,6 +5588,10 @@ impl GameState {
             r.stage_start_hex = r.hex;
             r.cpa_unit = None;
         }
+        // §27.37: refresh each raider's 50-CP Movement Allowance for the new stage.
+        for raider in self.raiders.iter_mut() {
+            raider.cpa_used = 0;
+        }
         // §52.24: reset the per-stage pipeline-construction allowance.
         self.pipeline_built_this_stage.clear();
         // §26.23: dummy minefields revealed last stage are now removed.
@@ -5771,6 +5815,107 @@ impl GameState {
             if r.hex.is_none() && gt >= r.arrival_game_turn {
                 r.hex = r.start_hex;
             }
+        }
+    }
+
+    /// §27: the side and per-kind pool cap of a raider kind — LRDG is Commonwealth (up to two,
+    /// §27.11), DSA is Axis/German (one, §27.2a).
+    fn raider_limits(kind: RaiderKind) -> (Side, usize) {
+        match kind {
+            RaiderKind::Lrdg => (Side::Commonwealth, 2),
+            RaiderKind::Dsa => (Side::Axis, 1),
+        }
+    }
+
+    /// Number of `kind` raider counters currently in play (on the map).
+    pub fn raiders_in_play(&self, kind: RaiderKind) -> usize {
+        self.raiders.iter().filter(|r| r.kind == kind && r.hex.is_some()).count()
+    }
+
+    /// §27.12/§27.13: whether `unit` is a valid source for forming a `kind` raider — a Friendly
+    /// Reconnaissance / Armored-Car unit with a TOE Strength Point to spare. (§27.12's "trained to
+    /// maximum Morale" precondition is not enforced: per-unit training level is not modeled — D-flag.)
+    pub fn raider_source_ok(&self, kind: RaiderKind, unit: UnitId) -> bool {
+        let (side, _) = Self::raider_limits(kind);
+        let Some(u) = self.units.get(&unit) else {
+            return false;
+        };
+        // §27.2b: DSA forms only from German Armored Recce/AC units (not Italian).
+        let nat_ok = match kind {
+            RaiderKind::Dsa => u.nationality == Nationality::German,
+            RaiderKind::Lrdg => u.nationality.side() == Side::Commonwealth,
+        };
+        if !nat_ok || u.nationality.side() != side || u.total_toe() == 0 {
+            return false;
+        }
+        let is_recce = self
+            .reference
+            .unit_characteristics
+            .get(&u.nationality)
+            .and_then(|m| m.get(&u.id_code))
+            .is_some_and(|c| {
+                let t = &c.unit_type;
+                t.contains("Reconnaissance") || t.contains("Armored Car") || t.contains("Armored Recce")
+            });
+        is_recce && u.hex().is_some()
+    }
+
+    /// §27.13/§27.16: form a `kind` desert raider from `unit` (a trained Recce/AC unit) in the
+    /// Organization Phase — removing one TOE Strength Point and placing the raider in the unit's hex.
+    /// Re-uses an eliminated counter whose §27.16 four-Game-Turn cooldown has elapsed, else creates a
+    /// new one if the §27.11/§27.2a pool cap allows. Returns the raider's index, or `None` if the
+    /// source is invalid or the pool is full.
+    pub fn form_raider(&mut self, kind: RaiderKind, unit: UnitId) -> Option<usize> {
+        if !self.raider_source_ok(kind, unit) {
+            return None;
+        }
+        let (side, cap) = Self::raider_limits(kind);
+        let hex = self.units.get(&unit)?.hex()?;
+        // A cooled-down counter of this kind that may re-form now (§27.16)?
+        let gt = self.game_turn;
+        let reusable = self
+            .raiders
+            .iter()
+            .position(|r| r.kind == kind && r.hex.is_none() && r.reform_game_turn <= gt);
+        let total = self.raiders.iter().filter(|r| r.kind == kind).count();
+        let idx = match reusable {
+            Some(i) => i,
+            None if self.raiders_in_play(kind) < cap && total < cap => {
+                self.raiders.push(Raider {
+                    kind,
+                    side,
+                    hex: None,
+                    cpa_used: 0,
+                    fuel: 0,
+                    ammo: 0,
+                    drew_water_this_gt: false,
+                    reform_game_turn: 0,
+                });
+                self.raiders.len() - 1
+            }
+            None => return None,
+        };
+        // §27.13: consume one TOE Strength Point from the source Recce/AC unit.
+        if let Some(u) = self.unit_mut(unit) {
+            if let crate::state::unit::Composition::Organic { current_toe } = &mut u.composition {
+                *current_toe = current_toe.saturating_sub(1);
+            }
+        }
+        let r = &mut self.raiders[idx];
+        r.hex = Some(hex);
+        r.cpa_used = 0;
+        r.reform_game_turn = 0;
+        r.drew_water_this_gt = false;
+        Some(idx)
+    }
+
+    /// §27.16: eliminate the raider at `index` — remove it from the map and start its four-Game-Turn
+    /// re-form cooldown.
+    pub fn eliminate_raider(&mut self, index: usize) {
+        let gt = self.game_turn;
+        if let Some(r) = self.raiders.get_mut(index) {
+            r.hex = None;
+            r.reform_game_turn = gt + 4;
         }
     }
 }
