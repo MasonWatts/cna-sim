@@ -2,9 +2,12 @@
 // spend any one `options` set (all reqs in it); `supplies: true` also expends Supplies. Empty
 // `options` = no points needed. Kinds are free-form (Inf/Gun/ArmR/Lt Tank/Tank/Artillery/
 // Anti-tank/Anti-air/Lt AT/ParaArt/7.5cm Lt Gun). See docs/source-materials/replacements.md.
-// Footnotes: Commando = Layforce/SAS; Paratroop = 185th Folgore / Ramcke; Heavy Weapons = all but
-// Ramcke; Road/Rail Construction returns as a reinforcement if eliminated; Airdropable AT only
-// for 185th Folgore / Ramcke HQs; Italian ArmR points are always Autobelinda 41 (ID "vv").
+// Footnotes: Commando = Layforce/SAS; Paratroop = 185th Folgore / Ramcke; Machinegun = whether or
+// not motorized; Heavy Weapons = all but Ramcke; Engineer Battalion incl. the Australian Pioneer;
+// Road/Rail Construction = the SA Road + two NZ Railroad Construction Bns, returns as a reinforcement
+// if eliminated; Airdropable AT only for 185th Folgore / Ramcke HQs; Italian ArmR points are always
+// Autobelinda 41 (ID "vv"); Lt AT = Italian 47/32 or German 2.8cm / 28-20 Pak.
+// VERIFIED against the §20.3 chart image (2026-08-29): all rows/costs match.
 (
     entries: [
         (unit_type: "Any Headquarters Unit",     options: [[(kind: "Inf", count: 2)]]),

@@ -86,7 +86,13 @@ Axis points train in Tripoli or any Major City; Commonwealth per §17.32.
   caught by unit name). With no chart loaded, absorption falls back to the legacy 1:1.
 - **Production item→class map:** the SP-gun/tankette Tank classifications were confirmed by the
   project owner (2026-08-29); no longer inferred.
+- **§20.3 chart verified** against the source image (2026-08-29): all rows/costs match, the kind→
+  class collapse is confirmed by the chart key (Gun = Artillery/AT/AA; ArmR = Armored Recce/Car;
+  Lt Tank = §20.5 light tank; Lt AT = 47/32 / 2.8cm Pak), and the row classifier now uses the
+  §20.3 footnotes for name-based calls (Commando = Layforce/SAS; Paratroop = Folgore/Ramcke;
+  Engineer incl. Australian Pioneer; Machinegun / recce rows by name).
 - **Still deferred:** the recorded convoy tonnage does not yet consume Axis convoy capacity; the
-  §20.78A truck / §20.78B CW-infantry roll tables remain reference-only; the §20.3 absorb classifier's
-  special-infantry / armored-car distinctions remain provisional (need the §4.46 counters); and the
-  §20.42 restrictions/morale and §20.5 upgrades are not modelled.
+  §20.78A truck / §20.78B CW-infantry roll tables remain reference-only; a Machinegun/Heavy-Weapons
+  or plain-vs-armored recce unit not identifiable by name still falls to the generic row (needs the
+  §4.46 counter type/size symbols); and the §20.42 restrictions/morale and §20.5 upgrades are not
+  modelled.

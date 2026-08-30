@@ -5333,6 +5333,11 @@ mod tests {
         assert_eq!(g.conversion_row_for_unit(recce), "Armored Reconnaissance");
         assert_eq!(g.conversion_row_for_unit(hq), "Any Headquarters Unit");
         assert_eq!(g.conversion_row_for_unit(commando), "Commando");
+        // §20.3 footnote-driven name detection.
+        let mg = g.spawn_unit(Nationality::German, "p", "II/155 Machine Gun Bn", Composition::Organic { current_toe: 1 });
+        let mc = g.spawn_unit(Nationality::German, "ee", "Motorcycle Recon Bn", Composition::Organic { current_toe: 1 });
+        assert_eq!(g.conversion_row_for_unit(mg), "Machinegun");
+        assert_eq!(g.conversion_row_for_unit(mc), "Motorcycle/Camel/Reconnaissance");
 
         // §20.3: a Commando costs 3 Infantry Replacement Points per TOE Strength Point rebuilt.
         g.unit_mut(commando).unwrap().location = Some(UnitLocation::OnMap(a));

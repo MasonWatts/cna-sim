@@ -1861,11 +1861,12 @@ impl GameState {
         }
     }
 
-    /// §20.3 provisional classifier (cf. D14): map a unit's §4.46 `unit_type` label (and name, for
-    /// the special-infantry rows) to a Replacement-Point Conversion Chart row. **Inferred** — the
-    /// special infantry rows (Machinegun / Heavy Weapons) and the Armored-Reconnaissance vs
-    /// Armored-Car vs Motorcycle/Camel distinction are not derivable from the OB data and default to
-    /// the generic row; verify against the §4.46 counters / OA sheets in a faithfulness pass.
+    /// §20.3 classifier: map a unit's §4.46 `unit_type` label (and name) to a Replacement-Point
+    /// Conversion Chart row. The §20.3 footnotes drive the name-based calls — Commando (Layforce/
+    /// SAS), Paratroop (Folgore/Ramcke), Engineer (incl. the Australian Pioneer), Bersaglieri, and
+    /// the three recce rows. **Still provisional (cf. D14):** a Machinegun or Heavy-Weapons unit not
+    /// named as such, and a plain (non-armored) recce battalion, fall to the generic row — resolving
+    /// them needs the §4.46 counter type/size symbols.
     pub fn conversion_row_for_unit(&self, id: UnitId) -> &'static str {
         let Some(u) = self.units.get(&id) else { return "Any other Infantry" };
         let ut = self
@@ -1880,7 +1881,8 @@ impl GameState {
             "Any Headquarters Unit"
         } else if ut.contains("Construction") {
             "Road/Railroad Construction"
-        } else if ut.contains("Engineer") {
+        } else if ut.contains("Engineer") || name.contains("Pioneer") {
+            // §20.3 footnote e: the Engineer Battalion row includes the Australian Pioneer unit.
             if ut.contains("Coy") && !ut.contains("Bn") { "Engineer Company" } else { "Engineer Battalion" }
         } else if ut.contains("Tank") {
             "Tank"
@@ -1891,16 +1893,30 @@ impl GameState {
         } else if ut.contains("Anti-air") {
             "Anti-air"
         } else if ut.contains("Reconnaissance") || ut.contains("Recce") {
-            "Armored Reconnaissance" // inferred: recce → ArmR points (Armored Car / Motorcycle unverified)
+            // §20.3 has three recce rows; disambiguate by name where possible, else assume armored.
+            if name.contains("Armored Car") || name.contains("Armoured Car") {
+                "Armored Car"
+            } else if name.contains("Motorcycle") || name.contains("Camel") || name.contains("Cavalry") {
+                "Motorcycle/Camel/Reconnaissance"
+            } else {
+                "Armored Reconnaissance" // provisional default for a plain recce battalion
+            }
         } else if ut.contains("Infantry") {
+            // §20.3 footnotes a/b/c/d: special-infantry rows keyed off the unit's identity. Detected
+            // by name where it says so; Machinegun/Heavy-Weapons units not named as such fall to the
+            // generic row (needs the §4.46 counter symbols to resolve fully).
             if name.contains("Bersaglieri") {
                 "Italian Bersaglieri Infantry"
             } else if name.contains("Commando") || name.contains("Layforce") || name.contains("SAS") {
                 "Commando"
             } else if name.contains("Folgore") || name.contains("Ramcke") || name.contains("Para") {
                 "Paratroop Infantry"
+            } else if name.contains("Machine Gun") || name.contains("Machinegun") || name.contains("MG") {
+                "Machinegun"
+            } else if name.contains("Heavy Weapons") || name.contains("Heavy Wpns") {
+                "Heavy Weapons"
             } else {
-                "Any other Infantry" // inferred: Machinegun / Heavy Weapons not distinguishable here
+                "Any other Infantry"
             }
         } else {
             "Any other Infantry"
@@ -1909,6 +1925,8 @@ impl GameState {
 
     /// Collapse a §20.3 requirement `kind` onto one of the four Replacement-Point pool classes:
     /// Inf → Infantry; Tank/Lt Tank → Tank; ArmR → Recce; all gun/artillery/AT/AA kinds → Gun.
+    /// Confirmed by the §20.3 chart key: "Gun = Artillery, anti-tank or anti-air, whatever its
+    /// ratings", ArmR = Armored Recce/Car, Lt Tank = a §20.5 light tank, Lt AT = an anti-tank gun.
     fn conversion_class_for_kind(kind: &str) -> ReplacementClass {
         match kind {
             "Inf" => ReplacementClass::Infantry,
