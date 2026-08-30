@@ -320,11 +320,14 @@ losses, prisoners (§15.89), Engaged/In-Contact status, overrun (§15.77), and g
 §12.33/§12.34 terrain column shift. **Movement**: CPA over-expenditure/Disorganization (§6.21),
 terrain & multi-feature hexside costs (§8.37) with escarpment rules (§8.42), continual movement
 (as repeated single-hex steps), ZOC-to-ZOC prohibition and leave-ZOC surcharge (§8.14/§8.15/
-§10.24), **reaction** (§8.5 with §8.54 pinning), **retreat** (§15.82), **breakdown** (§21),
-minefield entry (§26.2), and combat ammo/fuel/water gating. Combat deferrals: fortification/
-minefield *terrain shifts* (those features are not yet map-modeled), §15.35 two-terrain-hexside
-exception, multi-hex defenders, detailed anti-armor line-of-fire, and defensive-assault ammo
-(§50.14).
+§10.24), **reaction** (§8.5 with §8.54 pinning), **retreat** (§15.82), **breakdown** (§21), and
+combat ammo/fuel/water gating. **Fortifications & minefields are modeled:** a per-hex Fortification
+Level (`fort_level` — placed forts plus the §25.12 static major-city/capital levels) applies its
+column shift in anti-armor (§14.33 best-of), barrage (§12.34 best-of) and close assault (§15.35
+cumulative), is raised by `BuildFortification` (§24.4) and reduced by fortification bombing (§41.37);
+minefields (`LayMinefield`/`ClearMinefield`, §24.3) sit on the map with real/dummy status, dummy
+reveal, and §26.2 entry casualty checks. Combat deferrals: §15.35 two-terrain-hexside exception,
+multi-hex defenders, detailed anti-armor line-of-fire, and defensive-assault ammo (§50.14).
 
 ### 8.5 Air game — rules & reference complete; resolution partial
 The §33–46 ruleset is present as a large, thoroughly-cited pure-rules layer (`rules/air.rs`)
@@ -347,9 +350,10 @@ pins battalion-equivalents in the hex (tank/gun units cost two, §41.31), **Supp
 `result`% of each commodity in the target's enemy dumps (§41.35), **Flak Destruction** removes
 `result` AA-rated TOE Strength Points from an enemy AA unit in the hex (§41.33), and **Truck Convoy**
 destroys `result` first-line attached Truck Points of an enemy unit (§41.32, D-capability planes
-only; hex-placed convoys aren't modeled); the ship (§41.34) and air-facility (§41.36) effects have
-dedicated commands, and city/fortification (§41.37, needs fortifications) and road/railroad (§41.38)
-effects remain unmodelled.
+only; hex-placed convoys aren't modeled), and **City/Fortification** knocks a *placed* fortification
+down one level (§41.37; units in a major city are shielded from bombing until its level ≤1, §41.31);
+the ship (§41.34) and air-facility (§41.36) effects have dedicated commands, and road/railroad
+(§41.38) and static-major-city-level reduction remain unmodelled.
 The `Strafe` command (§40.5–40.8) flies a map-validated strafing mission and resolves it on the
 Strafing Table with the §40.8 column shift, applying the effect for **supply dumps** (§40.64, r×10%
 of each commodity destroyed), **water pipelines** (§40.67, destroyed on r≥2), **infantry** (§40.6,

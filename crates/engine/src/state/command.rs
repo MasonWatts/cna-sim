@@ -309,15 +309,13 @@ pub enum Command {
     },
     /// §40.5–40.8: fly `planes` on a strafing mission from the squadron's base to `target`,
     /// validating strafing capability (§40.51), flight range (§37.12) and weather (§37.22), then
-    /// resolving on the Strafing Table with the §40.8 column shift for `strafe_target`/`fort_level`
-    /// and a 2d6 `roll` (encoded `10*d1+d2`). Applies the effect for supply dumps (§40.64) and water
-    /// pipelines (§40.67). (Land Support Air Phase.)
+    /// resolving on the Strafing Table with the §40.8 column shift for `strafe_target` and the
+    /// target hex's Fortification Level, and a 2d6 `roll` (encoded `10*d1+d2`). (Land Support Air.)
     Strafe {
         squadron: crate::state::air::SquadronId,
         target: HexCoord,
         strafe_target: crate::rules::air::StrafeTarget,
         planes: u32,
-        fort_level: u32,
         roll: u32,
     },
     /// §40.12: assign a pilot of `rating` (0 or one of 1/2/3/4/6, §40.15) to a squadron's roster
@@ -957,8 +955,8 @@ impl GameState {
             Command::DesignateCap { squadron, center, cap_type, planes } => {
                 self.cmd_designate_cap(squadron, center, cap_type, planes)
             }
-            Command::Strafe { squadron, target, strafe_target, planes, fort_level, roll } => {
-                self.cmd_strafe(squadron, target, strafe_target, planes, fort_level, roll)
+            Command::Strafe { squadron, target, strafe_target, planes, roll } => {
+                self.cmd_strafe(squadron, target, strafe_target, planes, roll)
             }
             Command::AssignPilot { rating, squadron } => self.cmd_assign_pilot(rating, squadron),
             Command::AirdropSupplies { squadron, target, commodity, amount, planes } => {
@@ -1634,7 +1632,6 @@ impl GameState {
         target: HexCoord,
         strafe_target: crate::rules::air::StrafeTarget,
         planes: u32,
-        fort_level: u32,
         roll: u32,
     ) -> Result<CommandOutcome, CommandError> {
         use crate::rules::air::StrafeTarget;
@@ -1701,7 +1698,8 @@ impl GameState {
             return Err(CommandError::NoReadyPlanes);
         }
         let tacair = flown * rep_tacair.max(0) as u32;
-        let shift = crate::rules::air::strafe_column_shift(strafe_target, fort_level);
+        // §40.8: the Fortification Level shift comes from the target hex (§25.1), not the caller.
+        let shift = crate::rules::air::strafe_column_shift(strafe_target, self.fort_level(target) as u32);
         let result = table.result(tacair, shift, roll);
 
         let effect = match strafe_target {

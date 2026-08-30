@@ -4378,6 +4378,13 @@ impl GameState {
         let enemy = bomber_side.opponent();
         match mission {
             M::Personnel => {
+                // §41.31: units in a major city may not be bombed until its Fortification Level is
+                // reduced to one or less.
+                if self.map.terrain(target) == Some(crate::reference::terrain::HexTerrain::MajorCity)
+                    && self.fort_level(target) > 1
+                {
+                    return;
+                }
                 let mut budget = result;
                 let ids: Vec<UnitId> = self
                     .units_in_hex(target)
@@ -4416,6 +4423,15 @@ impl GameState {
                 // the hex, cargo lost in proportion (same mechanic as strafing, §40.62). The D-
                 // capability gate is enforced at the command. (Hex-placed convoys are not modeled.)
                 self.strafe_first_line_trucks(target, bomber_side, result);
+            }
+            M::CityFortification => {
+                // §41.37: at most one *placed* Fortification Level destroyed per Operations Stage.
+                // (Static §25.12 major-city levels are not reducible without a damage tracker.)
+                if result >= 1 {
+                    if let Some(l) = self.fortifications.get_mut(&target) {
+                        *l = l.saturating_sub(1);
+                    }
+                }
             }
             _ => {}
         }

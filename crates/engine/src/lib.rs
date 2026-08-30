@@ -4938,7 +4938,7 @@ mod tests {
         ready(&mut g);
         let strafe_dump = Command::Strafe {
             squadron: SquadronId(1), target, strafe_target: StrafeTarget::SupplyDump,
-            planes: 6, fort_level: 0, roll: 66,
+            planes: 6, roll: 66,
         };
         // Wrong phase first.
         assert_eq!(g.apply(strafe_dump.clone()), Err(CommandError::WrongPhase));
@@ -4967,7 +4967,7 @@ mod tests {
         g.pipelines.insert(target);
         match g.apply(Command::Strafe {
             squadron: SquadronId(1), target, strafe_target: StrafeTarget::WaterPipeline,
-            planes: 6, fort_level: 0, roll: 66,
+            planes: 6, roll: 66,
         }) {
             Ok(CommandOutcome::Strafed { result, effect }) => {
                 if result >= 2 {
@@ -4985,7 +4985,7 @@ mod tests {
         assert_eq!(
             g.apply(Command::Strafe {
                 squadron: SquadronId(1), target, strafe_target: StrafeTarget::TrucksInConvoy,
-                planes: 6, fort_level: 0, roll: 66,
+                planes: 6, roll: 66,
             }),
             Err(CommandError::MissionNotPermitted)
         );
@@ -5030,7 +5030,7 @@ mod tests {
         let inf = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 5 });
         g.unit_mut(inf).unwrap().location = Some(UnitLocation::OnMap(target));
         match g.apply(Command::Strafe {
-            squadron: SquadronId(1), target, strafe_target: StrafeTarget::Infantry, planes: 6, fort_level: 0, roll: 66,
+            squadron: SquadronId(1), target, strafe_target: StrafeTarget::Infantry, planes: 6, roll: 66,
         }) {
             Ok(CommandOutcome::Strafed { result, effect }) => {
                 let removed = result.min(5);
@@ -5049,7 +5049,7 @@ mod tests {
         g.sgsus.insert(SquadronId(2), cw);
         let before = g.sgsus[&SquadronId(2)].plane_count();
         match g.apply(Command::Strafe {
-            squadron: SquadronId(1), target, strafe_target: StrafeTarget::GroundedAircraft, planes: 6, fort_level: 0, roll: 66,
+            squadron: SquadronId(1), target, strafe_target: StrafeTarget::GroundedAircraft, planes: 6, roll: 66,
         }) {
             Ok(CommandOutcome::Strafed { effect, .. }) => {
                 let lost = before - g.sgsus[&SquadronId(2)].plane_count();
@@ -5072,7 +5072,7 @@ mod tests {
             u.truck_cargo.fuel = 100;
         }
         match g.apply(Command::Strafe {
-            squadron: SquadronId(1), target, strafe_target: StrafeTarget::FirstLineTrucks, planes: 6, fort_level: 0, roll: 66,
+            squadron: SquadronId(1), target, strafe_target: StrafeTarget::FirstLineTrucks, planes: 6, roll: 66,
         }) {
             Ok(CommandOutcome::Strafed { result, effect }) => {
                 let removed = result.min(10);
@@ -5193,12 +5193,12 @@ mod tests {
 
         // A non-armour-capable strafer is rejected for the Tanks target.
         assert_eq!(
-            g.apply(Command::Strafe { squadron: SquadronId(2), target, strafe_target: StrafeTarget::Tanks, planes: 6, fort_level: 0, roll: 66 }),
+            g.apply(Command::Strafe { squadron: SquadronId(2), target, strafe_target: StrafeTarget::Tanks, planes: 6, roll: 66 }),
             Err(CommandError::MissionNotPermitted)
         );
         // The Hurricane IID strafes the tanks, removing TOE points to meet the armour-points roll.
         let before = g.unit(tank).unwrap().total_toe();
-        match g.apply(Command::Strafe { squadron: SquadronId(1), target, strafe_target: StrafeTarget::Tanks, planes: 4, fort_level: 0, roll: 66 }) {
+        match g.apply(Command::Strafe { squadron: SquadronId(1), target, strafe_target: StrafeTarget::Tanks, planes: 4, roll: 66 }) {
             Ok(CommandOutcome::Strafed { effect, .. }) => {
                 let removed = before - g.unit(tank).unwrap().total_toe();
                 if removed > 0 {
@@ -5414,6 +5414,62 @@ mod tests {
         // §64.74: all 6 consumed points count against the side's unused-replacement pool.
         assert_eq!(*g.replacements_used.get(&Side::Axis).unwrap(), 6);
         assert!(g.replacement_points.is_empty());
+    }
+
+    #[test]
+    fn fortification_bombing_and_city_gate_41() {
+        use crate::reference::aircraft::{AircraftClass, BombingMission};
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::terrain::HexTerrain;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+        refs.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let base = HexCoord::new(1, 1);
+        let fort = HexCoord::new(3, 1);
+        let city = HexCoord::new(2, 1);
+        g.map.set_hex(city, HexTerrain::MajorCity); // §25.12: static Fortification Level 2
+        g.fortifications.insert(fort, 2); // a placed Level-2 fortification
+        let mut sq = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 26", 5, Some(base));
+        sq.add_planes("Ju.88D", AircraftClass::Bomber, 12, 1);
+        g.sgsus.insert(SquadronId(1), sq);
+        let ready = |g: &mut GameState| {
+            for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+        };
+        ready(&mut g);
+        let cw = g.spawn_unit(Nationality::Commonwealth, "h", "garrison", Composition::Organic { current_toe: 5 });
+        g.unit_mut(cw).unwrap().location = Some(UnitLocation::OnMap(city));
+        while g.phase != Phase::LandSupportAir {
+            g.advance_phase();
+        }
+        let bomb = |target, mission| Command::FlyBombingMissionAt {
+            squadron: SquadronId(1), target, mission, planes: 12, bombload_per_plane: 20,
+            night: false, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+        };
+
+        // §41.37: bombing a placed Level-2 fortification knocks it down at most one level per stage.
+        match g.apply(bomb(fort, BombingMission::CityFortification)) {
+            Ok(CommandOutcome::BombingMission(o)) => {
+                let expected = if o.result >= 1 { 1 } else { 2 };
+                assert_eq!(g.fort_level(fort), expected);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // §41.31: a unit in a major city (Fortification Level 2) may not be pinned by bombing.
+        ready(&mut g);
+        assert!(matches!(g.apply(bomb(city, BombingMission::Personnel)), Ok(_)));
+        assert!(!g.unit(cw).unwrap().status.pinned);
     }
 
     #[test]
