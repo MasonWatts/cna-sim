@@ -5751,6 +5751,8 @@ impl GameState {
     /// adds its Initiative Rating (§7.2); the higher total wins, ties re-roll. The first
     /// Game-Turn may be predetermined by the scenario (§7.15, `first_turn_initiative`).
     fn determine_initiative(&mut self) {
+        // §27.35: eliminate raiders that went a Game-Turn without Water, then reset the requirement.
+        self.raider_turn_upkeep();
         // §31 recall: resolve whether Rommel is in Germany this Game-Turn before rolling Initiative
         // (it lowers the Axis Initiative Rating to the German value when he is away).
         self.roll_rommel_recall();
@@ -5969,6 +5971,26 @@ impl GameState {
         .min()
         .unwrap_or(0);
         cpa.max(0) as u32 * 10
+    }
+
+    /// §27.35 Game-Turn upkeep: eliminate any in-play raider that did not draw Water during the
+    /// just-ended Game-Turn, then reset every raider's Water requirement for the new Game-Turn.
+    /// Called at the start of each Game-Turn (before Initiative).
+    fn raider_turn_upkeep(&mut self) {
+        let n = self.raiders.len();
+        for i in 0..n {
+            let (in_play, watered) = self
+                .raiders
+                .get(i)
+                .map(|r| (r.hex.is_some(), r.drew_water_this_gt))
+                .unwrap_or((false, true));
+            if in_play && !watered {
+                self.eliminate_raider(i); // §27.35: no Water this Game-Turn -> eliminated
+            }
+        }
+        for r in self.raiders.iter_mut() {
+            r.drew_water_this_gt = false;
+        }
     }
 
     /// §27.16: eliminate the raider at `index` — remove it from the map and start its four-Game-Turn

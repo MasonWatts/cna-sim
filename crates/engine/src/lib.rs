@@ -2602,6 +2602,7 @@ mod tests {
         assert_eq!(g.unit(recce).unwrap().total_toe(), 5, "one TOE point removed");
         assert_eq!(g.raiders_in_play(RaiderKind::Lrdg), 1);
         assert_eq!(g.raiders[idx].hex, Some(base));
+        g.raiders[idx].fuel = 2; // §27.35: fuelled so it may travel this Game-Turn
 
         // Move the raider one hex on the Commonwealth turn, ignoring enemy ZOC.
         g.phase = Phase::MovementAndCombat;
@@ -2845,6 +2846,53 @@ mod tests {
             Ok(CommandOutcome::RaidResolved { success: true, raider_eliminated: false })
         );
         assert_eq!(g.truck_convoys[ci].trucks.medium, 3, "one Truck Point destroyed");
+    }
+
+    #[test]
+    fn desert_raider_supply_27_35() {
+        // §27.35: draw 2 Fuel + 1 Ammo from a co-located Friendly dump; a raider that draws no Water
+        // in a Game-Turn is eliminated at the next Game-Turn rollover.
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{Commodities, GameState, Phase, Raider, RaiderKind, SupplyDump};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::UnitLocation;
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        let hex = HexCoord::new(4, 4);
+        g.supply_dumps.push(SupplyDump {
+            location: UnitLocation::OnMap(hex), side: Side::Commonwealth,
+            supply: Commodities { fuel: 10, ammo: 5, stores: 0, water: 0 }, dummy: false,
+        });
+        let mk = |water: bool| Raider {
+            kind: RaiderKind::Lrdg, side: Side::Commonwealth, hex: Some(hex),
+            cpa_used: 0, fuel: 0, ammo: 0, drew_water_this_gt: water, reform_game_turn: 0,
+        };
+        g.raiders = vec![mk(false), mk(true)]; // one un-watered, one watered
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+
+        // §27.35: resupply draws 2 Fuel + 1 Ammo from the dump (no water source at this hex).
+        assert_eq!(
+            g.apply(Command::ResupplyRaider { raider: 0 }),
+            Ok(CommandOutcome::RaiderResupplied { fuel: 2, ammo: 1, water: false })
+        );
+        assert_eq!((g.raiders[0].fuel, g.raiders[0].ammo), (2, 1));
+        let d = g.supply_dumps.last().unwrap();
+        assert_eq!((d.supply.fuel, d.supply.ammo), (8, 4), "drawn from the dump");
+
+        // Advance a full Game-Turn: the un-watered raider is eliminated, the watered one survives.
+        let start_gt = g.game_turn;
+        let mut guard = 0;
+        // Advance until the new turn's Initiative Determination has run (which does §27.35 upkeep).
+        while !(g.game_turn > start_gt && g.phase != Phase::InitiativeDetermination) {
+            g.advance_phase();
+            guard += 1;
+            assert!(guard < 2000, "turn did not roll over");
+        }
+        assert_eq!(g.raiders_in_play(RaiderKind::Lrdg), 1, "only the watered raider survived");
+        assert!(g.raiders[1].hex.is_some());
+        assert!(g.raiders[0].hex.is_none());
     }
 
     #[test]

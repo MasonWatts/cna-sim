@@ -65,6 +65,10 @@ pub enum Command {
     /// §27.44: an Enemy attempts to spot the raider at index `raider` (spending 1 CP); `roll` is a
     /// d6 and a 6 eliminates it (§27.43).
     SpotRaider { raider: usize, roll: u32 },
+    /// §27.35: the raider at index `raider` resupplies where it stands — drawing 2 Fuel + 1 Ammo
+    /// from a co-located Friendly supply dump, and Water from an oasis/bir in the hex. It must draw
+    /// Water each Game-Turn or be eliminated, and needs 2 Fuel to move (§27.35).
+    ResupplyRaider { raider: usize },
     /// §27.6: a Commonwealth LRDG in Rommel's hex attempts a Raid on Rommel (Movement & Combat
     /// Phase). `roll` is 2d6 (2–12) resolved on the §27.64 table. Costs 10 CP; max four per campaign.
     RaidRommel { raider: usize, roll: u32 },
@@ -528,6 +532,8 @@ pub enum CommandOutcome {
     RaiderMoved { hex: HexCoord, eliminated: bool, cpa_used: u32 },
     /// §27.43/§27.44: a spotting attempt resolved; `eliminated` = the raider was spotted and removed.
     RaiderSpotChecked { eliminated: bool },
+    /// §27.35: a raider resupplied — Fuel/Ammo drawn from a dump and whether Water was taken on.
+    RaiderResupplied { fuel: u32, ammo: u32, water: bool },
     /// §27.6/§27.64: a Raid on Rommel resolved — `raider_eliminated` (§27.64 "LRDG elim"),
     /// `rommel_removed` ("AI perm 3", captured), and `axis_temp3` ("AI temp 3", two-turn rating drop).
     RommelRaided { raider_eliminated: bool, rommel_removed: bool, axis_temp3: bool },
@@ -798,6 +804,7 @@ impl GameState {
             Command::FormRaider { kind, from_unit } => self.cmd_form_raider(kind, from_unit),
             Command::MoveRaider { raider, to, spot_roll } => self.cmd_move_raider(raider, to, spot_roll),
             Command::SpotRaider { raider, roll } => self.cmd_spot_raider(raider, roll),
+            Command::ResupplyRaider { raider } => self.cmd_resupply_raider(raider),
             Command::RaidRommel { raider, roll } => self.cmd_raid_rommel(raider, roll),
             Command::RaidPipeline { raider, roll } => self.cmd_raid_pipeline(raider, roll),
             Command::RaidAirfield { raider, roll } => self.cmd_raid_airfield(raider, roll),
@@ -1839,6 +1846,10 @@ impl GameState {
         if self.active_player != side {
             return Err(CommandError::WrongPhase);
         }
+        // §27.35: a raider may not travel without its two Fuel Points.
+        if r.fuel < 2 {
+            return Err(CommandError::RaiderCannotMove);
+        }
         if !self.map.neighbors(from).any(|n| n == to) {
             return Err(CommandError::RaiderCannotMove);
         }
@@ -1884,6 +1895,37 @@ impl GameState {
             self.eliminate_raider(raider);
         }
         Ok(CommandOutcome::RaiderSpotChecked { eliminated })
+    }
+
+    /// §27.35 ResupplyRaider: the raider draws its weekly supply where it stands — 2 Fuel + 1 Ammo
+    /// from a co-located Friendly supply dump (if it holds them), and Water from an oasis/bir in the
+    /// hex (setting the Game-Turn's Water requirement met). Movement & Combat or Organization Phase.
+    fn cmd_resupply_raider(&mut self, raider: usize) -> Result<CommandOutcome, CommandError> {
+        use crate::state::game::Commodity;
+        let r = self.raiders.get(raider).ok_or(CommandError::RaiderNotAvailable)?;
+        let hex = r.hex.ok_or(CommandError::RaiderNotAvailable)?;
+        let side = r.side;
+        // §27.35: 2 Fuel + 1 Ammo come from a co-located Friendly supply dump that holds them.
+        let dump = self
+            .supply_dumps
+            .iter_mut()
+            .find(|d| d.side == side && !d.dummy && d.location.hex() == Some(hex) && d.supply.fuel >= 2 && d.supply.ammo >= 1);
+        let (mut fuel, mut ammo) = (0, 0);
+        if let Some(d) = dump {
+            *d.supply.get_mut(Commodity::Fuel) -= 2;
+            *d.supply.get_mut(Commodity::Ammo) -= 1;
+            fuel = 2;
+            ammo = 1;
+        }
+        // §27.35: Water from any oasis or bir in the hex.
+        let water = self.hex_water_source_for(hex, side).is_some();
+        let rr = self.raiders.get_mut(raider).unwrap();
+        rr.fuel += fuel;
+        rr.ammo += ammo;
+        if water {
+            rr.drew_water_this_gt = true;
+        }
+        Ok(CommandOutcome::RaiderResupplied { fuel, ammo, water })
     }
 
     /// §27.6 RaidRommel: a Commonwealth LRDG in Rommel's hex attempts to assassinate/capture him
