@@ -5410,13 +5410,18 @@ impl GameState {
             // §45: fighter-vs-escort combat first — only interceptors surviving the escort/screen
             // may then attack the bombers.
             let mut attackers = cap;
+            let mut surviving_escort = 0;
             if let Some(esc) = escort {
-                if let Some(a2a) = self.resolve_air_to_air_pilots(cap, esc, interceptor_pilots, escort_pilots) {
+                // §45.2: fighter-vs-fighter — the escort and CAP fight first (one-way pile-on).
+                if let Some(a2a) = self.resolve_air_to_air_pilots(cap, esc, interceptor_pilots, escort_pilots, false) {
                     escort_losses = a2a.defender_losses.min(esc.count);
                     let cap_lost = a2a.attacker_losses.min(cap.count);
                     attackers = Flight { count: cap.count - cap_lost, ..cap };
+                    surviving_escort = esc.count - escort_losses;
                 }
             }
+            // §45.32: only the CAP's *excess* over the surviving screen may attack the bombers.
+            attackers = Flight { count: attackers.count.saturating_sub(surviving_escort), ..attackers };
             if attackers.count > 0 {
                 let (b_tacair, b_maneuver) = {
                     let atype = self.sgsus.get(&squadron)?.planes.first().map(|g| g.aircraft_type.clone());
@@ -5432,7 +5437,8 @@ impl GameState {
                         .unwrap_or((0, 0))
                 };
                 let bombers = Flight { count: alive, tacair: b_tacair, pilot: 0, maneuver: b_maneuver };
-                if let Some(a2a) = self.resolve_air_to_air_pilots(attackers, bombers, interceptor_pilots, &[]) {
+                // §45.3/§45.34: fighter-vs-screened bombers — mutual pile-on (bombers return fire).
+                if let Some(a2a) = self.resolve_air_to_air_pilots(attackers, bombers, interceptor_pilots, &[], true) {
                     intercepted = a2a.defender_losses.min(alive);
                     if intercepted > 0 {
                         self.sgsus.get_mut(&squadron)?.lose_planes(intercepted);
@@ -5480,16 +5486,23 @@ impl GameState {
     /// tables. Returns the losses each side takes (not applied; the caller removes them via
     /// `Sgsu::lose_planes`). `None` if the tables are unloaded.
     pub fn resolve_air_to_air(&mut self, attacker: Flight, defender: Flight) -> Option<AirToAirOutcome> {
-        self.resolve_air_to_air_pilots(attacker, defender, &[], &[])
+        self.resolve_air_to_air_pilots(attacker, defender, &[], &[], false)
     }
 
-    /// [`resolve_air_to_air`] with explicit per-plane pilot rosters (best-first). See that method.
+    /// [`resolve_air_to_air`] with explicit per-plane pilot rosters (best-first) and a `screened`
+    /// flag distinguishing the two air-to-air waves. In **fighter-vs-fighter** (`screened == false`,
+    /// §45.2) a piled-on attacker fires one-way (the defender fired at its primary attacker, §45.24)
+    /// and either side may pile on. In **fighter-vs-screened non-fighters** (`screened == true`,
+    /// §45.3) only the attacker (fighters) piles on and every attacker-vs-bomber pairing is mutual —
+    /// a screened bomber returns fire at each fighter attacking it (§45.34); the bombers never
+    /// initiate a surplus. See [`resolve_air_to_air`].
     pub fn resolve_air_to_air_pilots(
         &mut self,
         attacker: Flight,
         defender: Flight,
         attacker_pilots: &[u32],
         defender_pilots: &[u32],
+        screened: bool,
     ) -> Option<AirToAirOutcome> {
         self.reference.air_to_air.as_ref()?; // require the tables
         // Per-plane pilot rating: an empty roster falls back to the flight-wide best `pilot`.
@@ -5533,19 +5546,40 @@ impl GameState {
             if ak { att_dead[i as usize] = true; out.attacker_losses += 1; }
             if dk { def_dead[i as usize] = true; out.defender_losses += 1; }
         }
-        // §45.23 pile-on: the larger side's extra planes each fire one-way at a covered target of
-        // the smaller side (round-robin). The target does not fire back (it engaged its primary).
+        // §45.23 pile-on: the larger side's extra planes each engage a covered target of the smaller
+        // side (round-robin).
         if a > d {
             for k in d..a {
                 let tgt = (k % d) as usize;
                 if def_dead[tgt] { continue; }
-                let r = self.rng.sequential_read() as u32;
-                if self.reference.air_to_air.as_ref()?.is_kill(diff(self, k, tgt as u32), r) {
-                    def_dead[tgt] = true;
-                    out.defender_losses += 1;
+                if screened {
+                    // §45.34: the screened bomber returns fire at each fighter attacking it — a full
+                    // mutual duel, so the piling-on fighter is also at risk.
+                    let r1 = self.rng.sequential_read() as u32;
+                    let r2 = self.rng.sequential_read() as u32;
+                    let ad = diff(self, k, tgt as u32);
+                    let (ak, dk) = crate::rules::air::air_to_air_duel(
+                        self.reference.air_to_air.as_ref()?,
+                        ad,
+                        pilot_at(attacker_pilots, k, attacker.pilot),
+                        pilot_at(defender_pilots, tgt as u32, defender.pilot),
+                        r1,
+                        r2,
+                    );
+                    if ak { att_dead[k as usize] = true; out.attacker_losses += 1; }
+                    if dk { def_dead[tgt] = true; out.defender_losses += 1; }
+                } else {
+                    // §45.24: one-way — the fighter target already fired at its primary attacker.
+                    let r = self.rng.sequential_read() as u32;
+                    if self.reference.air_to_air.as_ref()?.is_kill(diff(self, k, tgt as u32), r) {
+                        def_dead[tgt] = true;
+                        out.defender_losses += 1;
+                    }
                 }
             }
-        } else if d > a {
+        } else if d > a && !screened {
+            // Fighter-vs-fighter only (§45.24): the defender's surplus fighters pile on one-way.
+            // Screened bombers never initiate a surplus (§45.33), so this is skipped when screened.
             for k in a..d {
                 let tgt = (k % a) as usize;
                 if att_dead[tgt] { continue; }

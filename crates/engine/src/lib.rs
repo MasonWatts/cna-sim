@@ -5562,7 +5562,7 @@ mod tests {
         let mut g2 = GameState::new(refs(), 7);
         assert_eq!(
             g1.resolve_air_to_air(attacker, defender),
-            g2.resolve_air_to_air_pilots(attacker, defender, &[], &[]),
+            g2.resolve_air_to_air_pilots(attacker, defender, &[], &[], false),
         );
 
         // §45.23 pile-on: 5 attackers vs 2 defenders. Only the 2 primary match-ups involve mutual
@@ -5590,8 +5590,24 @@ mod tests {
         let mut g = GameState::new(refs(), 3);
         let a = Flight { count: 3, tacair: 6, pilot: 0, maneuver: 30 };
         let d = Flight { count: 3, tacair: 6, pilot: 0, maneuver: 30 };
-        let out = g.resolve_air_to_air_pilots(a, d, &[0, 0, 0], &[6, 0, 0]).unwrap();
+        let out = g.resolve_air_to_air_pilots(a, d, &[0, 0, 0], &[6, 0, 0], false).unwrap();
         assert!(out.attacker_losses <= 3 && out.defender_losses <= 3);
+
+        // §45.24 vs §45.34: 4 fighters pile onto one tough plane. In fighter-vs-fighter the piled-on
+        // attackers fire one-way, so at most the single primary attacker can be lost. When the target
+        // is a *screened* plane it returns fire at every attacker (§45.34), so more attackers can die.
+        let four = Flight { count: 4, tacair: 3, pilot: 0, maneuver: 25 };
+        let tough = Flight { count: 1, tacair: 14, pilot: 0, maneuver: 40 };
+        let mut ff_max = 0;
+        let mut screened_max = 0;
+        for seed in 0..80u64 {
+            let mut g1 = GameState::new(refs(), seed);
+            ff_max = ff_max.max(g1.resolve_air_to_air_pilots(four, tough, &[], &[], false).unwrap().attacker_losses);
+            let mut g2 = GameState::new(refs(), seed);
+            screened_max = screened_max.max(g2.resolve_air_to_air_pilots(four, tough, &[], &[], true).unwrap().attacker_losses);
+        }
+        assert!(ff_max <= 1, "one-way pile-on: only the primary attacker is at risk (§45.24)");
+        assert!(screened_max >= 2, "a screened plane returns fire at each attacker (§45.34)");
     }
 
     #[test]
