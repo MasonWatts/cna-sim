@@ -3490,9 +3490,12 @@ impl GameState {
 
     /// Satisfy a mandated Retreat (§15.82). The path is a sequence of adjacent hexes, each
     /// leading strictly away from the assaulted hex, on-map, enterable, not enemy-occupied,
-    /// and not into an enemy ZOC (§10.23). Each mandated hex not retreated costs 10% loss;
-    /// an empty path means the unit stands and absorbs the full penalty. Splitting a stack
-    /// into different hexes (§9.35) and supply-direction "least resistance" are deferred.
+    /// and not into an enemy ZOC (§10.23). The destination Stacking Limit is enforced (§9.35).
+    /// Each mandated hex not retreated costs 10% loss; an empty path means the unit stands and
+    /// absorbs the full penalty. §9.35 stack-splitting is supported implicitly — retreat is issued
+    /// per unit, so a stack is split into different hexes by giving each unit its own path. (The
+    /// finer §15.82 "least resistance"/toward-supply direction *preference* among legal away-paths
+    /// is left to the caller; only the away-from-origin constraint is enforced.)
     fn cmd_retreat(&mut self, unit: UnitId, path: &[HexCoord]) -> Result<CommandOutcome, CommandError> {
         self.require_combat_phase()?;
         let u = self.unit(unit).ok_or(CommandError::UnitNotFound)?;
