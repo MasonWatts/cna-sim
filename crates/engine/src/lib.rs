@@ -6210,6 +6210,28 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+
+        // §41.38 Road/Railroad bombing destroys the feature on a positive result. Resolve the
+        // effect directly (deterministic) rather than through the CRT roll.
+        use crate::reference::terrain::HexTerrain;
+        use crate::state::map::HexsideKind;
+        let n = target.neighbors()[0]; // a real geometric neighbour of `target`
+        g.map.set_hex(target, HexTerrain::Clear);
+        g.map.set_hex(n, HexTerrain::Clear);
+        g.map.set_hexside(target, n, HexsideKind::Road, None);
+        g.map.set_hexside(target, n, HexsideKind::Railroad, None);
+        assert!(g.hex_is_railroad(target));
+        // Zero result is a no-op.
+        g.apply_land_bombing_effect(BombingMission::Railroad, target, Side::Axis, 0);
+        assert!(g.hex_is_railroad(target));
+        // Positive railroad result → DestroyedRailroad on the hex's edges.
+        g.apply_land_bombing_effect(BombingMission::Railroad, target, Side::Axis, 1);
+        assert!(!g.hex_is_railroad(target));
+        // Positive road result → the Road edge degrades to an UnfinishedRoad (track, §24.52).
+        assert!(g.map.hexsides_on(target, n).iter().any(|h| h.kind == HexsideKind::Road));
+        g.apply_land_bombing_effect(BombingMission::Road, target, Side::Axis, 1);
+        assert!(!g.map.hexsides_on(target, n).iter().any(|h| h.kind == HexsideKind::Road));
+        assert!(g.map.hexsides_on(target, n).iter().any(|h| h.kind == HexsideKind::UnfinishedRoad));
     }
 
     #[test]

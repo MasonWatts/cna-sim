@@ -1625,7 +1625,8 @@ impl GameState {
     /// Field-repair broken-down tank TOE Strength Points (§22.25/§22.8): given a modified die
     /// `roll`, repairs ⌈that %⌉ of each broken Tank-class system (a 10%* result on a single TOE
     /// is treated as 0%), moving them from `weapons_broken` back into the composition. Returns
-    /// the TOE repaired. (§22.26 Fuel cost is deferred.)
+    /// the TOE repaired. §22.26 Fuel cost is enforced: one Fuel Point per Tank TOE Point attempted
+    /// is expended (from the unit's tanks, then a co-located dump) before rolling, capping the attempt.
     pub fn field_repair_tanks(&mut self, id: UnitId, roll: u32) -> u32 {
         // §22.13d: no field repairs in a Rainstorm or Sandstorm hex (Major Facilities exempt).
         if self.field_repair_blocked_by_weather(id) {
@@ -3714,8 +3715,9 @@ impl GameState {
     /// requirement from friendly Stores Dumps in its hex (off-map units are supplied from the
     /// unlimited boxes). A unit that goes unsupplied earns a Disorganization Point (−1 cohesion,
     /// §51.21) and, every second consecutive such turn, loses that percentage of its
-    /// **infantry** TOE (§51.22 — guns and tanks are unaffected). Prisoners/guards (§51.12/17)
-    /// and half-rations (§51.23) are deferred.
+    /// **infantry** TOE (§51.22 — guns and tanks are unaffected). §51.23 half-rations are modeled
+    /// (`half_rations` set: requirement cut 4→2 in `unit_stores_requirement`, with the movement
+    /// restrictions enforced at the move command). Prisoners/guards (§51.12/17) remain deferred.
     pub fn expend_stores(&mut self) {
         // §49.3 / §52.44: Fuel and Water evaporate/spill during the Stores Expenditure Stage
         // (6%/Game-Turn, or the Commonwealth's early-war 9% through August 1941).
@@ -4663,8 +4665,13 @@ impl GameState {
     ///   gun — artillery/anti-tank — unit costs two of the count).
     /// - **Supply Dump (§41.35):** destroy `result` percent of every commodity in the target's
     ///   enemy Supply Dumps.
-    /// Other missions (ships/air facilities have dedicated commands; city/fortification, road/
-    /// railroad, and truck-convoy effects are not yet modeled) are no-ops here.
+    /// - **Flak Destruction (§41.33):** remove `result` AA-rated TOE from an enemy AA unit.
+    /// - **Truck Convoy (§41.32):** destroy `result` first-line Truck Points (D-capability planes).
+    /// - **City/Fortification (§41.37):** knock a *placed* Fortification Level down one.
+    /// - **Road / Railroad (§41.38):** destroy the road (Road→UnfinishedRoad, rebuildable §24.53) or
+    ///   railroad (all Railroad edges of the hex → DestroyedRailroad, rebuildable §24.63) on `result`≥1.
+    /// Ships/air facilities have dedicated commands (§41.34/§41.36); static §25.12 major-city levels
+    /// are not reducible (no damage tracker). Mining-harbor is resolved on its own table.
     pub fn apply_land_bombing_effect(
         &mut self,
         mission: crate::reference::aircraft::BombingMission,
@@ -4728,6 +4735,30 @@ impl GameState {
                 if result >= 1 {
                     if let Some(l) = self.fortifications.get_mut(&target) {
                         *l = l.saturating_sub(1);
+                    }
+                }
+            }
+            M::Road => {
+                // §41.38: a positive result destroys the road hex. Roads are permanent map
+                // features, so "destroyed" degrades each Road edge of the hex to an UnfinishedRoad
+                // (a track, §24.52) that engineers may re-pave via `build_road` (§24.53).
+                if result >= 1 {
+                    let neighbors: Vec<HexCoord> = self.map.neighbors(target).collect();
+                    for n in neighbors {
+                        if self.map.hexsides_on(target, n).iter().any(|h| h.kind == HexsideKind::Road) {
+                            self.map.remove_hexside(target, n, HexsideKind::Road);
+                            self.map.set_hexside(target, n, HexsideKind::UnfinishedRoad, None);
+                        }
+                    }
+                }
+            }
+            M::Railroad => {
+                // §41.38: a positive result destroys the railroad hex — every built Railroad edge
+                // of the hex becomes DestroyedRailroad (inert until rebuilt by engineers, §24.63).
+                if result >= 1 {
+                    let neighbors: Vec<HexCoord> = self.map.neighbors(target).collect();
+                    for n in neighbors {
+                        self.destroy_railroad(target, n);
                     }
                 }
             }
@@ -5466,24 +5497,31 @@ impl GameState {
         out
     }
 
-    /// A parent formation's Capability Point Allowance (§6.15): the lowest CPA among the
-    /// units comprising it (it moves at the pace of its slowest member). `None` if no
-    /// member has a known CPA. (A member riding trucks assumes the truck CPA — deferred.)
+    /// A parent formation's Capability Point Allowance (§6.15): the lowest **effective** CPA among
+    /// the units comprising it (it moves at the pace of its slowest member). `effective_cpa` folds
+    /// in §6.17 motorization, so a leg-infantry member riding its attached Truck Points contributes
+    /// the truck CPA rather than dragging the formation down to its foot pace. `None` if no member
+    /// has a known CPA.
     pub fn formation_cpa(&self, parent: UnitId) -> Option<i32> {
         self.formation_members(parent)
             .iter()
-            .filter_map(|&id| self.unit_cpa(id))
+            .filter_map(|&id| self.effective_cpa(id))
             .min()
     }
 
-    /// Whether a unit is motorized (§8.53a, for Reaction). Tanks and reconnaissance are
-    /// always motorized; otherwise a CPA ≥ 20 is used as a proxy (§8.53b: a motorized unit
-    /// has a minimum CPA of 20 from its trucks). Note: truck-borne infantry (whose trucks
-    /// raise their effective CPA) are not modeled, so they read as non-motorized here.
+    /// Whether a unit is motorized (§8.53a, for Reaction). A unit is motorized if it is inherently
+    /// mobile (tanks / reconnaissance), if it is leg infantry fully carried by attached first-line
+    /// Truck Points (§6.17, `unit_motorized_cpa` applies), if it carries any first-line Truck Points,
+    /// or — for a weapons unit whose organic vehicles give it a high pace — a CPA ≥ 20 (§8.53b: a
+    /// motorized unit has a minimum CPA of 20).
     pub fn unit_is_motorized(&self, id: UnitId) -> bool {
         let Some(u) = self.units.get(&id) else {
             return false;
         };
+        // Attached first-line Truck Points motorize any unit (§6.17 / §8.53b).
+        if u.trucks.light + u.trucks.medium + u.trucks.heavy > 0 {
+            return true;
+        }
         if let Composition::Weapons { groups } = &u.composition {
             let table = self.reference.weapons_systems.get(&u.nationality);
             let mobile = groups.iter().any(|g| {
@@ -5496,7 +5534,7 @@ impl GameState {
                 return true;
             }
         }
-        self.unit_cpa(id).is_some_and(|c| c >= 20)
+        self.unit_motorized_cpa(id).is_some() || self.unit_cpa(id).is_some_and(|c| c >= 20)
     }
 
     /// A unit's maximum TOE Strength Points (§4.46 chart): the Organic `max_toe`, or for a
