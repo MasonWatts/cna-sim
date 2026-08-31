@@ -3059,6 +3059,11 @@ impl GameState {
         if builders.is_empty() {
             return false;
         }
+        // §54.42: only the Commonwealth (the line's owner) may build new rail line — the Axis may
+        // never lay new track, only repair controlled hexes (`rebuild_railroad`).
+        if self.units.get(&builders[0]).map(|u| u.nationality.side()) != Some(Side::Commonwealth) {
+            return false;
+        }
         if !self
             .map
             .hexsides_on(a, b)
@@ -3180,6 +3185,8 @@ impl GameState {
     /// Engineer battalion/company — or a Commonwealth HQ with engineering — may rebuild (not only
     /// the NZRRC), it completes in one Construction Segment (modeled as immediate), and it may be
     /// done in an enemy ZOC (§24.45). Requires the builder in `a`/`b` and 1 Store present (§24.64).
+    /// §54.42: an **Axis** builder may repair only a rail hex the Axis controls (§54.41), and at the
+    /// same rate as the Commonwealth (immediate) — but never builds *new* line (§24.6, `begin_railroad`).
     /// Returns whether the track was rebuilt.
     pub fn rebuild_railroad(&mut self, builder: UnitId, a: HexCoord, b: HexCoord) -> bool {
         let Some(u) = self.units.get(&builder) else {
@@ -3189,6 +3196,11 @@ impl GameState {
             return false;
         };
         if bh != a && bh != b {
+            return false;
+        }
+        // §54.42: the Axis may repair only rail hexes it controls (§54.41 — it was the last to pass
+        // a land combat unit through the builder's hex). The Commonwealth owns the line unrestricted.
+        if u.nationality.side() == Side::Axis && self.rail_control.get(&bh) != Some(&Side::Axis) {
             return false;
         }
         if !self

@@ -9738,6 +9738,55 @@ mod tests {
     }
 
     #[test]
+    fn axis_rail_repair_and_no_new_line_54_42() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::game::{Commodities, GameState, SupplyDump};
+        use crate::state::map::{HexCoord, HexsideKind};
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(
+            Nationality::German,
+            include_str!("../../../data/reference/unit-characteristics/german.ron"),
+        )
+        .unwrap();
+        let mut g = GameState::new(refs, 1);
+        let hs: Vec<HexCoord> = (0..4).map(|i| HexCoord::new(i, 0)).collect();
+        for h in &hs {
+            g.map.set_hex(*h, HexTerrain::Clear);
+        }
+        g.map.set_hexside(hs[0], hs[1], HexsideKind::Railroad, None);
+        g.map.set_hexside(hs[1], hs[2], HexsideKind::Railroad, None);
+        // Destroy the hs[0]–hs[1] stretch.
+        assert!(g.destroy_railroad(hs[0], hs[1]));
+
+        // A German Engineer with a Store present tries to repair it.
+        let eng = g.spawn_unit(Nationality::German, "gg", "pio", Composition::Organic { current_toe: 1 });
+        g.unit_mut(eng).unwrap().location = Some(UnitLocation::OnMap(hs[0]));
+        g.supply_dumps.push(SupplyDump {
+            location: UnitLocation::OnMap(hs[0]),
+            side: Side::Axis,
+            supply: Commodities { fuel: 0, ammo: 0, stores: 5, water: 0 },
+            dummy: false,
+        });
+
+        // §54.42: the Axis may repair only a rail hex it controls — hs[0] is not yet controlled.
+        assert!(!g.rebuild_railroad(eng, hs[0], hs[1]));
+        // Take control (§54.41), then the repair succeeds at the Commonwealth rate (immediate).
+        g.rail_control.insert(hs[0], Side::Axis);
+        assert!(g.rebuild_railroad(eng, hs[0], hs[1]));
+        assert!(g.map.hexsides_on(hs[0], hs[1]).iter().any(|h| h.kind == HexsideKind::Railroad));
+
+        // §54.42: the Axis may never build *new* rail line. Set an unlaid stretch off the railhead
+        // and try to build it with the Axis engineer — rejected regardless of units/supply.
+        g.map.set_hexside(hs[2], hs[3], HexsideKind::UnfinishedRailroad, None);
+        g.unit_mut(eng).unwrap().location = Some(UnitLocation::OnMap(hs[2]));
+        assert!(!g.begin_railroad(&[eng], hs[2], hs[3]));
+    }
+
+    #[test]
     fn rail_supply_transport() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;
