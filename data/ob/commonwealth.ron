@@ -1,6 +1,13 @@
-// Commonwealth Order of Battle — verified formations promoted from staging
-// (docs/source-materials/ob-generated/commonwealth.ron). Every id validated against
+// Commonwealth Order of Battle. Every id validated against
 // data/reference/unit-characteristics/commonwealth.ron (see ob_ids_are_valid_characteristics_keys).
+//
+// CHART-VERIFIED (D14 retired for these formations, 2026-08-30): both loaded formations were checked
+// against the §4.44a Commonwealth OA sheets (transcribed from the rulebook PDF to
+// docs/source-materials/cw-ob-4.44a.transcribed.md). 4th Indian Division (PDF p126) matches
+// exactly — HQs "a", rifle battalions "p", Central India Horse "ll", field artillery "x", weapons
+// and arrivals all confirmed. 7th Armoured Division matches its OA sheet exactly (HQs b/b/d, tanks
+// "g", motor infantry "n", RHA "aa"/"x", 11th Hussars "ll"). No id corrections were required.
+// (The remaining ~33 §4.44a formations are transcribed in that doc, ready to promote.)
 (
     formations: [
         // 4th Indian Division — §4.44a. Parenthetical arrival morale 0, trains up to Basic 1.
