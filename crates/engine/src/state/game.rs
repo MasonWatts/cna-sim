@@ -1276,6 +1276,62 @@ impl GameState {
         }
     }
 
+    /// §50.14: expend **defensive** close-assault Ammunition for the units defending a Close Assault.
+    /// A defender fires defensively as it is assaulted, so — like the attacker — its melee weapons
+    /// units spend the close-assault rate × TOE in Ammo. Guns take no part in the melee (§15.21/§15.84a)
+    /// and plain rifle infantry pays no Ammo (§50.2), so neither is charged. Unlike the attacker's
+    /// pre-combat check (§50.12, which can forbid the assault), the defender is already committed:
+    /// each unit pays what it has (onboard reserve, then co-located dumps), capped at what is
+    /// available — a best-effort drain that never rejects the resolved combat. No-op without the
+    /// ammo table. Returns the total Ammo Points expended.
+    pub fn expend_defensive_assault_ammo(&mut self, defenders: &[UnitId]) -> u32 {
+        if self.reference.ammo_rates.is_none() {
+            return 0;
+        }
+        let mut spent = 0;
+        for &id in defenders {
+            // Only melee weapons units pay: guns don't fight the melee; Organic infantry pays none.
+            if self.is_gun_unit(id) {
+                continue;
+            }
+            if !matches!(self.units.get(&id).map(|u| &u.composition), Some(Composition::Weapons { .. })) {
+                continue;
+            }
+            let cost = self.unit_combat_ammo_cost(id, CombatAction::CloseAssault);
+            if cost == 0 {
+                continue;
+            }
+            let mut owed = cost.min(self.unit_ammo_available(id));
+            let onboard = self.units.get(&id).map_or(0, |u| u.ammo);
+            let from_onboard = onboard.min(owed);
+            if let Some(u) = self.unit_mut(id) {
+                u.ammo -= from_onboard;
+            }
+            owed -= from_onboard;
+            spent += from_onboard;
+            if owed > 0 {
+                let (hex, side) = {
+                    let u = self.units.get(&id).expect("checked");
+                    (u.hex(), u.nationality.side())
+                };
+                if let Some(h) = hex {
+                    for d in self.supply_dumps.iter_mut().filter(|d| {
+                        d.side == side && !d.dummy && d.location.hex() == Some(h)
+                    }) {
+                        if owed == 0 {
+                            break;
+                        }
+                        let take = owed.min(d.supply.ammo);
+                        d.supply.ammo -= take;
+                        owed -= take;
+                        spent += take;
+                    }
+                }
+            }
+        }
+        spent
+    }
+
     /// A unit's Stores requirement per Game-Turn (§51.11/13): 4 per TOE Strength Point, or a
     /// flat 1 for a Headquarters or Engineer unit.
     pub fn unit_stores_requirement(&self, id: UnitId) -> u32 {

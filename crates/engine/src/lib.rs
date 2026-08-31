@@ -3804,6 +3804,20 @@ mod tests {
             Composition::Organic { current_toe: 3 },
         );
         assert_eq!(g.unit_combat_ammo_cost(inf, CombatAction::CloseAssault), 0);
+
+        // §50.14 defensive assault: a defending melee tank spends its defensive close-assault Ammo
+        // (best-effort). Rearm the tank to a full reserve, then defend: 4 Ammo drawn from onboard 8.
+        g.rearm_fire_once(tank); // onboard = 8
+        assert_eq!(g.unit(tank).unwrap().ammo, 8);
+        let spent = g.expend_defensive_assault_ammo(&[tank, inf]);
+        assert_eq!(spent, 4); // tank pays 4; the Organic infantry pays nothing
+        assert_eq!(g.unit(tank).unwrap().ammo, 4);
+        // A defender with only 1 Ammo and no dump pays what it has (1), never failing.
+        g.unit_mut(tank).unwrap().ammo = 1;
+        // Drain the co-located dump so onboard is the only source.
+        g.supply_dumps[0].supply.ammo = 0;
+        assert_eq!(g.expend_defensive_assault_ammo(&[tank]), 1);
+        assert_eq!(g.unit(tank).unwrap().ammo, 0);
     }
 
     #[test]

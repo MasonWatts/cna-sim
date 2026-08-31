@@ -3381,8 +3381,8 @@ impl GameState {
     }
 
     /// Barrage (§12.6). The firer names an adjacent hex and a target class (§12.23–24);
-    /// the engine resolves against an enemy unit of that class there. Detailed
-    /// line-of-fire legality is deferred (§12.35: no LOS restrictions in the desert).
+    /// the engine resolves against an enemy unit of that class there. There is no
+    /// line-of-fire check by rule (§12.35: no LOS restrictions in the desert).
     fn cmd_barrage(
         &mut self,
         attackers: &[UnitId],
@@ -3413,7 +3413,8 @@ impl GameState {
         Ok(CommandOutcome::Barrage(self.resolve_barrage(attackers, target_unit)))
     }
 
-    /// Anti-Armor fire (§14) at a target hex. Range/line-of-fire legality is deferred.
+    /// Anti-Armor fire (§14) at a target hex. Fire is adjacent-only (enforced here) and the §14.34
+    /// prohibited-hexside blocking is applied in `resolve_anti_armor` (there is no ranged LOS rule).
     fn cmd_anti_armor(
         &mut self,
         attackers: &[UnitId],
@@ -3475,13 +3476,16 @@ impl GameState {
             return Err(CommandError::NoTargets);
         }
         // §50.14: the assaulting units expend Ammo (armor/gun-class only; rifle infantry pays
-        // none). Defensive-assault consumption and no-ammo defender penalties are deferred.
+        // none). A shortfall forbids the assault (§50.12).
         if !self.consume_combat_ammo(attackers, crate::state::game::CombatAction::CloseAssault) {
             return Err(CommandError::InsufficientAmmo);
         }
-        Ok(CommandOutcome::CloseAssault(
-            self.resolve_close_assault(attackers, &defenders),
-        ))
+        let outcome = self.resolve_close_assault(attackers, &defenders);
+        // §50.14: the defenders fire defensively too — their melee weapons units spend defensive
+        // close-assault Ammo (best-effort; the defender is already committed). (The broader §50.12
+        // no-ammo → surrender / no-ZOC effect is a ZOC-wide rule left for the ZOC layer.)
+        self.expend_defensive_assault_ammo(&defenders);
+        Ok(CommandOutcome::CloseAssault(outcome))
     }
 
     /// Satisfy a mandated Retreat (§15.82). The path is a sequence of adjacent hexes, each
