@@ -9650,6 +9650,94 @@ mod tests {
     }
 
     #[test]
+    fn axis_use_of_commonwealth_railroad_54_4() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::game::{Commodities, GameState, RailCargo, SupplyDump};
+        use crate::state::map::{HexCoord, HexsideKind};
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(
+            Nationality::German,
+            include_str!("../../../data/reference/unit-characteristics/german.ron"),
+        )
+        .unwrap();
+        let mut g = GameState::new(refs, 1);
+        // A six-hex coastal rail line, all Clear, contiguous Railroad hexsides.
+        let hs: Vec<HexCoord> = (0..6).map(|i| HexCoord::new(i, 0)).collect();
+        for h in &hs {
+            g.map.set_hex(*h, HexTerrain::Clear);
+        }
+        for i in 0..5 {
+            g.map.set_hexside(hs[i], hs[i + 1], HexsideKind::Railroad, None);
+        }
+
+        // §54.41: fewer than five contiguous controlled hexes ⇒ no Axis rail.
+        for h in hs.iter().take(4) {
+            g.rail_control.insert(*h, Side::Axis);
+        }
+        assert_eq!(g.axis_rail_contiguous_max(), 4);
+        // §54.43: cannot even import without a controlled hex … then take control of a fifth.
+        g.rail_control.insert(hs[4], Side::Axis);
+        assert_eq!(g.axis_rail_contiguous_max(), 5);
+
+        // §54.43: import Rolling Stock — 250 Stores + 100 Fuel from an Axis dump → +300 tons.
+        g.supply_dumps.push(SupplyDump {
+            location: UnitLocation::OnMap(hs[0]),
+            side: Side::Axis,
+            supply: Commodities { fuel: 400, ammo: 0, stores: 800, water: 0 },
+            dummy: false,
+        });
+        // A Commonwealth-controlled hex is not eligible for Axis import.
+        assert!(!g.import_rolling_stock(hs[5]));
+        assert!(g.import_rolling_stock(hs[0]));
+        assert_eq!(g.axis_rolling_stock_tons, 300);
+        let dump = |g: &GameState| {
+            let d = g.supply_dumps.iter().find(|d| d.location.hex() == Some(hs[0]) && d.side == Side::Axis).unwrap();
+            (d.supply.stores, d.supply.fuel)
+        };
+        assert_eq!(dump(&g), (550, 300)); // 800-250, 400-100
+
+        // Spawn a German unit on the line and rail it. Import enough stock for 900 t/Stacking Point.
+        let u = g.spawn_unit(Nationality::German, "i", "pz gren", Composition::Organic { current_toe: 8 });
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(hs[1]));
+        let sp = g.effective_stacking_points(u) as u32;
+        assert!(sp >= 1, "the mover must not be a shell for this test");
+        while g.axis_rolling_stock_tons < 900 * sp {
+            assert!(g.import_rolling_stock(hs[0]));
+        }
+        let stock = g.axis_rolling_stock_tons;
+        // §54.44: rail the unit west to hs[0] — 900 × SP tons consumed from the one-direction budget.
+        assert!(g.rail_move(u, hs[0]));
+        assert_eq!(g.unit(u).unwrap().hex(), Some(hs[0]));
+        assert_eq!(g.axis_rail_tons_used, 900 * sp);
+        assert_eq!(g.axis_rail_dir, Some(true)); // west
+
+        // §54.43: haulage is one direction per stage — an eastbound supply shipment now fails.
+        assert_eq!(g.rail_move_supply_for(Side::Axis, hs[0], hs[4], RailCargo::Stores, 10), 0);
+        // A westbound shipment within the remaining budget works: source dump at hs[4].
+        g.supply_dumps.push(SupplyDump {
+            location: UnitLocation::OnMap(hs[4]),
+            side: Side::Axis,
+            supply: Commodities { fuel: 0, ammo: 0, stores: 50, water: 0 },
+            dummy: false,
+        });
+        let remaining = stock - g.axis_rail_tons_used;
+        let want = remaining.min(20);
+        assert_eq!(g.rail_move_supply_for(Side::Axis, hs[4], hs[0], RailCargo::Stores, want), want);
+
+        // §54.45: lose control of two hexes so fewer than five are contiguous — the next stage's
+        // upkeep destroys the Rolling Stock.
+        g.rail_control.remove(&hs[2]);
+        g.rail_control.remove(&hs[3]);
+        assert!(g.axis_rail_contiguous_max() < 5);
+        g.begin_operations_stage();
+        assert_eq!(g.axis_rolling_stock_tons, 0);
+    }
+
+    #[test]
     fn rail_supply_transport() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;

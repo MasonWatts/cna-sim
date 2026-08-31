@@ -271,13 +271,17 @@ pub enum Command {
     DemolishRailroad { builder: UnitId, a: HexCoord, b: HexCoord },
     /// §8.72: move a unit by rail (Commonwealth Rail Movement Phase).
     RailMove { unit: UnitId, to: HexCoord },
-    /// §54.3: move supply by rail (Commonwealth Rail Movement Phase). Returns the points moved.
+    /// §54.3 / §54.43: move supply by rail. Commonwealth in its Rail Movement Phase; Axis in the
+    /// Truck Convoy Phase against its Rolling-Stock budget (§54.4). Returns the points moved.
     RailMoveSupply {
         from: HexCoord,
         to: HexCoord,
         cargo: crate::state::game::RailCargo,
         points: u32,
     },
+    /// §54.43: activate imported Axis Rolling Stock at a controlled operative rail hex (consuming
+    /// 250 Stores + 100 Fuel from Axis dumps there for +300 tons of haulage). Organization Phase.
+    ImportRollingStock { hex: HexCoord },
     /// §24.5: begin building a road along the `a`–`b` hexside (Organization Phase).
     BuildRoad { builder: UnitId, a: HexCoord, b: HexCoord },
     /// §64.75: withdraw an eligible Commonwealth unit from play (Organization Phase).
@@ -577,6 +581,8 @@ pub enum CommandOutcome {
     ConstructionStarted,
     /// §8.72: a unit was moved by rail.
     RailMoved,
+    /// §54.43: Axis Rolling Stock imported/activated (+300 tons of haulage).
+    RollingStockImported,
     /// §54.3: supply moved by rail (the points moved).
     RailSupplyMoved(u32),
     /// §64.75: a unit was withdrawn / returned to play.
@@ -752,6 +758,8 @@ pub enum CommandError {
     ConstructionFailed,
     /// §8.72: the rail move was not allowed (no rail connection, allowance used, or ineligible).
     RailMoveFailed,
+    /// §54.43: no eligible controlled operative rail hex, or insufficient Stores/Fuel, to import.
+    RollingStockImportFailed,
     /// §64.75: the unit is not eligible to withdraw / cannot be returned.
     WithdrawalFailed,
     /// §20: the Replacement Points could not be absorbed (still training, class/hex mismatch).
@@ -981,8 +989,14 @@ impl GameState {
                 }
             }
             Command::RailMove { unit, to } => {
-                self.require_phase(Phase::CommonwealthRail)?;
                 self.require_units_exist(&[unit])?;
+                // §33.0 IV.K: the Commonwealth rails in its own phase; §54.43: the Axis rails in the
+                // Truck Convoy Phase ("the Convoy Stage").
+                match self.unit(unit).map(|u| u.nationality.side()) {
+                    Some(Side::Commonwealth) => self.require_phase(Phase::CommonwealthRail)?,
+                    Some(Side::Axis) => self.require_phase(Phase::TruckConvoy)?,
+                    None => return Err(CommandError::UnitNotFound),
+                }
                 if self.rail_move(unit, to) {
                     Ok(CommandOutcome::RailMoved)
                 } else {
@@ -990,8 +1004,20 @@ impl GameState {
                 }
             }
             Command::RailMoveSupply { from, to, cargo, points } => {
-                self.require_phase(Phase::CommonwealthRail)?;
-                Ok(CommandOutcome::RailSupplyMoved(self.rail_move_supply(from, to, cargo, points)))
+                let side = match self.phase {
+                    Phase::CommonwealthRail => Side::Commonwealth,
+                    Phase::TruckConvoy => Side::Axis,
+                    _ => return Err(CommandError::WrongPhase),
+                };
+                Ok(CommandOutcome::RailSupplyMoved(self.rail_move_supply_for(side, from, to, cargo, points)))
+            }
+            Command::ImportRollingStock { hex } => {
+                self.require_phase(Phase::Organization)?;
+                if self.import_rolling_stock(hex) {
+                    Ok(CommandOutcome::RollingStockImported)
+                } else {
+                    Err(CommandError::RollingStockImportFailed)
+                }
             }
             Command::BuildRoad { builder, a, b } => {
                 self.require_phase(Phase::Organization)?;
@@ -3855,6 +3881,8 @@ impl GameState {
             .expect("unit existence checked above")
             .location = Some(crate::state::unit::UnitLocation::OnMap(to));
         self.expend_cp_against(unit, cp, cpa);
+        // §54.41: a land combat unit that enters a rail hex becomes the last to control it.
+        self.note_rail_control(to, unit);
         // §26.15/26.23: entering an enemy dummy minefield reveals it (removed at the end of the
         // Movement Phase — i.e. at the next Operations Stage — so same-phase movers still pay).
         if entered_enemy_dummy {

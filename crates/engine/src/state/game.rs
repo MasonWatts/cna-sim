@@ -885,6 +885,25 @@ pub struct GameState {
     /// water forward for its own use). While set, no Rail Movement or rail supply is possible.
     #[serde(default)]
     pub rail_maintenance_this_stage: bool,
+    /// §54.41: the last Side to pass a land combat unit through a rail hex "controls" it. A hex
+    /// absent from this map is controlled by the Commonwealth (the railroad's owner). Used to gate
+    /// Axis use of the coastal railroad (§54.4).
+    #[serde(default)]
+    pub rail_control: std::collections::HashMap<HexCoord, Side>,
+    /// §54.43: the Axis's activated Rolling Stock, as tons of haulage capacity available per
+    /// Operations Stage in one direction (each 250 Stores + 100 Fuel imported activates +300 tons).
+    /// Persists until the Axis loses the §54.41 five-contiguous-hex control, when it is destroyed
+    /// (§54.45).
+    #[serde(default)]
+    pub axis_rolling_stock_tons: u32,
+    /// §54.43/44: tons of Axis rail haulage used so far this Operations Stage (units at 900 t/Stacking
+    /// Point, supplies by §54.5 weight). Reset each stage.
+    #[serde(default)]
+    pub axis_rail_tons_used: u32,
+    /// §54.43/44: the direction (Some(true)=west) the Axis committed its rail to this Operations
+    /// Stage — haulage is "in any one direction" per stage. `None` until the first Axis rail use.
+    #[serde(default)]
+    pub axis_rail_dir: Option<bool>,
 }
 
 /// A deployed formation's later-arriving units, to be spawned when their turn/stage comes.
@@ -1013,6 +1032,10 @@ impl GameState {
             rail_west_used: false,
             rail_east_used: false,
             rail_maintenance_this_stage: false,
+            rail_control: std::collections::HashMap::new(),
+            axis_rolling_stock_tons: 0,
+            axis_rail_tons_used: 0,
+            axis_rail_dir: None,
         }
     }
 
@@ -2392,12 +2415,14 @@ impl GameState {
         false
     }
 
-    /// §8.72–8.75: Commonwealth Rail Movement. Move `unit` any distance along the finished rail
-    /// line to `to`. The unit must be Commonwealth, start on a rail hex having expended no CP this
-    /// stage (§8.73), not be in an enemy ZOC, carry ≤ 2 Stacking Points (§8.75), and `to` must be a
-    /// rail hex reachable along built track avoiding enemy ZOC/occupied hexes. Only one stack may
-    /// rail in each direction per stage (§8.74). Returns whether the unit was railed. (Axis use of
-    /// captured rail, §54.4, is not yet modeled.)
+    /// §8.72–8.75 / §54.4: Rail Movement. Move `unit` any distance along the finished rail line to
+    /// `to`. The unit starts on a rail hex having expended no CP this stage (§8.73), not in an enemy
+    /// ZOC, carries ≤ 2 Stacking Points (§8.75), and `to` is a rail hex reachable along built track
+    /// avoiding enemy ZOC/occupied hexes. For the **Commonwealth** (the line's owner) only one stack
+    /// may rail in each direction per stage (§8.74). The **Axis** may rail only under §54.4: it must
+    /// hold five contiguous controlled rail hexes (§54.41), `from` must be Axis-controlled, and it
+    /// spends 900 tons of activated Rolling Stock per Stacking Point (§54.44) from its one-direction
+    /// per-stage haulage budget (§54.43/46). Returns whether the unit was railed.
     pub fn rail_move(&mut self, unit: UnitId, to: HexCoord) -> bool {
         if self.rail_maintenance_this_stage {
             return false; // §54.34
@@ -2406,9 +2431,6 @@ impl GameState {
             return false;
         };
         let side = u.nationality.side();
-        if side != Side::Commonwealth {
-            return false;
-        }
         let Some(from) = u.hex() else {
             return false;
         };
@@ -2418,24 +2440,43 @@ impl GameState {
         if self.hex_in_zoc_of(from, side.opponent()) {
             return false;
         }
-        if self.effective_stacking_points(unit) > 2 {
-            return false;
-        }
-        let west = to.col < from.col;
-        if (west && self.rail_west_used) || (!west && self.rail_east_used) {
+        let sp = self.effective_stacking_points(unit);
+        if sp > 2 {
             return false;
         }
         if !self.rail_reachable(from, to, side) {
             return false;
         }
+        let west = to.col < from.col;
+        match side {
+            Side::Commonwealth => {
+                // §8.74: one stack each direction per stage.
+                if (west && self.rail_west_used) || (!west && self.rail_east_used) {
+                    return false;
+                }
+                if west {
+                    self.rail_west_used = true;
+                } else {
+                    self.rail_east_used = true;
+                }
+            }
+            Side::Axis => {
+                // §54.41: must control `from`; §54.44: 900 tons/Stacking Point from the activated
+                // one-direction haulage budget (§54.43/46). A 0-SP shell still needs live stock.
+                if !self.axis_controls_rail(from) {
+                    return false;
+                }
+                let tons = 900 * sp.max(0) as u32;
+                if !self.reserve_axis_rail_tons(tons, west) {
+                    return false;
+                }
+            }
+        }
         if let Some(u) = self.unit_mut(unit) {
             u.location = Some(crate::state::unit::UnitLocation::OnMap(to));
         }
-        if west {
-            self.rail_west_used = true;
-        } else {
-            self.rail_east_used = true;
-        }
+        // §54.41: the mover now controls its destination rail hex.
+        self.note_rail_control(to, unit);
         true
     }
 
@@ -2446,23 +2487,58 @@ impl GameState {
     /// (§54.33), sharing the once-per-direction allowance with unit Rail Movement (§54.32: a
     /// direction carries personnel *or* supplies). Returns the number of points delivered.
     pub fn rail_move_supply(&mut self, from: HexCoord, to: HexCoord, cargo: RailCargo, points: u32) -> u32 {
+        self.rail_move_supply_for(Side::Commonwealth, from, to, cargo, points)
+    }
+
+    /// §54.3 / §54.43: rail transport of supplies for `side`. Commonwealth uses its 1500-ton
+    /// per-direction allowance (§54.32) and the once-each-direction stack flag (§8.74). The Axis
+    /// hauls against its activated Rolling Stock (§54.43): the per-shipment cap is whatever of its
+    /// one-direction haulage budget remains, converted to points by §54.5 weight (Stores 1 t, Ammo
+    /// 4 t, Fuel ⅛ t), and it must hold five contiguous controlled rail hexes with `from` controlled.
+    /// Water is never railed (§54.33). Returns the points delivered.
+    pub fn rail_move_supply_for(&mut self, side: Side, from: HexCoord, to: HexCoord, cargo: RailCargo, points: u32) -> u32 {
         if self.rail_maintenance_this_stage {
             return 0; // §54.34
         }
         if from == to || !self.hex_is_railroad(from) || !self.hex_is_railroad(to) {
             return 0;
         }
-        if !self.rail_reachable(from, to, Side::Commonwealth) {
+        if !self.rail_reachable(from, to, side) {
             return 0;
         }
         let west = to.col < from.col;
-        if (west && self.rail_west_used) || (!west && self.rail_east_used) {
-            return 0;
-        }
-        let cap = match cargo {
-            RailCargo::Stores => 1500,
-            RailCargo::Ammo => 375,
-            RailCargo::Fuel => 12000,
+        // Per-direction capacity: CW's flat 1500-ton allowance vs the Axis Rolling-Stock budget.
+        let cap = match side {
+            Side::Commonwealth => {
+                if (west && self.rail_west_used) || (!west && self.rail_east_used) {
+                    return 0;
+                }
+                match cargo {
+                    RailCargo::Stores => 1500,
+                    RailCargo::Ammo => 375,
+                    RailCargo::Fuel => 12000,
+                }
+            }
+            Side::Axis => {
+                if !self.axis_controls_rail(from) || self.axis_rail_contiguous_max() < 5 {
+                    return 0;
+                }
+                if self.axis_rolling_stock_tons == 0 {
+                    return 0;
+                }
+                if let Some(dir) = self.axis_rail_dir {
+                    if dir != west {
+                        return 0; // §54.43: one direction per stage
+                    }
+                }
+                let remaining = self.axis_rolling_stock_tons.saturating_sub(self.axis_rail_tons_used);
+                // §54.5 weights → how many points of this commodity `remaining` tons can carry.
+                match cargo {
+                    RailCargo::Stores => remaining,
+                    RailCargo::Ammo => remaining / 4,
+                    RailCargo::Fuel => remaining * 8,
+                }
+            }
         };
         let target_from = crate::state::unit::UnitLocation::OnMap(from);
         let get = |s: &Commodities| match cargo {
@@ -2473,17 +2549,27 @@ impl GameState {
         let avail: u32 = self
             .supply_dumps
             .iter()
-            .filter(|d| !d.dummy && d.location == target_from && d.side == Side::Commonwealth)
+            .filter(|d| !d.dummy && d.location == target_from && d.side == side)
             .map(|d| get(&d.supply))
             .sum();
         let moved = points.min(cap).min(avail);
         if moved == 0 {
             return 0;
         }
+        // §54.43: charge the Axis Rolling-Stock budget for the tons actually hauled.
+        if side == Side::Axis {
+            let tons = match cargo {
+                RailCargo::Stores => moved,
+                RailCargo::Ammo => moved * 4,
+                RailCargo::Fuel => moved.div_ceil(8),
+            };
+            self.axis_rail_tons_used += tons;
+            self.axis_rail_dir = Some(west);
+        }
         // Draw from the source dumps.
         let mut owed = moved;
         for d in self.supply_dumps.iter_mut().filter(|d| {
-            !d.dummy && d.location == target_from && d.side == Side::Commonwealth
+            !d.dummy && d.location == target_from && d.side == side
         }) {
             let field = match cargo {
                 RailCargo::Fuel => &mut d.supply.fuel,
@@ -2497,12 +2583,12 @@ impl GameState {
                 break;
             }
         }
-        // Deliver into a dump at `to` (creating a Commonwealth dump if none exists there).
+        // Deliver into a dump at `to` (creating one for `side` if none exists there).
         let target_to = crate::state::unit::UnitLocation::OnMap(to);
         let dest = self
             .supply_dumps
             .iter_mut()
-            .find(|d| !d.dummy && d.location == target_to && d.side == Side::Commonwealth);
+            .find(|d| !d.dummy && d.location == target_to && d.side == side);
         match dest {
             Some(d) => match cargo {
                 RailCargo::Fuel => d.supply.fuel += moved,
@@ -2518,18 +2604,141 @@ impl GameState {
                 }
                 self.supply_dumps.push(SupplyDump {
                     location: target_to,
-                    side: Side::Commonwealth,
+                    side,
                     supply,
                     dummy: false,
                 });
             }
         }
-        if west {
-            self.rail_west_used = true;
-        } else {
-            self.rail_east_used = true;
+        // §8.74: mark the Commonwealth's once-each-direction allowance (the Axis budget was
+        // already charged above).
+        if side == Side::Commonwealth {
+            if west {
+                self.rail_west_used = true;
+            } else {
+                self.rail_east_used = true;
+            }
         }
         moved
+    }
+
+    // ----- §54.4 Axis use of the Commonwealth railroad ------------------------------------------
+
+    /// §54.41: record rail-hex control. The last Side to move a land **combat** unit through a rail
+    /// hex controls it; non-combat HQs and non-rail hexes are ignored. Called from the move
+    /// resolvers when a unit's new hex is a railroad hex.
+    pub(crate) fn note_rail_control(&mut self, hex: HexCoord, unit: UnitId) {
+        if !self.hex_is_railroad(hex) || self.is_noncombat_hq(unit) {
+            return;
+        }
+        if let Some(side) = self.units.get(&unit).map(|u| u.nationality.side()) {
+            self.rail_control.insert(hex, side);
+        }
+    }
+
+    /// §54.41: whether the Axis currently controls `hex` (a rail hex it was last to pass a combat
+    /// unit through). Hexes never contested are Commonwealth-owned, so absence ⇒ not Axis-controlled.
+    pub fn axis_controls_rail(&self, hex: HexCoord) -> bool {
+        self.rail_control.get(&hex) == Some(&Side::Axis)
+    }
+
+    /// §54.41: the size of the largest run of **contiguous** Axis-controlled, operative (built,
+    /// undestroyed) rail hexes. The Axis may use the railroad only while this is ≥ 5.
+    pub fn axis_rail_contiguous_max(&self) -> usize {
+        use std::collections::HashSet;
+        // All Axis-controlled operative rail hexes.
+        let nodes: HashSet<HexCoord> = self
+            .rail_control
+            .iter()
+            .filter(|(_, &s)| s == Side::Axis)
+            .map(|(&h, _)| h)
+            .filter(|&h| self.hex_is_railroad(h))
+            .collect();
+        let mut seen: HashSet<HexCoord> = HashSet::new();
+        let mut best = 0usize;
+        for &start in &nodes {
+            if seen.contains(&start) {
+                continue;
+            }
+            // Flood-fill this connected component along built Railroad hexsides between Axis hexes.
+            let mut size = 0usize;
+            let mut stack = vec![start];
+            while let Some(h) = stack.pop() {
+                if !seen.insert(h) {
+                    continue;
+                }
+                size += 1;
+                for n in self.map.neighbors(h) {
+                    if nodes.contains(&n)
+                        && !seen.contains(&n)
+                        && self.map.hexsides_on(h, n).iter().any(|hs| hs.kind == HexsideKind::Railroad)
+                    {
+                        stack.push(n);
+                    }
+                }
+            }
+            best = best.max(size);
+        }
+        best
+    }
+
+    /// §54.43: import Rolling Stock. At an Axis-controlled operative rail hex `hex`, consume 250
+    /// Stores + 100 Fuel from Axis Supply Dumps there to activate +300 tons of per-Operations-Stage
+    /// haulage capacity. Returns whether the import succeeded (enough supply present + hex eligible).
+    pub fn import_rolling_stock(&mut self, hex: HexCoord) -> bool {
+        if !self.axis_controls_rail(hex) {
+            return false;
+        }
+        let loc = crate::state::unit::UnitLocation::OnMap(hex);
+        let (stores, fuel): (u32, u32) = self
+            .supply_dumps
+            .iter()
+            .filter(|d| !d.dummy && d.location == loc && d.side == Side::Axis)
+            .fold((0, 0), |(s, f), d| (s + d.supply.stores, f + d.supply.fuel));
+        if stores < 250 || fuel < 100 {
+            return false;
+        }
+        // Draw 250 Stores and 100 Fuel from the Axis dumps in the hex.
+        let mut owed_s = 250u32;
+        let mut owed_f = 100u32;
+        for d in self.supply_dumps.iter_mut().filter(|d| {
+            !d.dummy && d.location == loc && d.side == Side::Axis
+        }) {
+            let ts = d.supply.stores.min(owed_s);
+            d.supply.stores -= ts;
+            owed_s -= ts;
+            let tf = d.supply.fuel.min(owed_f);
+            d.supply.fuel -= tf;
+            owed_f -= tf;
+            if owed_s == 0 && owed_f == 0 {
+                break;
+            }
+        }
+        self.axis_rolling_stock_tons += 300; // §54.43: +300 tons/OpStage of haulage
+        true
+    }
+
+    /// §54.43/44: reserve `tons` of Axis rail haulage this Operations Stage in direction `west`,
+    /// enforcing the single-direction-per-stage rule and the activated capacity. Returns whether
+    /// the haulage fits; on success the budget and locked direction are updated.
+    fn reserve_axis_rail_tons(&mut self, tons: u32, west: bool) -> bool {
+        if self.axis_rolling_stock_tons == 0 {
+            return false; // no activated Rolling Stock (§54.43/45)
+        }
+        if self.axis_rail_contiguous_max() < 5 {
+            return false; // §54.41: needs five contiguous controlled hexes
+        }
+        if let Some(dir) = self.axis_rail_dir {
+            if dir != west {
+                return false; // §54.43/44: one direction per stage
+            }
+        }
+        if self.axis_rail_tons_used + tons > self.axis_rolling_stock_tons {
+            return false;
+        }
+        self.axis_rail_tons_used += tons;
+        self.axis_rail_dir = Some(west);
+        true
     }
 
     /// The water source available to a unit of `side` in `hex`. Adds the §52.22 rule to the
@@ -4794,28 +5003,24 @@ impl GameState {
                     }
                 }
             }
-            M::Road => {
+            M::Road if result >= 1 => {
                 // §41.38: a positive result destroys the road hex. Roads are permanent map
                 // features, so "destroyed" degrades each Road edge of the hex to an UnfinishedRoad
                 // (a track, §24.52) that engineers may re-pave via `build_road` (§24.53).
-                if result >= 1 {
-                    let neighbors: Vec<HexCoord> = self.map.neighbors(target).collect();
-                    for n in neighbors {
-                        if self.map.hexsides_on(target, n).iter().any(|h| h.kind == HexsideKind::Road) {
-                            self.map.remove_hexside(target, n, HexsideKind::Road);
-                            self.map.set_hexside(target, n, HexsideKind::UnfinishedRoad, None);
-                        }
+                let neighbors: Vec<HexCoord> = self.map.neighbors(target).collect();
+                for n in neighbors {
+                    if self.map.hexsides_on(target, n).iter().any(|h| h.kind == HexsideKind::Road) {
+                        self.map.remove_hexside(target, n, HexsideKind::Road);
+                        self.map.set_hexside(target, n, HexsideKind::UnfinishedRoad, None);
                     }
                 }
             }
-            M::Railroad => {
+            M::Railroad if result >= 1 => {
                 // §41.38: a positive result destroys the railroad hex — every built Railroad edge
                 // of the hex becomes DestroyedRailroad (inert until rebuilt by engineers, §24.63).
-                if result >= 1 {
-                    let neighbors: Vec<HexCoord> = self.map.neighbors(target).collect();
-                    for n in neighbors {
-                        self.destroy_railroad(target, n);
-                    }
+                let neighbors: Vec<HexCoord> = self.map.neighbors(target).collect();
+                for n in neighbors {
+                    self.destroy_railroad(target, n);
                 }
             }
             _ => {}
@@ -5806,6 +6011,14 @@ impl GameState {
         self.rail_west_used = false;
         self.rail_east_used = false;
         self.rail_maintenance_this_stage = false;
+        // §54.4: reset the Axis rail haulage budget for the new stage, and enforce §54.45 —
+        // if the Axis no longer holds five contiguous controlled rail hexes, its Rolling Stock
+        // is considered destroyed.
+        self.axis_rail_tons_used = 0;
+        self.axis_rail_dir = None;
+        if self.axis_rolling_stock_tons > 0 && self.axis_rail_contiguous_max() < 5 {
+            self.axis_rolling_stock_tons = 0;
+        }
         // §24.11: the Construction Segment — advance projects by the just-completed stage (read
         // before CP is reset below, so the §24.12 no-CP-expended check sees that stage).
         self.advance_construction();
