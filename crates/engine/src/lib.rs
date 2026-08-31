@@ -7655,6 +7655,44 @@ mod tests {
     }
 
     #[test]
+    fn over_shipped_production_defers_to_next_turn_20_62() {
+        // §20.62/§20.64: Axis Replacement production planned beyond the arrival turn's *actual*
+        // rolled Shipping Tonnage cannot all arrive — the excess defers to the next turn (kept).
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+
+        let mut refs = ReferenceData::new();
+        refs.load_production_chart(
+            Nationality::German,
+            include_str!("../../../data/reference/german-production.ron"),
+        )
+        .unwrap();
+        refs.load_convoy_levels(include_str!("../../../data/reference/convoy-levels.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.game_turn = 40;
+        g.phase = Phase::Organization;
+
+        // Two German Infantry pools (30 t/pt) arriving GT42: 3 points (90 t) and 1 point (30 t).
+        let plan = |n| Command::PlanProduction { nationality: Nationality::German, item: "Infantry".into(), count: n };
+        assert!(matches!(g.apply(plan(3)), Ok(CommandOutcome::ProductionPlanned { .. })));
+        assert!(matches!(g.apply(plan(1)), Ok(CommandOutcome::ProductionPlanned { .. })));
+
+        // The actual roll for GT42 comes up at only 100 tons — enough for one pool, not both.
+        g.game_turn = 42;
+        g.axis_shipping_rolled.insert(42, 100);
+        g.defer_over_shipped_axis_replacements();
+
+        // §20.62: the 90-ton pool fits and stays; the 30-ton pool is deferred to GT43 (over the roll).
+        let mut kept = 0;
+        let mut deferred = 0;
+        for p in &g.pending_replacements {
+            if p.tonnage == 90 { assert_eq!(p.game_turn, 42); kept += 1; }
+            if p.tonnage == 30 { assert_eq!(p.game_turn, 43); deferred += 1; }
+        }
+        assert_eq!((kept, deferred), (1, 1));
+    }
+
+    #[test]
     fn convoy_supply_yields_to_production_20_64() {
         // §20.64: Replacement Points have priority in Shipping Space over supplies. Once production
         // is planned for an arrival Game-Turn, a supply convoy may claim only the tonnage that

@@ -1454,6 +1454,9 @@ impl GameState {
         let allowable = self
             .allowable_convoy_tonnage(arrival_gt, die)
             .ok_or(CommandError::NoConvoyTable)?;
+        // §56.21: the tonnage allowance is rolled once per Game-Turn. Record the first roll so both
+        // supply convoys and §20.62 production arrivals bind against the same figure.
+        self.axis_shipping_rolled.entry(arrival_gt).or_insert(allowable);
         if self.plan_convoy(
             lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, allowable,
         ) {
@@ -1604,7 +1607,10 @@ impl GameState {
             .reinforcement_entry_hex(nationality)
             .map(str::to_string)
             .and_then(|s| self.resolve_entry(&s));
-        self.plan_replacement(class, count, arrival_game_turn, self.operations_stage as u32, location, None);
+        let idx = self.plan_replacement(class, count, arrival_game_turn, self.operations_stage as u32, location, None);
+        // §20.62: record the Axis convoy tonnage on the pending pool so an over-committed arrival
+        // can be deferred against the turn's actual rolled allowance (§20.64).
+        self.pending_replacements[idx].tonnage = tonnage;
         Ok(CommandOutcome::ProductionPlanned { arrival_game_turn, class, tonnage })
     }
 

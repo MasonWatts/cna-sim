@@ -408,6 +408,12 @@ pub struct PendingReplacement {
     pub location: Option<UnitLocation>,
     #[serde(default)]
     pub assigned_to: Option<UnitId>,
+    /// §20.62: the Axis Naval Convoy tonnage this Replacement pool needs to ship (0 for Commonwealth
+    /// production, which lands at Alexandria off-convoy). Used to defer arrivals that exceed the
+    /// arrival turn's actual rolled Shipping Tonnage allowance (§20.64 — Replacement Points have
+    /// priority over supplies, but cannot exceed the roll itself).
+    #[serde(default)]
+    pub tonnage: u32,
 }
 
 /// A free (unattached) Truck-Point convoy on the map (§8.98/§8.99): Truck Points not attached to a
@@ -804,6 +810,11 @@ pub struct GameState {
     /// maxima across a game (§20.66 notes). Each records the Game-Turn it was planned.
     #[serde(default)]
     pub production_orders: Vec<ProductionOrder>,
+    /// §56.21: the Axis Naval Convoy Shipping Tonnage allowance actually rolled for a Game-Turn
+    /// (keyed by arrival Game-Turn). Rolled once per turn (the first convoy plan fixes it), so both
+    /// supply convoys and §20.62 production bind against the same figure. Absent ⇒ not yet rolled.
+    #[serde(default)]
+    pub axis_shipping_rolled: std::collections::HashMap<u32, u32>,
     /// Truck Points produced (§20.78A / §20.66a) awaiting arrival at their delivery city.
     #[serde(default)]
     pub pending_trucks: Vec<PendingTruckDelivery>,
@@ -1010,6 +1021,7 @@ impl GameState {
             replacement_points: Vec::new(),
             pending_replacements: Vec::new(),
             production_orders: Vec::new(),
+            axis_shipping_rolled: std::collections::HashMap::new(),
             pending_trucks: Vec::new(),
             truck_pools: std::collections::HashMap::new(),
             axis_truck_orders: Vec::new(),
@@ -1942,7 +1954,8 @@ impl GameState {
     }
 
     /// Plan a Replacement Point pool to arrive at a future Operations Stage (§20.21). It enters
-    /// the pool (starting Training) when that Naval Convoy Arrival Phase is reached.
+    /// the pool (starting Training) when that Naval Convoy Arrival Phase is reached. Returns the
+    /// index of the queued pending replacement (so a caller may set its §20.62 `tonnage`).
     pub fn plan_replacement(
         &mut self,
         class: ReplacementClass,
@@ -1951,7 +1964,7 @@ impl GameState {
         stage: u32,
         location: Option<UnitLocation>,
         assigned_to: Option<UnitId>,
-    ) {
+    ) -> usize {
         self.pending_replacements.push(PendingReplacement {
             class,
             count,
@@ -1959,7 +1972,9 @@ impl GameState {
             stage,
             location,
             assigned_to,
+            tonnage: 0,
         });
+        self.pending_replacements.len() - 1
     }
 
     /// Bring in any planned Replacement Points now due (§20.21) — called at the Naval Convoy
@@ -1978,6 +1993,40 @@ impl GameState {
         }
         for p in due {
             self.add_replacement_points(p.class, p.count, p.location, p.assigned_to);
+        }
+    }
+
+    /// §20.62/§20.64: before Axis Replacement production arrives this Game-Turn, cap it at the
+    /// turn's **actual** rolled Shipping Tonnage allowance (§56.21). Replacement Points have priority
+    /// over supplies (§20.64), but they cannot exceed the roll itself — production planned two turns
+    /// out (§20.63) against a hoped-for tonnage that the actual roll does not cover is deferred to the
+    /// next Game-Turn (kept, not lost). The turn's allowance is the roll fixed when convoys were
+    /// planned; if none was (no convoy this turn), one is rolled now. With no Convoy Level Chart
+    /// loaded there is no cap (the gate is skipped, as elsewhere). Deferral is greedy in queue order.
+    pub fn defer_over_shipped_axis_replacements(&mut self) {
+        let now = self.game_turn;
+        let allowance = match self.axis_shipping_rolled.get(&now).copied() {
+            Some(a) => a,
+            None => {
+                if self.reference.convoy_levels.is_none() {
+                    return; // no chart → no tonnage model (unchanged behaviour)
+                }
+                let die = self.rng.d6() as u32;
+                let a = self.allowable_convoy_tonnage(now, die).unwrap_or(u32::MAX);
+                self.axis_shipping_rolled.insert(now, a);
+                a
+            }
+        };
+        let mut running = 0u32;
+        for p in self.pending_replacements.iter_mut() {
+            if p.tonnage == 0 || p.game_turn != now {
+                continue; // Commonwealth (off-convoy) or not arriving this turn
+            }
+            if running + p.tonnage <= allowance {
+                running += p.tonnage;
+            } else {
+                p.game_turn = now + 1; // §20.62: defer the excess to next turn's allowance
+            }
         }
     }
 
@@ -6275,6 +6324,9 @@ impl GameState {
         // §20.12: reinforcements enter at the start of the Naval Convoy Arrival Phase.
         if phase == Phase::NavalConvoyArrival {
             self.process_arrivals();
+            // §20.62/§20.64: defer any Axis Replacement production beyond the turn's actual roll
+            // before the survivors enter the pool.
+            self.defer_over_shipped_axis_replacements();
             self.process_replacement_arrivals();
             self.process_truck_arrivals();
             self.place_rommel_if_arrived(); // §31: the Rommel counter arrives with reinforcements
