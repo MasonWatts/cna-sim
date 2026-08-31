@@ -6862,6 +6862,75 @@ mod tests {
     }
 
     #[test]
+    fn scramble_clear_path_40_33() {
+        use crate::reference::aircraft::{AircraftClass, BombingMission};
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::terrain::HexTerrain;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        // A one-hex-wide corridor: CW fighter base (12,10) — mid (11,10) — target (10,10) — bomber
+        // base (13,10). The mid hex is the only route from the fighters to the target.
+        let build = |block_mid: bool| -> GameState {
+            let mut refs = ReferenceData::new();
+            refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+            refs.load_aircraft_chart(Nationality::Commonwealth, include_str!("../../../data/reference/aircraft/commonwealth.ron")).unwrap();
+            refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+            refs.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+            refs.load_air_to_air(include_str!("../../../data/reference/air-to-air.ron")).unwrap();
+            refs.load_scramble_table(include_str!("../../../data/reference/scramble-table.ron")).unwrap();
+            let mut g = GameState::new(refs, 1);
+            for c in 10..=13 {
+                g.map.set_hex(HexCoord::new(c, 10), HexTerrain::Clear);
+            }
+            // German bombers.
+            let mut ge = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 26", 5, Some(HexCoord::new(13, 10)));
+            ge.add_planes("Ju.88D", AircraftClass::Bomber, 6, 1);
+            g.sgsus.insert(SquadronId(1), ge);
+            // Commonwealth scramble-capable fighters two hexes from the target.
+            let mut cw = Sgsu::new(SquadronId(2), Nationality::Commonwealth, SquadronClass::Fighter, "252 Sqn", 5, Some(HexCoord::new(12, 10)));
+            cw.add_planes("Beaufighter Mk.IF", AircraftClass::Fighter, 4, 1);
+            g.sgsus.insert(SquadronId(2), cw);
+            if block_mid {
+                // German fighters sitting on the mid hex — the only path to the target (§40.33).
+                let mut blk = Sgsu::new(SquadronId(3), Nationality::German, SquadronClass::Fighter, "JG 27", 5, Some(HexCoord::new(11, 10)));
+                blk.add_planes("Bf.109E", AircraftClass::Fighter, 4, 1);
+                g.sgsus.insert(SquadronId(3), blk);
+            }
+            for id in [SquadronId(1), SquadronId(2), SquadronId(3)] {
+                if let Some(s) = g.sgsus.get_mut(&id) {
+                    for grp in s.planes.iter_mut() {
+                        grp.refitted = grp.count;
+                        grp.ready = grp.count;
+                    }
+                }
+            }
+            while g.phase != Phase::LandSupportAir {
+                g.advance_phase();
+            }
+            g
+        };
+        let target = HexCoord::new(10, 10);
+        let bomb = |g: &mut GameState| g.apply(Command::FlyBombingMissionAt {
+            squadron: SquadronId(1), target, mission: BombingMission::Personnel,
+            planes: 6, bombload_per_plane: 20, night: false,
+            escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+        });
+
+        // §40.33: enemy fighters blocking the only path prevent the scramble.
+        let mut g = build(true);
+        assert!(matches!(bomb(&mut g), Ok(CommandOutcome::BombingMission(_))));
+        assert_eq!(g.sgsus[&SquadronId(2)].ready_planes(), 4, "no clear path — fighters could not scramble");
+
+        // With the corridor clear, the same fighters scramble to intercept.
+        let mut g = build(false);
+        assert!(matches!(bomb(&mut g), Ok(CommandOutcome::BombingMission(_))));
+        assert_eq!(g.sgsus[&SquadronId(2)].ready_planes(), 0, "clear path — fighters scrambled");
+    }
+
+    #[test]
     fn pilot_roster_and_cap_bonus_40() {
         use crate::reference::aircraft::{AircraftClass, CapType};
         use crate::reference::squadron::SquadronClass;
@@ -10143,6 +10212,57 @@ mod tests {
         g.unit_mut(z).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(3, 2)));
         assert_eq!(
             g.apply(Command::MoveStep { unit: z, to: HexCoord::new(4, 2), mode: MoveMode::NonMotorized }),
+            Ok(CommandOutcome::Moved)
+        );
+    }
+
+    #[test]
+    fn airdropped_unit_may_not_exceed_cpa_this_stage_42_47() {
+        use crate::reference::terrain::{Fixed, HexTerrain};
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(
+            Nationality::German,
+            include_str!("../../../data/reference/unit-characteristics/german.ron"),
+        )
+        .unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::MovementAndCombat;
+        let (a, b) = (HexCoord::new(0, 0), HexCoord::new(1, 0));
+        g.map.set_hex(a, HexTerrain::Clear);
+        g.map.set_hex(b, HexTerrain::Clear);
+
+        let para = g.spawn_unit(Nationality::German, "p", "para", Composition::Organic { current_toe: 4 });
+        g.unit_mut(para).unwrap().location = Some(UnitLocation::OnMap(a));
+        // §42.47: mark the unit as dropped this Operations Stage (as cmd_airdrop_unit records).
+        let abs_stage = g.game_turn * 3 + g.operations_stage as u32;
+        g.airdrop_last_stage.insert(para, abs_stage);
+
+        let cpa = g.unit_cpa(para).unwrap();
+        // A move that would carry it past its CPA this stage is refused (§42.47).
+        g.unit_mut(para).unwrap().cp_expended = Fixed(cpa * 10);
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: para, to: b, mode: MoveMode::NonMotorized }),
+            Err(CommandError::AirdropCpaLimit)
+        );
+        // Within its CPA it moves normally (§42.47: it "may move and fight normally").
+        g.unit_mut(para).unwrap().cp_expended = Fixed(0);
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: para, to: b, mode: MoveMode::NonMotorized }),
+            Ok(CommandOutcome::Moved)
+        );
+        // A unit dropped in an *earlier* stage is unrestricted.
+        g.airdrop_last_stage.insert(para, abs_stage.saturating_sub(1));
+        g.unit_mut(para).unwrap().cp_expended = Fixed(cpa * 10);
+        g.map.set_hex(HexCoord::new(2, 0), HexTerrain::Clear);
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: para, to: HexCoord::new(2, 0), mode: MoveMode::NonMotorized }),
             Ok(CommandOutcome::Moved)
         );
     }

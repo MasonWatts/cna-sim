@@ -760,6 +760,8 @@ pub enum CommandError {
     RailMoveFailed,
     /// §54.43: no eligible controlled operative rail hex, or insufficient Stores/Fuel, to import.
     RollingStockImportFailed,
+    /// §42.47: an airdropped unit may not voluntarily exceed its CPA in the stage it was dropped.
+    AirdropCpaLimit,
     /// §64.75: the unit is not eligible to withdraw / cannot be returned.
     WithdrawalFailed,
     /// §20: the Replacement Points could not be absorbed (still training, class/hex mismatch).
@@ -3868,6 +3870,15 @@ impl GameState {
             let already = self.unit(unit).map(|u| u.cp_expended.0).unwrap_or(0);
             if already + cp.0 > cpa * 10 {
                 return Err(CommandError::HalfRation);
+            }
+        }
+        // §42.47: an airdropped combat unit may not voluntarily exceed its CPA in the Operations
+        // Stage it was dropped (it may still move/fight otherwise). Reuses the §42.48 drop record.
+        let abs_stage = self.game_turn * 3 + self.operations_stage as u32;
+        if self.airdrop_last_stage.get(&unit) == Some(&abs_stage) {
+            let already = self.unit(unit).map(|u| u.cp_expended.0).unwrap_or(0);
+            if already + cp.0 > cpa * 10 {
+                return Err(CommandError::AirdropCpaLimit);
             }
         }
         // §49.13/49.16: pay the move's Fuel from the mover's (and riders') tanks and any

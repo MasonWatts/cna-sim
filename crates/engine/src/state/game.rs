@@ -4878,15 +4878,71 @@ impl GameState {
     }
 
     /// §40.3: attempt a defensive scramble against a mission over `target` by planes of
+    /// §40.33: whether `hex` holds `side` fighters, for the scramble clear-path rule — a
+    /// scramble-capable SGSU of `side` based there with ready planes, or a `side` Combat Air Patrol
+    /// centred there.
+    fn hex_has_fighters(&self, hex: HexCoord, side: Side) -> bool {
+        let based = self.sgsus.values().any(|s| {
+            s.nationality.side() == side
+                && s.location == Some(hex)
+                && s.planes.iter().any(|g| {
+                    g.ready > 0
+                        && self
+                            .reference
+                            .aircraft_charts
+                            .get(&s.nationality)
+                            .and_then(|c| c.get(&g.aircraft_type))
+                            .is_some_and(|ac| {
+                                crate::rules::air::can_scramble(&ac.missions, false)
+                                    || crate::rules::air::can_scramble(&ac.missions, true)
+                            })
+                })
+        });
+        based || self.cap_patrols.iter().any(|p| p.side == side && p.center == hex)
+    }
+
+    /// §40.33: whether a scramble from `base` to `target` has a clear flight path — some route (the
+    /// player may pick "any path", §37.12, so a modest detour off the straight line is allowed) that
+    /// enters no hex holding enemy (`enemy_fighter_side`) fighters, except the target itself. The
+    /// scrambling squadron's own base is the start and is exempt.
+    fn scramble_path_clear(&self, base: HexCoord, target: HexCoord, enemy_fighter_side: Side) -> bool {
+        if base == target {
+            return true;
+        }
+        let dist = base.distance(target);
+        let budget = dist + 2; // allow a small detour around a fighter screen
+        let mut seen = std::collections::HashSet::new();
+        let mut stack = vec![base];
+        while let Some(h) = stack.pop() {
+            if !seen.insert(h) {
+                continue;
+            }
+            for n in self.map.neighbors(h) {
+                if n == target {
+                    return true;
+                }
+                if seen.contains(&n) || base.distance(n) > budget {
+                    continue;
+                }
+                // §40.33: the path may not include a hex containing enemy fighters.
+                if self.hex_has_fighters(n, enemy_fighter_side) {
+                    continue;
+                }
+                stack.push(n);
+            }
+        }
+        false
+    }
+
     /// `bomber_side`. The first enemy fighter squadron within Scramble-Table range (§40.4) that
-    /// has ready, scramble-capable planes rolls a d6; on success (§40.33) its ready fighters
-    /// scramble (fly) and return as the scrambling squadron and its intercepting [`Flight`]. `None`
-    /// if no squadron scrambles. (The §40.33 clear-path requirement is not yet enforced — flight
-    /// paths are not modeled.)
+    /// has ready, scramble-capable planes and a §40.33 clear flight path to the target rolls a d6;
+    /// on success its ready fighters scramble (fly) and return as the scrambling squadron and its
+    /// intercepting [`Flight`]. `None` if no squadron scrambles.
     pub fn scramble_interception(&mut self, target: HexCoord, bomber_side: Side, night: bool) -> Option<(SquadronId, Flight)> {
         let table = self.reference.scramble_table.clone()?;
         let enemy = bomber_side.opponent();
-        // First eligible enemy fighter squadron: within scramble range, with a ready scramble-capable type.
+        // First eligible enemy fighter squadron: within scramble range, with a ready scramble-capable
+        // type, and a §40.33 clear path to the target (avoiding hexes holding the bombers' fighters).
         let mut chosen: Option<(SquadronId, u32)> = None;
         for s in self.sgsus.values() {
             if s.nationality.side() != enemy {
@@ -4904,7 +4960,7 @@ impl GameState {
                         .and_then(|c| c.get(&g.aircraft_type))
                         .is_some_and(|ac| crate::rules::air::can_scramble(&ac.missions, night))
             });
-            if capable {
+            if capable && self.scramble_path_clear(base, target, bomber_side) {
                 chosen = Some((s.id, dist));
                 break;
             }
