@@ -1,13 +1,17 @@
 // data/ob/italian.ron — Italian Order of Battle (§4.44b). Reference data (D12): the full
 // campaign roster; scenarios select + place formations from it.
 //
-// FIRST CUT: three semi-motorized infantry divisions to validate the schema. 64 Catanzaro
-// is transcribed from its §4.44b sheet (p153); 62 Marmarica and 63 Cirene are the standard
-// semi-motorized template (D13, abstracted — no §4.44b sheet). The remaining ~31 Italian
-// formations will be batch-converted from docs/source-materials/italian-ob-4.44b.DRAFT.txt.
+// CHART-VERIFIED (D14 retired for the loaded formations, 2026-08-30): the loaded formations were
+// checked against the §4.44b Italian OA sheets (transcribed from the rulebook PDF to
+// docs/source-materials/it-ob-4.44b.transcribed.md). 64 Catanzaro (PDF p153), 132 Ariete (p147),
+// and 185 Folgore (p154) all match exactly — ids, weapon systems, morale, and arrivals confirmed;
+// no corrections required. The line-infantry "u" codes and the artillery/AT weapon strings are
+// thus verified, not provisional. 62 Marmarica and 63 Cirene have NO §4.44b OA sheet (they appear
+// only in the Libyan Tank Command notes) — confirming the D13 "abstracted semi-motorized template"
+// decision. The remaining ~30 Italian formations are transcribed in that doc, ready to promote.
 //
-// Notes: line-infantry battalion ID codes ("u") and weapon-name strings are provisional —
-// verify against the §4.46 Characteristics / §4.47-49 weapons charts when batch-encoding.
+// Ariete note: the two attached Light Tank battalions I(L)/II(L) have a BLANK id/TOE on the sheet
+// (attached, not assigned); their "k" + CV 33 here is a reasonable inference, not chart-given.
 (
     formations: [
         (
@@ -95,14 +99,14 @@
                 (name: "II(L) Tank Bn", abbr: "II(L)", id: "k", comp: Weapons([("CV 33 (L3/35)", 1)]), org_size: Battalion, arrival: Turn(game_turn: 18, stage: 1), parent: "Ariete (132nd) Div HQE"),
             ],
         ),
-        // 185 "Folgore" Airborne Division — §4.44b sheet, DRAFT-transcribed & promoted 2026-08-29.
+        // 185 "Folgore" Airborne Division — §4.44b sheet, promoted 2026-08-29.
         // Basic Morale +1; whole division arrives GT94 stage 2. The airborne infantry battalions
         // (id "v") are §42.41 airdrop-eligible per the OA sheet, so this formation makes the
         // AirdropUnit command exercisable in a real scenario.
-        // PROVISIONAL (D14): OCR'd weapon names normalized to canonical game keys —
-        //   "47/32 Gun" -> "47/32 Mod. 37"; "75/46 AA Gun" -> "Heavy AA (75/46 Mod. 34)".
-        // OCR'd names/morale cleaned ("Div HO" -> "Div HQ", "I1/187" -> "II/187", "+I" -> +1).
-        // Verify against the physical §4.44b / §4.46 sheets when available.
+        // CHART-VERIFIED against §4.44b (PDF p154, 2026-08-30): all ids (b/h/v/kk) match, and the
+        // earlier DRAFT weapon-name normalizations are confirmed correct — the sheet reads
+        // "1×47/32 Gun" (= "47/32 Mod. 37") and "3×75/46 AA Gun" (= "Heavy AA (75/46 Mod. 34)"),
+        // plus "6×ParaArt". D14 retired for this formation.
         (
             name: "185 Folgore Airborne Division",
             org_size: Division,
