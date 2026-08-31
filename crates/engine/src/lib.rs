@@ -2399,7 +2399,7 @@ mod tests {
         )
         .unwrap();
         let ob = refs.orders_of_battle.get(&Nationality::Italian).unwrap();
-        assert_eq!(ob.formations.len(), 5);
+        assert_eq!(ob.formations.len(), 38);
 
         let cat = ob.formation("64 Catanzaro Division").expect("Catanzaro");
         assert_eq!(cat.units.len(), 13);
