@@ -13,8 +13,8 @@
     "b": ( unit_type: "Headquarters", cpa: (value: 30, retains_regardless: true), max_toe: Some((value: 1, parenthesized: true)), assignments: [(weapon_kind: Tank, max_count: 1)] ),
     "c": ( unit_type: "Headquarters", cpa: (value: 30), max_toe: Some((value: 3)), assignments: [(weapon_kind: Artillery, max_count: 3)] ),
     "d": ( unit_type: "Headquarters", cpa: (value: 20, retains_regardless: true), max_toe: Some((value: 1, parenthesized: true)), assignments: [(weapon_kind: Tank, max_count: 1)] ),
-    "e": ( unit_type: "Headquarters", cpa: (value: 20), close_assault: Some((off: (value: 0), def: (value: 1))) ),
-    "f": ( unit_type: "Headquarters", cpa: (value: 20), close_assault: Some((off: (value: 0), def: (value: 1))) ),
+    "e": ( unit_type: "Headquarters", cpa: (value: 20), anti_armor: Some((value: 1)), vulnerability: Some((value: 1)), close_assault: Some((off: (value: 0), def: (value: 1))), max_toe: Some((value: 1)) ),
+    "f": ( unit_type: "Headquarters", cpa: (value: 20), anti_armor: Some((value: 2)), vulnerability: Some((value: 1)), close_assault: Some((off: (value: 0), def: (value: 1))), max_toe: Some((value: 1)) ),
 
     // --- Tank Bn-Equivalent ---
     "g": ( unit_type: "Tank Bn-Equivalent", cpa: (value: 25), max_toe: Some((value: 10, us_tank_special: true)), assignments: [(weapon_kind: Tank, max_count: 10)] ),
@@ -29,7 +29,7 @@
     "o": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10, motorized_capable: true), close_assault: Some((off: (value: 1), def: (value: 2))), max_toe: Some((value: 6)) ),
     "p": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10), close_assault: Some((off: (value: 1), def: (value: 2))), max_toe: Some((value: 6)) ),
     "q": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10), close_assault: Some((off: (value: 1), def: (value: 1))), max_toe: Some((value: 6)) ),
-    "r": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10), close_assault: Some((off: (value: 1), def: (value: 2))), max_toe: Some((value: 5)) ),
+    "r": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10), anti_armor: Some((value: 1)), close_assault: Some((off: (value: 1), def: (value: 2))), max_toe: Some((value: 5)) ),
     "s": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10), close_assault: Some((off: (value: 1), def: (value: 2))), max_toe: Some((value: 5)) ),
     "t": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 10), close_assault: Some((off: (value: 1), def: (value: 1))), max_toe: Some((value: 3)) ),
     "u": ( unit_type: "Infantry Bn-Equivalent", cpa: (value: 8), close_assault: Some((off: (value: 4), def: (value: 6))), max_toe: Some((value: 3)) ),
@@ -59,11 +59,11 @@
     "gg": ( unit_type: "Heavy Anti-air Bn-Equivalent", cpa: (value: 15), max_toe: Some((value: 2)), assignments: [(weapon_kind: HeavyAntiAir, max_count: 2)] ),
 
     // --- Reconnaissance Bn-Equivalents (re-aligned from OCR x-positions; confirmed) ---
-    "hh": ( unit_type: "Reconnaissance Bn-Equivalent", cpa: (value: 45), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 3), def: (value: 3))), max_toe: Some((value: 8)) ),
+    "hh": ( unit_type: "Reconnaissance Bn-Equivalent", cpa: (value: 45), anti_armor: Some((value: 1)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 3), def: (value: 3))), max_toe: Some((value: 8)) ),
     "jj": ( unit_type: "Reconnaissance Bn-Equivalent", cpa: (value: 45), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 3), def: (value: 3))), max_toe: Some((value: 8)) ),
     "kk": ( unit_type: "Reconnaissance Bn-Equivalent", cpa: (value: 45), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 2), def: (value: 3))), max_toe: Some((value: 8)) ),
     "ll": ( unit_type: "Reconnaissance Bn-Equivalent", cpa: (value: 45), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 2), def: (value: 3))), max_toe: Some((value: 8)) ),
-    "mm": ( unit_type: "Reconnaissance Bn-Equivalent", cpa: (value: 45), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 3), def: (value: 3))), max_toe: Some((value: 6)) ),
+    "mm": ( unit_type: "Reconnaissance Bn-Equivalent", cpa: (value: 45), anti_armor: Some((value: 1)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 3), def: (value: 3))), max_toe: Some((value: 6)) ),
     "nn": ( unit_type: "Reconnaissance Bn-Equivalent", cpa: (value: 45), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 3), def: (value: 3))), max_toe: Some((value: 6)) ),
     "pp": ( unit_type: "Reconnaissance Bn-Equivalent", cpa: (value: 45), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 2), def: (value: 3))), max_toe: Some((value: 6)) ),
     "qq": ( unit_type: "Reconnaissance Bn-Equivalent", cpa: (value: 45), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 2), def: (value: 3))), max_toe: Some((value: 6)) ),

@@ -12,7 +12,7 @@
     "b": ( unit_type: "Headquarters", cpa: (value: 30), close_assault: Some((off: (value: 0), def: (value: 1, parenthesized: true))), max_toe: Some((value: 1, parenthesized: true)) ),
     "c": ( unit_type: "Headquarters", cpa: (value: 30, retains_regardless: true), anti_armor: Some((value: 1, parenthesized: true)), armor_protection: Some((value: 1, parenthesized: true)), close_assault: Some((off: (value: 3, parenthesized: true), def: (value: 2, parenthesized: true))), max_toe: Some((value: 1, parenthesized: true)), notes: ["regimental HQ (parenthesized assigned-gun ratings)"] ),
     "d": ( unit_type: "Headquarters", cpa: (value: 30, retains_regardless: true), max_toe: Some((value: 1, parenthesized: true)), assignments: [(weapon_kind: Tank, max_count: 1)] ),
-    "e": ( unit_type: "Headquarters", cpa: (value: 30, retains_regardless: true), close_assault: Some((off: (value: 0), def: (value: 1, parenthesized: true))), max_toe: Some((value: 4)) ),
+    "e": ( unit_type: "Headquarters", cpa: (value: 30, retains_regardless: true), anti_air: Some((value: 1)), close_assault: Some((off: (value: 0), def: (value: 1, parenthesized: true))), max_toe: Some((value: 4)) ),
     "f": ( unit_type: "Headquarters", cpa: (value: 20), close_assault: Some((off: (value: 0), def: (value: 1, parenthesized: true))), max_toe: Some((value: 1, parenthesized: true)) ),
     "g": ( unit_type: "Headquarters", cpa: (value: 20), max_toe: Some((value: 1)), assignments: [(weapon_kind: Artillery, max_count: 1)] ),
     "h": ( unit_type: "Headquarters", cpa: (value: 20, retains_regardless: true), max_toe: Some((value: 1)), assignments: [(weapon_kind: Artillery, max_count: 1)] ),
@@ -44,7 +44,7 @@
     // --- Infantry Coy-Equivalent ---
     "cc": ( unit_type: "Infantry Coy-Equivalent", cpa: (value: 25), close_assault: Some((off: (value: 5), def: (value: 7))), max_toe: Some((value: 1)) ),
     "dd": ( unit_type: "Infantry Coy-Equivalent", cpa: (value: 15), anti_air: Some((value: 1)), barrage: Some((value: 5)), anti_armor: Some((value: 1)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 2), def: (value: 2))), max_toe: Some((value: 1)) ),
-    "ee": ( unit_type: "Infantry Coy-Equivalent", cpa: (value: 15), close_assault: Some((off: (value: 2), def: (value: 2))), max_toe: Some((value: 1)) ),
+    "ee": ( unit_type: "Infantry Coy-Equivalent", cpa: (value: 15), anti_air: Some((value: 1)), anti_armor: Some((value: 4)), close_assault: Some((off: (value: 2), def: (value: 2))), max_toe: Some((value: 1)) ),
     "ff": ( unit_type: "Infantry Coy-Equivalent", cpa: (value: 15), anti_air: Some((value: 2)), anti_armor: Some((value: 5)), close_assault: Some((off: (value: 1), def: (value: 1))), max_toe: Some((value: 1)) ),
     "gg": ( unit_type: "Infantry Coy-Equivalent", cpa: (value: 10), close_assault: Some((off: (value: 1), def: (value: 1))), max_toe: Some((value: 1)) ),
     "hh": ( unit_type: "Infantry Coy-Equivalent", cpa: (value: 8, motorized_capable: true), close_assault: Some((off: (value: 5), def: (value: 7))), max_toe: Some((value: 1)) ),
