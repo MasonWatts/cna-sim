@@ -192,17 +192,23 @@ mod tests {
 
         let de = &r.unit_characteristics[&Nationality::German];
         assert_eq!(de.len(), 31);
-        // Tank HQ-eq 'g' may assign up to 15 tank TOE.
-        assert_eq!(de["g"].assignments[0].max_count, 15);
-        // 'j' motorized halftrack infantry: has armor protection.
-        assert!(de["j"].cpa.motorized_capable);
-        assert_eq!(de["j"].armor_protection.unwrap().value, 1);
-        // 'c' retains CPA ('**').
-        assert!(de["c"].cpa.retains_regardless);
+        // §4.46c (PDF p171, verified 2026-08-30): Tank Bn-Eq 'f' may assign up to 15 tank TOE.
+        assert_eq!(de["f"].unit_type, "Tank Bn-Equivalent");
+        assert_eq!(de["f"].assignments[0].max_count, 15);
+        // 'g' is the strong (CPA 25) Infantry Bn-Eq, close assault 3/2 — NOT a tank code.
+        assert_eq!(de["g"].unit_type, "Infantry Bn-Equivalent");
+        assert_eq!((de["g"].cpa.value, de["g"].close_assault.unwrap().off.value), (25, 3));
+        // The halftrack infantry code is 'i' (the chart has no 'j'): motorized, armor protection 1.
+        assert!(de["i"].cpa.motorized_capable);
+        assert_eq!(de["i"].armor_protection.unwrap().value, 1);
+        assert!(!de.contains_key("j"), "the §4.46c chart has no 'j' code");
+        // 'h' carries the paradropable-artillery assignment.
+        assert_eq!(de["h"].assignments[0].weapon_kind, crate::reference::units::WeaponKind::Artillery);
         // 'z' light-AA bn has two assignment kinds.
         assert_eq!(de["z"].assignments.len(), 2);
-        // Recce 'ee' close assault 3/3.
+        // Recce 'ee' close assault 3/3, anti-armor 1, armor protection 2.
         assert_eq!(de["ee"].close_assault.unwrap().off.value, 3);
+        assert_eq!(de["ee"].armor_protection.unwrap().value, 2);
     }
 
     #[test]
