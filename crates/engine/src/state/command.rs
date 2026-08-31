@@ -1131,6 +1131,7 @@ impl GameState {
                         squadron, planes, bombload_per_plane,
                         crate::reference::air_bombardment::TargetGroup::AirfieldPortStrip,
                         interceptors, None, flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, false,
+                        &[], &[],
                     )
                     .ok_or(CommandError::NoSuchSquadron)?;
                 // §44.12/§44.21: the result reduces the base's capacity levels (never destroyed).
@@ -1167,6 +1168,7 @@ impl GameState {
                         squadron, planes, bombload_per_plane,
                         crate::reference::air_bombardment::TargetGroup::Units,
                         interceptors, None, flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, false,
+                        &[], &[],
                     )
                     .ok_or(CommandError::NoSuchSquadron)?;
                 // §40.18: credit the intercepting squadron's pilot with the bombers it shot down.
@@ -1230,6 +1232,7 @@ impl GameState {
                     .resolve_bombing_mission(
                         squadron, planes, bombload_per_plane, group, interceptors, None,
                         flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, night,
+                        &[], &[],
                     )
                     .ok_or(CommandError::NoSuchSquadron)?;
                 // §40.18: credit the intercepting squadron's pilot with the bombers it shot down.
@@ -3185,10 +3188,16 @@ impl GameState {
         }
         // §46: flak fired by the enemy AA units in the target hex.
         let flak_points = self.hex_flak_points(target, nationality.side());
+        // §40.15/§45.24: each intercepting/escorting plane fights its own match-up with its own
+        // pilot — pass the per-plane rosters (best-first) so the duels are not all crewed by the
+        // squadron's single best pilot.
+        let interceptor_pilots = interceptor_sq.map(|sq| self.squadron_pilot_ratings(sq)).unwrap_or_default();
+        let escort_pilots = escort_sq.map(|sq| self.squadron_pilot_ratings(sq)).unwrap_or_default();
         let outcome = self
             .resolve_bombing_mission(
                 squadron, planes, bombload_per_plane, group, interceptors, escort_flight,
                 flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, night,
+                &interceptor_pilots, &escort_pilots,
             )
             .ok_or(CommandError::NoSuchSquadron)?;
         // §40.18: credit the intercepting squadron's pilot with the bombers it shot down.

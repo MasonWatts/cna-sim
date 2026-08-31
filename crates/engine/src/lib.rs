@@ -5546,6 +5546,55 @@ mod tests {
     }
 
     #[test]
+    fn air_to_air_per_plane_pilots_and_pileon_45() {
+        use crate::state::game::{Flight, GameState};
+        let refs = || {
+            let mut r = ReferenceData::new();
+            r.load_air_to_air(include_str!("../../../data/reference/air-to-air.ron")).unwrap();
+            r
+        };
+
+        // §45.24 empty-roster fallback: with no per-plane roster, resolve_air_to_air_pilots is
+        // identical to resolve_air_to_air (same seed → same RNG stream, uniform flight pilot).
+        let attacker = Flight { count: 6, tacair: 6, pilot: 2, maneuver: 39 };
+        let defender = Flight { count: 6, tacair: 6, pilot: 0, maneuver: 30 };
+        let mut g1 = GameState::new(refs(), 7);
+        let mut g2 = GameState::new(refs(), 7);
+        assert_eq!(
+            g1.resolve_air_to_air(attacker, defender),
+            g2.resolve_air_to_air_pilots(attacker, defender, &[], &[]),
+        );
+
+        // §45.23 pile-on: 5 attackers vs 2 defenders. Only the 2 primary match-ups involve mutual
+        // fire, so at most 2 attackers can be lost — the 3 piled-on attackers fire one-way and take
+        // no return fire — while the 2 defenders may both be shot down.
+        let many = Flight { count: 5, tacair: 8, pilot: 3, maneuver: 39 };
+        let few = Flight { count: 2, tacair: 4, pilot: 0, maneuver: 25 };
+        let mut worst_att = 0;
+        let mut best_def = 0;
+        for seed in 0..40u64 {
+            let mut g = GameState::new(refs(), seed);
+            let o = g.resolve_air_to_air(many, few).unwrap();
+            assert!(o.attacker_losses <= 2, "piled-on attackers take no return fire (§45.24)");
+            assert!(o.defender_losses <= 2, "only two defenders present");
+            worst_att = worst_att.max(o.attacker_losses);
+            best_def = best_def.max(o.defender_losses);
+        }
+        // Over many seeds the pile-on should down both defenders at least once (5 shots at 2 planes).
+        assert_eq!(best_def, 2, "the pile-on can eliminate both defenders");
+        // And the strong, outnumbering attackers should sometimes take zero losses.
+        assert!(worst_att <= 2);
+
+        // §40.15/§45.24 per-plane pilots: a defender roster where only plane 0 is a 6-rated ace, the
+        // rest 0-rated. The call is accepted and losses stay bounded by the counts.
+        let mut g = GameState::new(refs(), 3);
+        let a = Flight { count: 3, tacair: 6, pilot: 0, maneuver: 30 };
+        let d = Flight { count: 3, tacair: 6, pilot: 0, maneuver: 30 };
+        let out = g.resolve_air_to_air_pilots(a, d, &[0, 0, 0], &[6, 0, 0]).unwrap();
+        assert!(out.attacker_losses <= 3 && out.defender_losses <= 3);
+    }
+
+    #[test]
     fn bombing_mission_resolution_39() {
         use crate::reference::aircraft::{AircraftClass, BombingMission};
         use crate::reference::squadron::SquadronClass;

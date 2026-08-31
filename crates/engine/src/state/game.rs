@@ -4869,6 +4869,22 @@ impl GameState {
             .unwrap_or(0)
     }
 
+    /// §40.15/§40.16: every flyable pilot's effective Rating for a squadron, sorted best-first. Each
+    /// flown plane is crewed by one pilot (the player assigns his best pilots first, §40.16), and a
+    /// plane's Pilot Rating is added to its own TacAir in that plane's air-to-air match-up (§45.24 —
+    /// planes never pool their strength). Planes beyond the roster fly with an untracked 0-rated
+    /// pilot. Used to give each match-up its crewing pilot rather than one flight-wide best.
+    pub fn squadron_pilot_ratings(&self, squadron: SquadronId) -> Vec<u32> {
+        let mut r: Vec<u32> = self
+            .pilots
+            .iter()
+            .filter(|p| p.squadron == Some(squadron) && p.may_fly())
+            .map(|p| p.rating.max(crate::rules::air::ace_rating_from_kills(p.kills)))
+            .collect();
+        r.sort_unstable_by(|a, b| b.cmp(a));
+        r
+    }
+
     /// §40.18: credit `kills` air-to-air kills to a squadron's flying pilot — the same best pilot
     /// that flew the interception (`squadron_pilot_bonus`). A squadron with only zero-rated,
     /// untracked pilots (§40.16) has no pilot to credit, so the kills are dropped.
@@ -5326,6 +5342,8 @@ impl GameState {
         flak_abort_roll: u32,
         bomb_roll: u32,
         night: bool,
+        interceptor_pilots: &[u32],
+        escort_pilots: &[u32],
     ) -> Option<BombingMissionOutcome> {
         use crate::reference::air_bombardment::WeaponPoints;
         use crate::reference::anti_aircraft::AaSection;
@@ -5344,7 +5362,7 @@ impl GameState {
             // may then attack the bombers.
             let mut attackers = cap;
             if let Some(esc) = escort {
-                if let Some(a2a) = self.resolve_air_to_air(cap, esc) {
+                if let Some(a2a) = self.resolve_air_to_air_pilots(cap, esc, interceptor_pilots, escort_pilots) {
                     escort_losses = a2a.defender_losses.min(esc.count);
                     let cap_lost = a2a.attacker_losses.min(cap.count);
                     attackers = Flight { count: cap.count - cap_lost, ..cap };
@@ -5365,7 +5383,7 @@ impl GameState {
                         .unwrap_or((0, 0))
                 };
                 let bombers = Flight { count: alive, tacair: b_tacair, pilot: 0, maneuver: b_maneuver };
-                if let Some(a2a) = self.resolve_air_to_air(attackers, bombers) {
+                if let Some(a2a) = self.resolve_air_to_air_pilots(attackers, bombers, interceptor_pilots, &[]) {
                     intercepted = a2a.defender_losses.min(alive);
                     if intercepted > 0 {
                         self.sgsus.get_mut(&squadron)?.lose_planes(intercepted);
@@ -5402,32 +5420,93 @@ impl GameState {
         Some(BombingMissionOutcome { flown, intercepted, destroyed, aborted, delivered_bomb_points: delivered, result, escort_losses })
     }
 
-    /// §45: resolve fighter-vs-fighter combat between an `attacker` and `defender` flight, one duel
-    /// per matched pair (min of the two counts), using the §45.4/§45.5 tables and this game's RNG
-    /// for the 2d6 rolls. Returns the losses each side takes (not applied to any squadron; the
-    /// caller removes them via `Sgsu::lose_planes`). `None` if the tables are unloaded.
+    /// §45: resolve air-to-air combat between an `attacker` and `defender` flight as **individual
+    /// plane-vs-plane match-ups** (§45.24 — "no planes ever add their strengths together"). Each
+    /// plane carries its own Pilot Rating (§40.15/§45.24): `attacker_pilots`/`defender_pilots` are
+    /// the per-plane ratings, best-first (a shorter slice means the remaining planes fly 0-rated; an
+    /// **empty** slice falls back to the flight's single `pilot` for every plane — for callers that
+    /// have not threaded a roster). The larger side covers every plane of the smaller side with one
+    /// plane, then its extras pile on (§45.23): a piled-on plane fires one-way (the target already
+    /// fired at its primary attacker, §45.24). Each match-up rolls its own 2d6 on the §45.4/§45.5
+    /// tables. Returns the losses each side takes (not applied; the caller removes them via
+    /// `Sgsu::lose_planes`). `None` if the tables are unloaded.
     pub fn resolve_air_to_air(&mut self, attacker: Flight, defender: Flight) -> Option<AirToAirOutcome> {
-        let pairs = attacker.count.min(defender.count);
-        // The differential is identical for every pair in this operational abstraction.
-        let attacker_diff = self.reference.air_to_air.as_ref()?.differential(
-            attacker.tacair + attacker.pilot as i32,
-            defender.tacair + defender.pilot as i32,
-            attacker.maneuver,
-            defender.maneuver,
-        );
+        self.resolve_air_to_air_pilots(attacker, defender, &[], &[])
+    }
+
+    /// [`resolve_air_to_air`] with explicit per-plane pilot rosters (best-first). See that method.
+    pub fn resolve_air_to_air_pilots(
+        &mut self,
+        attacker: Flight,
+        defender: Flight,
+        attacker_pilots: &[u32],
+        defender_pilots: &[u32],
+    ) -> Option<AirToAirOutcome> {
+        self.reference.air_to_air.as_ref()?; // require the tables
+        // Per-plane pilot rating: an empty roster falls back to the flight-wide best `pilot`.
+        let pilot_at = |slice: &[u32], i: u32, uniform: u32| -> u32 {
+            if slice.is_empty() { uniform } else { slice.get(i as usize).copied().unwrap_or(0) }
+        };
+        // The differential for attacker plane `ai` vs defender plane `di` (their own pilots).
+        let diff = |g: &Self, ai: u32, di: u32| -> i32 {
+            let ap = pilot_at(attacker_pilots, ai, attacker.pilot);
+            let dp = pilot_at(defender_pilots, di, defender.pilot);
+            g.reference.air_to_air.as_ref().unwrap().differential(
+                attacker.tacair + ap as i32,
+                defender.tacair + dp as i32,
+                attacker.maneuver,
+                defender.maneuver,
+            )
+        };
         let mut out = AirToAirOutcome::default();
-        for _ in 0..pairs {
+        let (a, d) = (attacker.count, defender.count);
+        if a == 0 || d == 0 {
+            return Some(out);
+        }
+        let pairs = a.min(d);
+        // Track which planes are already killed so a piled-on shot at a downed plane (§45.19) and a
+        // primary duel do not double-count losses.
+        let mut att_dead = vec![false; a as usize];
+        let mut def_dead = vec![false; d as usize];
+        // Primary match-ups: plane i of each side (mutual fire, §45.5 fire order).
+        for i in 0..pairs {
             let r1 = self.rng.sequential_read() as u32;
             let r2 = self.rng.sequential_read() as u32;
-            let tables = self.reference.air_to_air.as_ref()?;
+            let ad = diff(self, i, i);
             let (ak, dk) = crate::rules::air::air_to_air_duel(
-                tables, attacker_diff, attacker.pilot, defender.pilot, r1, r2,
+                self.reference.air_to_air.as_ref()?,
+                ad,
+                pilot_at(attacker_pilots, i, attacker.pilot),
+                pilot_at(defender_pilots, i, defender.pilot),
+                r1,
+                r2,
             );
-            if ak {
-                out.attacker_losses += 1;
+            if ak { att_dead[i as usize] = true; out.attacker_losses += 1; }
+            if dk { def_dead[i as usize] = true; out.defender_losses += 1; }
+        }
+        // §45.23 pile-on: the larger side's extra planes each fire one-way at a covered target of
+        // the smaller side (round-robin). The target does not fire back (it engaged its primary).
+        if a > d {
+            for k in d..a {
+                let tgt = (k % d) as usize;
+                if def_dead[tgt] { continue; }
+                let r = self.rng.sequential_read() as u32;
+                if self.reference.air_to_air.as_ref()?.is_kill(diff(self, k, tgt as u32), r) {
+                    def_dead[tgt] = true;
+                    out.defender_losses += 1;
+                }
             }
-            if dk {
-                out.defender_losses += 1;
+        } else if d > a {
+            for k in a..d {
+                let tgt = (k % a) as usize;
+                if att_dead[tgt] { continue; }
+                let r = self.rng.sequential_read() as u32;
+                // Defender plane `k` fires one-way at attacker `tgt`: the differential is from the
+                // defender's perspective (negate the attacker-relative differential).
+                if self.reference.air_to_air.as_ref()?.is_kill(-diff(self, tgt as u32, k), r) {
+                    att_dead[tgt] = true;
+                    out.attacker_losses += 1;
+                }
             }
         }
         Some(out)
