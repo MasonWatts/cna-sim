@@ -3548,9 +3548,12 @@ impl GameState {
     }
 
     /// §56.15: plan an Axis convoy on `lane` (validated available this Game-Turn, §56.14) carrying
-    /// the given tonnages, arriving at the lane's `destination` on `arrival_gt`. The total tonnage
-    /// must not exceed `allowable_tonnage` (§56.2, from the Convoy Level Chart), and only one convoy
-    /// per lane per Game-Turn is allowed (§56.12). Returns whether the convoy was accepted.
+    /// the given tonnages, arriving at the lane's `destination` on `arrival_gt`. The convoy must fit
+    /// the turn's **actual** rolled allowance (§56.2/§56.21, `allowable_tonnage`) *after* everything
+    /// already committed to that Game-Turn — planned Replacement/Truck production (which has priority
+    /// over supplies, §20.64) and any earlier convoys' supply (§20.62). So a supply convoy may claim
+    /// only the tonnage production has not already reserved. Only one convoy per lane per Game-Turn
+    /// (§56.12). Returns whether the convoy was accepted.
     #[allow(clippy::too_many_arguments)]
     pub fn plan_convoy(
         &mut self,
@@ -3567,7 +3570,10 @@ impl GameState {
             return false;
         }
         let total = fuel_tons + ammo_tons + stores_tons + replacement_tons;
-        if total > allowable_tonnage {
+        // §20.62/§20.64: the whole Game-Turn's lift — priority Replacement/Truck production plus any
+        // convoys already booked — must fit the actual rolled allowance, so supplies yield to
+        // production rather than the two merely being bounded separately.
+        if self.axis_shipping_committed(arrival_gt) + total > allowable_tonnage {
             return false;
         }
         if self

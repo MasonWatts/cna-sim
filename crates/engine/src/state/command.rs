@@ -1564,10 +1564,15 @@ impl GameState {
         // planned truck production (§20.66a) and supplies for the same tonnage. Reject if this
         // order, plus everything already committed to that Game-Turn (replacement production, Axis
         // truck production, and supply convoys — see `axis_shipping_committed`), would exceed the
-        // best-case (die-6) allowance for the turn's month. Commonwealth production lands via the
-        // strategic supply line (Alexandria), not Axis convoys, so it is not gated. (Bounded model,
-        // D15 step 8: uses the die-6 ceiling rather than the turn's actual die roll — unknown two
-        // turns out at planning time. With no Convoy Level Chart loaded the gate is skipped.)
+        // best-case (die-6) allowance for the turn's month. This plan-time check is only the
+        // upper bound (production is planned two turns out, §20.63, before the tonnage die is rolled
+        // §56.21); the *actual* binding happens at convoy time, where a supply convoy must fit the
+        // rolled allowance after this priority production lift (§20.64 — Replacement Points have
+        // priority over supplies; see `plan_convoy`). Commonwealth production lands via the strategic
+        // supply line (Alexandria), not Axis convoys, so it is not gated. With no Convoy Level Chart
+        // loaded the gate is skipped. (Residual: production planned to the die-6 ceiling that the
+        // actual roll cannot cover still all arrives — deferring that excess needs a stored per-turn
+        // roll and is left as the one bounded simplification.)
         if side == crate::reference::units::Side::Axis && tonnage > 0 {
             if let Some(chart) = self.reference.convoy_levels.as_ref() {
                 let d = crate::state::game::date_of(arrival_game_turn);

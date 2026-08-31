@@ -7606,6 +7606,40 @@ mod tests {
     }
 
     #[test]
+    fn convoy_supply_yields_to_production_20_64() {
+        // §20.64: Replacement Points have priority in Shipping Space over supplies. Once production
+        // is planned for an arrival Game-Turn, a supply convoy may claim only the tonnage that
+        // production has left — binding against the actual rolled allowance.
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{date_of, GameState, Phase};
+
+        let mut refs = ReferenceData::new();
+        refs.load_production_chart(
+            Nationality::German,
+            include_str!("../../../data/reference/german-production.ron"),
+        )
+        .unwrap();
+        refs.load_convoy_levels(include_str!("../../../data/reference/convoy-levels.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.game_turn = 40;
+        g.phase = Phase::Organization;
+
+        // Plan 3 German Infantry Replacement Points (30 t each = 90 t) arriving GT42 (Axis +2).
+        assert!(matches!(
+            g.apply(Command::PlanProduction { nationality: Nationality::German, item: "Infantry".into(), count: 3 }),
+            Ok(CommandOutcome::ProductionPlanned { .. })
+        ));
+        assert_eq!(g.axis_shipping_committed(42), 90);
+
+        let d = date_of(42);
+        let allowable = g.reference.convoy_levels.as_ref().unwrap().max_tonnage_for(d.year, d.month).unwrap();
+        // §20.64: supplies get only `allowable − 90`. One ton over is refused …
+        assert!(!g.plan_convoy(4, "Tripoli", 42, 0, 0, allowable - 90 + 1, 0, allowable));
+        // … exactly the remaining tonnage is accepted.
+        assert!(g.plan_convoy(4, "Tripoli", 42, 0, 0, allowable - 90, 0, allowable));
+    }
+
+    #[test]
     fn truck_and_infantry_production_20_78() {
         use crate::reference::logistics::TruckKind;
         use crate::reference::units::Side;
