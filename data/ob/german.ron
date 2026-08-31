@@ -9,6 +9,13 @@
 // battalions use "i" here. Tank/Panzer battalions use "f" (the Tank Bn-Eq code, per the corrected
 // characteristics). Weapon-name strings are mapped to §4.47-49 keys; a few genuinely unkeyed strings
 // (7.5cm light infantry guns, Pz I) are Organic/omitted rather than invented.
+//
+// FULL ROSTER PROMOTED (2026-08-31): the remaining five §4.44c sheets were added from the
+// chart-verified transcription — 300th Oasis Battalion, Unassigned Infantry Units, Kampfgruppen
+// HQ's (dynamic pool), Non-Divisional Artillery Units, and Unassigned Anti-Air Units — for all
+// 11 German OA formations. Ids copied verbatim from the sheets; every weapon name maps to an
+// exact §4.49 key in data/reference/weapons/german.ron. Pool sheets (no owning HQ) list their
+// units independently (parent ""); only the 155th Artillery Regt keeps its I/II/III battalions.
 (
     formations: [
         (
@@ -71,6 +78,29 @@
                 (name: "33rd Pioneer Bn",          abbr: "33 Pi",  id: "gg", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 28, stage: 1), parent: "15th Panzer Div HQ"),
             ],
         ),
+        // 300th Oasis Battalion (§4.44c, PDF p163). An administrative — not operational — HQ:
+        // the thirteen companies are independent company-level units (footnote a), so each
+        // carries parent "". All arrive at full TOE (N) on id "r" (Infantry Coy-Equivalent).
+        (
+            name: "300th Oasis Battalion",
+            org_size: StandardBrigade,
+            basic_morale: 0,
+            units: [
+                (name: "1st Oasis Koy",  abbr: "1",  id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 25, stage: 1), parent: ""),
+                (name: "2nd Oasis Koy",  abbr: "2",  id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 25, stage: 1), parent: ""),
+                (name: "3rd Oasis Koy",  abbr: "3",  id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 25, stage: 2), parent: ""),
+                (name: "4th Oasis Koy",  abbr: "4",  id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 27, stage: 1), parent: ""),
+                (name: "5th Oasis Koy",  abbr: "5",  id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 29, stage: 2), parent: ""),
+                (name: "6th Oasis Koy",  abbr: "6",  id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 30, stage: 2), parent: ""),
+                (name: "7th Oasis Koy",  abbr: "7",  id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 30, stage: 2), parent: ""),
+                (name: "8th Oasis Koy",  abbr: "8",  id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 31, stage: 2), parent: ""),
+                (name: "9th Oasis Koy",  abbr: "9",  id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 31, stage: 2), parent: ""),
+                (name: "10th Oasis Koy", abbr: "10", id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 33, stage: 3), parent: ""),
+                (name: "11th Oasis Koy", abbr: "11", id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 34, stage: 3), parent: ""),
+                (name: "12th Oasis Koy", abbr: "12", id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 35, stage: 2), parent: ""),
+                (name: "13th Oasis Koy", abbr: "13", id: "r", comp: Organic(Normal), org_size: Company, arrival: Turn(game_turn: 39, stage: 1), parent: ""),
+            ],
+        ),
         (
             name: "164 Leichte Afrika Division",
             org_size: Division,
@@ -110,6 +140,101 @@
                 (name: "III Bn (Hübner)",         abbr: "III Hub", id: "h", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 93, stage: 1), parent: "Ramcke Bde HQ", airdroppable: true),
                 (name: "IV Bn (Schweiger)",       abbr: "IV Sch", id: "h", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 87, stage: 2), parent: "Ramcke Bde HQ", airdroppable: true),
                 (name: "V Bn (Burchardt)",        abbr: "V Brc",  id: "h", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 86, stage: 2), parent: "Ramcke Bde HQ", airdroppable: true),
+            ],
+        ),
+        // Unassigned Infantry Units (§4.44c, PDF p164). Independent counters (parent ""): the
+        // Deutsches Afrika Korps HQ (Rommel, id "a") plus the Schwere-Infanterie / Brandenburg /
+        // naval-engineer companies that begin unattached and were parcelled out to divisions.
+        // "Koy" = company. DAK HQ is a Korps HQ, sized Division (no Corps echelon exists).
+        (
+            name: "Unassigned Infantry Units",
+            org_size: StandardBrigade,
+            basic_morale: 1,
+            units: [
+                (name: "Deutsches Afrika Korps HQ", abbr: "Rommel",  id: "a",  comp: Organic(Normal), org_size: Division, arrival: Turn(game_turn: 20, stage: 2), parent: ""),
+                (name: "707 Schwere Inf Koy",       abbr: "707",     id: "t",  comp: Organic(Normal), org_size: Company,  arrival: Turn(game_turn: 66, stage: 2), parent: ""),
+                (name: "708 Schwere Inf Koy",       abbr: "708",     id: "t",  comp: Organic(Normal), org_size: Company,  arrival: Turn(game_turn: 76, stage: 3), parent: ""),
+                (name: "13th Koy/Brandenburg Regt", abbr: "13/Bdbg", id: "s",  comp: Organic(Normal), org_size: Company,  arrival: Turn(game_turn: 85, stage: 1), parent: ""),
+                (name: "778 Naval Engineer Koy",    abbr: "778/Nvl", id: "gg", comp: Organic(Normal), org_size: Company,  arrival: Turn(game_turn: 66, stage: 3), parent: ""),
+            ],
+        ),
+        // Kampfgruppen HQ's (§4.44c, PDF p165) — prose-only. Ad-hoc brigade-level battlegroup
+        // HQs, all sharing ID Code "b"; formed/disbanded by attachment. Modeled as a dynamic
+        // single-HQ pool (matching the Italian Battle Groups). Basic Morale = attached units'.
+        (
+            name: "Kampfgruppen HQ's",
+            org_size: StandardBrigade,
+            basic_morale: 0,
+            dynamic: true,
+            units: [
+                (name: "Kampfgruppe HQ", abbr: "KG", id: "b", comp: Organic(Normal), org_size: StandardBrigade, arrival: Deployed, parent: ""),
+            ],
+        ),
+        // Non-Divisional Artillery Units (§4.44c, PDF p165). The regiment/command HQs (1st & 2nd
+        // Afrika, ArKo 104, 155th) are empty pool HQs (parent ""); only the 155th's I/II/III
+        // battalions keep a regimental parent. All other batteries/battalions are independent.
+        // II/155 is the reassigned I/75 counter (footnote e): no weapon/arrival on the sheet ->
+        // Organic(Normal)/Deployed. Weapon strings map to §4.49 keys; "15cm Med Gun" and "15cm
+        // Gun" both -> "15cm (K18) Gun" (no distinct "15cm Medium Gun" key). NOTE: 362 Artillery
+        // Bty carries id "x" verbatim from the sheet (an anti-tank code) although it fields a
+        // 17cm gun — copied as printed, not reclassified.
+        (
+            name: "Non-Divisional Artillery Units",
+            org_size: StandardBrigade,
+            basic_morale: 1,
+            units: [
+                (name: "1st Afrika Arty Regt HQ",  abbr: "1 Afr",    id: "b", comp: Organic(Normal), org_size: StandardBrigade, arrival: Turn(game_turn: 80, stage: 2), parent: ""),
+                (name: "2nd Afrika Arty Regt HQ",  abbr: "2 Afr",    id: "b", comp: Organic(Normal), org_size: StandardBrigade, arrival: Turn(game_turn: 97, stage: 3), parent: ""),
+                (name: "Artillery Command 104 HQ", abbr: "ArKo 104", id: "b", comp: Organic(Normal), org_size: StandardBrigade, arrival: Turn(game_turn: 31, stage: 3), parent: ""),
+                (name: "149 Coastal Def Arty Bn",  abbr: "149", id: "v", comp: Weapons([("10.5cm (K18) Medium Gun", 3)]), org_size: Battalion, arrival: Turn(game_turn: 45, stage: 1), parent: ""),
+                (name: "362 Artillery Bty",        abbr: "362", id: "x", comp: Weapons([("17cm (K18) Gun", 1)]), org_size: Company, arrival: Turn(game_turn: 30, stage: 2), parent: ""),
+                (name: "408 SP Artillery Bn",      abbr: "408", id: "v", comp: Weapons([("15cm SP Gun", 3)]), org_size: Battalion, arrival: Turn(game_turn: 30, stage: 2), parent: ""),
+                (name: "528 Artillery Bn",         abbr: "528", id: "v", comp: Weapons([("155mm (french 1915 short)", 3)]), org_size: Battalion, arrival: Turn(game_turn: 24, stage: 3), parent: ""),
+                (name: "155th Artillery Regt HQ",  abbr: "155", id: "b", comp: Organic(Normal), org_size: StandardBrigade, arrival: Turn(game_turn: 35, stage: 3), parent: ""),
+                (name: "I/155 Artillery Bn",       abbr: "I/155",   id: "v", comp: Weapons([("15cm (K18) Gun", 3)]), org_size: Battalion, arrival: Turn(game_turn: 32, stage: 3), parent: "155th Artillery Regt HQ"),
+                (name: "II/155 Artillery Bn",      abbr: "II/155",  id: "v", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "155th Artillery Regt HQ", notes: "reassigned I/75 counter (footnote e): no weapon/arrival printed on the sheet"),
+                (name: "III/155 Artillery Bn",     abbr: "III/155", id: "v", comp: Weapons([("15cm (K18) Gun", 3)]), org_size: Battalion, arrival: Turn(game_turn: 34, stage: 2), parent: "155th Artillery Regt HQ"),
+                (name: "364 Artillery Bty",        abbr: "364", id: "w", comp: Weapons([("17cm (K18) Gun", 1)]), org_size: Company, arrival: Turn(game_turn: 74, stage: 1), parent: ""),
+                (name: "523 Coastal Def Arty Bn",  abbr: "523", id: "v", comp: Weapons([("155mm (french 1915 short)", 3)]), org_size: Battalion, arrival: Turn(game_turn: 24, stage: 3), parent: ""),
+                (name: "526 Coastal Def Arty Bn",  abbr: "526", id: "v", comp: Weapons([("10.5cm (K18) Medium Gun", 3)]), org_size: Battalion, arrival: Turn(game_turn: 71, stage: 3), parent: ""),
+                (name: "529 Coastal Def Arty Bn",  abbr: "529", id: "v", comp: Weapons([("155mm (french 1915 short)", 3)]), org_size: Battalion, arrival: Turn(game_turn: 24, stage: 2), parent: ""),
+                (name: "532 Coastal Def Arty Bn",  abbr: "532", id: "v", comp: Weapons([("155mm (french 1915 short)", 3)]), org_size: Battalion, arrival: Turn(game_turn: 24, stage: 2), parent: ""),
+                (name: "533 Coastal Def Arty Bn",  abbr: "533", id: "v", comp: Weapons([("10.5cm (K18) Medium Gun", 3)]), org_size: Battalion, arrival: Turn(game_turn: 66, stage: 1), parent: ""),
+                (name: "557 Artillery Bn",         abbr: "557", id: "v", comp: Weapons([("15cm (sFH18) Medium Field Howitzer", 3)]), org_size: Battalion, arrival: Turn(game_turn: 36, stage: 2), parent: ""),
+                (name: "I/722 Artillery Bty",      abbr: "I/722", id: "w", comp: Weapons([("15cm (sFH18) Medium Field Howitzer", 1)]), org_size: Company, arrival: Turn(game_turn: 68, stage: 2), parent: ""),
+                (name: "I/902 Artillery Bty",      abbr: "1/902", id: "w", comp: Weapons([("21cm (mrs18) Howitzer", 1)]), org_size: Company, arrival: Turn(game_turn: 40, stage: 3), parent: ""),
+            ],
+        ),
+        // Unassigned Anti-Air Units (§4.44c, PDF p166). Independent Flak battalions/batteries
+        // (parent ""); the 19th/20th Flak Division admin HQs are omitted per footnote a. Light
+        // AA -> "Light AA (20mm & 37mm Flak)"; Heavy AA -> "Heavy AA (88mm Flak)".
+        (
+            name: "Unassigned Anti-Air Units",
+            org_size: StandardBrigade,
+            basic_morale: 1,
+            units: [
+                (name: "30th Flak Battery",  abbr: "30",     id: "dd", comp: Weapons([("Heavy AA (88mm Flak)", 1)]),  org_size: Company,   arrival: Turn(game_turn: 39, stage: 1), parent: ""),
+                (name: "II/5 Flak Bn",       abbr: "II/5",   id: "cc", comp: Weapons([("Heavy AA (88mm Flak)", 3)]),  org_size: Battalion, arrival: Turn(game_turn: 93, stage: 2), parent: ""),
+                (name: "I/6 Flak Bn",        abbr: "I/6",    id: "cc", comp: Weapons([("Heavy AA (88mm Flak)", 4)]),  org_size: Battalion, arrival: Turn(game_turn: 68, stage: 1), parent: ""),
+                (name: "II/12 Flak Bn",      abbr: "II/12",  id: "aa", comp: Weapons([("Light AA (20mm & 37mm Flak)", 8)]),  org_size: Battalion, arrival: Turn(game_turn: 92, stage: 2), parent: ""),
+                (name: "I/18 Flak Bn",       abbr: "I/18",   id: "cc", comp: Weapons([("Heavy AA (88mm Flak)", 4)]),  org_size: Battalion, arrival: Turn(game_turn: 52, stage: 3), parent: ""),
+                (name: "II/25 Flak Bn",      abbr: "II/25",  id: "cc", comp: Weapons([("Heavy AA (88mm Flak)", 4)]),  org_size: Battalion, arrival: Turn(game_turn: 59, stage: 2), parent: ""),
+                (name: "I/43 Flak Bn",       abbr: "I/43",   id: "aa", comp: Weapons([("Light AA (20mm & 37mm Flak)", 8)]),  org_size: Battalion, arrival: Turn(game_turn: 67, stage: 1), parent: ""),
+                (name: "II/46 Flak Bn",      abbr: "II/46",  id: "bb", comp: Weapons([("Light AA (20mm & 37mm Flak)", 6)]),  org_size: Battalion, arrival: Turn(game_turn: 88, stage: 2), parent: ""),
+                (name: "I/53 Flak Bn",       abbr: "I/53",   id: "bb", comp: Weapons([("Light AA (20mm & 37mm Flak)", 6)]),  org_size: Battalion, arrival: Turn(game_turn: 59, stage: 2), parent: ""),
+                (name: "I/54 Flak Bn",       abbr: "I/54",   id: "bb", comp: Weapons([("Light AA (20mm & 37mm Flak)", 6)]),  org_size: Battalion, arrival: Turn(game_turn: 89, stage: 2), parent: ""),
+                (name: "114 Flak Bn",        abbr: "114",    id: "dd", comp: Weapons([("Heavy AA (88mm Flak)", 2)]),  org_size: Battalion, arrival: Turn(game_turn: 66, stage: 2), parent: ""),
+                (name: "192 Flak Bn",        abbr: "192",    id: "bb", comp: Weapons([("Light AA (20mm & 37mm Flak)", 5)]),  org_size: Battalion, arrival: Turn(game_turn: 61, stage: 1), parent: ""),
+                (name: "211 Flak Bn",        abbr: "211",    id: "aa", comp: Weapons([("Light AA (20mm & 37mm Flak)", 12)]), org_size: Battalion, arrival: Turn(game_turn: 89, stage: 3), parent: ""),
+                (name: "243 Flak Bn",        abbr: "243",    id: "aa", comp: Weapons([("Light AA (20mm & 37mm Flak)", 12)]), org_size: Battalion, arrival: Turn(game_turn: 91, stage: 1), parent: ""),
+                (name: "329 Flak Bn",        abbr: "329",    id: "aa", comp: Weapons([("Light AA (20mm & 37mm Flak)", 8)]),  org_size: Battalion, arrival: Turn(game_turn: 91, stage: 3), parent: ""),
+                (name: "358 Flak Bn",        abbr: "358",    id: "bb", comp: Weapons([("Light AA (20mm & 37mm Flak)", 6)]),  org_size: Battalion, arrival: Turn(game_turn: 92, stage: 2), parent: ""),
+                (name: "368 Heavy Flak Bn",  abbr: "368",    id: "cc", comp: Weapons([("Heavy AA (88mm Flak)", 3)]),  org_size: Battalion, arrival: Turn(game_turn: 60, stage: 3), parent: ""),
+                (name: "442 Flak Bn",        abbr: "442",    id: "aa", comp: Weapons([("Light AA (20mm & 37mm Flak)", 10)]), org_size: Battalion, arrival: Turn(game_turn: 66, stage: 3), parent: ""),
+                (name: "612 Army Flak Bn",   abbr: "612",    id: "aa", comp: Weapons([("Light AA (20mm & 37mm Flak)", 8)]),  org_size: Battalion, arrival: Turn(game_turn: 58, stage: 1), parent: ""),
+                (name: "617 Army Flak Bn",   abbr: "617",    id: "aa", comp: Weapons([("Light AA (20mm & 37mm Flak)", 12)]), org_size: Battalion, arrival: Turn(game_turn: 70, stage: 2), parent: ""),
+                (name: "841 Light Flak Bn",  abbr: "841 Lt", id: "bb", comp: Weapons([("Light AA (20mm & 37mm Flak)", 6)]),  org_size: Battalion, arrival: Turn(game_turn: 61, stage: 1), parent: ""),
+                (name: "860 Flak Bn",        abbr: "860",    id: "aa", comp: Weapons([("Light AA (20mm & 37mm Flak)", 8)]),  org_size: Battalion, arrival: Turn(game_turn: 92, stage: 3), parent: ""),
             ],
         ),
         (

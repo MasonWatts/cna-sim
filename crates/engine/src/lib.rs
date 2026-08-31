@@ -2450,8 +2450,8 @@ mod tests {
         refs.load_order_of_battle(Nationality::German, include_str!("../../../data/ob/german.ron"))
             .unwrap();
         let ob = refs.orders_of_battle.get(&Nationality::German).unwrap();
-        // Curated first cut: the six DAK combat formations.
-        assert_eq!(ob.formations.len(), 6);
+        // Full §4.44c roster: all 11 German OA formations.
+        assert_eq!(ob.formations.len(), 11);
 
         // Fallschirmjaeger-Brigade Ramcke (§42.41): its five airborne battalions are airdrop-
         // eligible; the brigade HQ is not. This gives the German side an AirdropUnit formation.
