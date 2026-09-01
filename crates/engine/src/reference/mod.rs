@@ -23,6 +23,7 @@ pub mod anti_aircraft;
 pub mod convoy;
 pub mod equivalent_weights;
 pub mod squadron;
+pub mod patrol;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

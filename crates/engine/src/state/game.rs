@@ -815,6 +815,14 @@ pub struct GameState {
     /// supply convoys and §20.62 production bind against the same figure. Absent ⇒ not yet rolled.
     #[serde(default)]
     pub axis_shipping_rolled: std::collections::HashMap<u32, u32>,
+    /// §16.21: sides that engaged in Anti-Armor or Close Assault this Operations Stage — such a
+    /// (phasing) side may not Patrol this stage. Reset each stage.
+    #[serde(default)]
+    pub land_combat_this_stage: std::collections::HashSet<Side>,
+    /// §16.21: hexes that underwent Barrage or Air Bombardment this Operations Stage — they may not
+    /// be reconnoitred by a Patrol this stage. Reset each stage.
+    #[serde(default)]
+    pub barraged_hexes_this_stage: std::collections::HashSet<HexCoord>,
     /// Truck Points produced (§20.78A / §20.66a) awaiting arrival at their delivery city.
     #[serde(default)]
     pub pending_trucks: Vec<PendingTruckDelivery>,
@@ -1022,6 +1030,8 @@ impl GameState {
             pending_replacements: Vec::new(),
             production_orders: Vec::new(),
             axis_shipping_rolled: std::collections::HashMap::new(),
+            land_combat_this_stage: std::collections::HashSet::new(),
+            barraged_hexes_this_stage: std::collections::HashSet::new(),
             pending_trucks: Vec::new(),
             truck_pools: std::collections::HashMap::new(),
             axis_truck_orders: Vec::new(),
@@ -4273,6 +4283,65 @@ impl GameState {
             .is_some_and(|ca| !ca.off.parenthesized || !ca.def.parenthesized)
     }
 
+    /// §16.11: whether `id` may supply Patrol Points — a Reconnaissance/Armored-Car unit, a
+    /// light-tank unit (Italian CV 33, British Mark VI Light, or German Pz I), or motorized infantry.
+    pub fn patrol_source_ok(&self, id: UnitId) -> bool {
+        let Some(u) = self.units.get(&id) else { return false };
+        if self.is_recce_unit(id) {
+            return true;
+        }
+        if let Composition::Weapons { groups } = &u.composition {
+            if groups.iter().any(|g| matches!(g.system.as_str(), "CV 33 (L3/35)" | "Mark VI Light" | "Pz I")) {
+                return true;
+            }
+        }
+        let ut = self
+            .reference
+            .unit_characteristics
+            .get(&u.nationality)
+            .and_then(|m| m.get(&u.id_code))
+            .map(|c| c.unit_type.as_str())
+            .unwrap_or("");
+        let infantry = matches!(u.composition, Composition::Organic { .. }) || ut.contains("Infantry");
+        infantry && self.unit_is_motorized(id)
+    }
+
+    /// Remove up to `n` TOE Strength Points from `id`, returning the number removed (Organic TOE, or
+    /// weapon-group counts in order). Used by §16 Patrol casualties.
+    pub(crate) fn remove_unit_toe(&mut self, id: UnitId, n: u32) -> u32 {
+        let Some(u) = self.units.get_mut(&id) else { return 0 };
+        match &mut u.composition {
+            Composition::Organic { current_toe } => {
+                let t = (*current_toe).min(n);
+                *current_toe -= t;
+                t
+            }
+            Composition::Weapons { groups } => {
+                let mut rem = n;
+                let mut removed = 0;
+                for g in groups.iter_mut() {
+                    if rem == 0 {
+                        break;
+                    }
+                    let t = g.count.min(rem);
+                    g.count -= t;
+                    rem -= t;
+                    removed += t;
+                }
+                removed
+            }
+        }
+    }
+
+    /// §16.51: a unit's characteristics `unit_type` string (for reconnaissance disclosure).
+    pub fn unit_type_name(&self, id: UnitId) -> String {
+        self.units
+            .get(&id)
+            .and_then(|u| self.reference.unit_characteristics.get(&u.nationality).and_then(|m| m.get(&u.id_code)))
+            .map(|c| c.unit_type.clone())
+            .unwrap_or_default()
+    }
+
     /// The side occupying a city hex for victory (§64.73): the first combat unit of at least
     /// 1 TOE effectively there that also passes the §64.73 supply-adequacy test (enough Stores/
     /// Water for a week and Fuel/Ammo to move 20 CP and fire 3×, via `unit_supply_adequate`).
@@ -5085,6 +5154,8 @@ impl GameState {
     ) {
         use crate::reference::aircraft::BombingMission as M;
         let enemy = bomber_side.opponent();
+        // §16.21: an air-bombed hex may not be reconnoitred this stage.
+        self.barraged_hexes_this_stage.insert(target);
         match mission {
             M::Personnel => {
                 // §41.31: units in a major city may not be bombed until its Fortification Level is
@@ -6252,6 +6323,10 @@ impl GameState {
         // is considered destroyed.
         self.axis_rail_tons_used = 0;
         self.axis_rail_dir = None;
+        // §16.21: the Patrol eligibility (no AA/CA combat this stage) and the reconnoitre-ban on
+        // barraged/bombed hexes are per-stage.
+        self.land_combat_this_stage.clear();
+        self.barraged_hexes_this_stage.clear();
         if self.axis_rolling_stock_tons > 0 && self.axis_rail_contiguous_max() < 5 {
             self.axis_rolling_stock_tons = 0;
         }

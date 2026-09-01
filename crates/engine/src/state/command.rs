@@ -156,6 +156,23 @@ pub enum Command {
         unit: UnitId,
         path: Vec<HexCoord>,
     },
+    /// §16 Patrol & Reconnaissance: the phasing player detaches `patrol_points` (origin unit → TOE
+    /// Strength Points) to reconnoitre the enemy-occupied `target` (≤5 hexes). Resolved on the §16.6
+    /// Survival, §16.7 Reconnaissance and §16.8 Objective-Loss tables with the supplied dice. The
+    /// non-phasing player's disclosures are given in `reveals` (unit → reported TOE, within ±2 of
+    /// actual, §16.51) and his Objective-Loss casualties in `loss_choice` (unit → TOE removed);
+    /// `exclude` names units the patroller already knows and does not wish revealed (§16.55). Patrol
+    /// Phase. Returns a one-time [`PatrolReport`] (§16 disclosures are not persisted; decision 2026-08-31).
+    Patrol {
+        patrol_points: Vec<(UnitId, u32)>,
+        target: HexCoord,
+        exclude: Vec<UnitId>,
+        reveals: Vec<(UnitId, i32)>,
+        loss_choice: Vec<(UnitId, u32)>,
+        survival_die: u32,
+        recon_die: u32,
+        loss_die: u32,
+    },
     /// Off-map movement (§8.8): advance an off-map unit one Operations Stage in `direction`,
     /// entering the map at the junction hex (Nofilia) when it completes the last leg toward it.
     MoveOffMap {
@@ -497,6 +514,31 @@ pub enum Command {
     },
 }
 
+/// §16.51: the information a Patrol garners about one enemy unit — its historical designation,
+/// type, whether it is motorized, and its reported TOE Strength (the defender's chosen value within
+/// ±2 of actual). A one-time snapshot; not stored in game state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevealedUnit {
+    pub unit: UnitId,
+    pub designation: String,
+    pub unit_type: String,
+    pub motorized: bool,
+    pub reported_strength: i32,
+}
+
+/// §16 Patrol outcome: the patroller's losses, the reconnaissance disclosures (§16.5/§16.51), and
+/// the casualties the patrol inflicted on the reconnoitred hex (§16.8).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatrolReport {
+    pub patroller_killed: u32,
+    pub patroller_captured: u32,
+    /// True if every Patrol Point was lost (§16.33 — no information; §16.34 Captured→Killed).
+    pub wiped_out: bool,
+    pub revealed: Vec<RevealedUnit>,
+    pub patrollee_killed: u32,
+    pub patrollee_captured: u32,
+}
+
 /// The result of successfully applying a [`Command`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandOutcome {
@@ -514,6 +556,8 @@ pub enum CommandOutcome {
     Reacted,
     /// A Retreat Before Assault was carried out (§13); `cp` = tenths of a CP expended.
     RetreatedBeforeAssault { cp: i32 },
+    /// §16 Patrol result — a one-time reconnaissance report plus the casualties on both sides.
+    Patrol(PatrolReport),
     /// An off-map movement step was carried out (§8.8).
     OffMapMoved(crate::state::game::OffMapMove),
     /// A convoy was planned (§56.15).
@@ -736,6 +780,22 @@ pub enum CommandError {
     /// §13.24: a unit not beginning the step adjacent to an enemy combat unit may retreat at most
     /// 4 CP (or one hex).
     RetreatBeforeAssaultTooFar,
+    /// §16: the patrol is not permitted — the side engaged in Anti-Armor/Close Assault this stage
+    /// (§16.21), an origin unit is ineligible (§16.11) or at Cohesion ≤ −8 (§16.15), or an
+    /// origin/target hex is in a storm (§16.17).
+    PatrolNotAllowed,
+    /// §16: the target is not a legal reconnaissance hex — not enemy-occupied, over five hexes away
+    /// (§16.22), or barraged/bombed this stage (§16.21).
+    PatrolTargetInvalid,
+    /// §16.13/§16.14: at most 2 Patrol Points per origin hex and 3 in total.
+    PatrolPointLimit,
+    /// §16: the non-Phasing player's disclosures do not satisfy the Reconnaissance result — wrong
+    /// number of units, an ineligible or excluded unit (§16.53/§16.54/§16.55), or a reported
+    /// strength not within ±2 of actual (§16.51).
+    PatrolRevealMismatch,
+    /// §16.8/§16.34: the chosen Objective-Loss casualties do not match the rolled result, or are not
+    /// taken from a legal unit.
+    PatrolLossMismatch,
     /// Reaction requires an enemy combat unit to have moved adjacent (§8.51).
     NoReactionTrigger,
     /// §8.55: a reacting unit may never move into an enemy Zone of Control.
@@ -890,6 +950,11 @@ impl GameState {
             Command::Retreat { unit, path } => self.cmd_retreat(unit, &path),
             Command::React { unit, path } => self.cmd_react(unit, &path),
             Command::RetreatBeforeAssault { unit, path } => self.cmd_retreat_before_assault(unit, &path),
+            Command::Patrol {
+                patrol_points, target, exclude, reveals, loss_choice, survival_die, recon_die, loss_die,
+            } => self.cmd_patrol(
+                &patrol_points, target, &exclude, &reveals, &loss_choice, survival_die, recon_die, loss_die,
+            ),
             Command::MoveOffMap { unit, direction } => self.cmd_move_off_map(unit, direction),
             Command::PlanConvoy {
                 lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, die,
@@ -3475,6 +3540,8 @@ impl GameState {
         if !self.consume_combat_ammo(attackers, crate::state::game::CombatAction::Barrage) {
             return Err(CommandError::InsufficientAmmo);
         }
+        // §16.21: a barraged hex may not be reconnoitred this stage.
+        self.barraged_hexes_this_stage.insert(target);
         Ok(CommandOutcome::Barrage(self.resolve_barrage(attackers, target_unit)))
     }
 
@@ -3501,6 +3568,10 @@ impl GameState {
         // §50.14: anti-armor fire expends Ammo (rate × TOE) from reserve / hex dumps.
         if !self.consume_combat_ammo(attackers, crate::state::game::CombatAction::AntiArmor) {
             return Err(CommandError::InsufficientAmmo);
+        }
+        // §16.21: engaging in Anti-Armor combat bars this side from Patrolling this stage.
+        if let Some(u) = attackers.first().and_then(|&a| self.unit(a)) {
+            self.land_combat_this_stage.insert(u.nationality.side());
         }
         Ok(CommandOutcome::AntiArmor(
             self.resolve_anti_armor(attackers, target_hex),
@@ -3550,6 +3621,8 @@ impl GameState {
         // close-assault Ammo (best-effort; the defender is already committed). (The broader §50.12
         // no-ammo → surrender / no-ZOC effect is a ZOC-wide rule left for the ZOC layer.)
         self.expend_defensive_assault_ammo(&defenders);
+        // §16.21: engaging in Close Assault bars this side from Patrolling this stage.
+        self.land_combat_this_stage.insert(side);
         Ok(CommandOutcome::CloseAssault(outcome))
     }
 
@@ -3849,6 +3922,213 @@ impl GameState {
             self.unit_mut(unit).expect("checked").moved_into_zoc = true;
         }
         Ok(CommandOutcome::RetreatedBeforeAssault { cp: total.0 })
+    }
+
+    /// §16 Patrol & Reconnaissance. The phasing player detaches `patrol_points` to reconnoitre the
+    /// enemy-occupied `target`, resolving on the §16.6/§16.7/§16.8 tables with the supplied dice.
+    /// The non-Phasing player's disclosures (`reveals`: unit → reported TOE within ±2, §16.51) and
+    /// Objective-Loss casualties (`loss_choice`: unit → TOE) are validated against the rolled
+    /// results. Returns a one-time [`PatrolReport`] — §16 information is not persisted (decision
+    /// 2026-08-31: revealed once at patrol completion; the player "remembers" it externally).
+    #[allow(clippy::too_many_arguments)]
+    fn cmd_patrol(
+        &mut self,
+        patrol_points: &[(UnitId, u32)],
+        target: HexCoord,
+        exclude: &[UnitId],
+        reveals: &[(UnitId, i32)],
+        loss_choice: &[(UnitId, u32)],
+        survival_die: u32,
+        recon_die: u32,
+        loss_die: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::patrol::{objective_loss, patrol_survival, recon_reveal, ReconReveal};
+        use crate::state::game::Weather;
+        self.require_phase(Phase::Patrol)?;
+        if patrol_points.is_empty() {
+            return Err(CommandError::NoParticipants);
+        }
+        let side = self.active_player;
+        let enemy = side.opponent();
+        // §16.21: a side that fought Anti-Armor/Close Assault this stage may not Patrol.
+        if self.land_combat_this_stage.contains(&side) {
+            return Err(CommandError::PatrolNotAllowed);
+        }
+        // Validate each origin (§16.11 eligible type, §16.15 Cohesion ≥ −7, on-map, phasing side).
+        for &(u, pts) in patrol_points {
+            let unit = self.unit(u).ok_or(CommandError::UnitNotFound)?;
+            if unit.nationality.side() != side || unit.hex().is_none() {
+                return Err(CommandError::PatrolNotAllowed);
+            }
+            if pts == 0 || unit.cohesion <= -8 || !self.patrol_source_ok(u) {
+                return Err(CommandError::PatrolNotAllowed);
+            }
+        }
+        // §16.13/§16.14: ≤2 Patrol Points per origin hex, ≤3 total.
+        let total: u32 = patrol_points.iter().map(|&(_, p)| p).sum();
+        if total > 3 {
+            return Err(CommandError::PatrolPointLimit);
+        }
+        let mut per_hex: std::collections::HashMap<HexCoord, u32> = std::collections::HashMap::new();
+        for &(u, pts) in patrol_points {
+            if let Some(h) = self.unit(u).and_then(|x| x.hex()) {
+                *per_hex.entry(h).or_insert(0) += pts;
+            }
+        }
+        if per_hex.values().any(|&p| p > 2) {
+            return Err(CommandError::PatrolPointLimit);
+        }
+        // §16.17: no origin hex may be in a storm.
+        let storm = |g: &Self, h: HexCoord| matches!(g.weather_at(h), Weather::Sandstorm | Weather::Rainstorm);
+        if per_hex.keys().any(|&h| storm(self, h)) {
+            return Err(CommandError::PatrolNotAllowed);
+        }
+        // §16.17/§16.22/§16.21: the target must be a non-storm, enemy-occupied hex within 5 hexes of
+        // every origin (a documented range simplification of the §16.22 path), not barraged/bombed.
+        if self.map.terrain(target).is_none() || storm(self, target) {
+            return Err(CommandError::PatrolTargetInvalid);
+        }
+        if self.barraged_hexes_this_stage.contains(&target) {
+            return Err(CommandError::PatrolTargetInvalid);
+        }
+        if per_hex.keys().any(|&h| h.distance(target) > 5) {
+            return Err(CommandError::PatrolTargetInvalid);
+        }
+        let enemy_units: Vec<UnitId> = self
+            .units_in_hex(target)
+            .into_iter()
+            .filter(|&id| self.unit(id).is_some_and(|u| u.nationality.side() == enemy))
+            .collect();
+        if enemy_units.is_empty() {
+            return Err(CommandError::PatrolTargetInvalid); // §16.22: must be enemy-occupied
+        }
+        // §16.32: AA/Flak and Engineer (non-combat) units do not trigger a Patrol Survival check.
+        let has_combat = enemy_units.iter().any(|&id| self.is_combat_unit(id));
+        // §16.16: 1 Ammo + 2 Fuel per Patrol Point, present in each origin hex (unit reserve plus
+        // co-located dumps) — check all, then expend, so a shortfall aborts before any change.
+        use crate::state::game::Commodity;
+        let origin_supply = |g: &Self, u: UnitId| -> (HexCoord, Side, u32, u32) {
+            let x = g.unit(u).expect("origin checked");
+            let (hex, s) = (x.hex().expect("on-map"), x.nationality.side());
+            let ammo = x.ammo + g.available_commodity_at(hex, s, Commodity::Ammo);
+            let fuel = x.fuel + g.available_commodity_at(hex, s, Commodity::Fuel);
+            (hex, s, ammo, fuel)
+        };
+        for &(u, pts) in patrol_points {
+            let (_, _, ammo, fuel) = origin_supply(self, u);
+            if ammo < pts || fuel < 2 * pts {
+                return Err(CommandError::InsufficientAmmo);
+            }
+        }
+        // ---- Compute and VALIDATE the whole resolution before mutating anything, so an invalid
+        //      command (bad disclosures/loss choice) aborts cleanly. Supply is expended regardless
+        //      of the *die result* (§16.16) but not for an illegal command. ----
+        let all_recce = patrol_points.iter().all(|&(u, _)| self.is_recce_unit(u));
+        // §16.6 Patrol Survival (skipped if no combat units in the hex, §16.32).
+        let survival = if has_combat {
+            patrol_survival(survival_die, all_recce)
+        } else {
+            crate::reference::patrol::PatrolLoss::default()
+        };
+        let patrol_lost = (survival.killed + survival.captured).min(total);
+        let surviving = total - patrol_lost;
+        let wiped_out = has_combat && surviving == 0;
+
+        // §16.5/§16.7 Reconnaissance disclosures (only if Patrol Points survive, §16.33).
+        let mut revealed = Vec::new();
+        if surviving > 0 {
+            // §16.53/§16.54/§16.55: eligible units — combat units (never HQ/AA unless no combat
+            // units present), not on the patroller's exclusion list.
+            let any_combat = enemy_units.iter().any(|&id| self.is_combat_unit(id));
+            let eligible: Vec<UnitId> = enemy_units
+                .iter()
+                .copied()
+                .filter(|&id| !exclude.contains(&id))
+                .filter(|&id| if any_combat { self.is_combat_unit(id) } else { true })
+                .collect();
+            let required = match recon_reveal(recon_die, surviving) {
+                ReconReveal::All => eligible.len() as u32,
+                ReconReveal::Count(n) => n.min(eligible.len() as u32),
+            };
+            if reveals.len() as u32 != required {
+                return Err(CommandError::PatrolRevealMismatch);
+            }
+            let mut seen = std::collections::HashSet::new();
+            for &(ru, reported) in reveals {
+                if !eligible.contains(&ru) || !seen.insert(ru) {
+                    return Err(CommandError::PatrolRevealMismatch);
+                }
+                let actual = self.unit(ru).map(|u| u.total_toe() as i32).unwrap_or(0);
+                if (reported - actual).abs() > 2 {
+                    return Err(CommandError::PatrolRevealMismatch); // §16.51: within ±2
+                }
+                let (designation, motorized) = {
+                    let u = self.unit(ru).expect("checked");
+                    (u.name.clone(), self.unit_is_motorized(ru))
+                };
+                revealed.push(RevealedUnit {
+                    unit: ru,
+                    designation,
+                    unit_type: self.unit_type_name(ru),
+                    motorized,
+                    reported_strength: reported,
+                });
+            }
+        } else if !reveals.is_empty() {
+            return Err(CommandError::PatrolRevealMismatch); // no survivors → no information (§16.33)
+        }
+
+        // §16.8 Objective Loss on the patrollee; §16.34: Captured→Killed if the patrol was wiped out.
+        let mut oloss = objective_loss(loss_die);
+        if wiped_out {
+            oloss = crate::reference::patrol::PatrolLoss { killed: oloss.killed + oloss.captured, captured: 0 };
+        }
+        let oloss_total = oloss.killed + oloss.captured;
+        let chosen: u32 = loss_choice.iter().map(|&(_, n)| n).sum();
+        if chosen != oloss_total {
+            return Err(CommandError::PatrolLossMismatch);
+        }
+        // §16.34: casualties come from a combat unit if any are present.
+        let any_combat = enemy_units.iter().any(|&id| self.is_combat_unit(id));
+        for &(lu, _) in loss_choice {
+            if !enemy_units.contains(&lu) || (any_combat && !self.is_combat_unit(lu)) {
+                return Err(CommandError::PatrolLossMismatch);
+            }
+        }
+
+        // ---- Everything validated; now apply the mutations. ----
+        // §16.16: expend 1 Ammo + 2 Fuel per Patrol Point (reserve first, then co-located dumps).
+        for &(u, pts) in patrol_points {
+            let (hex, s, _, _) = origin_supply(self, u);
+            let a_ob = self.unit(u).map_or(0, |x| x.ammo).min(pts);
+            if let Some(x) = self.unit_mut(u) { x.ammo -= a_ob; }
+            if pts - a_ob > 0 { self.consume_commodity_at(hex, s, Commodity::Ammo, pts - a_ob); }
+            let need_f = 2 * pts;
+            let f_ob = self.unit(u).map_or(0, |x| x.fuel).min(need_f);
+            if let Some(x) = self.unit_mut(u) { x.fuel -= f_ob; }
+            if need_f - f_ob > 0 { self.consume_commodity_at(hex, s, Commodity::Fuel, need_f - f_ob); }
+        }
+        // §16.33 patroller losses across the origins in order (Prisoner-Point accounting is §28).
+        let mut owed = patrol_lost;
+        for &(u, _) in patrol_points {
+            if owed == 0 {
+                break;
+            }
+            owed -= self.remove_unit_toe(u, owed);
+        }
+        // §16.8 patrollee losses.
+        for &(lu, n) in loss_choice {
+            self.remove_unit_toe(lu, n);
+        }
+
+        Ok(CommandOutcome::Patrol(PatrolReport {
+            patroller_killed: survival.killed.min(total),
+            patroller_captured: patrol_lost.saturating_sub(survival.killed.min(total)),
+            wiped_out,
+            revealed,
+            patrollee_killed: oloss.killed,
+            patrollee_captured: oloss.captured,
+        }))
     }
 
     fn move_step(

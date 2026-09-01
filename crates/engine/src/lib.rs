@@ -10491,6 +10491,87 @@ mod tests {
     }
 
     #[test]
+    fn patrol_and_reconnaissance_16() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(
+            Nationality::Commonwealth,
+            include_str!("../../../data/reference/unit-characteristics/commonwealth.ron"),
+        )
+        .unwrap();
+        refs.load_unit_characteristics(
+            Nationality::German,
+            include_str!("../../../data/reference/unit-characteristics/german.ron"),
+        )
+        .unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Patrol;
+        g.active_player = Side::Commonwealth;
+        let (a, b) = (HexCoord::new(5, 5), HexCoord::new(8, 5));
+        g.map.set_hex(a, HexTerrain::Clear);
+        g.map.set_hex(b, HexTerrain::Clear);
+
+        // Commonwealth Recce battalion ("hh") at A with ammo + fuel for the patrol (§16.16).
+        let recce = g.spawn_unit(Nationality::Commonwealth, "hh", "Recce", Composition::Organic { current_toe: 8 });
+        g.unit_mut(recce).unwrap().location = Some(UnitLocation::OnMap(a));
+        g.unit_mut(recce).unwrap().ammo = 10;
+        g.unit_mut(recce).unwrap().fuel = 10;
+        // Two German combat battalions at the target.
+        let g1 = g.spawn_unit(Nationality::German, "i", "1/104", Composition::Organic { current_toe: 5 });
+        let g2 = g.spawn_unit(Nationality::German, "i", "2/104", Composition::Organic { current_toe: 6 });
+        for u in [g1, g2] {
+            g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(b));
+        }
+
+        // Dice: survival 3 (all-Recce −1 → row 0…3, no loss); recon 4 × 2 net points → reveal 2;
+        // objective loss 1 → 0/0.
+        let patrol = |reveals: Vec<(_, i32)>, loss: Vec<(_, u32)>| Command::Patrol {
+            patrol_points: vec![(recce, 2)], target: b, exclude: vec![],
+            reveals, loss_choice: loss, survival_die: 3, recon_die: 4, loss_die: 1,
+        };
+
+        // §16.51: reported TOE must be within ±2 — 8 for a 5-strength unit (diff 3) is out of band.
+        assert_eq!(
+            g.apply(patrol(vec![(g1, 8), (g2, 6)], vec![])),
+            Err(CommandError::PatrolRevealMismatch),
+        );
+        // Wrong number of units revealed (recon required 2).
+        assert_eq!(
+            g.apply(patrol(vec![(g1, 5)], vec![])),
+            Err(CommandError::PatrolRevealMismatch),
+        );
+        // A faithful patrol: reveal both units within ±2 (g1 exact 5, g2 as 4 = 6−2).
+        match g.apply(patrol(vec![(g1, 5), (g2, 4)], vec![])) {
+            Ok(CommandOutcome::Patrol(r)) => {
+                assert!(!r.wiped_out);
+                assert_eq!(r.patroller_killed + r.patroller_captured, 0);
+                assert_eq!(r.revealed.len(), 2);
+                let rep: Vec<_> = r.revealed.iter().map(|u| (u.unit, u.reported_strength)).collect();
+                assert!(rep.contains(&(g1, 5)) && rep.contains(&(g2, 4)));
+                assert!(r.revealed.iter().all(|u| u.unit_type.contains("Infantry")));
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // Ammo/Fuel were expended (§16.16): 2 Ammo + 4 Fuel from the reserve.
+        assert_eq!(g.unit(recce).unwrap().ammo, 8);
+        assert_eq!(g.unit(recce).unwrap().fuel, 6);
+
+        // §16.21: a side that fought Close Assault this stage may not Patrol.
+        g.land_combat_this_stage.insert(Side::Commonwealth);
+        assert_eq!(
+            g.apply(patrol(vec![(g1, 5), (g2, 6)], vec![])),
+            Err(CommandError::PatrolNotAllowed),
+        );
+    }
+
+    #[test]
     fn barrage_resolver_applies_results() {
         use crate::reference::crt::{BarrageResult, BarrageTargetClass};
         use crate::state::game::GameState;
