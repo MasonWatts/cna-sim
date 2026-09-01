@@ -248,7 +248,7 @@ Settled foundations (no longer open):
   Logistics systems (D15, superseding the §32 abstract mode named in §5) are now
   substantially built. §5's phasing is the original plan; this section is ground truth.
 
-The engine **builds clean and 269 tests pass** across the workspace (unit tests in each
+The engine **builds clean and 326 tests pass** across the workspace (unit tests in each
 module plus integration tests in `lib.rs`). `cargo run --bin demo` narrates the three
 land-combat systems end to end. The layering is consistent throughout: **reference**
 (`reference/*.rs`, pure chart data from RON) → **rules** (`rules/*.rs`, pure stateless
@@ -275,7 +275,7 @@ are consulted by the `PlanProduction` command and the §20.3 Conversion chart by
 (§20.78A), `ProduceCommonwealthInfantry` (§20.78B), and `ProduceAxisTrucks` (§20.66a) commands.
 **`ReferenceData::load_campaign()`** is the production bootstrap: it `include_str!`s and loads the
 entire reference layer (every chart/table/CRT + the per-nationality unit/weapon/aircraft/production
-datasets and all three Orders of Battle — German is a curated subset) in one call, so
+datasets and all three full, chart-verified Orders of Battle) in one call, so
 `GameState::new(ReferenceData::load_campaign(), seed)` yields an engine where every command has its
 data — rather than each table being loaded individually (as the unit tests still do). An integration
 driver test (`campaign_driver_advances_five_turns`) builds the engine this way, deploys the
@@ -312,15 +312,17 @@ unused-replacement VP; §64.75 CW withdrawal VP; §64.76 band), with §64.71/§6
 including the one-full-turn objective-hold check. (The scenario-level §60.8 victory is not
 separately modeled.)
 
-### 8.3 Command boundary — ~80 commands, phase-gated
+### 8.3 Command boundary — ~90 commands, phase-gated
 `GameState::apply` covers land movement/combat, air, naval, logistics, and construction. Land:
 `MoveStep`/`FormationMove`, `Barrage`/`AntiArmor`/`CloseAssault`/`Retreat`, `React`,
-`MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply`, `PoisonWell`/`SweetenWell`.
+`MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply` (both sides — Axis rails under
+§54.4), `PoisonWell`/`SweetenWell`.
 Logistics/construction (Organization phase): `LoadTrucks`/`UnloadTrucks`, `AssignTrucks`/`ReleaseTrucks` (§6.17/§53.11), `SiphonFuel`/
 `RefuelUnit`/`RearmUnit`, `BuildPipeline`/`BuildFortification`/`BuildRailroad`/`DemolishRailroad`/
 `BuildRoad`, `LayMinefield`/`ClearMinefield`, `WithdrawUnit`/`ReturnUnit`/`AbsorbReplacement`,
 `PlanProduction` (§20.66), `ProduceCommonwealthTrucks`/`ProduceCommonwealthInfantry`/
-`ProduceAxisTrucks` (§20.78A/B, §20.66a), `BlockHarbor`/`UnblockHarbor`, `Repair`. Naval: `PlanConvoy`/`BombConvoy`/
+`ProduceAxisTrucks` (§20.78A/B, §20.66a), `ImportRollingStock` (§54.43 Axis rail),
+`BlockHarbor`/`UnblockHarbor`, `Repair`. Naval: `PlanConvoy`/`BombConvoy`/
 `DeliverConvoy`/`ReconConvoyLane`, `AssignShip`/`RepairShip`, `ArtilleryBombardShip`/
 `SanGiorgioAttackShip`/`BombShip`/`OffShoreBombard`, `LayHarborMine`/`RemoveHarborMine`. Air:
 `AssignSquadronPlanes`, `AssignPilot` (§40.12), `TransferSquadron` (§43.14), `ReadySquadron`/
@@ -347,8 +349,10 @@ Level (`fort_level` — placed forts plus the §25.12 static major-city/capital 
 column shift in anti-armor (§14.33 best-of), barrage (§12.34 best-of) and close assault (§15.35
 cumulative), is raised by `BuildFortification` (§24.4) and reduced by fortification bombing (§41.37);
 minefields (`LayMinefield`/`ClearMinefield`, §24.3) sit on the map with real/dummy status, dummy
-reveal, and §26.2 entry casualty checks. Combat deferrals: §15.35 two-terrain-hexside exception,
-multi-hex defenders, detailed anti-armor line-of-fire, and defensive-assault ammo (§50.14).
+reveal, and §26.2 entry casualty checks. §50.14 **defensive**-assault Ammunition is now consumed
+by the melee defenders too (not just the attacker), and §9.35 retreat enforces the destination
+Stacking Limit (a stack splits into different hexes by retreating each unit on its own path).
+Combat deferrals: §15.35 two-terrain-hexside exception and multi-hex defenders.
 
 ### 8.5 Air game — rules & reference complete; resolution partial
 The §33–46 ruleset is present as a large, thoroughly-cited pure-rules layer (`rules/air.rs`)
@@ -373,8 +377,10 @@ pins battalion-equivalents in the hex (tank/gun units cost two, §41.31), **Supp
 destroys `result` first-line attached Truck Points of an enemy unit (§41.32, D-capability planes
 only; hex-placed convoys aren't modeled), and **City/Fortification** knocks a *placed* fortification
 down one level (§41.37; units in a major city are shielded from bombing until its level ≤1, §41.31);
-the ship (§41.34) and air-facility (§41.36) effects have dedicated commands, and road/railroad
-(§41.38) and static-major-city-level reduction remain unmodelled.
+the ship (§41.34) and air-facility (§41.36) effects have dedicated commands, and **Road/Railroad**
+(§41.38) destroys the feature on a positive result (a Road degrades to a track/UnfinishedRoad,
+rebuildable §24.53; a Railroad hex's edges become DestroyedRailroad, rebuildable §24.63). Only the
+static §25.12 major-city Fortification Level (no damage tracker) remains unmodelled.
 The `Strafe` command (§40.5–40.8) flies a map-validated strafing mission and resolves it on the
 Strafing Table with the §40.8 column shift, applying the effect for **supply dumps** (§40.64, r×10%
 of each commodity destroyed), **water pipelines** (§40.67, destroyed on r≥2), **infantry** (§40.6,
@@ -397,12 +403,15 @@ facility, landing it and exhausting its CPA (§42.34), one plane per TOE point (
 the OA sheet — the Folgore/Ramcke airborne units) into a legal §42.43/44 drop zone (no air facility
 needed at the target), honoring stacking and the §42.48 once-per-12-stages limit. **Scramble (§40.3):** when no CAP covers a bombing target, an enemy fighter base
 within Scramble-Table range (§40.4) may scramble to intercept — the first eligible squadron rolls a
-d6 and, on success (§40.33), its ready fighters fly and intercept (`scramble_interception`). **Still
-not computed from the map (a deliberate operational abstraction, project-owner ruling 2026-08-29,
-matching the rulebook's "air combat is resolved on an operational level, with much abstracted"):**
-multi-hex flight path/ZOC routing (so the §40.33 clear-path rule is not enforced), fuel gating at
-execution, defensive-CAP engagement choice, per-plane pilot ratings (a per-flight best is used), and
-a precise per-plane cargo-tonnage cap / the §42.47 no-over-CPA drop-stage restriction. **Box-based
+d6 and, on success, its ready fighters fly and intercept (`scramble_interception`) — and the §40.33
+**clear-path** rule is enforced: a squadron may scramble only if a fighter-free flight path to the
+target exists (a bounded search that allows the §37.12 "any path" detour). Flight *distance* is
+hex-count by rule (§37.12), so there is no routed path to model, and fuel is consumed per plane at
+readying (§37.15, `ReadySquadron`); §42.47 forbids an airdropped unit from exceeding its CPA in its
+drop stage. **Remaining operational abstractions** (project-owner ruling 2026-08-29, matching the
+rulebook's "air combat is resolved on an operational level, with much abstracted"): the
+defensive-CAP engagement *choice* (§45.14) and a precise per-plane cargo-tonnage cap for air
+transport. **Box-based
 flight (§37.4):** a squadron with no on-map base flies from its off-map Box using the transcribed
 §37.4 Air Distance Chart — `box_flight_distance` looks up the Box→named-point distances and routes an
 arbitrary target through the nearest on-map reference point (chart distance + hex distance),
@@ -411,13 +420,15 @@ range (unchanged for on-map bases). Italy/Sicily takes the more favourable of th
 (the region is modeled as one, §43.12). **§43.23** is enforced (a Crete bomber may not fly a bombing
 mission in the first four Operations Stages of each month — the Suez commitment). **Escort/screening
 (§45/§39.35–37):** a bombing mission may carry a fighter `escort` (`FlyBombingMissionAt`); intercepting
-CAP/scramble fights the escort first and only surviving interceptors reach the bombers (escort losses
-applied to the escort squadron), so §43.25's African-fighter escort of Italy/Sicily bombers works and
+CAP/scramble fights the escort first (§45.2), and only the CAP's **excess** over the surviving escort
+screen reaches the bombers (§45.32) — a matching or larger escort fully screens them, and a screened
+bomber returns fire at each attacker (§45.34). Escort losses are applied to the escort squadron, so
+§43.25's African-fighter escort of Italy/Sicily bombers works and
 §43.24 is enforced (a Crete-based bomber may not take an on-map/African escort). **Voluntary abort
 (§39.3):** a bombing mission may set `abort` — before any combat the bombers turn back (planes fly,
 bombload dumped, no interception/flak/effect) if they qualify (§39.36/§39.37 a sufficient escort
 screen — ≥25% of the covering CAP — or §39.35 superior Maneuver); an aborted mission does not engage
-or consume the CAP. Partial abort (§39.34, some planes continuing) is not modeled. Land-unit air
+or consume the CAP (partial abort, §39.34, is supported — see below). Land-unit air
 recon waits on fog-of-war. **Malta strategic-air commitment (§43/§44.41) is modeled:** each Axis
 Malta Availability Level (I–IV) is limited to the scenario's Game-Turn count (the §44.41 chart),
 tracked in `malta_level_used` and gated at `DetermineMaltaAvailability` (Level I unlimited, §44.25);
@@ -430,15 +441,15 @@ requirement — date-aware: before Game-Turn 35 it enforces §43.12 (≥75% of a
 Italy/Sicily), and from GT35 §43.13 (≥50% of strategic bombers in Crete). Still open — all governing
 flight *from* the Boxes, which awaits Box-based flight execution: the §43.23 Crete→Suez timing and
 §43.24/§43.25 Box-bomber CAP coordination; §43.21 auto-supply is only implicit (a Box-based SGSU has
-no dump, so upkeep is skipped). (The Italian airborne
-formation — **185 Folgore** — is now promoted into the loaded OB (`data/ob/italian.ron`) with its
-six airborne infantry battalions flagged `airdroppable: true` per the §42.41 OA sheet, so
-`AirdropUnit` is exercisable against a real formation. The German **Ramcke Brigade** remains a
-blocker: there is no loaded `data/ob/german.ron` yet — only the DRAFT `ob-generated/german.ron` is
-parse-tested — so standing up the German OB is its own promotion pass.) A **pilot
-roster** (`AssignPilot`, §40.12) is modeled: each squadron's best flyable pilot Rating
-(§40.15/§40.16) feeds into its CAP and scramble flights' TacAir; reassignment/retraining/recovery
-lockouts (§40.13/14/17) tick each Operations Stage; and **ace progression** (§40.18) is in — a
+no dump, so upkeep is skipped). (Both airborne formations are in the loaded OBs with their
+battalions flagged `airdroppable: true` per the §42.41 OA sheets — the Italian **185 Folgore**
+(`data/ob/italian.ron`) and the German **Fallschirmjäger-Brigade Ramcke** (`data/ob/german.ron`) —
+so `AirdropUnit` is exercisable against real formations on both sides.) A **pilot
+roster** (`AssignPilot`, §40.12) is modeled, and **air-to-air is resolved as individual
+plane-vs-plane match-ups (§45.24)**: each flyable pilot's Rating (§40.15/§40.16) crews one plane
+(best-first) and adds to that plane's TacAir; the larger side piles its extra fighters onto the
+enemy (§45.23); reassignment/retraining/recovery lockouts (§40.13/14/17) tick each Operations Stage;
+and **ace progression** (§40.18) is in — a
 bombing interception credits the intercepting squadron's pilot with the bombers it downs, and a
 pilot's effective Rating is the greater of his assigned Rating and his earned ace Rating (1 per 5
 kills). All three bombing paths now credit the intercepting squadron's pilot: `FlyBombingMissionAt`
@@ -446,7 +457,8 @@ selects the CAP/scramble squadron itself, and the caller-supplied `FlyBombingMis
 commands carry an `interceptor_squadron` so their interceptions credit ace kills too. **Voluntary
 abort (§39.3) supports partial abort (§39.34):** `abort_planes` on `FlyBombingMissionAt` may be a
 subset of the bombers — those turn back and dump (consuming fuel, §39.31/33) while the remainder
-press on and resolve normally. Still deferred: per-plane (rather than per-flight best-pilot) rating.
+press on and resolve normally. (Per-plane pilots and the §45.23/§45.32 pile-on are modeled; the
+§45.23/§45.33 match-up *assignment* choice uses a best-first/round-robin default.)
 
 ### 8.6 Naval / convoy — abstract model implemented
 Ports (§55: efficiency, blocking §55.22, mining §55.27, San Giorgio §30.17), the Commonwealth
@@ -463,7 +475,7 @@ exact tonnage: `ReconConvoyLane` returns the class the Axis reports, chosen adve
 deliberately-overlapping §42.53 ranges (the most open-ended legal class, which conceals the true
 tonnage best).
 
-### 8.7 Logistics (full game, D15) — increments 1–8 built; production (§20) is the gap
+### 8.7 Logistics (full game, D15) — increments 1–9 built (production §20 included)
 The §32 abstract supply mode has been fully removed as D15 directed; the interim coarse
 `unit_in_supply` dump-reachability proxy has now been replaced by the real **§64.73 supply-adequacy
 test** (`unit_supply_adequate`): a combat unit occupies for victory only if, at its hex, it has
@@ -478,7 +490,11 @@ the Stores Expenditure Stage (requirement draw, starvation attrition, half-ratio
 & air-refit consumption); **(5)** Water §52 + hot-weather §29.35 (wells with secret depletion,
 pipelines §52.2, the §52.6 Italian Pasta Rule, deprivation restrictions on move/combat);
 **(6)** Trucks (Light/Medium/Heavy chart, motorization §6.17, breakdown §21.38, field/facility
-repair §22); **(7)** supply transport/dumps + Commonwealth rail supply §54.3 and the two-leg
+repair §22); **(7)** supply transport/dumps + Commonwealth rail supply §54.3, **Axis use of the Commonwealth
+railroad §54.4** (rail-hex control tracking §54.41, `ImportRollingStock` activating haulage from
+250 Stores + 100 Fuel §54.43, Axis unit/supply rail movement bounded by the five-contiguous-hex
+rule and the one-direction Rolling-Stock budget §54.44/46, Rolling Stock destroyed on losing control
+§54.45, and repair restricted to controlled hexes with no new line §54.42), and the two-leg
 strategic-supply trace for victory §64.71/72; **(8)** naval convoys §56 (see §8.6). **(9)
 Production §20 — Replacement-Point planning now wired:** the `PlanProduction` command validates a
 requested item/count against the nationality's §20.66/§20.78C chart (lifetime `total` and the
@@ -492,14 +508,17 @@ with requirement kinds collapsed onto the four pool classes — using a **provis
 classifier (`conversion_row_for_unit`, flagged cf. D14; special-infantry and armored-recce/car
 distinctions default to the generic row, with Commando/Bersaglieri/Paratroop caught by name). With
 no §20.3 chart loaded it falls back to legacy 1:1. **Axis Replacement-Point and Truck-Point tonnage
-consume convoy capacity (§20.62):** `PlanProduction` and `ProduceAxisTrucks` both reject an order
-whose tonnage — added to everything already committed to its arrival Game-Turn (replacement
-production, Axis planned-truck production, and supply convoys, via `axis_shipping_committed`) —
-would exceed that turn's convoy Shipping Tonnage allowance (`InsufficientConvoyCapacity`); the two
-production streams compete for the same allowance. Bounded model (D15 step 8): it uses the die-6
-allowance *ceiling* (the turn's die roll is unknown two turns out at planning time); Commonwealth
-production (strategic-supply line, Alexandria) is exempt; with no Convoy Level Chart loaded the gate
-is skipped. **Truck & Commonwealth-infantry production are now
+consume convoy capacity (§20.62):** at planning time (two turns out, before the tonnage die is
+rolled, §20.63/§56.21) `PlanProduction`/`ProduceAxisTrucks` reject an order whose tonnage — added to
+everything already committed to its arrival Game-Turn (via `axis_shipping_committed`) — would exceed
+the die-6 *upper bound* for the month; the actual binding happens later against the **rolled**
+allowance. The turn's roll is stored (`axis_shipping_rolled`, fixed by the first convoy plan, §56.21)
+so supply and production bind to the same figure: a supply convoy may claim only the tonnage
+production has left (§20.64 — Replacement Points have shipping priority over supplies), and at the
+Naval Convoy Arrival Phase `defer_over_shipped_axis_replacements` caps arriving Axis production at the
+roll, deferring the excess to the next Game-Turn (kept, not lost). Commonwealth production
+(strategic-supply line, Alexandria) is exempt; with no Convoy Level Chart loaded the gate is skipped.
+**Truck & Commonwealth-infantry production are now
 driven:** `ProduceCommonwealthTrucks` (§20.78A: one d6 per truck type → Truck Points arriving +4
 Game-Turns at Alexandria) and `ProduceCommonwealthInfantry` (§20.78B: 2d6 → Infantry Replacement
 Points arriving +4 Game-Turns, fed through the standard replacement lifecycle) roll their tables;
@@ -525,18 +544,18 @@ Armoured's §60.41 covering screen with the main body at D3612). Both reinforcem
 **formation-internal arrivals** (later-arriving units of an on-map formation attach to their
 on-map parent at their scheduled game_turn/stage) and **whole-formation entry** (a formation not
 on-map at start enters at a resolved entry hex or off-map node), both resolving at the Naval
-Convoy Arrival Phase. Loaded OB (all ids/weapons/parents/org-size test-validated): Italian
-Catanzaro/Marmarica/Cirene/Ariete/**185 Folgore**; Commonwealth 4th Indian/7th Armoured; **German
-(DAK)** — 5 Leichte/21 Panzer, Sonderverband 288, 15 Panzer, 164 & 90 Leichte Afrika, and
-**Fallschirmjaeger-Brigade Ramcke**. Folgore (2026-08-29) and the German OB (2026-08-30) were
-promoted from their DRAFT §4.44b/c transcriptions; both flag their airborne battalions
-`airdroppable: true` (§42.41), so each side has an `AirdropUnit` formation. The German OB is a
-**curated subset** (6 of ~11 DRAFT formations; the Oasis/Kampfgruppen/non-divisional-artillery/
-unassigned-flak lists are deferred) with all id codes assigned by unit category and **provisional
-(D14)** pending §4.46 verification; OCR'd weapon strings were mapped to canonical §4.47-49 keys
-(Panzer/Pak/artillery/Flak) or simplified to `Organic` where genuinely unkeyed (7.5cm light guns).
-Remaining unit-data promotion (Italian border force, CW rear, the deferred German lists) is tracked
-separately (§4.44 OB pipeline, D14).
+Convoy Arrival Phase. **All three faction Orders of Battle are now fully loaded and chart-verified**
+against the §4.44a/b/c OA sheets (ids/weapons/parents/org-size test-validated), the DRAFT/D14
+provisional stage retired: **Commonwealth** 36 formations (`data/ob/commonwealth.ron`, §4.44a
+PDF p118–132), **Italian** 38 formations (`data/ob/italian.ron`, §4.44b p147–161; incl. the
+D13-abstracted Marmarica/Cirene template divisions), and **German** 11 formations
+(`data/ob/german.ron`, §4.44c p162–166 — the full DAK plus the Oasis Battalion, Kampfgruppen HQ's,
+non-divisional artillery, and unassigned anti-air). Each faction's characteristics (§4.46) and
+tank/gun/weapon charts (§4.47–4.49) were verified against the OA sheets, correcting the earlier
+category-guessed ids. Both airborne formations (Italian **185 Folgore**, German
+**Fallschirmjäger-Brigade Ramcke**) flag their battalions `airdroppable: true` (§42.41), so each
+side has an `AirdropUnit` formation. The verbatim transcriptions live in
+`docs/source-materials/*-ob-4.44*.transcribed.md`.
 
 ### 8.9 Desert raiders & commandos (§27) — implemented
 Desert raiders are a bespoke counter (`Raider`, LRDG ≤2 Commonwealth / DSA ≤1 German): a non-combat

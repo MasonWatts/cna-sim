@@ -11,8 +11,9 @@ Italian Offensive"** is the first playable milestone.
 
 ## Status
 
-The simplified Land Game is complete, and the air, naval, and **full** Logistics systems
-are substantially built. The engine builds clean and **269 tests pass**. See
+The Land Game, the air and naval games, and the **full** Logistics system (§20 production,
+convoys, and the §54.4 Axis railroad included) are built, and all three faction Orders of
+Battle are loaded and chart-verified. The engine builds clean and **326 tests pass**. See
 [`docs/design.md` §8](docs/design.md) for the detailed, current implementation status.
 
 ## Architecture
@@ -57,6 +58,6 @@ tools/                OCR → order-of-battle pipeline and map utilities
 
 ```bash
 cargo build              # build the workspace
-cargo test --workspace   # run the full test suite (269 tests)
+cargo test --workspace   # run the full test suite (326 tests)
 cargo run --bin demo     # narrate barrage, anti-armor, and close assault in sequence
 ```
