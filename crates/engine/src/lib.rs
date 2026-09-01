@@ -6505,6 +6505,10 @@ mod tests {
         let mc = g.spawn_unit(Nationality::German, "ee", "Motorcycle Recon Bn", Composition::Organic { current_toe: 1 });
         assert_eq!(g.conversion_row_for_unit(mg), "Machinegun");
         assert_eq!(g.conversion_row_for_unit(mc), "Motorcycle/Camel/Reconnaissance");
+        // German MG battalions are named "Machinegewehr" (§4.46 MG glyph, verified on PDF p183) —
+        // detected via the German-language token, not just the English "Machine Gun"/"MG".
+        let mgw = g.spawn_unit(Nationality::German, "n", "2nd Machinegewehr Bn", Composition::Organic { current_toe: 4 });
+        assert_eq!(g.conversion_row_for_unit(mgw), "Machinegun");
 
         // §20.3: a Commando costs 3 Infantry Replacement Points per TOE Strength Point rebuilt.
         g.unit_mut(commando).unwrap().location = Some(UnitLocation::OnMap(a));

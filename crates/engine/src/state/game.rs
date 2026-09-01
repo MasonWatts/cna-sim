@@ -2372,9 +2372,13 @@ impl GameState {
     /// §20.3 classifier: map a unit's §4.46 `unit_type` label (and name) to a Replacement-Point
     /// Conversion Chart row. The §20.3 footnotes drive the name-based calls — Commando (Layforce/
     /// SAS), Paratroop (Folgore/Ramcke), Engineer (incl. the Australian Pioneer), Bersaglieri, and
-    /// the three recce rows. **Still provisional (cf. D14):** a Machinegun or Heavy-Weapons unit not
-    /// named as such, and a plain (non-armored) recce battalion, fall to the generic row — resolving
-    /// them needs the §4.46 counter type/size symbols.
+    /// the three recce rows. Machinegun (English "Machine Gun/MG" and German "Machinegewehr") and
+    /// Heavy-Weapons ("Heavy Wpns") battalions are detected by name — verified against the §4.46
+    /// counter glyphs transcribed from PDF p182–185 (`*-counters-4.46.md`), which confirmed every
+    /// MG/HW unit in the three OBs is named accordingly. Residual (cf. D14): a plain (non-armored)
+    /// recce battalion still defaults to the Armored-Reconnaissance row, and a few genuinely
+    /// out-of-legend counter glyphs (Italian divisional AA/AT support companies, coastal-defence
+    /// counters) are recorded with `?` in the transcription docs — none change the current OBs' rows.
     pub fn conversion_row_for_unit(&self, id: UnitId) -> &'static str {
         let Some(u) = self.units.get(&id) else { return "Any other Infantry" };
         let ut = self
@@ -2419,7 +2423,11 @@ impl GameState {
                 "Commando"
             } else if name.contains("Folgore") || name.contains("Ramcke") || name.contains("Para") {
                 "Paratroop Infantry"
-            } else if name.contains("Machine Gun") || name.contains("Machinegun") || name.contains("MG") {
+            } else if name.contains("Machine Gun")
+                || name.contains("Machinegun")
+                || name.contains("Machinegewehr") // German MG battalions (§4.46 MG glyph, PDF p183)
+                || name.contains("MG")
+            {
                 "Machinegun"
             } else if name.contains("Heavy Weapons") || name.contains("Heavy Wpns") {
                 "Heavy Weapons"
