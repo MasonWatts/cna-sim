@@ -205,6 +205,11 @@ pub struct Unit {
     // Organization: two independent, nullable links (§19.1).
     pub assigned_parent: Option<UnitId>,
     pub attached_parent: Option<UnitId>,
+    /// §19.3: the formation's historical assignment capacity — the number of units assigned to it at
+    /// scenario start (its OA-sheet organization). A reassignment (§19.21) may not push its assigned
+    /// count above this. 0 = not a parent / no limit recorded.
+    #[serde(default)]
+    pub assigned_capacity: u32,
 
     pub composition: Composition,
 
@@ -305,6 +310,7 @@ impl Unit {
             airdroppable: false,
             assigned_parent: None,
             attached_parent: None,
+            assigned_capacity: 0,
             composition,
             cohesion: 0,
             cp_expended: Fixed(0),

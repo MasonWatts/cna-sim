@@ -4276,13 +4276,28 @@ impl GameState {
     /// assignment is bookkeeping and costs no CP (the §6.3 costs are for the physical attachment).
     fn cmd_reassign_unit(&mut self, unit: UnitId, parent: UnitId) -> Result<CommandOutcome, CommandError> {
         self.require_phase(Phase::Organization)?;
-        self.unit(parent).ok_or(CommandError::UnitNotFound)?;
-        let u = self.unit(unit).ok_or(CommandError::UnitNotFound)?;
-        if u.attached_parent != Some(parent) {
+        let cap = self.unit(parent).ok_or(CommandError::UnitNotFound)?.assigned_capacity;
+        let (attached, assigned) = {
+            let u = self.unit(unit).ok_or(CommandError::UnitNotFound)?;
+            (u.attached_parent, u.assigned_parent)
+        };
+        if attached != Some(parent) {
             return Err(CommandError::ReorgIllegal); // §19.21: must be attached first
         }
-        if u.assigned_parent.is_some() && u.assigned_parent != Some(parent) {
+        if assigned.is_some() && assigned != Some(parent) {
             return Err(CommandError::ReorgIllegal); // §19.28: not while assigned elsewhere
+        }
+        // §19.21/§19.3/§19.23: a new assignment may not push the parent's assigned count above its
+        // historical capacity (eliminated units — 0 TOE — do not count).
+        if assigned != Some(parent) && cap > 0 {
+            let current = self
+                .units
+                .values()
+                .filter(|x| x.assigned_parent == Some(parent) && x.total_toe() > 0)
+                .count() as u32;
+            if current >= cap {
+                return Err(CommandError::ReorgIllegal);
+            }
         }
         self.unit_mut(unit).expect("checked").assigned_parent = Some(parent);
         Ok(CommandOutcome::UnitReassigned)

@@ -10702,6 +10702,13 @@ mod tests {
         assert_eq!(g.apply(Command::ReassignUnit { unit: indep, parent: div }), Ok(CommandOutcome::UnitReassigned));
         assert_eq!(g.unit(indep).unwrap().assigned_parent, Some(div));
 
+        // §19.3: with the division's historical assignment capacity reached, a further assignment is
+        // refused (§19.21) — even though the unit may still attach (§19.5).
+        g.unit_mut(div).unwrap().assigned_capacity = 1; // one unit (indep) already assigned
+        let extra = mk(&mut g, a);
+        assert_eq!(g.apply(Command::AttachUnit { unit: extra, parent: div }), Ok(CommandOutcome::UnitAttached));
+        assert_eq!(g.apply(Command::ReassignUnit { unit: extra, parent: div }), Err(CommandError::ReorgIllegal));
+
         // §19.5 limit: a Battalion parent may take only one non-assigned attachment (German).
         let bn_parent = mk(&mut g, a);
         assert_eq!(g.nonassigned_attachment_limit(bn_parent), 1);

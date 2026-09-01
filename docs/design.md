@@ -627,10 +627,14 @@ Phase within the §19.5 limit), **`DetachUnit`** (§19.43/44 — 1 CP each, Orga
 **`ReassignUnit`** (§19.21/28 — a currently-attached, not-assigned-elsewhere unit, Organization
 Phase, no CP). The §19.5 Maximum Attachment Chart is transcribed (`maximum-attachment-19.5.md`) and
 its numeric caps enforced by `nonassigned_attachment_limit` (keyed by parent org-size/nationality/
-Game-Turn). Documented simplifications: the engine does not track a formation's arm, so §19.5's
-type-split columns use the more permissive value, and the type sub-constraints, German OR-alternatives,
-Matruh/Selby specials, and the finer §19.3 assignment maxima (Formation Organization Chart, not
-located) are not yet enforced; CW battalion-shuffle (§19.26), historical assignment shifts
+Game-Turn). The **§19.3 assignment maxima** are enforced too: since §19.3's Formation Organization Chart is not
+in the shared Charts & Tables (its note defers "singular" formations to their OA-sheet structure
+anyway), each formation's historical assignment count from the loaded OB is captured at scenario
+setup as its `assigned_capacity`, and `ReassignUnit` refuses an assignment that would push a
+parent's assigned count above it (§19.21; eliminated units don't count, §19.23).
+Documented simplifications: the engine does not track a formation's arm, so §19.5's
+type-split columns use the more permissive value, and its type sub-constraints, German OR-alternatives
+and Matruh/Selby specials are not enforced; CW battalion-shuffle (§19.26), historical assignment shifts
 (§19.24/25), substitution (§19.45) and nesting constraints (§19.46) fall out of the general
 reassign/attach rules or are left as flavor.
 

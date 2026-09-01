@@ -526,7 +526,26 @@ impl GameState {
             let e = self.fortifications.entry(coord).or_insert(0);
             *e = (*e).max(f.level);
         }
+        // §19.3: record each formation's historical assignment capacity (its OA-sheet organization)
+        // from the units assigned to it at start, for the §19.21 reassignment limit.
+        self.initialize_assignment_capacities();
         Ok(())
+    }
+
+    /// §19.3: set each unit's `assigned_capacity` to the number of units assigned to it at scenario
+    /// start (its OA-sheet organization). Called once after deployment.
+    pub fn initialize_assignment_capacities(&mut self) {
+        let mut counts: std::collections::HashMap<UnitId, u32> = std::collections::HashMap::new();
+        for u in self.units.values() {
+            if let Some(p) = u.assigned_parent {
+                *counts.entry(p).or_insert(0) += 1;
+            }
+        }
+        for (id, n) in counts {
+            if let Some(u) = self.units.get_mut(&id) {
+                u.assigned_capacity = n;
+            }
+        }
     }
 
     /// Resolve a reinforcement entry string to a `UnitLocation`: an on-map hex-id (e.g.
