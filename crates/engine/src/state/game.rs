@@ -5588,6 +5588,30 @@ impl GameState {
         }
     }
 
+    /// §19.5: whether a unit is a **tank** unit — a Weapons unit holding a Tank weapon system.
+    pub fn unit_is_tank(&self, id: UnitId) -> bool {
+        use crate::reference::units::WeaponKind;
+        let Some(u) = self.units.get(&id) else { return false };
+        let Composition::Weapons { groups } = &u.composition else { return false };
+        groups.iter().any(|g| {
+            self.reference.weapons_systems.get(&u.nationality).and_then(|m| m.get(&g.system)).map(|w| w.kind) == Some(WeaponKind::Tank)
+        })
+    }
+
+    /// §19.5: whether a unit is an **infantry**-type unit (Organic personnel, or an Infantry
+    /// characteristics type).
+    pub fn unit_is_infantry(&self, id: UnitId) -> bool {
+        let Some(u) = self.units.get(&id) else { return false };
+        if matches!(u.composition, Composition::Organic { .. }) {
+            return true;
+        }
+        self.reference
+            .unit_characteristics
+            .get(&u.nationality)
+            .and_then(|m| m.get(&u.id_code))
+            .is_some_and(|c| c.unit_type.contains("Infantry"))
+    }
+
     /// Whether a unit is a tank or gun (artillery/anti-tank) unit — a Weapons unit holding at least
     /// one Tank/Artillery/Anti-Tank weapon system (counts double for §41.31 bombing pins).
     fn unit_is_tank_or_gun(&self, id: UnitId) -> bool {
@@ -6622,6 +6646,73 @@ impl GameState {
             OrgSize::Battalion => if italian { 0 } else { 1 },
             OrgSize::Company => 0,
         }
+    }
+
+    /// §19.5 type constraints for attaching `unit` to `parent`, beyond the numeric cap: the row's
+    /// "no Tank" restriction and any per-type maximum (Infantry/Tank). The row is selected from the
+    /// parent's org size, arm (`is_armor`, from its OB organization), nationality and the Game-Turn.
+    /// Returns `false` if the attachment would violate the type rule. Documented simplifications: the
+    /// German Artillery-Brigade-HQ "artillery only" row, the Italian "1 Infantry *or* 1 Tank"
+    /// exclusivity (modelled as ≤1 of each), and the Matruh/Selby specials are not represented.
+    pub fn attachment_type_ok(&self, parent: UnitId, unit: UnitId) -> bool {
+        use crate::reference::units::Side;
+        let Some(p) = self.units.get(&parent) else { return true };
+        let side = p.nationality.side();
+        let italian = p.nationality == Nationality::Italian;
+        let armor = p.is_armor;
+        let gt = self.game_turn;
+        // (no_tank, max_infantry, max_tank) for the applicable §19.5 row.
+        let (no_tank, max_inf, max_tank): (bool, Option<u32>, Option<u32>) = match self.effective_org_size(parent) {
+            OrgSize::Division | OrgSize::SuperBrigade => match side {
+                Side::Commonwealth => {
+                    if armor {
+                        if gt < 68 { (true, Some(1), None) } else { (false, Some(1), Some(1)) }
+                    } else {
+                        (true, Some(1), None) // infantry division
+                    }
+                }
+                Side::Axis if italian => {
+                    if armor { (false, None, None) } else { (false, Some(1), Some(1)) }
+                }
+                Side::Axis => (true, None, None), // German division: no Tank
+            },
+            OrgSize::StandardBrigade => match side {
+                Side::Commonwealth if armor => (true, if gt < 68 { Some(1) } else { None }, None),
+                _ => (false, None, None),
+            },
+            _ => (false, None, None),
+        };
+        let is_tank = self.unit_is_tank(unit);
+        if is_tank && no_tank {
+            return false;
+        }
+        // Per-type maxima on the transitive non-assigned attachments already present.
+        let count_matching = |tank: bool| -> u32 {
+            self.units
+                .iter()
+                .filter(|(&id, u)| {
+                    id != parent
+                        && u.assigned_parent != Some(parent)
+                        && self.attaches_up_to(id, parent)
+                        && (if tank { self.unit_is_tank(id) } else { self.unit_is_infantry(id) })
+                })
+                .count() as u32
+        };
+        if is_tank {
+            if let Some(m) = max_tank {
+                if count_matching(true) >= m {
+                    return false;
+                }
+            }
+        }
+        if self.unit_is_infantry(unit) {
+            if let Some(m) = max_inf {
+                if count_matching(false) >= m {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     /// An HQ counter with no combat units attached (§3.33/§9.12): it uses its parenthesized

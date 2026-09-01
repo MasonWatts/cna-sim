@@ -10805,6 +10805,57 @@ mod tests {
     }
 
     #[test]
+    fn reorganization_type_constraints_19_5() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, OrgSize, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::German, include_str!("../../../data/reference/weapons/german.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        let a = HexCoord::new(0, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+
+        // §19.5: a German infantry division may take no Tank attachment.
+        g.active_player = Side::Axis;
+        let inf_div = g.spawn_unit(Nationality::German, "a", "inf div", Composition::Weapons { groups: vec![] });
+        g.unit_mut(inf_div).unwrap().org_size = OrgSize::Division; // is_armor defaults false
+        g.unit_mut(inf_div).unwrap().location = Some(UnitLocation::OnMap(a));
+        let de_tank = g.spawn_unit(Nationality::German, "f", "pz bn", Composition::Weapons { groups: vec![WeaponGroup { system: "Pz III H".into(), count: 5 }] });
+        g.unit_mut(de_tank).unwrap().location = Some(UnitLocation::OnMap(a));
+        assert_eq!(g.apply(Command::AttachUnit { unit: de_tank, parent: inf_div }), Err(CommandError::ReorgIllegal));
+        // An infantry battalion attaches fine.
+        let de_inf = g.spawn_unit(Nationality::German, "i", "inf bn", Composition::Organic { current_toe: 4 });
+        g.unit_mut(de_inf).unwrap().location = Some(UnitLocation::OnMap(a));
+        assert_eq!(g.apply(Command::AttachUnit { unit: de_inf, parent: inf_div }), Ok(CommandOutcome::UnitAttached));
+
+        // §19.5: a Commonwealth armor division (GT68+) may attach at most one Tank and one Infantry.
+        g.game_turn = 70;
+        g.active_player = Side::Commonwealth;
+        let arm_div = g.spawn_unit(Nationality::Commonwealth, "a", "armd div", Composition::Weapons { groups: vec![] });
+        g.unit_mut(arm_div).unwrap().org_size = OrgSize::Division;
+        g.unit_mut(arm_div).unwrap().is_armor = true;
+        g.unit_mut(arm_div).unwrap().location = Some(UnitLocation::OnMap(a));
+        let mk_tank = |g: &mut GameState| {
+            let u = g.spawn_unit(Nationality::Commonwealth, "g", "rtr", Composition::Weapons { groups: vec![WeaponGroup { system: "A9 Cruiser".into(), count: 4 }] });
+            g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(a));
+            u
+        };
+        let t1 = mk_tank(&mut g);
+        let t2 = mk_tank(&mut g);
+        assert_eq!(g.apply(Command::AttachUnit { unit: t1, parent: arm_div }), Ok(CommandOutcome::UnitAttached));
+        assert_eq!(g.apply(Command::AttachUnit { unit: t2, parent: arm_div }), Err(CommandError::ReorgIllegal)); // §19.5 max 1 Tank
+    }
+
+    #[test]
     fn reorganization_nesting_19_46() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;

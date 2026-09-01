@@ -536,14 +536,24 @@ impl GameState {
     /// start (its OA-sheet organization). Called once after deployment.
     pub fn initialize_assignment_capacities(&mut self) {
         let mut counts: std::collections::HashMap<UnitId, u32> = std::collections::HashMap::new();
-        for u in self.units.values() {
+        // §19.5: a formation is armored if any unit assigned to it is a tank unit (its OB org).
+        let mut armored: std::collections::HashSet<UnitId> = std::collections::HashSet::new();
+        for (&id, u) in &self.units {
             if let Some(p) = u.assigned_parent {
                 *counts.entry(p).or_insert(0) += 1;
+                if self.unit_is_tank(id) {
+                    armored.insert(p);
+                }
             }
         }
         for (id, n) in counts {
             if let Some(u) = self.units.get_mut(&id) {
                 u.assigned_capacity = n;
+            }
+        }
+        for id in armored {
+            if let Some(u) = self.units.get_mut(&id) {
+                u.is_armor = true;
             }
         }
     }

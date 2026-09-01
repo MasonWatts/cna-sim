@@ -4243,7 +4243,10 @@ impl GameState {
             self.require_phase(Phase::Organization)?;
             for f in self.attachment_ancestors(parent) {
                 if self.transitive_nonassigned_attachments(f) + 1 > self.nonassigned_attachment_limit(f) {
-                    return Err(CommandError::ReorgIllegal);
+                    return Err(CommandError::ReorgIllegal); // §19.5 numeric cap (with §19.46 nesting)
+                }
+                if !self.attachment_type_ok(f, unit) {
+                    return Err(CommandError::ReorgIllegal); // §19.5 type constraint (no Tank, etc.)
                 }
             }
             2

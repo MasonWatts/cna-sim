@@ -635,10 +635,12 @@ parent's assigned count above it (§19.21; eliminated units don't count, §19.23
 §19.46 nesting is enforced: a non-assigned attachment counts against `parent` **and every formation
 it is transitively attached to** (`attachment_ancestors` × `transitive_nonassigned_attachments`), so a
 nested attach is refused if any ancestor is at its §19.5 limit.
-Documented simplifications: the engine does not track a formation's arm, so §19.5's
-type-split columns use the more permissive value, and its type sub-constraints, German OR-alternatives
-and Matruh/Selby specials are not enforced (an OB arm tag — the faithful representation — would close
-this); CW battalion-shuffle (§19.26), historical assignment shifts
+The §19.5 **type constraints** are enforced too: each formation's arm (`is_armor`) is derived from
+its OB organization at setup (it has tank units assigned), selecting the §19.5 row's "no Tank" /
+per-type-maximum rule, which `attachment_type_ok` checks against the attaching unit's type across
+every ancestor (§19.46). Documented simplifications: the German Artillery-Brigade-HQ "artillery only"
+row, the Italian "1 Infantry *or* 1 Tank" exclusivity (modelled as ≤1 of each), and the Matruh/Selby
+named specials are not represented; CW battalion-shuffle (§19.26), historical assignment shifts
 (§19.24/25), substitution (§19.45) and nesting constraints (§19.46) fall out of the general
 reassign/attach rules or are left as flavor.
 

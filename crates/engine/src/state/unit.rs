@@ -210,6 +210,11 @@ pub struct Unit {
     /// count above this. 0 = not a parent / no limit recorded.
     #[serde(default)]
     pub assigned_capacity: u32,
+    /// §19.5: whether this formation is an **armored** formation (an armor division / tank brigade /
+    /// tank group) — derived from its OB organization (it has tank units assigned) at scenario setup.
+    /// Selects the §19.5 Maximum-Attachment row's type constraints ("no Tank", etc.).
+    #[serde(default)]
+    pub is_armor: bool,
 
     pub composition: Composition,
 
@@ -311,6 +316,7 @@ impl Unit {
             assigned_parent: None,
             attached_parent: None,
             assigned_capacity: 0,
+            is_armor: false,
             composition,
             cohesion: 0,
             cp_expended: Fixed(0),
