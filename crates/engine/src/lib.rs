@@ -10645,6 +10645,78 @@ mod tests {
     }
 
     #[test]
+    fn reorganization_attach_detach_reassign_19() {
+        use crate::reference::terrain::{Fixed, HexTerrain};
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, OrgSize, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(
+            Nationality::German,
+            include_str!("../../../data/reference/unit-characteristics/german.ron"),
+        )
+        .unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        g.active_player = Side::Axis;
+        let (a, b) = (HexCoord::new(0, 0), HexCoord::new(9, 9));
+        g.map.set_hex(a, HexTerrain::Clear);
+        g.map.set_hex(b, HexTerrain::Clear);
+
+        let div = g.spawn_unit(Nationality::German, "a", "15 Pz", Composition::Weapons { groups: vec![] });
+        g.unit_mut(div).unwrap().org_size = OrgSize::Division;
+        g.unit_mut(div).unwrap().location = Some(UnitLocation::OnMap(a));
+        let mk = |g: &mut GameState, h| {
+            let u = g.spawn_unit(Nationality::German, "i", "bn", Composition::Organic { current_toe: 4 });
+            g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(h));
+            u
+        };
+
+        // §19.41: an assigned unit attaches for 1 CP each (both units).
+        let assigned = mk(&mut g, a);
+        g.unit_mut(assigned).unwrap().assigned_parent = Some(div);
+        assert_eq!(g.apply(Command::AttachUnit { unit: assigned, parent: div }), Ok(CommandOutcome::UnitAttached));
+        assert_eq!(g.unit(assigned).unwrap().attached_parent, Some(div));
+        assert_eq!(g.unit(assigned).unwrap().cp_expended, Fixed(10));
+        assert_eq!(g.unit(div).unwrap().cp_expended, Fixed(10));
+
+        // §19.13: a unit already attached may not attach again without detaching.
+        assert_eq!(g.apply(Command::AttachUnit { unit: assigned, parent: div }), Err(CommandError::ReorgIllegal));
+        // §19.43: detach for 1 CP each.
+        assert_eq!(g.apply(Command::DetachUnit { unit: assigned }), Ok(CommandOutcome::UnitDetached));
+        assert_eq!(g.unit(assigned).unwrap().attached_parent, None);
+
+        // §19.1: a non-co-located unit may not attach.
+        let far = mk(&mut g, b);
+        assert_eq!(g.apply(Command::AttachUnit { unit: far, parent: div }), Err(CommandError::ReorgIllegal));
+
+        // §19.42: a non-assigned unit attaches for 2 CP in the Organization phase, within §19.5.
+        let indep = mk(&mut g, a);
+        assert_eq!(g.apply(Command::AttachUnit { unit: indep, parent: div }), Ok(CommandOutcome::UnitAttached));
+        assert_eq!(g.unit(indep).unwrap().cp_expended, Fixed(20));
+        // §19.21/§19.28: reassign the now-attached independent unit to the division.
+        assert_eq!(g.apply(Command::ReassignUnit { unit: indep, parent: div }), Ok(CommandOutcome::UnitReassigned));
+        assert_eq!(g.unit(indep).unwrap().assigned_parent, Some(div));
+
+        // §19.5 limit: a Battalion parent may take only one non-assigned attachment (German).
+        let bn_parent = mk(&mut g, a);
+        assert_eq!(g.nonassigned_attachment_limit(bn_parent), 1);
+        let c1 = mk(&mut g, a);
+        let c2 = mk(&mut g, a);
+        assert_eq!(g.apply(Command::AttachUnit { unit: c1, parent: bn_parent }), Ok(CommandOutcome::UnitAttached));
+        assert_eq!(g.apply(Command::AttachUnit { unit: c2, parent: bn_parent }), Err(CommandError::ReorgIllegal));
+
+        // §19.42: a non-assigned attach is refused outside the Organization phase.
+        g.phase = Phase::MovementAndCombat;
+        let m = mk(&mut g, a);
+        assert_eq!(g.apply(Command::AttachUnit { unit: m, parent: div }), Err(CommandError::WrongPhase));
+    }
+
+    #[test]
     fn barrage_resolver_applies_results() {
         use crate::reference::crt::{BarrageResult, BarrageTargetClass};
         use crate::state::game::GameState;

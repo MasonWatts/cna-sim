@@ -6254,6 +6254,48 @@ impl GameState {
         self.units.values().any(|u| u.attached_parent == Some(id))
     }
 
+    /// §19.4: the number of **non-assigned** units currently attached to `parent` (units attached to
+    /// it but assigned elsewhere or independent) — these are the ones the §19.5 Maximum Attachment
+    /// limit governs (assigned units attach freely to their own parent).
+    pub fn nonassigned_attachments(&self, parent: UnitId) -> u32 {
+        self.units
+            .values()
+            .filter(|u| u.attached_parent == Some(parent) && u.assigned_parent != Some(parent))
+            .count() as u32
+    }
+
+    /// §19.5 Maximum Attachment Chart: the cap on **non-assigned** units attachable to `parent`,
+    /// keyed by its effective org size, nationality and the Game-Turn. This encodes the chart's
+    /// numeric limits (PDF p101); the sub-type distinctions it also makes (armor vs infantry
+    /// division, tank vs other brigade, the "1 Bde + 1 unit *or* 4 units" alternatives, and the
+    /// Matruh-Garrison/Selby-Force specials), and the finer §19.3 assignment maxima, are documented
+    /// simplifications — the engine does not track a formation's arm, so the more permissive column
+    /// is used.
+    pub fn nonassigned_attachment_limit(&self, parent: UnitId) -> u32 {
+        use crate::reference::units::Side;
+        let Some(u) = self.units.get(&parent) else { return 0 };
+        let side = u.nationality.side();
+        let italian = u.nationality == Nationality::Italian;
+        let gt = self.game_turn;
+        match self.effective_org_size(parent) {
+            OrgSize::Division | OrgSize::SuperBrigade => match side {
+                Side::Commonwealth => if gt < 68 { 2 } else { 3 },
+                Side::Axis => if italian { 2 } else { 4 },
+            },
+            OrgSize::StandardBrigade => match side {
+                Side::Commonwealth => if gt < 68 { 2 } else { 1 },
+                Side::Axis => 1, // German regiment / Italian brigade or regiment
+            },
+            OrgSize::BattleGroup => match side {
+                Side::Commonwealth => 1,
+                Side::Axis => if italian { 3 } else { 4 },
+            },
+            // §19.5: any Battalion may attach one Company (Italian battalions, none).
+            OrgSize::Battalion => if italian { 0 } else { 1 },
+            OrgSize::Company => 0,
+        }
+    }
+
     /// An HQ counter with no combat units attached (§3.33/§9.12): it uses its parenthesized
     /// value — 0 Stacking Points, and it may not voluntarily attack.
     pub fn is_noncombat_hq(&self, id: UnitId) -> bool {

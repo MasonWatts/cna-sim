@@ -179,6 +179,16 @@ pub enum Command {
         hex: HexCoord,
         designation: String,
     },
+    /// §19.41/§19.42: attach `unit` to a co-located `parent` formation. An assigned unit attaches
+    /// for 1 CP each any time (§19.41); a non-assigned unit for 2 CP each in the Reorganization
+    /// (Organization) Phase only, subject to the §19.5 Maximum-Attachment limit (§19.42).
+    AttachUnit { unit: UnitId, parent: UnitId },
+    /// §19.43/§19.44: detach `unit` from its Parent Formation for 1 CP each (Organization or
+    /// Movement Phase).
+    DetachUnit { unit: UnitId },
+    /// §19.21/§19.28: (re)assign `unit` — currently attached to `parent` and not assigned elsewhere
+    /// — to that Parent Formation, recorded in the Reorganization (Organization) Phase (no CP cost).
+    ReassignUnit { unit: UnitId, parent: UnitId },
     /// Off-map movement (§8.8): advance an off-map unit one Operations Stage in `direction`,
     /// entering the map at the junction hex (Nofilia) when it completes the last leg toward it.
     MoveOffMap {
@@ -566,6 +576,12 @@ pub enum CommandOutcome {
     Patrol(PatrolReport),
     /// §16.4 a Dummy Tank Formation was placed.
     DummyTankPlaced,
+    /// §19.41/§19.42 a unit was attached to a Parent Formation.
+    UnitAttached,
+    /// §19.43/§19.44 a unit was detached from its Parent Formation.
+    UnitDetached,
+    /// §19.2 a unit was (re)assigned to a Parent Formation.
+    UnitReassigned,
     /// An off-map movement step was carried out (§8.8).
     OffMapMoved(crate::state::game::OffMapMove),
     /// A convoy was planned (§56.15).
@@ -807,6 +823,10 @@ pub enum CommandError {
     /// §16.42/§16.43: a Dummy Tank could not be placed — already 3 in play, one already in the hex,
     /// or fewer than 10 Stores present.
     DummyTankRejected,
+    /// §19: an (re)organization was illegal — units not co-located or of different sides, the unit
+    /// is already attached elsewhere (§19.13), the §19.5 attachment limit is reached, or a reassign
+    /// target is not the unit's current attachment / the unit is assigned elsewhere (§19.21/28).
+    ReorgIllegal,
     /// Reaction requires an enemy combat unit to have moved adjacent (§8.51).
     NoReactionTrigger,
     /// §8.55: a reacting unit may never move into an enemy Zone of Control.
@@ -974,6 +994,9 @@ impl GameState {
                     Err(CommandError::DummyTankRejected)
                 }
             }
+            Command::AttachUnit { unit, parent } => self.cmd_attach_unit(unit, parent),
+            Command::DetachUnit { unit } => self.cmd_detach_unit(unit),
+            Command::ReassignUnit { unit, parent } => self.cmd_reassign_unit(unit, parent),
             Command::MoveOffMap { unit, direction } => self.cmd_move_off_map(unit, direction),
             Command::PlanConvoy {
                 lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, die,
@@ -4157,6 +4180,84 @@ impl GameState {
             patrollee_killed: oloss.killed,
             patrollee_captured: oloss.captured,
         }))
+    }
+
+    /// §19.41/§19.42 attach `unit` to a co-located `parent`. An assigned unit attaches for 1 CP each
+    /// at any time (§19.41); a non-assigned unit for 2 CP each in the Reorganization (Organization)
+    /// Phase only, subject to the §19.5 Maximum-Attachment limit (§19.42). A unit already attached
+    /// elsewhere must detach first (§19.13).
+    fn cmd_attach_unit(&mut self, unit: UnitId, parent: UnitId) -> Result<CommandOutcome, CommandError> {
+        if unit == parent {
+            return Err(CommandError::ReorgIllegal);
+        }
+        let (u_side, u_hex, u_attached, u_assigned) = {
+            let u = self.unit(unit).ok_or(CommandError::UnitNotFound)?;
+            (u.nationality.side(), u.hex(), u.attached_parent, u.assigned_parent)
+        };
+        let (p_side, p_hex) = {
+            let p = self.unit(parent).ok_or(CommandError::UnitNotFound)?;
+            (p.nationality.side(), p.hex())
+        };
+        // §19.1: same hex, same side; not already attached to some parent (§19.13).
+        if u_side != p_side || u_hex.is_none() || u_hex != p_hex || u_attached.is_some() {
+            return Err(CommandError::ReorgIllegal);
+        }
+        let cost: i32 = if u_assigned == Some(parent) {
+            // §19.41: an assigned unit attaches for 1 CP each, at any time.
+            if !matches!(self.phase, Phase::Organization | Phase::MovementAndCombat) {
+                return Err(CommandError::WrongPhase);
+            }
+            1
+        } else {
+            // §19.42: a non-assigned unit — 2 CP each, Reorganization Phase only, within §19.5.
+            self.require_phase(Phase::Organization)?;
+            if self.nonassigned_attachments(parent) + 1 > self.nonassigned_attachment_limit(parent) {
+                return Err(CommandError::ReorgIllegal);
+            }
+            2
+        };
+        self.unit_mut(unit).expect("checked").attached_parent = Some(parent);
+        for id in [unit, parent] {
+            let cpa = self.unit_cpa(id).unwrap_or(0);
+            self.expend_cp_against(id, Fixed(cost * 10), cpa);
+        }
+        Ok(CommandOutcome::UnitAttached)
+    }
+
+    /// §19.43/§19.44 detach `unit` from its Parent Formation for 1 CP each, in the Organization or
+    /// Movement Phase.
+    fn cmd_detach_unit(&mut self, unit: UnitId) -> Result<CommandOutcome, CommandError> {
+        if !matches!(self.phase, Phase::Organization | Phase::MovementAndCombat) {
+            return Err(CommandError::WrongPhase);
+        }
+        let parent = self
+            .unit(unit)
+            .ok_or(CommandError::UnitNotFound)?
+            .attached_parent
+            .ok_or(CommandError::ReorgIllegal)?;
+        self.unit_mut(unit).expect("checked").attached_parent = None;
+        for id in [unit, parent] {
+            let cpa = self.unit_cpa(id).unwrap_or(0);
+            self.expend_cp_against(id, Fixed(10), cpa);
+        }
+        Ok(CommandOutcome::UnitDetached)
+    }
+
+    /// §19.21/§19.28 (re)assign `unit` to `parent`: it must currently be attached to `parent`
+    /// (§19.21) and not assigned to another formation (§19.28). Reorganization (Organization) Phase;
+    /// assignment is bookkeeping and costs no CP (the §6.3 costs are for the physical attachment).
+    fn cmd_reassign_unit(&mut self, unit: UnitId, parent: UnitId) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::Organization)?;
+        self.unit(parent).ok_or(CommandError::UnitNotFound)?;
+        let u = self.unit(unit).ok_or(CommandError::UnitNotFound)?;
+        if u.attached_parent != Some(parent) {
+            return Err(CommandError::ReorgIllegal); // §19.21: must be attached first
+        }
+        if u.assigned_parent.is_some() && u.assigned_parent != Some(parent) {
+            return Err(CommandError::ReorgIllegal); // §19.28: not while assigned elsewhere
+        }
+        self.unit_mut(unit).expect("checked").assigned_parent = Some(parent);
+        Ok(CommandOutcome::UnitReassigned)
     }
 
     fn move_step(
