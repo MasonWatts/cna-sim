@@ -634,6 +634,23 @@ located) are not yet enforced; CW battalion-shuffle (§19.26), historical assign
 (§19.24/25), substitution (§19.45) and nesting constraints (§19.46) fall out of the general
 reassign/attach rules or are left as flavor.
 
+### 8.13 Prisoners & captured equipment (§28)
+Full POW logistics. Surrender (§17.25 / morale) routes captured Strength via `capture_on_surrender`:
+**infantry (Organic) TOE → Prisoner Points** (§28.11), **weapon (tank/gun) TOE → captured equipment**
+(§28.3). Prisoner stacks (`prisoner_groups`) are fed 1 Store per 5 per Operations Stage from the
+nearest dump (§28.15, in the Stores Expenditure Stage), guarded by Guard Points formed from infantry
+TOE (`FormGuard`/`ReturnGuard`, §28.22), moved one hex at a time in the Truck Convoy Phase
+(`MovePrisoners`, CPA 8, §28.13) with escort (1 guard per 5, §28.17) — un-escortable excess escapes
+(§28.23) — and removed permanently at a Departure Point (`pow_departure_points`, §28.16). Escapes
+(§28.23–25): an unguarded stack escapes; escapees within eight hexes of a friendly unit rejoin and
+return as Infantry Replacement Points a month later (§28.24), and are recaptured if an enemy enters
+their hex (§28.25); the far-escapee autonomous movement/water-attrition is a documented simplification
+(owner decision 2026-08-31). Captured equipment is repaired via `RepairCapturedEquipment` (§28.3).
+Documented simplifications: the §28.17 moving-guard ratio is read as 1-per-5 (the 5-based POW system;
+the printed digit was ambiguous); ranges use hex distance; the §28.12 free 3-hex relocation and the
+40-per-hex camp cap fold into ordinary `MovePrisoners`; instantiating repaired captured equipment as a
+live unit is a follow-on.
+
 As we digitize physical game components (charts, tables, counters, OA sheets, scenario
 setups), we save a faithful, human-readable transcription so future agents and humans
 can reference them without the physical materials or repeated OCR.

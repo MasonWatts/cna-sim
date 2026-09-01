@@ -10717,6 +10717,87 @@ mod tests {
     }
 
     #[test]
+    fn prisoners_28() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{Commodities, GameState, Phase, SupplyDump};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::German, include_str!("../../../data/reference/weapons/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let h = HexCoord::new(5, 5);
+        for c in 3..=8 { g.map.set_hex(HexCoord::new(c, 5), HexTerrain::Clear); }
+
+        // §28.11/§28.3: a German infantry unit and a German tank unit surrender at `h` → the
+        // Commonwealth captures infantry as Prisoner Points and armor as captured equipment.
+        let inf = g.spawn_unit(Nationality::German, "i", "pris", Composition::Organic { current_toe: 6 });
+        g.unit_mut(inf).unwrap().location = Some(UnitLocation::OnMap(h));
+        let tank = g.spawn_unit(Nationality::German, "f", "pz", Composition::Weapons { groups: vec![WeaponGroup { system: "Pz III H".into(), count: 5 }] });
+        g.unit_mut(tank).unwrap().location = Some(UnitLocation::OnMap(h));
+        g.capture_on_surrender(inf);
+        g.capture_on_surrender(tank);
+        assert_eq!(g.prisoner_groups.iter().filter(|x| x.captor == Side::Commonwealth).map(|x| x.points).sum::<u32>(), 6);
+        assert_eq!(g.captured_equipment.iter().filter(|e| e.captor == Side::Commonwealth && e.system == "Pz III H").map(|e| e.count).sum::<u32>(), 5);
+
+        // §28.15: feeding drains 1 Store per 5 prisoners (ceil(6/5)=2) from the nearest CW dump.
+        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(h), side: Side::Commonwealth, supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 }, dummy: false });
+        assert_eq!(g.feed_prisoners(), 2);
+        assert_eq!(g.supply_dumps.iter().find(|d| d.location.hex() == Some(h)).unwrap().supply.stores, 8);
+
+        // §28.22: form two Guard Points from a co-located CW infantry unit (enough to escort 6).
+        g.phase = Phase::Organization;
+        g.active_player = Side::Commonwealth;
+        let guardsrc = g.spawn_unit(Nationality::Commonwealth, "h", "guard", Composition::Organic { current_toe: 4 });
+        g.unit_mut(guardsrc).unwrap().location = Some(UnitLocation::OnMap(h));
+        assert_eq!(g.apply(Command::FormGuard { group_hex: h }), Ok(CommandOutcome::GuardFormed));
+        assert_eq!(g.apply(Command::FormGuard { group_hex: h }), Ok(CommandOutcome::GuardFormed));
+        assert_eq!(g.unit(guardsrc).unwrap().total_toe(), 2); // two TOE became guards
+
+        // §28.13: escort the stack one hex; two guards cover 10 ≥ 6, so none escape.
+        g.phase = Phase::TruckConvoy;
+        let dest = HexCoord::new(6, 5);
+        assert_eq!(g.apply(Command::MovePrisoners { from: h, to: dest }), Ok(CommandOutcome::PrisonersMoved { escaped: 0 }));
+        assert_eq!(g.prisoner_groups.iter().find(|x| x.captor == Side::Commonwealth).unwrap().hex, dest);
+
+        // §28.16: reaching a Departure Point removes them permanently.
+        g.pow_departure_points.entry(Side::Commonwealth).or_default().insert(HexCoord::new(7, 5));
+        assert!(matches!(g.apply(Command::MovePrisoners { from: dest, to: HexCoord::new(7, 5) }), Ok(CommandOutcome::PrisonersMoved { .. })));
+        assert!(g.prisoner_groups.is_empty());
+
+        // §28.3: repair the captured tank.
+        g.phase = Phase::Repair;
+        assert_eq!(g.apply(Command::RepairCapturedEquipment { hex: h, system: "Pz III H".into() }), Ok(CommandOutcome::CapturedEquipmentRepaired));
+        assert!(g.captured_equipment.iter().any(|e| e.repaired && e.system == "Pz III H"));
+
+        // §28.23/§28.24: an unguarded stack escapes; with a friendly (Axis) unit within 8 it rejoins
+        // and is scheduled to return as Replacement Points.
+        g.capture_prisoners(Side::Commonwealth, h, 4); // original side = Axis
+        let axis = g.spawn_unit(Nationality::German, "i", "rescue", Composition::Organic { current_toe: 4 });
+        g.unit_mut(axis).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(8, 5)));
+        let before = g.pending_replacements.len();
+        g.resolve_prisoner_escapes();
+        assert!(g.prisoner_groups.is_empty(), "unguarded prisoners escaped");
+        assert_eq!(g.pending_replacements.len(), before + 1, "§28.24 escapees return as Replacement Points");
+
+        // §28.25: an escapee with no friendly nearby waits, and is recaptured if an enemy enters.
+        let far = HexCoord::new(40, 40);
+        g.map.set_hex(far, HexTerrain::Clear);
+        g.escape_points(Side::Axis, far, 3);
+        assert_eq!(g.escapees.iter().map(|e| e.points).sum::<u32>(), 3);
+        let cw = g.spawn_unit(Nationality::Commonwealth, "h", "recap", Composition::Organic { current_toe: 4 });
+        g.unit_mut(cw).unwrap().location = Some(UnitLocation::OnMap(far));
+        g.resolve_prisoner_escapes();
+        assert!(g.escapees.is_empty(), "§28.25 recaptured");
+        assert_eq!(g.prisoner_groups.iter().find(|x| x.hex == far).unwrap().captor, Side::Commonwealth);
+    }
+
+    #[test]
     fn barrage_resolver_applies_results() {
         use crate::reference::crt::{BarrageResult, BarrageTargetClass};
         use crate::state::game::GameState;

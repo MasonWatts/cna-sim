@@ -179,6 +179,46 @@ pub struct DummyTank {
     pub designation: String,
 }
 
+/// §28 a stack of Prisoner Points held at `hex`. `captor` guards/feeds them; `original` is the side
+/// they belong to (for §28.24 escape → replacement). `guards` Guard Points watch them (§28.2);
+/// `cpa_used` is movement expended this Convoy Phase (§28.13, CPA 8).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrisonerGroup {
+    pub captor: Side,
+    pub original: Side,
+    pub hex: HexCoord,
+    pub points: u32,
+    #[serde(default)]
+    pub guards: u32,
+    #[serde(default)]
+    pub cpa_used: u32,
+}
+
+/// §28.3 captured equipment (tank/gun/AA TOE taken when a weapons unit surrenders) — reusable by the
+/// captor against its former owner once repaired. `nationality` is the original owner (its weapon
+/// system / repair rules apply).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapturedEquipment {
+    pub captor: Side,
+    pub hex: HexCoord,
+    pub nationality: Nationality,
+    pub system: String,
+    pub count: u32,
+    /// §28.3: captured equipment may not be used until repaired.
+    #[serde(default)]
+    pub repaired: bool,
+}
+
+/// §28.24 escaped prisoners of `side` at `hex` heading home. In the modelled scope they wait to be
+/// rejoined (when a friendly unit is within 8 hexes) or recaptured (an enemy enters the hex, §28.25);
+/// the far-escapee autonomous movement/water-attrition of §28.24 is a documented simplification.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Escapee {
+    pub side: Side,
+    pub hex: HexCoord,
+    pub points: u32,
+}
+
 /// committed fighters' combat strength (for the §45 air-to-air resolution).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapPatrol {
@@ -837,6 +877,19 @@ pub struct GameState {
     /// (§16.45) and is eliminated by close assault / armorless anti-armor (§16.46).
     #[serde(default)]
     pub dummy_tanks: Vec<DummyTank>,
+    /// §28 Prisoner Point stacks held on the map (until they reach a Departure Point, §28.16).
+    #[serde(default)]
+    pub prisoner_groups: Vec<PrisonerGroup>,
+    /// §28.3 captured enemy equipment held on the map, reusable once repaired.
+    #[serde(default)]
+    pub captured_equipment: Vec<CapturedEquipment>,
+    /// §28.16 Prisoner Departure Points by captor (Commonwealth: Alexandria/Cairo; Axis: the Sirte
+    /// box). Prisoners entering are removed permanently. Populated at scenario setup.
+    #[serde(default)]
+    pub pow_departure_points: std::collections::HashMap<Side, std::collections::HashSet<HexCoord>>,
+    /// §28.24 escaped prisoners waiting to rejoin their own side or be recaptured (§28.25).
+    #[serde(default)]
+    pub escapees: Vec<Escapee>,
     /// Truck Points produced (§20.78A / §20.66a) awaiting arrival at their delivery city.
     #[serde(default)]
     pub pending_trucks: Vec<PendingTruckDelivery>,
@@ -1047,6 +1100,10 @@ impl GameState {
             land_combat_this_stage: std::collections::HashSet::new(),
             barraged_hexes_this_stage: std::collections::HashSet::new(),
             dummy_tanks: Vec::new(),
+            prisoner_groups: Vec::new(),
+            captured_equipment: Vec::new(),
+            pow_departure_points: std::collections::HashMap::new(),
+            escapees: Vec::new(),
             pending_trucks: Vec::new(),
             truck_pools: std::collections::HashMap::new(),
             axis_truck_orders: Vec::new(),
@@ -4079,6 +4136,8 @@ impl GameState {
         // §49.3 / §52.44: Fuel and Water evaporate/spill during the Stores Expenditure Stage
         // (6%/Game-Turn, or the Commonwealth's early-war 9% through August 1941).
         self.evaporate_base_supplies();
+        // §28.15: prisoners are fed first — 1 Store per 5 Prisoner Points, from the nearest dump.
+        self.feed_prisoners();
         // §52.6: distribute the Italian Pasta Point (1 Water) alongside Stores.
         self.distribute_pasta();
         let ids: Vec<UnitId> = self.units.keys().copied().collect();
@@ -4377,6 +4436,232 @@ impl GameState {
         let before = self.dummy_tanks.len();
         self.dummy_tanks.retain(|d| !(d.side == side && d.hex == hex));
         before - self.dummy_tanks.len()
+    }
+
+    // ----- §28 Prisoners ------------------------------------------------------------------------
+
+    /// §28.11: add `points` Prisoner Points captured by `captor` at `hex` (from surrendered infantry
+    /// TOE). Merges into an existing stack of the same captor there. `original` = the prisoners' own
+    /// side (captor's opponent), used for §28.24 escape → replacement.
+    pub fn capture_prisoners(&mut self, captor: Side, hex: HexCoord, points: u32) {
+        if points == 0 {
+            return;
+        }
+        if let Some(g) = self.prisoner_groups.iter_mut().find(|g| g.captor == captor && g.hex == hex) {
+            g.points += points;
+        } else {
+            self.prisoner_groups.push(PrisonerGroup {
+                captor,
+                original: captor.opponent(),
+                hex,
+                points,
+                guards: 0,
+                cpa_used: 0,
+            });
+        }
+    }
+
+    /// §28.3: record `count` captured `system` TOE (from a surrendered weapons unit of `owner`) held
+    /// by `captor` at `hex` — reusable once repaired.
+    pub fn capture_equipment(&mut self, captor: Side, hex: HexCoord, owner: Nationality, system: String, count: u32) {
+        if count == 0 {
+            return;
+        }
+        if let Some(e) = self
+            .captured_equipment
+            .iter_mut()
+            .find(|e| e.captor == captor && e.hex == hex && e.nationality == owner && e.system == system && !e.repaired)
+        {
+            e.count += count;
+        } else {
+            self.captured_equipment.push(CapturedEquipment { captor, hex, nationality: owner, system, count, repaired: false });
+        }
+    }
+
+    /// §28.11/§28.3: when `unit` surrenders, convert its losses — infantry (Organic) TOE becomes
+    /// Prisoner Points for the opponent (§28.11); weapon (tank/gun/AA) TOE becomes captured
+    /// equipment (§28.3). Called from the surrender resolution before the unit's TOE is zeroed.
+    pub(crate) fn capture_on_surrender(&mut self, unit: UnitId) {
+        let Some(u) = self.units.get(&unit) else { return };
+        let Some(hex) = u.hex() else { return };
+        let captor = u.nationality.side().opponent();
+        let owner = u.nationality;
+        match &u.composition {
+            Composition::Organic { current_toe } => {
+                let pts = *current_toe;
+                self.capture_prisoners(captor, hex, pts);
+            }
+            Composition::Weapons { groups } => {
+                let items: Vec<(String, u32)> = groups.iter().map(|g| (g.system.clone(), g.count)).collect();
+                for (system, count) in items {
+                    self.capture_equipment(captor, hex, owner, system, count);
+                }
+            }
+        }
+    }
+
+    /// §28.16: whether `hex` is a Prisoner Departure Point for `captor`.
+    pub fn is_pow_departure(&self, hex: HexCoord, captor: Side) -> bool {
+        self.pow_departure_points.get(&captor).is_some_and(|s| s.contains(&hex))
+    }
+
+    /// §28.16: remove any Prisoner stacks that have reached their captor's Departure Point (permanent).
+    pub fn process_prisoner_departures(&mut self) {
+        let keep: Vec<bool> = self
+            .prisoner_groups
+            .iter()
+            .map(|g| !self.is_pow_departure(g.hex, g.captor))
+            .collect();
+        let mut it = keep.into_iter();
+        self.prisoner_groups.retain(|_| it.next().unwrap_or(true));
+    }
+
+    /// §28.15: feed prisoners — one Store per five Prisoner Points per Operations Stage, expended
+    /// (before other Stores) from the nearest friendly Supply Dump to the stack. Called in the Stores
+    /// Expenditure Stage. Returns the total Stores expended.
+    pub fn feed_prisoners(&mut self) -> u32 {
+        let demands: Vec<(HexCoord, Side, u32)> = self
+            .prisoner_groups
+            .iter()
+            .map(|g| (g.hex, g.captor, g.points.div_ceil(5)))
+            .filter(|&(_, _, need)| need > 0)
+            .collect();
+        let mut spent = 0;
+        for (hex, captor, need) in demands {
+            spent += self.draw_stores_from_nearest_dump(hex, captor, need);
+        }
+        spent
+    }
+
+    /// Expend up to `amount` Stores for `side` from the non-dummy Supply Dump nearest `hex` (by hex
+    /// distance), draining successive nearest dumps as needed. Returns the amount actually drawn.
+    fn draw_stores_from_nearest_dump(&mut self, hex: HexCoord, side: Side, amount: u32) -> u32 {
+        let mut owed = amount;
+        // Order this side's dumps with stores by distance from the stack.
+        let mut order: Vec<usize> = self
+            .supply_dumps
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| d.side == side && !d.dummy && d.supply.stores > 0)
+            .map(|(i, _)| i)
+            .collect();
+        order.sort_by_key(|&i| self.supply_dumps[i].location.hex().map_or(u32::MAX, |h| h.distance(hex)));
+        let mut drawn = 0;
+        for i in order {
+            if owed == 0 {
+                break;
+            }
+            let take = owed.min(self.supply_dumps[i].supply.stores);
+            self.supply_dumps[i].supply.stores -= take;
+            owed -= take;
+            drawn += take;
+        }
+        drawn
+    }
+
+    /// §28.17: Guard Points required for a Prisoner stack — one to hold a standing camp, or one per
+    /// five when moving (the moving ratio; the printed digit was ambiguous, read as the 5 the whole
+    /// POW system uses — the 5-point marker, per-5 feeding §28.15, 5-standing camp §28.14).
+    pub fn guards_required(&self, points: u32, moving: bool) -> u32 {
+        if points == 0 {
+            0
+        } else if moving {
+            points.div_ceil(5)
+        } else {
+            1
+        }
+    }
+
+    /// §28.23–25: resolve escapes, rejoins and recaptures. Called at the start of each Operations
+    /// Stage. (1) §28.25 an escapee whose hex holds an enemy unit is recaptured; (2) §28.24 an
+    /// escapee with a friendly unit within eight hexes rejoins and returns as Replacement Points a
+    /// month later; (3) §28.23 any standing Prisoner stack left with no guard has its prisoners
+    /// escape. The far-escapee autonomous movement of §28.24 is a documented simplification —
+    /// escapees otherwise wait in place.
+    pub fn resolve_prisoner_escapes(&mut self) {
+        // Order matters — escape first, then rejoin/recapture — so a just-recaptured stack (§28.25)
+        // is not re-escaped in the same pass; it holds until a guard is posted (or re-escapes a
+        // stage later if still unguarded).
+        // (1) §28.23 escape: any Prisoner stack with no Guard Point loses its prisoners.
+        let escaped: Vec<(Side, HexCoord, u32)> = self
+            .prisoner_groups
+            .iter()
+            .filter(|g| g.guards == 0 && g.points > 0)
+            .map(|g| (g.original, g.hex, g.points))
+            .collect();
+        self.prisoner_groups.retain(|g| !(g.guards == 0 && g.points > 0));
+        for (side, hex, points) in escaped {
+            self.escape_points(side, hex, points); // rejoins immediately if a friendly is within 8
+        }
+        // (2) §28.24 rejoin: a pre-existing escapee with a friendly unit within eight hexes rejoins
+        // and returns as Replacement Points.
+        let mut i = 0;
+        while i < self.escapees.len() {
+            let e = self.escapees[i].clone();
+            if self.friendly_unit_within(e.side, e.hex, 8) {
+                self.schedule_escapee_replacements(e.side, e.hex, e.points);
+                self.escapees.remove(i);
+            } else {
+                i += 1;
+            }
+        }
+        // (3) §28.25 recapture: an enemy unit in the escapee's hex retakes them as prisoners.
+        let mut i = 0;
+        while i < self.escapees.len() {
+            let e = self.escapees[i].clone();
+            let enemy = e.side.opponent();
+            let recaptured = self.units_in_hex(e.hex).into_iter().any(|id| {
+                self.units.get(&id).is_some_and(|u| u.nationality.side() == enemy && u.total_toe() > 0)
+            });
+            if recaptured {
+                self.capture_prisoners(enemy, e.hex, e.points);
+                self.escapees.remove(i);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// §28.24: `points` prisoners of `side` escape at `hex` — if a friendly unit is within eight
+    /// hexes they rejoin immediately (→ Replacement Points a month later); otherwise they become an
+    /// [`Escapee`] awaiting rejoin or recapture.
+    pub(crate) fn escape_points(&mut self, side: Side, hex: HexCoord, points: u32) {
+        if points == 0 {
+            return;
+        }
+        if self.friendly_unit_within(side, hex, 8) {
+            self.schedule_escapee_replacements(side, hex, points);
+        } else if let Some(e) = self.escapees.iter_mut().find(|e| e.side == side && e.hex == hex) {
+            e.points += points;
+        } else {
+            self.escapees.push(Escapee { side, hex, points });
+        }
+    }
+
+    /// §28.24: escaped prisoners return as `points` Infantry Replacement Points a month later.
+    fn schedule_escapee_replacements(&mut self, side: Side, hex: HexCoord, points: u32) {
+        // "One month" ≈ POW_ESCAPE_REPLACEMENT_DELAY_GT Game-Turns (documented; the calendar uses
+        // ~4 sub-turns per month).
+        const POW_ESCAPE_REPLACEMENT_DELAY_GT: u32 = 4;
+        let _ = side;
+        self.plan_replacement(
+            ReplacementClass::Infantry,
+            points,
+            self.game_turn + POW_ESCAPE_REPLACEMENT_DELAY_GT,
+            0,
+            Some(UnitLocation::OnMap(hex)),
+            None,
+        );
+    }
+
+    /// Whether a combat-capable unit of `side` (TOE > 0) is within `radius` hexes of `hex`
+    /// (a documented hex-distance simplification of the §28.24 "eight Capability Points").
+    fn friendly_unit_within(&self, side: Side, hex: HexCoord, radius: u32) -> bool {
+        self.units.values().any(|u| {
+            u.nationality.side() == side
+                && u.total_toe() > 0
+                && u.hex().is_some_and(|h| h.distance(hex) <= radius)
+        })
     }
 
     /// Whether `hex` holds any armor-protection TOE for `side` (a real armored unit). Used for the
@@ -6435,6 +6720,13 @@ impl GameState {
         // barraged/bombed hexes are per-stage.
         self.land_combat_this_stage.clear();
         self.barraged_hexes_this_stage.clear();
+        // §28: prisoners reaching a Departure Point leave; then resolve escapes/rejoins/recaptures
+        // (§28.23–25) and refresh each stack's movement allowance for the new Convoy Segment (§28.13).
+        self.process_prisoner_departures();
+        self.resolve_prisoner_escapes();
+        for g in self.prisoner_groups.iter_mut() {
+            g.cpa_used = 0;
+        }
         if self.axis_rolling_stock_tons > 0 && self.axis_rail_contiguous_max() < 5 {
             self.axis_rolling_stock_tons = 0;
         }

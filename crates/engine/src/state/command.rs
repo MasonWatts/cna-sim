@@ -189,6 +189,19 @@ pub enum Command {
     /// §19.21/§19.28: (re)assign `unit` — currently attached to `parent` and not assigned elsewhere
     /// — to that Parent Formation, recorded in the Reorganization (Organization) Phase (no CP cost).
     ReassignUnit { unit: UnitId, parent: UnitId },
+    /// §28.22 form a Guard Point for the phasing side's Prisoner stack at `group_hex`, subtracting
+    /// one TOE from a co-located infantry combat unit. Organization Phase.
+    FormGuard { group_hex: HexCoord },
+    /// §28.22 return one Guard Point from the stack at `group_hex` to a co-located infantry unit
+    /// (restoring 1 TOE). Organization Phase.
+    ReturnGuard { group_hex: HexCoord },
+    /// §28.13 move the phasing side's Prisoner stack one hex from `from` to `to` in the Truck Convoy
+    /// Phase (CPA 8), requiring enough guards to escort them (§28.17); un-escortable excess escapes
+    /// (§28.23). Not into an enemy-controlled/occupied hex (§28.12).
+    MovePrisoners { from: HexCoord, to: HexCoord },
+    /// §28.3 repair a piece of captured equipment (`system`) at `hex`, making it reusable. Repair
+    /// Phase.
+    RepairCapturedEquipment { hex: HexCoord, system: String },
     /// Off-map movement (§8.8): advance an off-map unit one Operations Stage in `direction`,
     /// entering the map at the junction hex (Nofilia) when it completes the last leg toward it.
     MoveOffMap {
@@ -582,6 +595,14 @@ pub enum CommandOutcome {
     UnitDetached,
     /// §19.2 a unit was (re)assigned to a Parent Formation.
     UnitReassigned,
+    /// §28.22 a Guard Point was formed.
+    GuardFormed,
+    /// §28.22 a Guard Point was returned to its unit.
+    GuardReturned,
+    /// §28.13 a Prisoner stack moved; `escaped` = prisoners lost to §28.23 for want of escort.
+    PrisonersMoved { escaped: u32 },
+    /// §28.3 a piece of captured equipment was repaired (now reusable).
+    CapturedEquipmentRepaired,
     /// An off-map movement step was carried out (§8.8).
     OffMapMoved(crate::state::game::OffMapMove),
     /// A convoy was planned (§56.15).
@@ -827,6 +848,9 @@ pub enum CommandError {
     /// is already attached elsewhere (§19.13), the §19.5 attachment limit is reached, or a reassign
     /// target is not the unit's current attachment / the unit is assigned elsewhere (§19.21/28).
     ReorgIllegal,
+    /// §28: a prisoner action was illegal — no such stack, no eligible infantry unit to form/receive
+    /// a guard, an illegal move hex, or insufficient guards to escort a move.
+    PrisonerActionIllegal,
     /// Reaction requires an enemy combat unit to have moved adjacent (§8.51).
     NoReactionTrigger,
     /// §8.55: a reacting unit may never move into an enemy Zone of Control.
@@ -997,6 +1021,10 @@ impl GameState {
             Command::AttachUnit { unit, parent } => self.cmd_attach_unit(unit, parent),
             Command::DetachUnit { unit } => self.cmd_detach_unit(unit),
             Command::ReassignUnit { unit, parent } => self.cmd_reassign_unit(unit, parent),
+            Command::FormGuard { group_hex } => self.cmd_form_guard(group_hex),
+            Command::ReturnGuard { group_hex } => self.cmd_return_guard(group_hex),
+            Command::MovePrisoners { from, to } => self.cmd_move_prisoners(from, to),
+            Command::RepairCapturedEquipment { hex, system } => self.cmd_repair_captured_equipment(hex, system),
             Command::MoveOffMap { unit, direction } => self.cmd_move_off_map(unit, direction),
             Command::PlanConvoy {
                 lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, die,
@@ -4258,6 +4286,131 @@ impl GameState {
         }
         self.unit_mut(unit).expect("checked").assigned_parent = Some(parent);
         Ok(CommandOutcome::UnitReassigned)
+    }
+
+    /// Whether `unit` is an infantry-type unit (Organic personnel, or an Infantry characteristics
+    /// type) — the source/recipient for §28.22 Guard Points.
+    fn is_infantry_unit(&self, unit: UnitId) -> bool {
+        let Some(u) = self.unit(unit) else { return false };
+        if matches!(u.composition, crate::state::unit::Composition::Organic { .. }) {
+            return true;
+        }
+        self.reference
+            .unit_characteristics
+            .get(&u.nationality)
+            .and_then(|m| m.get(&u.id_code))
+            .is_some_and(|c| c.unit_type.contains("Infantry"))
+    }
+
+    /// §28.22 form a Guard Point for the phasing side's Prisoner stack at `group_hex` by subtracting
+    /// one TOE from a co-located infantry combat unit.
+    fn cmd_form_guard(&mut self, group_hex: HexCoord) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::Organization)?;
+        let side = self.active_player;
+        let gi = self
+            .prisoner_groups
+            .iter()
+            .position(|g| g.captor == side && g.hex == group_hex)
+            .ok_or(CommandError::PrisonerActionIllegal)?;
+        // A co-located infantry unit of the captor's side with a TOE to spare.
+        let donor = self
+            .units_in_hex(group_hex)
+            .into_iter()
+            .find(|&id| {
+                self.unit(id).is_some_and(|u| u.nationality.side() == side && u.total_toe() > 0)
+                    && self.is_infantry_unit(id)
+            })
+            .ok_or(CommandError::PrisonerActionIllegal)?;
+        if self.remove_unit_toe(donor, 1) == 0 {
+            return Err(CommandError::PrisonerActionIllegal);
+        }
+        self.prisoner_groups[gi].guards += 1;
+        Ok(CommandOutcome::GuardFormed)
+    }
+
+    /// §28.22 return one Guard Point from the stack at `group_hex` to a co-located infantry unit.
+    fn cmd_return_guard(&mut self, group_hex: HexCoord) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::Organization)?;
+        let side = self.active_player;
+        let gi = self
+            .prisoner_groups
+            .iter()
+            .position(|g| g.captor == side && g.hex == group_hex && g.guards > 0)
+            .ok_or(CommandError::PrisonerActionIllegal)?;
+        let recipient = self
+            .units_in_hex(group_hex)
+            .into_iter()
+            .find(|&id| self.unit(id).is_some_and(|u| u.nationality.side() == side) && self.is_infantry_unit(id))
+            .ok_or(CommandError::PrisonerActionIllegal)?;
+        // Restore one TOE (Organic infantry), capped at its maximum (§19.6).
+        let max = self.unit_max_toe(recipient).unwrap_or(u32::MAX);
+        if let Some(u) = self.unit_mut(recipient) {
+            if let crate::state::unit::Composition::Organic { current_toe } = &mut u.composition {
+                if *current_toe < max {
+                    *current_toe += 1;
+                }
+            }
+        }
+        self.prisoner_groups[gi].guards -= 1;
+        Ok(CommandOutcome::GuardReturned)
+    }
+
+    /// §28.13 move the phasing side's Prisoner stack one hex (Truck Convoy Phase, CPA 8). Escort is
+    /// required (§28.17); prisoners beyond what the guards can escort escape at the origin (§28.23).
+    fn cmd_move_prisoners(&mut self, from: HexCoord, to: HexCoord) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::TruckConvoy)?;
+        let side = self.active_player;
+        let enemy = side.opponent();
+        let gi = self
+            .prisoner_groups
+            .iter()
+            .position(|g| g.captor == side && g.hex == from)
+            .ok_or(CommandError::PrisonerActionIllegal)?;
+        // §28.12/§28.13: adjacent, on-map, not enemy-occupied or enemy-controlled.
+        if !from.is_adjacent(to) || self.map.terrain(to).is_none() {
+            return Err(CommandError::PrisonerActionIllegal);
+        }
+        if !self.enemy_units_in_hex(to, side).is_empty() || self.hex_in_zoc_of(to, enemy) {
+            return Err(CommandError::PrisonerActionIllegal);
+        }
+        // §28.13: CPA 8 (80 tenths). Each hex costs 1 CP here (a documented simplification).
+        if self.prisoner_groups[gi].cpa_used + 10 > 80 {
+            return Err(CommandError::PrisonerActionIllegal);
+        }
+        // §28.17/§28.23: the guards can escort 5 prisoners each; the excess escapes at the origin.
+        let (points, guards) = { let g = &self.prisoner_groups[gi]; (g.points, g.guards) };
+        let escortable = guards.saturating_mul(5);
+        let escaped = points.saturating_sub(escortable);
+        if escaped > 0 {
+            self.prisoner_groups[gi].points -= escaped;
+            let original = self.prisoner_groups[gi].original;
+            self.escape_points(original, from, escaped);
+        }
+        // Move the escorted remainder.
+        if self.prisoner_groups[gi].points == 0 {
+            self.prisoner_groups.remove(gi);
+            return Ok(CommandOutcome::PrisonersMoved { escaped });
+        }
+        self.prisoner_groups[gi].hex = to;
+        self.prisoner_groups[gi].cpa_used += 10;
+        // §28.16: reaching a Departure Point removes them permanently.
+        if self.is_pow_departure(to, side) {
+            self.prisoner_groups.remove(gi);
+        }
+        Ok(CommandOutcome::PrisonersMoved { escaped })
+    }
+
+    /// §28.3 repair a piece of captured equipment (`system`) at `hex`, making it reusable.
+    fn cmd_repair_captured_equipment(&mut self, hex: HexCoord, system: String) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::Repair)?;
+        let side = self.active_player;
+        let e = self
+            .captured_equipment
+            .iter_mut()
+            .find(|e| e.captor == side && e.hex == hex && e.system == system && !e.repaired)
+            .ok_or(CommandError::PrisonerActionIllegal)?;
+        e.repaired = true;
+        Ok(CommandOutcome::CapturedEquipmentRepaired)
     }
 
     fn move_step(

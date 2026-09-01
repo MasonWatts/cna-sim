@@ -1067,6 +1067,9 @@ impl GameState {
     fn surrender_units(&mut self, units: &[UnitId]) -> u32 {
         let mut lost = 0;
         for &id in units {
+            // §28.11/§28.3: infantry TOE → Prisoner Points, weapons TOE → captured equipment, taken
+            // by the opponent — recorded before the unit's Strength is zeroed.
+            self.capture_on_surrender(id);
             if let Some(u) = self.units.get_mut(&id) {
                 lost += u.total_toe();
                 match &mut u.composition {
@@ -1241,6 +1244,8 @@ impl GameState {
                 surrendered: false,
             },
             MoraleModifier::Surrender => {
+                // §28.11/§28.3: capture the surrendering Strength before it is zeroed.
+                self.capture_on_surrender(unit);
                 if let Some(u) = self.units.get_mut(&unit) {
                     match &mut u.composition {
                         Composition::Organic { current_toe } => *current_toe = 0,
