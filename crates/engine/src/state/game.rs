@@ -2015,6 +2015,23 @@ impl GameState {
         }
     }
 
+    /// The Replacement-Point class a weapon `system` (of `nat`) rebuilds: Tank→Tank,
+    /// Reconnaissance→Recce, all gun kinds (artillery/anti-tank/anti-air)→Gun. Unknown → Gun.
+    pub fn replacement_class_for_system(&self, nat: Nationality, system: &str) -> ReplacementClass {
+        use crate::reference::units::WeaponKind;
+        match self
+            .reference
+            .weapons_systems
+            .get(&nat)
+            .and_then(|m| m.get(system))
+            .map(|w| w.kind)
+        {
+            Some(WeaponKind::Tank) => ReplacementClass::Tank,
+            Some(WeaponKind::Reconnaissance) => ReplacementClass::Recce,
+            _ => ReplacementClass::Gun,
+        }
+    }
+
     /// Add a pool of Replacement Points (§20.2), starting its Training clock (§20.43). Returns
     /// its index in `replacement_points`.
     pub fn add_replacement_points(

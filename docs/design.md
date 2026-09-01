@@ -662,11 +662,14 @@ TOE (`FormGuard`/`ReturnGuard`, §28.22), moved one hex at a time in the Truck C
 (§28.23–25): an unguarded stack escapes; escapees within eight hexes of a friendly unit rejoin and
 return as Infantry Replacement Points a month later (§28.24), and are recaptured if an enemy enters
 their hex (§28.25); the far-escapee autonomous movement/water-attrition is a documented simplification
-(owner decision 2026-08-31). Captured equipment is repaired via `RepairCapturedEquipment` (§28.3).
+(owner decision 2026-08-31). Captured equipment is repaired via `RepairCapturedEquipment` (§28.3):
+per §22.5 a repaired vehicle is "treated as Replacement Points for that type of unit ... except that
+they do not have to undergo Training", so it re-enters play as a **trained** Replacement Point pool of
+the matching class (Tank/Recce/Gun, from the weapon system's kind) at the hex, for the captor — usable
+immediately against the former owner (§28.3), one point per captured TOE Strength Point.
 Documented simplifications: the §28.17 moving-guard ratio is read as 1-per-5 (the 5-based POW system;
 the printed digit was ambiguous); ranges use hex distance; the §28.12 free 3-hex relocation and the
-40-per-hex camp cap fold into ordinary `MovePrisoners`; instantiating repaired captured equipment as a
-live unit is a follow-on.
+40-per-hex camp cap fold into ordinary `MovePrisoners`.
 
 As we digitize physical game components (charts, tables, counters, OA sheets, scenario
 setups), we save a faithful, human-readable transcription so future agents and humans

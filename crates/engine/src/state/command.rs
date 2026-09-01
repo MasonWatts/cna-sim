@@ -4427,7 +4427,11 @@ impl GameState {
         Ok(CommandOutcome::PrisonersMoved { escaped })
     }
 
-    /// §28.3 repair a piece of captured equipment (`system`) at `hex`, making it reusable.
+    /// §28.3/§22.5 repair a piece of captured equipment (`system`) at `hex`, returning it to play.
+    /// A repaired vehicle is "treated as Replacement Points for that type of unit ... except that
+    /// they do not have to undergo Training" (§22.5): the captured TOE becomes a trained Replacement
+    /// Point pool of the matching class at `hex`, available to the captor to rebuild against the
+    /// former owner (§28.3). The `count` is 1 Replacement Point per captured TOE Strength Point.
     fn cmd_repair_captured_equipment(&mut self, hex: HexCoord, system: String) -> Result<CommandOutcome, CommandError> {
         self.require_phase(Phase::Repair)?;
         let side = self.active_player;
@@ -4437,6 +4441,11 @@ impl GameState {
             .find(|e| e.captor == side && e.hex == hex && e.system == system && !e.repaired)
             .ok_or(CommandError::PrisonerActionIllegal)?;
         e.repaired = true;
+        let (owner, count) = (e.nationality, e.count);
+        // §22.5: enter the Replacement Point pool already trained (no Training clock).
+        let class = self.replacement_class_for_system(owner, &system);
+        let idx = self.add_replacement_points(class, count, Some(crate::state::unit::UnitLocation::OnMap(hex)), None);
+        self.replacement_points[idx].training_remaining = 0;
         Ok(CommandOutcome::CapturedEquipmentRepaired)
     }
 

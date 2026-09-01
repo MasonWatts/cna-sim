@@ -10848,6 +10848,16 @@ mod tests {
         g.phase = Phase::Repair;
         assert_eq!(g.apply(Command::RepairCapturedEquipment { hex: h, system: "Pz III H".into() }), Ok(CommandOutcome::CapturedEquipmentRepaired));
         assert!(g.captured_equipment.iter().any(|e| e.repaired && e.system == "Pz III H"));
+        // §22.5: it returns to play as a trained Tank Replacement Point pool for the captor at `h`,
+        // one point per captured TOE, absorbable immediately (no Training).
+        use crate::state::game::ReplacementClass;
+        let pool = g
+            .replacement_points
+            .iter()
+            .find(|p| p.class == ReplacementClass::Tank && p.location.as_ref().and_then(|l| l.hex()) == Some(h))
+            .expect("§22.5 repaired tank → Replacement Points");
+        assert_eq!(pool.count, 5);
+        assert_eq!(pool.training_remaining, 0, "§22.5: repaired vehicles skip Training");
 
         // §28.23/§28.24: an unguarded stack escapes; with a friendly (Axis) unit within 8 it rejoins
         // and is scheduled to return as Replacement Points.
