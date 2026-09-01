@@ -170,6 +170,15 @@ pub enum StrafeEffect {
 /// with three or more fighters projects an air Zone of Control (`center` + its six neighbours,
 /// §40.23) and must engage enemy missions entering it (§40.26); it may intercept only one mission
 /// per stage (§40.27). Defensive CAP covers only `center` and may decline. `flight` is the
+/// §16.4 a Dummy Tank Formation: a battalion-size bluff owned by `side`, "placed" at `hex` with a
+/// borrowed `designation` (§16.44). No counter, CPA 0, worthless in combat.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DummyTank {
+    pub side: Side,
+    pub hex: HexCoord,
+    pub designation: String,
+}
+
 /// committed fighters' combat strength (for the §45 air-to-air resolution).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapPatrol {
@@ -823,6 +832,11 @@ pub struct GameState {
     /// be reconnoitred by a Patrol this stage. Reset each stage.
     #[serde(default)]
     pub barraged_hexes_this_stage: std::collections::HashSet<HexCoord>,
+    /// §16.4: Dummy Tank Formations in play (≤3 per side, ≤1 per hex). No real counter — a bluff
+    /// worth nothing in combat that may be disclosed as a real tank battalion during reconnaissance
+    /// (§16.45) and is eliminated by close assault / armorless anti-armor (§16.46).
+    #[serde(default)]
+    pub dummy_tanks: Vec<DummyTank>,
     /// Truck Points produced (§20.78A / §20.66a) awaiting arrival at their delivery city.
     #[serde(default)]
     pub pending_trucks: Vec<PendingTruckDelivery>,
@@ -1032,6 +1046,7 @@ impl GameState {
             axis_shipping_rolled: std::collections::HashMap::new(),
             land_combat_this_stage: std::collections::HashSet::new(),
             barraged_hexes_this_stage: std::collections::HashSet::new(),
+            dummy_tanks: Vec::new(),
             pending_trucks: Vec::new(),
             truck_pools: std::collections::HashMap::new(),
             axis_truck_orders: Vec::new(),
@@ -4331,6 +4346,57 @@ impl GameState {
                 removed
             }
         }
+    }
+
+    /// §16.4: number of `side` Dummy Tank Formations at `hex`.
+    pub fn dummy_tanks_in_hex(&self, hex: HexCoord, side: Side) -> usize {
+        self.dummy_tanks.iter().filter(|d| d.side == side && d.hex == hex).count()
+    }
+
+    /// §16.41/§16.42/§16.43: place a Dummy Tank Formation for `side` at `hex` with the borrowed
+    /// `designation` (§16.44), expending 10 Stores present in the hex (§16.42). Enforces ≤3 dummies
+    /// per side and ≤1 per hex (§16.43). Returns whether it was placed. (§16.43's Italian-only
+    /// exclusion is folded into the per-side capability — dummies are a per-Player asset.)
+    pub fn place_dummy_tank(&mut self, side: Side, hex: HexCoord, designation: impl Into<String>) -> bool {
+        if self.dummy_tanks.iter().filter(|d| d.side == side).count() >= 3 {
+            return false; // §16.43: at most three in existence
+        }
+        if self.dummy_tanks.iter().any(|d| d.hex == hex) {
+            return false; // §16.43: at most one per hex
+        }
+        if !self.consume_stores_at(hex, side, 10) {
+            return false; // §16.42: 10 Stores must be present in the hex
+        }
+        self.dummy_tanks.push(DummyTank { side, hex, designation: designation.into() });
+        true
+    }
+
+    /// §16.46: eliminate any Dummy Tank Formations of `side` at `hex` (e.g. the hex undergoes a
+    /// close assault, or anti-armor fire finds it with no real armor). Returns the number removed.
+    pub fn eliminate_dummies_in_hex(&mut self, hex: HexCoord, side: Side) -> usize {
+        let before = self.dummy_tanks.len();
+        self.dummy_tanks.retain(|d| !(d.side == side && d.hex == hex));
+        before - self.dummy_tanks.len()
+    }
+
+    /// Whether `hex` holds any armor-protection TOE for `side` (a real armored unit). Used for the
+    /// §16.46 rule that anti-armor fire eliminates a dummy only when no real armor remains.
+    pub(crate) fn hex_has_real_armor(&self, hex: HexCoord, side: Side) -> bool {
+        self.units_in_hex(hex).into_iter().any(|id| {
+            let Some(u) = self.units.get(&id) else { return false };
+            if u.nationality.side() != side {
+                return false;
+            }
+            let Composition::Weapons { groups } = &u.composition else { return false };
+            let table = self.reference.weapons_systems.get(&u.nationality);
+            groups.iter().any(|g| {
+                g.count > 0
+                    && table
+                        .and_then(|m| m.get(&g.system))
+                        .and_then(|w| w.armor_protection)
+                        .is_some_and(|ap| ap.value > 0)
+            })
+        })
     }
 
     /// §16.51: a unit's characteristics `unit_type` string (for reconnaissance disclosure).

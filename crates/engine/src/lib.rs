@@ -10572,6 +10572,79 @@ mod tests {
     }
 
     #[test]
+    fn dummy_tank_formations_16_4() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{Commodities, GameState, Phase, SupplyDump};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(
+            Nationality::Commonwealth,
+            include_str!("../../../data/reference/unit-characteristics/commonwealth.ron"),
+        )
+        .unwrap();
+        refs.load_unit_characteristics(
+            Nationality::German,
+            include_str!("../../../data/reference/unit-characteristics/german.ron"),
+        )
+        .unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        g.active_player = Side::Axis;
+        let hexes: Vec<HexCoord> = (0..5).map(|c| HexCoord::new(c, 0)).collect();
+        for h in &hexes {
+            g.map.set_hex(*h, HexTerrain::Clear);
+        }
+        let stock = |g: &mut GameState, h: HexCoord, stores: u32| {
+            g.supply_dumps.push(SupplyDump {
+                location: UnitLocation::OnMap(h),
+                side: Side::Axis,
+                supply: Commodities { fuel: 0, ammo: 0, stores, water: 0 },
+                dummy: false,
+            });
+        };
+        let place = |h| Command::PlaceDummyTank { hex: h, designation: "8 RTR".into() };
+
+        // §16.42: 10 Stores must be present — a hex with only 5 is refused.
+        stock(&mut g, hexes[0], 5);
+        assert_eq!(g.apply(place(hexes[0])), Err(CommandError::DummyTankRejected));
+        // With 10 Stores it is placed and the Stores are consumed.
+        stock(&mut g, hexes[0], 5); // now 10 total
+        assert_eq!(g.apply(place(hexes[0])), Ok(CommandOutcome::DummyTankPlaced));
+        assert_eq!(g.dummy_tanks_in_hex(hexes[0], Side::Axis), 1);
+        assert_eq!(g.supply_dumps.iter().filter(|d| d.location.hex() == Some(hexes[0])).map(|d| d.supply.stores).sum::<u32>(), 0);
+        // §16.43: no second dummy in the same hex.
+        stock(&mut g, hexes[0], 10);
+        assert_eq!(g.apply(place(hexes[0])), Err(CommandError::DummyTankRejected));
+        // §16.43: at most three in existence — place two more (hexes 1,2), the fourth (hex 3) fails.
+        for h in [hexes[1], hexes[2], hexes[3]] {
+            stock(&mut g, h, 10);
+        }
+        assert_eq!(g.apply(place(hexes[1])), Ok(CommandOutcome::DummyTankPlaced));
+        assert_eq!(g.apply(place(hexes[2])), Ok(CommandOutcome::DummyTankPlaced));
+        assert_eq!(g.apply(place(hexes[3])), Err(CommandError::DummyTankRejected));
+
+        // §16.46: a Close Assault against the hex eliminates its dummy. A German combat unit shares
+        // hexes[2] (so there is a real defender); a Commonwealth attacker adjacent assaults it.
+        let de = g.spawn_unit(Nationality::German, "i", "def", Composition::Organic { current_toe: 4 });
+        g.unit_mut(de).unwrap().location = Some(UnitLocation::OnMap(hexes[2]));
+        let cw = g.spawn_unit(Nationality::Commonwealth, "h", "atk", Composition::Organic { current_toe: 4 });
+        g.unit_mut(cw).unwrap().location = Some(UnitLocation::OnMap(hexes[1]));
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        assert_eq!(g.dummy_tanks_in_hex(hexes[2], Side::Axis), 1);
+        assert!(matches!(
+            g.apply(Command::CloseAssault { attackers: vec![cw], target: hexes[2] }),
+            Ok(CommandOutcome::CloseAssault(_))
+        ));
+        assert_eq!(g.dummy_tanks_in_hex(hexes[2], Side::Axis), 0, "§16.46: the dummy is eliminated");
+    }
+
+    #[test]
     fn barrage_resolver_applies_results() {
         use crate::reference::crt::{BarrageResult, BarrageTargetClass};
         use crate::state::game::GameState;

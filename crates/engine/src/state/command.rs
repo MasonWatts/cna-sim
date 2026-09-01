@@ -173,6 +173,12 @@ pub enum Command {
         recon_die: u32,
         loss_die: u32,
     },
+    /// §16.4 place a Dummy Tank Formation for the phasing side at `hex` with a borrowed
+    /// `designation` (§16.44), expending 10 Stores (§16.42). Organization (Construction) Phase.
+    PlaceDummyTank {
+        hex: HexCoord,
+        designation: String,
+    },
     /// Off-map movement (§8.8): advance an off-map unit one Operations Stage in `direction`,
     /// entering the map at the junction hex (Nofilia) when it completes the last leg toward it.
     MoveOffMap {
@@ -558,6 +564,8 @@ pub enum CommandOutcome {
     RetreatedBeforeAssault { cp: i32 },
     /// §16 Patrol result — a one-time reconnaissance report plus the casualties on both sides.
     Patrol(PatrolReport),
+    /// §16.4 a Dummy Tank Formation was placed.
+    DummyTankPlaced,
     /// An off-map movement step was carried out (§8.8).
     OffMapMoved(crate::state::game::OffMapMove),
     /// A convoy was planned (§56.15).
@@ -796,6 +804,9 @@ pub enum CommandError {
     /// §16.8/§16.34: the chosen Objective-Loss casualties do not match the rolled result, or are not
     /// taken from a legal unit.
     PatrolLossMismatch,
+    /// §16.42/§16.43: a Dummy Tank could not be placed — already 3 in play, one already in the hex,
+    /// or fewer than 10 Stores present.
+    DummyTankRejected,
     /// Reaction requires an enemy combat unit to have moved adjacent (§8.51).
     NoReactionTrigger,
     /// §8.55: a reacting unit may never move into an enemy Zone of Control.
@@ -955,6 +966,14 @@ impl GameState {
             } => self.cmd_patrol(
                 &patrol_points, target, &exclude, &reveals, &loss_choice, survival_die, recon_die, loss_die,
             ),
+            Command::PlaceDummyTank { hex, designation } => {
+                self.require_phase(Phase::Organization)?;
+                if self.place_dummy_tank(self.active_player, hex, designation) {
+                    Ok(CommandOutcome::DummyTankPlaced)
+                } else {
+                    Err(CommandError::DummyTankRejected)
+                }
+            }
             Command::MoveOffMap { unit, direction } => self.cmd_move_off_map(unit, direction),
             Command::PlanConvoy {
                 lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, die,
@@ -3570,12 +3589,19 @@ impl GameState {
             return Err(CommandError::InsufficientAmmo);
         }
         // §16.21: engaging in Anti-Armor combat bars this side from Patrolling this stage.
-        if let Some(u) = attackers.first().and_then(|&a| self.unit(a)) {
-            self.land_combat_this_stage.insert(u.nationality.side());
+        let atk_side = attackers.first().and_then(|&a| self.unit(a)).map(|u| u.nationality.side());
+        if let Some(s) = atk_side {
+            self.land_combat_this_stage.insert(s);
         }
-        Ok(CommandOutcome::AntiArmor(
-            self.resolve_anti_armor(attackers, target_hex),
-        ))
+        let outcome = self.resolve_anti_armor(attackers, target_hex);
+        // §16.46: anti-armor fire eliminates a Dummy Tank once the defender has no real armor left.
+        if let Some(s) = atk_side {
+            let defender = s.opponent();
+            if !self.hex_has_real_armor(target_hex, defender) {
+                self.eliminate_dummies_in_hex(target_hex, defender);
+            }
+        }
+        Ok(CommandOutcome::AntiArmor(outcome))
     }
 
     /// Whether at least one attacker is an on-map counter adjacent to `hex`.
@@ -3623,6 +3649,8 @@ impl GameState {
         self.expend_defensive_assault_ammo(&defenders);
         // §16.21: engaging in Close Assault bars this side from Patrolling this stage.
         self.land_combat_this_stage.insert(side);
+        // §16.46: a formation with a Dummy Tank that undergoes Close Assault loses the dummy.
+        self.eliminate_dummies_in_hex(target, side.opponent());
         Ok(CommandOutcome::CloseAssault(outcome))
     }
 
