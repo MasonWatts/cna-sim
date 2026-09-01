@@ -2928,6 +2928,26 @@ impl GameState {
         -(self.fort_level(hex) as i32)
     }
 
+    /// §17.32 Commonwealth Training area: a Commonwealth capital hex (Cairo/Helwan E1430, or
+    /// Alexandria E3613). The minor named areas (Amiriya, Abougir, Deghelia) are a documented data
+    /// gap — they are additional training locations near Alexandria, not yet keyed on the map.
+    pub(crate) fn is_cw_training_area(&self, hex: HexCoord) -> bool {
+        ["E1430", "E3613"]
+            .iter()
+            .any(|s| HexId::parse(s).map(|h| h.to_hex_coord()) == Some(hex))
+    }
+
+    /// Whether a unit holds at least a quarter of its assigned Max-TOE (§17.35 instruction-battalion
+    /// threshold). Units with no listed Max-TOE are treated as meeting it.
+    pub(crate) fn unit_toe_at_least_quarter(&self, id: UnitId) -> bool {
+        match self.unit_max_toe(id) {
+            Some(max) if max > 0 => {
+                self.units.get(&id).map(|u| u.total_toe()).unwrap_or(0) * 4 >= max
+            }
+            _ => true,
+        }
+    }
+
     /// Whether `hex` is a Major City with a well (the only valid origin for a pipeline, §52.21).
     pub(crate) fn is_major_city(&self, hex: HexCoord) -> bool {
         self.reference.campaign_victory.as_ref().is_some_and(|cv| {
@@ -7014,6 +7034,25 @@ impl GameState {
                 .collect();
             self.expend_water(&acted);
         }
+        // §17.3 Training: resolve the just-completed stage for each unit designated to Train (read
+        // before CP is reset). §17.33: any CP expenditure interrupts, resetting progress; otherwise
+        // the unit accrues a training stage, and every six raise its Basic Morale one step toward its
+        // trained reference (§17.34), never above it. `in_training` is a per-stage designation.
+        for u in self.units.values_mut() {
+            if !u.status.in_training {
+                continue;
+            }
+            if u.cp_expended.0 == 0 && u.basic_morale < u.basic_morale_reference {
+                u.training_progress += 1;
+                if u.training_progress >= 6 {
+                    u.basic_morale += 1;
+                    u.training_progress = 0;
+                }
+            } else {
+                u.training_progress = 0;
+            }
+            u.status.in_training = false;
+        }
         for u in self.units.values_mut() {
             u.cp_expended = Fixed(0);
             u.moved_into_zoc = false;
@@ -7223,8 +7262,9 @@ impl GameState {
     }
 
     /// §27.12/§27.13: whether `unit` is a valid source for forming a `kind` raider — a Friendly
-    /// Reconnaissance / Armored-Car unit with a TOE Strength Point to spare. (§27.12's "trained to
-    /// maximum Morale" precondition is not enforced: per-unit training level is not modeled — D-flag.)
+    /// Reconnaissance / Armored-Car unit with a TOE Strength Point to spare, trained to its maximum
+    /// (Basic) Morale (§27.12: `basic_morale` has reached its trained reference — always true for
+    /// non-green units, and for green units only after §17.3 Training).
     pub fn raider_source_ok(&self, kind: RaiderKind, unit: UnitId) -> bool {
         let (side, _) = Self::raider_limits(kind);
         let Some(u) = self.units.get(&unit) else {
@@ -7236,6 +7276,10 @@ impl GameState {
             RaiderKind::Lrdg => u.nationality.side() == Side::Commonwealth,
         };
         if !nat_ok || u.nationality.side() != side || u.total_toe() == 0 {
+            return false;
+        }
+        // §27.12: the source must be trained to its maximum Morale.
+        if u.basic_morale < u.basic_morale_reference {
             return false;
         }
         let is_recce = self

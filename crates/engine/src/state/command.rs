@@ -202,6 +202,9 @@ pub enum Command {
     /// §28.3 repair a piece of captured equipment (`system`) at `hex`, making it reusable. Repair
     /// Phase.
     RepairCapturedEquipment { hex: HexCoord, system: String },
+    /// §17.3 designate a Commonwealth unit to undergo Training this Operations Stage (raising its
+    /// Basic Morale toward its trained reference). Organization Phase.
+    TrainUnit { unit: UnitId },
     /// Off-map movement (§8.8): advance an off-map unit one Operations Stage in `direction`,
     /// entering the map at the junction hex (Nofilia) when it completes the last leg toward it.
     MoveOffMap {
@@ -601,6 +604,9 @@ pub enum CommandOutcome {
     GuardReturned,
     /// §28.13 a Prisoner stack moved; `escaped` = prisoners lost to §28.23 for want of escort.
     PrisonersMoved { escaped: u32 },
+    /// §17.3 a Commonwealth unit is training this stage; `basic_morale` is its Basic Morale after
+    /// this stage's progression (raised toward its trained reference every six stages).
+    UnitTraining { basic_morale: i32 },
     /// §28.3 a piece of captured equipment was repaired (now reusable).
     CapturedEquipmentRepaired,
     /// An off-map movement step was carried out (§8.8).
@@ -848,6 +854,10 @@ pub enum CommandError {
     /// is already attached elsewhere (§19.13), the §19.5 attachment limit is reached, or a reassign
     /// target is not the unit's current attachment / the unit is assigned elsewhere (§19.21/28).
     ReorgIllegal,
+    /// §17.3: a Training designation was illegal — not a green Commonwealth unit, not in a §17.32
+    /// training area, already acted (§17.33 CP expended), or no qualifying §17.35 instruction
+    /// battalion present.
+    TrainingIllegal,
     /// §28: a prisoner action was illegal — no such stack, no eligible infantry unit to form/receive
     /// a guard, an illegal move hex, or insufficient guards to escort a move.
     PrisonerActionIllegal,
@@ -1025,6 +1035,7 @@ impl GameState {
             Command::ReturnGuard { group_hex } => self.cmd_return_guard(group_hex),
             Command::MovePrisoners { from, to } => self.cmd_move_prisoners(from, to),
             Command::RepairCapturedEquipment { hex, system } => self.cmd_repair_captured_equipment(hex, system),
+            Command::TrainUnit { unit } => self.cmd_train_unit(unit),
             Command::MoveOffMap { unit, direction } => self.cmd_move_off_map(unit, direction),
             Command::PlanConvoy {
                 lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, die,
@@ -4454,6 +4465,50 @@ impl GameState {
         let idx = self.add_replacement_points(class, count, Some(crate::state::unit::UnitLocation::OnMap(hex)), None);
         self.replacement_points[idx].training_remaining = 0;
         Ok(CommandOutcome::CapturedEquipmentRepaired)
+    }
+
+    /// §17.3 designate a Commonwealth unit to Train this Operations Stage (raising its Basic Morale
+    /// toward its trained reference, §17.31). Validates: a green Commonwealth unit (current Basic
+    /// Morale below its reference); in a §17.32 training area (a Commonwealth capital hex —
+    /// Cairo/Helwan or Alexandria; the minor Amiriya/Abougir/Deghelia areas are a documented data
+    /// gap); no Capability Points expended this stage (§17.33); and a co-located §17.35 instruction
+    /// battalion — a fully-trained Commonwealth combat battalion of ≥¼ its assigned TOE and matching
+    /// arm (a Tank battalion for an armored trainee, else an Infantry battalion). Sets `in_training`;
+    /// the +1 Basic Morale after every six uninterrupted stages (§17.34) is applied at stage rollover.
+    fn cmd_train_unit(&mut self, unit: UnitId) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::units::Side;
+        use crate::state::unit::OrgSize;
+        self.require_phase(Phase::Organization)?;
+        let u = self.unit(unit).ok_or(CommandError::UnitNotFound)?;
+        let hex = u.hex().ok_or(CommandError::UnitNotOnMap)?;
+        // §17.3 (Commonwealth-only) / §17.31 (must be green) / §17.33 (has not yet acted this stage).
+        if u.nationality.side() != Side::Commonwealth
+            || u.basic_morale >= u.basic_morale_reference
+            || u.cp_expended.0 != 0
+        {
+            return Err(CommandError::TrainingIllegal);
+        }
+        // §17.32 training area.
+        if !self.is_cw_training_area(hex) {
+            return Err(CommandError::TrainingIllegal);
+        }
+        // §17.35 qualifying instruction battalion co-located.
+        let armor = u.is_armor;
+        let has_instructor = self.units.values().any(|b| {
+            b.id != unit
+                && b.nationality.side() == Side::Commonwealth
+                && b.hex() == Some(hex)
+                && self.effective_org_size(b.id) == OrgSize::Battalion
+                && b.basic_morale >= b.basic_morale_reference
+                && self.unit_toe_at_least_quarter(b.id)
+                && if armor { self.unit_is_tank(b.id) } else { self.unit_is_infantry(b.id) }
+        });
+        if !has_instructor {
+            return Err(CommandError::TrainingIllegal);
+        }
+        self.unit_mut(unit).expect("checked").status.in_training = true;
+        let basic_morale = self.unit(unit).expect("checked").basic_morale;
+        Ok(CommandOutcome::UnitTraining { basic_morale })
     }
 
     fn move_step(

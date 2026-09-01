@@ -301,6 +301,11 @@ pub struct Unit {
     /// (`basic_morale` = arrival value) and train up to it; equal for non-green units.
     #[serde(default)]
     pub basic_morale_reference: i32,
+    /// §17.34: consecutive Operations Stages this unit has spent Training toward the next +1 Basic
+    /// Morale step (0–5). Every sixth raises `basic_morale` and resets; any CP expenditure (§17.33)
+    /// resets it to 0.
+    #[serde(default)]
+    pub training_progress: u32,
     pub status: UnitStatus,
     pub gun_position: GunPosition,
     pub reserve: ReserveStatus,
@@ -358,6 +363,7 @@ impl Unit {
             retreat_origin: None,
             basic_morale: 0,
             basic_morale_reference: 0,
+            training_progress: 0,
             status: UnitStatus::default(),
             gun_position: GunPosition::Back,
             reserve: ReserveStatus::None,

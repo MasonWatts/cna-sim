@@ -356,6 +356,13 @@ minefields (`LayMinefield`/`ClearMinefield`, §24.3) sit on the map with real/du
 reveal, and §26.2 entry casualty checks. §50.14 **defensive**-assault Ammunition is now consumed
 by the melee defenders too (not just the attacker), and §9.35 retreat enforces the destination
 Stacking Limit (a stack splits into different hexes by retreating each unit on its own path).
+**Morale training (§17.3):** green Commonwealth units load at their OA-sheet untrained morale
+(`basic_morale`) below their trained maximum (`basic_morale_reference`, the §17.31 parenthesized
+pair). `TrainUnit` designates a unit to train in a §17.32 area (a Commonwealth capital hex —
+Cairo/Helwan, Alexandria; the minor Amiriya/Abougir/Deghelia areas are a data gap) with a
+co-located §17.35 instruction battalion (fully trained, ≥¼ TOE, matching arm); six uninterrupted
+CP-free stages (§17.33/§17.34, tracked in `training_progress`) raise Basic Morale one step toward
+the reference. This closes the §27.12 "trained to maximum Morale" gate on desert-raider formation.
 Combat deferrals: §15.35 two-terrain-hexside exception and multi-hex defenders.
 
 ### 8.5 Air game — rules & reference complete; resolution partial

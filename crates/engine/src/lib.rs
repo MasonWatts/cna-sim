@@ -890,6 +890,79 @@ mod tests {
     }
 
     #[test]
+    fn training_and_raider_source_17_3_27_12() {
+        use crate::reference::terrain::{Fixed, HexTerrain};
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, RaiderKind};
+        use crate::state::map::{HexCoord, HexId};
+        use crate::state::unit::{Composition, OrgSize, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        g.active_player = Side::Commonwealth;
+        let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
+        let elsewhere = HexCoord::new(0, 0);
+        g.map.set_hex(cairo, HexTerrain::Clear);
+        g.map.set_hex(elsewhere, HexTerrain::Clear);
+
+        // A green Commonwealth recce unit at Cairo: current Basic Morale 0, trained reference +1.
+        let recce = g.spawn_unit(Nationality::Commonwealth, "hh", "LRDG recce", Composition::Organic { current_toe: 4 });
+        {
+            let u = g.unit_mut(recce).unwrap();
+            u.location = Some(UnitLocation::OnMap(cairo));
+            u.basic_morale = 0;
+            u.basic_morale_reference = 1;
+        }
+        // §27.12: an untrained (green) source may not form a desert raider.
+        assert!(!g.raider_source_ok(RaiderKind::Lrdg, recce));
+
+        // A fully-trained infantry instruction battalion co-located (§17.35).
+        let instr = g.spawn_unit(Nationality::Commonwealth, "a", "instr bn", Composition::Organic { current_toe: 100 });
+        {
+            let u = g.unit_mut(instr).unwrap();
+            u.location = Some(UnitLocation::OnMap(cairo));
+            u.org_size = OrgSize::Battalion;
+            u.basic_morale = 1;
+            u.basic_morale_reference = 1;
+        }
+
+        // §17.32: training outside a training area is illegal.
+        g.unit_mut(recce).unwrap().location = Some(UnitLocation::OnMap(elsewhere));
+        assert_eq!(g.apply(Command::TrainUnit { unit: recce }), Err(CommandError::TrainingIllegal));
+        g.unit_mut(recce).unwrap().location = Some(UnitLocation::OnMap(cairo));
+
+        // Designate training: sets in_training; morale is unchanged this stage.
+        assert_eq!(g.apply(Command::TrainUnit { unit: recce }), Ok(CommandOutcome::UnitTraining { basic_morale: 0 }));
+        assert!(g.unit(recce).unwrap().status.in_training);
+
+        // §17.34: the sixth uninterrupted training stage raises Basic Morale one step.
+        g.unit_mut(recce).unwrap().training_progress = 5;
+        g.unit_mut(recce).unwrap().cp_expended = Fixed(0);
+        g.begin_operations_stage();
+        assert_eq!(g.unit(recce).unwrap().basic_morale, 1);
+        assert_eq!(g.unit(recce).unwrap().training_progress, 0);
+        assert!(!g.unit(recce).unwrap().status.in_training);
+        // Now trained to its maximum → §27.12 source is valid.
+        assert!(g.raider_source_ok(RaiderKind::Lrdg, recce));
+
+        // §17.33: expending CP during a training stage interrupts it (progress resets).
+        {
+            let u = g.unit_mut(recce).unwrap();
+            u.basic_morale = 0; // pretend still green
+            u.training_progress = 3;
+            u.status.in_training = true;
+            u.cp_expended = Fixed(30);
+        }
+        g.begin_operations_stage();
+        assert_eq!(g.unit(recce).unwrap().training_progress, 0, "§17.33 interrupted by CP expenditure");
+        assert_eq!(g.unit(recce).unwrap().basic_morale, 0, "no step gained when interrupted");
+    }
+
+    #[test]
     fn contact_engaged_lifecycle_8_67() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;
