@@ -5961,11 +5961,38 @@ mod tests {
             other => panic!("unexpected: {other:?}"),
         }
 
-        // A still-unmodeled strafe target (trucks in convoy) is rejected.
+        // §40.62: strafing an enemy free Truck Convoy removes Truck Points (and cargo in proportion).
+        ready(&mut g);
+        g.truck_convoys.push(crate::state::game::TruckConvoy {
+            side: Side::Commonwealth,
+            hex: target,
+            trucks: crate::state::unit::TruckPoints { light: 0, medium: 20, heavy: 0 },
+            cargo: Commodities { fuel: 100, ammo: 0, stores: 0, water: 0 },
+            cpa_used: 0,
+            carries_replacements: false,
+        });
+        match g.apply(Command::Strafe {
+            squadron: SquadronId(1), target, strafe_target: StrafeTarget::TrucksInConvoy,
+            planes: 6, roll: 66,
+        }) {
+            Ok(CommandOutcome::Strafed { result, effect }) => {
+                let removed = result.min(20);
+                assert_eq!(g.truck_convoys[0].trucks.medium, 20 - removed);
+                assert_eq!(g.truck_convoys[0].cargo.fuel, 100 - 100 * removed / 20);
+                if removed > 0 {
+                    assert_eq!(effect, StrafeEffect::TrucksEliminated { points: removed });
+                } else {
+                    assert_eq!(effect, StrafeEffect::None);
+                }
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
+        // §40.66: Ports are not a standalone strafing mission (they fold into a bombing raid).
         ready(&mut g);
         assert_eq!(
             g.apply(Command::Strafe {
-                squadron: SquadronId(1), target, strafe_target: StrafeTarget::TrucksInConvoy,
+                squadron: SquadronId(1), target, strafe_target: StrafeTarget::Port,
                 planes: 6, roll: 66,
             }),
             Err(CommandError::MissionNotPermitted)

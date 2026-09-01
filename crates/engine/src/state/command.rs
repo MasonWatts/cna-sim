@@ -1665,8 +1665,10 @@ impl GameState {
     /// §20.66/§20.78C PlanProduction: validate `count` Replacement Points of `item` against the
     /// nationality's Production Chart (lifetime total + per-period maximum), then schedule them to
     /// arrive after the §20.21 planning delay (Axis 2 / Commonwealth 4 Game-Turns) and begin
-    /// Training. Convoy tonnage is recorded on the order; consuming Axis convoy capacity to ship
-    /// it is deferred pending fuller convoy integration (D15 step 8).
+    /// Training. Each Axis order's convoy tonnage is cross-counted against the arrival turn's
+    /// Shipping allowance (§20.62, via `axis_shipping_committed` — shared with Axis truck production
+    /// and supply convoys); Commonwealth production lands via the strategic supply line and is not
+    /// gated.
     fn cmd_plan_production(
         &mut self,
         nationality: crate::reference::units::Nationality,
@@ -1840,8 +1842,9 @@ impl GameState {
     /// §20.66a ProduceAxisTrucks: plan `count` Truck Points of `kind`, validated against the Axis
     /// Truck Production row's lifetime total and per-Game-Turn maximum. On success the trucks
     /// arrive two Game-Turns later (§20.21 Axis delay) into the Axis free-truck pool. Gated to the
-    /// Organization Phase. (Bounded, D15: the row's convoy tonnage is not yet cross-counted against
-    /// the §20.62 replacement-shipping ceiling — a documented simplification.)
+    /// Organization Phase. The order's convoy tonnage is cross-counted against the arrival turn's
+    /// §20.62 Shipping allowance (via `axis_shipping_committed`, shared with replacement and supply
+    /// convoys).
     fn cmd_produce_axis_trucks(
         &mut self,
         kind: crate::reference::logistics::TruckKind,
@@ -3039,9 +3042,12 @@ impl GameState {
         Ok(CommandOutcome::UnitAirdropped)
     }
 
-    /// §40.5–40.8 Strafe: validate and resolve a strafing mission against the map, applying the
-    /// effect for supply dumps (§40.64) and water pipelines (§40.67). Other target types (infantry,
-    /// trucks, grounded aircraft, tanks, ports) are not yet modeled and are rejected.
+    /// §40.5–40.8 Strafe: validate and resolve a strafing mission against the map. Handles every
+    /// §40.54 standalone target: infantry (§40.61), truck convoys and first-line trucks (§40.62),
+    /// grounded aircraft (§40.63), supply dumps (§40.64), tanks (§40.65) and the water pipeline
+    /// (§40.67). Ports (§40.66) are *not* a standalone strafing mission — port strafing folds its
+    /// half-value TacAir into a bombing raid on the port (§41.5), so it is rejected here and handled
+    /// as part of a bombing mission. §40.55: strafing may never occur in a major-city hex.
     fn cmd_strafe(
         &mut self,
         squadron: crate::state::air::SquadronId,
@@ -3053,16 +3059,13 @@ impl GameState {
         use crate::rules::air::StrafeTarget;
         use crate::state::game::{Commodity, StrafeEffect, Weather};
         self.require_phase(Phase::LandSupportAir)?;
-        // Only the target types with modeled state effects are supported for now.
-        if !matches!(
-            strafe_target,
-            StrafeTarget::SupplyDump
-                | StrafeTarget::WaterPipeline
-                | StrafeTarget::Infantry
-                | StrafeTarget::GroundedAircraft
-                | StrafeTarget::FirstLineTrucks
-                | StrafeTarget::Tanks
-        ) {
+        // §40.66: Ports are not a standalone strafing target — they are strafed only as part of a
+        // bombing raid on the port. Reject; the caller folds the TacAir into a bombing mission.
+        if matches!(strafe_target, StrafeTarget::Port) {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        // §40.55: no strafing in a major-city hex.
+        if self.is_major_city(target) {
             return Err(CommandError::MissionNotPermitted);
         }
         let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
@@ -3161,6 +3164,11 @@ impl GameState {
             StrafeTarget::FirstLineTrucks => {
                 // §40.62: the result is the first-line attached Truck Points eliminated.
                 let removed = self.strafe_first_line_trucks(target, side, result);
+                if removed > 0 { StrafeEffect::TrucksEliminated { points: removed } } else { StrafeEffect::None }
+            }
+            StrafeTarget::TrucksInConvoy => {
+                // §40.62: the result is the Truck Points eliminated from an enemy free convoy.
+                let removed = self.strafe_convoy_trucks(target, side, result);
                 if removed > 0 { StrafeEffect::TrucksEliminated { points: removed } } else { StrafeEffect::None }
             }
             StrafeTarget::Tanks => {
@@ -3784,12 +3792,6 @@ impl GameState {
         Ok(CommandOutcome::Retreated { toe_removed, hexes_short })
     }
 
-    /// Reaction (§8.5): a non-phasing unit evades before it can be assaulted. Gated by
-    /// §8.53 (must be non-phasing, motorized, not Engaged, and not already in an enemy ZOC)
-    /// and triggered by an adjacent enemy (§8.51); the reaction path may never enter an
-    /// enemy ZOC (§8.55). Deferred: the CPA/size "pinning" rules (§8.53b/§8.54, which need a
-    /// declared close assault), the truck-stacking exception (§8.53a), and detach-to-react
-    /// (§8.56).
     /// Per-step move cost from `from` into `to`, including the §29.44 sandstorm penalty:
     /// movement costs are doubled when entering a hex under an active sandstorm.
     fn move_step_cost(&self, from: HexCoord, to: HexCoord, mode: MoveMode) -> Option<MoveCost> {
@@ -3818,6 +3820,11 @@ impl GameState {
         Ok(out)
     }
 
+    /// Reaction (§8.5): a non-phasing unit evades before it can be assaulted. Gated by §8.53 (must
+    /// be non-phasing, motorized, not Engaged, not already in an enemy ZOC), triggered by an adjacent
+    /// enemy (§8.51), and the §8.53b/§8.54 CPA-and-size "pinning" is enforced (a fast, large-enough
+    /// adjacent enemy bars the reaction); the reaction path may never enter an enemy ZOC (§8.55).
+    /// Deferred: the §8.53a truck-stacking exception and detach-to-react (§8.56).
     fn cmd_react(&mut self, unit: UnitId, path: &[HexCoord]) -> Result<CommandOutcome, CommandError> {
         if self.phase != Phase::MovementAndCombat {
             return Err(CommandError::WrongPhase);

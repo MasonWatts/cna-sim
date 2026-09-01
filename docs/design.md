@@ -394,9 +394,11 @@ the hex), and **first-line trucks** (§40.62, r Truck Points eliminated from an 
 trucks with the carried cargo lost in proportion), and **tanks** (§40.65 — armour-capable planes
 only, i.e. the Hurricane Mk.IID `DayStrafeArmor`; the result is the number of d6 rolled and their
 sum is the minimum Armour-Protection Points removed, taken as TOE weapon points from an enemy
-armoured unit). The remaining strafe targets — trucks in convoy (abstract lane tonnages, not
-hex-placed) and ports (§40.66 folds into a bombing raid) — are validated-but-rejected pending those
-models. **Air transport & airdrop (§42.3/§42.4):** `AirdropSupplies` drops Ammo or Stores from a
+armoured unit), and **trucks in convoy** (§40.62 — r Truck Points removed from an enemy on-map free
+Truck Convoy, cargo lost in proportion). §40.55 also blocks strafing in a major-city hex. The only
+§40.54 target not resolved standalone is **ports** — per §40.66 a port is strafed only as part of a
+bombing raid (its half-value TacAir folds into the §41.5 bombardment), so a standalone Port strafe is
+rejected. **Air transport & airdrop (§42.3/§42.4):** `AirdropSupplies` drops Ammo or Stores from a
 transport squadron's base dumps into a target hex, validating transport capability, range, weather
 (§42.45), and the §42.43/§42.44 drop-zone rules (clear/gravel/desert, not a major city, not
 enemy-occupied or in an enemy ZOC and within two hexes of a recognizable land feature — waived for a

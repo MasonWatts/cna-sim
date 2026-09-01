@@ -4868,8 +4868,9 @@ impl GameState {
     /// The §64.71/§64.72 automatic winner, if any (checked before points). §64.71: the Axis
     /// holds every Alexandria+Cairo hex and each occupying combat unit can trace ≤ `axis_supply_mp`
     /// truck MP to a source-connected Supply Unit. §64.72: from `cw_check_from_turn`, if no Axis
-    /// combat unit can trace ≤ `cw_check_mp`, the Commonwealth wins. (The §64.71 "one full
-    /// Game-Turn" hold is not yet tracked — this is the instantaneous condition.)
+    /// combat unit can trace ≤ `cw_check_mp`, the Commonwealth wins. The §64.71 "one full Game-Turn"
+    /// hold is enforced via `axis_objective_held_since` (the condition must have held since a prior
+    /// Game-Turn, not merely this instant).
     pub fn campaign_auto_winner(&self) -> Option<Side> {
         let cv = self.reference.campaign_victory.as_ref()?;
         let sources = self.strategic_sources();
@@ -5280,6 +5281,36 @@ impl GameState {
                 let have = u.truck_cargo.get(c);
                 *u.truck_cargo.get_mut(c) = have - have * taken / total_before;
             }
+        }
+        taken
+    }
+
+    /// §40.62: strafe an enemy free Truck Convoy (§8.98) in `hex` — remove up to `points` Truck
+    /// Points, and the hauled cargo in proportion. Returns the Truck Points eliminated. (First-line
+    /// attached trucks are the separate `strafe_first_line_trucks` target; a convoy is the unattached
+    /// on-map truck stack.)
+    pub fn strafe_convoy_trucks(&mut self, hex: HexCoord, attacker_side: Side, points: u32) -> u32 {
+        let Some(conv) = self.truck_convoys.iter_mut().find(|c| {
+            c.hex == hex
+                && c.side != attacker_side
+                && (c.trucks.light + c.trucks.medium + c.trucks.heavy) > 0
+        }) else {
+            return 0;
+        };
+        let total_before = conv.trucks.light + conv.trucks.medium + conv.trucks.heavy;
+        let taken = points.min(total_before);
+        let mut removed = taken;
+        for field in [&mut conv.trucks.light, &mut conv.trucks.medium, &mut conv.trucks.heavy] {
+            let n = removed.min(*field);
+            *field -= n;
+            removed -= n;
+        }
+        // Cargo the destroyed trucks were hauling is lost in proportion (§40.62 "as evenly as
+        // possible ... between the various types of cargo"). `total_before` is ≥1 (the convoy was
+        // found by requiring Truck Points present), so the division is safe.
+        for c in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
+            let have = conv.cargo.get(c);
+            *conv.cargo.get_mut(c) = have - have * taken / total_before;
         }
         taken
     }
