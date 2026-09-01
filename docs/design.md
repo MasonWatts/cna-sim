@@ -638,9 +638,12 @@ nested attach is refused if any ancestor is at its §19.5 limit.
 The §19.5 **type constraints** are enforced too: each formation's arm (`is_armor`) is derived from
 its OB organization at setup (it has tank units assigned), selecting the §19.5 row's "no Tank" /
 per-type-maximum rule, which `attachment_type_ok` checks against the attaching unit's type across
-every ancestor (§19.46). Documented simplifications: the German Artillery-Brigade-HQ "artillery only"
-row, the Italian "1 Infantry *or* 1 Tank" exclusivity (modelled as ≤1 of each), and the Matruh/Selby
-named specials are not represented; CW battalion-shuffle (§19.26), historical assignment shifts
+every ancestor (§19.46). The named/special-arm rows are covered too, via a `formation_role` derived
+from the OB at setup (formation designation / organic arm): the German **Artillery Brigade HQ**
+(its one attachment must be an Artillery/gun unit), the **Italian infantry division** ("1 Infantry
+*or* 1 Tank" — combined ≤1), and the **Matruh Garrison / Selby Force** (GT 1–12: 6 units, no tank,
+≤1 gun; GT 13+: 5 units, no tank, no recce, ≤3 infantry). Documented simplifications: CW
+battalion-shuffle (§19.26), historical assignment shifts
 (§19.24/25), substitution (§19.45) and nesting constraints (§19.46) fall out of the general
 reassign/attach rules or are left as flavor.
 

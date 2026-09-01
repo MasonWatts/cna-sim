@@ -181,6 +181,21 @@ impl OrgSize {
     }
 }
 
+/// §19.5: a named or special-arm formation role that overrides the generic Maximum-Attachment
+/// row. Derived from the OB at scenario setup (by formation name / organic arm), never from
+/// runtime composition. `Normal` = governed by the generic org-size row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum FormationRole {
+    #[default]
+    Normal,
+    /// German Artillery Brigade HQ (§19.5): its 1 attachment must be an Artillery (gun-class) unit.
+    ArtilleryBrigadeHq,
+    /// The Mersa Matruh Garrison / Selby Force (§19.5), a Game-Turn-dependent Allied special:
+    /// GT 1–12 (Matruh) — 6 units, no tank, ≤1 gun class; GT 13+ (Selby) — 5 units, no tank,
+    /// no recce, ≤3 infantry.
+    MatruhSelby,
+}
+
 /// A unit instance: identity + reference link + organization + composition + dynamic state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Unit {
@@ -215,6 +230,11 @@ pub struct Unit {
     /// Selects the §19.5 Maximum-Attachment row's type constraints ("no Tank", etc.).
     #[serde(default)]
     pub is_armor: bool,
+    /// §19.5: a named/special-arm formation role that overrides the generic Maximum-Attachment
+    /// row (German Artillery Brigade HQ; the Matruh Garrison / Selby Force). Derived from the OB
+    /// at scenario setup. `Normal` for everything else.
+    #[serde(default)]
+    pub formation_role: FormationRole,
 
     pub composition: Composition,
 
@@ -317,6 +337,7 @@ impl Unit {
             attached_parent: None,
             assigned_capacity: 0,
             is_armor: false,
+            formation_role: FormationRole::Normal,
             composition,
             cohesion: 0,
             cp_expended: Fixed(0),

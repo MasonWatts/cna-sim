@@ -5612,6 +5612,41 @@ impl GameState {
             .is_some_and(|c| c.unit_type.contains("Infantry"))
     }
 
+    /// §19.5/§20.2 "gun class": a Weapons unit holding an Artillery / Anti-Tank / Anti-Air system
+    /// and no Tank system (the §20.3 "Gun = Artillery, anti-tank or anti-air" pool class).
+    pub fn unit_is_gun(&self, id: UnitId) -> bool {
+        use crate::reference::units::WeaponKind;
+        if self.unit_is_tank(id) {
+            return false;
+        }
+        let Some(u) = self.units.get(&id) else { return false };
+        let Composition::Weapons { groups } = &u.composition else { return false };
+        groups.iter().any(|g| {
+            matches!(
+                self.reference
+                    .weapons_systems
+                    .get(&u.nationality)
+                    .and_then(|m| m.get(&g.system))
+                    .map(|w| w.kind),
+                Some(WeaponKind::Artillery | WeaponKind::AntiTank | WeaponKind::AntiAir)
+            )
+        })
+    }
+
+    /// Count the non-assigned units transitively attached to `parent` that satisfy `pred` — the
+    /// working set for the §19.5 per-type maxima.
+    fn count_nonassigned_attached(&self, parent: UnitId, pred: impl Fn(&Self, UnitId) -> bool) -> u32 {
+        self.units
+            .keys()
+            .filter(|&&id| {
+                id != parent
+                    && self.units.get(&id).and_then(|u| u.assigned_parent) != Some(parent)
+                    && self.attaches_up_to(id, parent)
+                    && pred(self, id)
+            })
+            .count() as u32
+    }
+
     /// Whether a unit is a tank or gun (artillery/anti-tank) unit — a Weapons unit holding at least
     /// one Tank/Artillery/Anti-Tank weapon system (counts double for §41.31 bombing pins).
     fn unit_is_tank_or_gun(&self, id: UnitId) -> bool {
@@ -6617,18 +6652,24 @@ impl GameState {
     }
 
     /// §19.5 Maximum Attachment Chart: the cap on **non-assigned** units attachable to `parent`,
-    /// keyed by its effective org size, nationality and the Game-Turn. This encodes the chart's
-    /// numeric limits (PDF p101); the sub-type distinctions it also makes (armor vs infantry
-    /// division, tank vs other brigade, the "1 Bde + 1 unit *or* 4 units" alternatives, and the
-    /// Matruh-Garrison/Selby-Force specials), and the finer §19.3 assignment maxima, are documented
-    /// simplifications — the engine does not track a formation's arm, so the more permissive column
-    /// is used.
+    /// keyed by its effective org size, nationality, arm and the Game-Turn — including the named
+    /// specials (Artillery Brigade HQ → 1; Matruh Garrison → 6 at GT 1–12, Selby Force → 5 at GT
+    /// 13+). Type sub-constraints are applied separately by `attachment_type_ok`. The German
+    /// "1 Brigade and 1 unit *or* 4 units" alternative uses the more permissive count, and the finer
+    /// §19.3 assignment maxima (a separate `assigned_capacity` limit) are documented simplifications.
     pub fn nonassigned_attachment_limit(&self, parent: UnitId) -> u32 {
         use crate::reference::units::Side;
+        use crate::state::unit::FormationRole;
         let Some(u) = self.units.get(&parent) else { return 0 };
         let side = u.nationality.side();
         let italian = u.nationality == Nationality::Italian;
         let gt = self.game_turn;
+        // §19.5 named/special-arm rows override the generic numeric cap.
+        match u.formation_role {
+            FormationRole::ArtilleryBrigadeHq => return 1,
+            FormationRole::MatruhSelby => return if gt <= 12 { 6 } else { 5 },
+            FormationRole::Normal => {}
+        }
         match self.effective_org_size(parent) {
             OrgSize::Division | OrgSize::SuperBrigade => match side {
                 Side::Commonwealth => if gt < 68 { 2 } else { 3 },
@@ -6651,63 +6692,89 @@ impl GameState {
     /// §19.5 type constraints for attaching `unit` to `parent`, beyond the numeric cap: the row's
     /// "no Tank" restriction and any per-type maximum (Infantry/Tank). The row is selected from the
     /// parent's org size, arm (`is_armor`, from its OB organization), nationality and the Game-Turn.
-    /// Returns `false` if the attachment would violate the type rule. Documented simplifications: the
-    /// German Artillery-Brigade-HQ "artillery only" row, the Italian "1 Infantry *or* 1 Tank"
-    /// exclusivity (modelled as ≤1 of each), and the Matruh/Selby specials are not represented.
+    /// Returns `false` if the attachment would violate the type rule. Covers the named/special-arm
+    /// rows too: the German Artillery-Brigade-HQ "artillery only", the Italian infantry division's
+    /// "1 Infantry *or* 1 Tank" (combined ≤1), and the Matruh-Garrison (GT 1–12: no tank, ≤1 gun) /
+    /// Selby-Force (GT 13+: no tank, no recce, ≤3 infantry) specials, selected via `formation_role`.
     pub fn attachment_type_ok(&self, parent: UnitId, unit: UnitId) -> bool {
         use crate::reference::units::Side;
+        use crate::state::unit::FormationRole;
         let Some(p) = self.units.get(&parent) else { return true };
         let side = p.nationality.side();
         let italian = p.nationality == Nationality::Italian;
         let armor = p.is_armor;
         let gt = self.game_turn;
-        // (no_tank, max_infantry, max_tank) for the applicable §19.5 row.
-        let (no_tank, max_inf, max_tank): (bool, Option<u32>, Option<u32>) = match self.effective_org_size(parent) {
-            OrgSize::Division | OrgSize::SuperBrigade => match side {
-                Side::Commonwealth => {
-                    if armor {
-                        if gt < 68 { (true, Some(1), None) } else { (false, Some(1), Some(1)) }
-                    } else {
-                        (true, Some(1), None) // infantry division
-                    }
-                }
-                Side::Axis if italian => {
-                    if armor { (false, None, None) } else { (false, Some(1), Some(1)) }
-                }
-                Side::Axis => (true, None, None), // German division: no Tank
-            },
-            OrgSize::StandardBrigade => match side {
-                Side::Commonwealth if armor => (true, if gt < 68 { Some(1) } else { None }, None),
-                _ => (false, None, None),
-            },
-            _ => (false, None, None),
-        };
         let is_tank = self.unit_is_tank(unit);
+        let is_inf = self.unit_is_infantry(unit);
+
+        // §19.5 named/special-arm rows.
+        match p.formation_role {
+            // German Artillery Brigade HQ: its one attachment must be an Artillery (gun-class) unit.
+            FormationRole::ArtilleryBrigadeHq => return self.unit_is_gun(unit),
+            // Mersa Matruh Garrison / Selby Force.
+            FormationRole::MatruhSelby => {
+                if is_tank {
+                    return false; // both windows: no tank
+                }
+                return if gt <= 12 {
+                    // Matruh Garrison: no tank, at most 1 gun class.
+                    !self.unit_is_gun(unit)
+                        || self.count_nonassigned_attached(parent, |g, id| g.unit_is_gun(id)) < 1
+                } else {
+                    // Selby Force: no tank, no recce, at most 3 infantry.
+                    if self.is_recce_unit(unit) {
+                        return false;
+                    }
+                    !is_inf
+                        || self.count_nonassigned_attached(parent, |g, id| g.unit_is_infantry(id)) < 3
+                };
+            }
+            FormationRole::Normal => {}
+        }
+
+        // Generic §19.5 rows: (no_tank, max_infantry, max_tank, max_infantry_or_tank_combined).
+        let (no_tank, max_inf, max_tank, max_combo): (bool, Option<u32>, Option<u32>, Option<u32>) =
+            match self.effective_org_size(parent) {
+                OrgSize::Division | OrgSize::SuperBrigade => match side {
+                    Side::Commonwealth => {
+                        if armor {
+                            if gt < 68 { (true, Some(1), None, None) } else { (false, Some(1), Some(1), None) }
+                        } else {
+                            (true, Some(1), None, None) // infantry division
+                        }
+                    }
+                    // Italian infantry division: "1 Infantry *or* 1 Tank" — at most one, combined.
+                    Side::Axis if italian => {
+                        if armor { (false, None, None, None) } else { (false, None, None, Some(1)) }
+                    }
+                    Side::Axis => (true, None, None, None), // German division: no Tank
+                },
+                OrgSize::StandardBrigade => match side {
+                    Side::Commonwealth if armor => (true, if gt < 68 { Some(1) } else { None }, None, None),
+                    _ => (false, None, None, None),
+                },
+                _ => (false, None, None, None),
+            };
         if is_tank && no_tank {
             return false;
         }
-        // Per-type maxima on the transitive non-assigned attachments already present.
-        let count_matching = |tank: bool| -> u32 {
-            self.units
-                .iter()
-                .filter(|(&id, u)| {
-                    id != parent
-                        && u.assigned_parent != Some(parent)
-                        && self.attaches_up_to(id, parent)
-                        && (if tank { self.unit_is_tank(id) } else { self.unit_is_infantry(id) })
-                })
-                .count() as u32
-        };
+        if let Some(m) = max_combo {
+            if (is_tank || is_inf)
+                && self.count_nonassigned_attached(parent, |g, id| g.unit_is_tank(id) || g.unit_is_infantry(id)) >= m
+            {
+                return false;
+            }
+        }
         if is_tank {
             if let Some(m) = max_tank {
-                if count_matching(true) >= m {
+                if self.count_nonassigned_attached(parent, |g, id| g.unit_is_tank(id)) >= m {
                     return false;
                 }
             }
         }
-        if self.unit_is_infantry(unit) {
+        if is_inf {
             if let Some(m) = max_inf {
-                if count_matching(false) >= m {
+                if self.count_nonassigned_attached(parent, |g, id| g.unit_is_infantry(id)) >= m {
                     return false;
                 }
             }

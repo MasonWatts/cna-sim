@@ -11,7 +11,9 @@ use crate::reference::units::{Nationality, Side};
 use crate::state::game::{Commodities, GameState, PendingArrival, PendingDumpChoice, SupplyDump};
 use crate::state::game::FacilityKind;
 use crate::state::map::{HexCoord, HexId};
-use crate::state::unit::{Composition, OrgSize, TruckPoints, UnitId, UnitLocation, WeaponGroup};
+use crate::state::unit::{
+    Composition, FormationRole, OrgSize, TruckPoints, UnitId, UnitLocation, WeaponGroup,
+};
 
 /// Error loading a scenario.
 #[derive(Debug)]
@@ -554,6 +556,24 @@ impl GameState {
         for id in armored {
             if let Some(u) = self.units.get_mut(&id) {
                 u.is_armor = true;
+            }
+        }
+        // §19.5 named/special-arm roles, derived from the formation HQ's designation (the OB).
+        for u in self.units.values_mut() {
+            if !u.is_hq {
+                continue;
+            }
+            let n = u.name.to_ascii_lowercase();
+            if u.nationality.side() == crate::reference::units::Side::Commonwealth
+                && (n.contains("selby") || n.contains("matruh"))
+            {
+                u.formation_role = FormationRole::MatruhSelby;
+            } else if u.nationality == Nationality::German
+                && (n.contains("artillery brigade")
+                    || n.contains("artillerie")
+                    || n.contains("arko"))
+            {
+                u.formation_role = FormationRole::ArtilleryBrigadeHq;
             }
         }
     }

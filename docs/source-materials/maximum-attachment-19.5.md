@@ -44,12 +44,21 @@ Modification: any nation's Division- and Brigade-equivalent may attach two non-s
 company-equivalents at no cost to the maximum; three company-equivalents equal one
 battalion-equivalent, and the company-equivalents must respect the type restrictions.
 
-## Engine simplifications (documented)
-`nonassigned_attachment_limit` keys the cap on the parent's effective `OrgSize`, nationality,
-and Game-Turn only. The engine does not track a formation's **arm**, so where the chart splits
-by type (armor vs infantry division, tank vs other brigade) the more permissive column is used.
-The type sub-constraints ("1 Infantry; no Tank"), the German "1 Bde + 1 unit / OR" alternatives,
-the Matruh-Garrison / Selby-Force named specials, and the finer §19.3 **assignment** maxima
-(Formation Organization Chart — not located in the shared Charts & Tables section) are not yet
-enforced. The reorganization commands (Attach/Detach/Reassign, §19.41–44) with their CP costs,
+## Engine encoding
+`nonassigned_attachment_limit` gives the numeric cap, keyed on the parent's effective `OrgSize`,
+nationality, arm (`is_armor`) and Game-Turn — including the named specials. A formation's **arm**
+(`is_armor`) and its special **role** (`formation_role`: Artillery Brigade HQ, Matruh/Selby) are
+derived from the OB at scenario setup (a formation is armored if it has tank units assigned; roles
+match the HQ designation), the faithful static classification rather than runtime composition.
+
+`attachment_type_ok` applies the type sub-constraints: the "no Tank" / per-type maxima
+("1 Infantry; no Tank" etc.), the Italian infantry division's "1 Infantry *or* 1 Tank" (combined
+≤1), the Artillery Brigade HQ's "Artillery only", and the Matruh Garrison (no tank, ≤1 gun) /
+Selby Force (no tank, no recce, ≤3 infantry) specials — all checked across every ancestor formation
+(§19.46). The reorganization commands (Attach/Detach/Reassign, §19.41–44) with their CP costs,
 segment gating, co-location and one-parent integrity are exact.
+
+Documented simplifications: the German "1 Brigade and 1 unit *or* 4 units" alternative uses the
+more permissive count (4), and the finer §19.3 **assignment** maxima (the Formation Organization
+Chart — not located in the shared Charts & Tables section) are approximated by `assigned_capacity`
+(the OB starting count).

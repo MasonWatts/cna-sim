@@ -10856,6 +10856,109 @@ mod tests {
     }
 
     #[test]
+    fn reorganization_special_roles_19_5() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, FormationRole, OrgSize, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        for nat in [Nationality::German, Nationality::Commonwealth, Nationality::Italian] {
+            let (uc, wp): (&str, &str) = match nat {
+                Nationality::German => (
+                    include_str!("../../../data/reference/unit-characteristics/german.ron"),
+                    include_str!("../../../data/reference/weapons/german.ron"),
+                ),
+                Nationality::Commonwealth => (
+                    include_str!("../../../data/reference/unit-characteristics/commonwealth.ron"),
+                    include_str!("../../../data/reference/weapons/commonwealth.ron"),
+                ),
+                _ => (
+                    include_str!("../../../data/reference/unit-characteristics/italian.ron"),
+                    include_str!("../../../data/reference/weapons/italian.ron"),
+                ),
+            };
+            refs.load_unit_characteristics(nat, uc).unwrap();
+            refs.load_weapons_systems(nat, wp).unwrap();
+        }
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        let a = HexCoord::new(0, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+        let at_a = |g: &mut GameState, u| {
+            g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(a));
+        };
+        let wpn = |sys: &str| Composition::Weapons { groups: vec![WeaponGroup { system: sys.into(), count: 4 }] };
+
+        // §19.5 Italian infantry division: "1 Infantry *or* 1 Tank" — at most one, combined.
+        g.active_player = Side::Axis;
+        let it_div = g.spawn_unit(Nationality::Italian, "a", "it inf div", Composition::Weapons { groups: vec![] });
+        g.unit_mut(it_div).unwrap().org_size = OrgSize::Division; // is_armor false → infantry division
+        at_a(&mut g, it_div);
+        let it_inf = g.spawn_unit(Nationality::Italian, "i", "it inf", Composition::Organic { current_toe: 4 });
+        let it_tank = g.spawn_unit(Nationality::Italian, "f", "it tank", wpn("M 13/40"));
+        let it_gun = g.spawn_unit(Nationality::Italian, "jj", "it gun", wpn("75/27 Gun"));
+        for u in [it_inf, it_tank, it_gun] { at_a(&mut g, u); }
+        assert_eq!(g.apply(Command::AttachUnit { unit: it_inf, parent: it_div }), Ok(CommandOutcome::UnitAttached));
+        // The infantry already used the single Infantry-or-Tank slot: a tank is refused.
+        assert_eq!(g.apply(Command::AttachUnit { unit: it_tank, parent: it_div }), Err(CommandError::ReorgIllegal));
+        // A gun is neither infantry nor tank — it fits the second of the two unit slots.
+        assert_eq!(g.apply(Command::AttachUnit { unit: it_gun, parent: it_div }), Ok(CommandOutcome::UnitAttached));
+
+        // §19.5 German Artillery Brigade HQ: its one attachment must be an Artillery (gun) unit.
+        let arty_hq = g.spawn_unit(Nationality::German, "b", "Artillerie HQ", Composition::Weapons { groups: vec![] });
+        g.unit_mut(arty_hq).unwrap().org_size = OrgSize::StandardBrigade;
+        g.unit_mut(arty_hq).unwrap().formation_role = FormationRole::ArtilleryBrigadeHq;
+        at_a(&mut g, arty_hq);
+        let de_inf = g.spawn_unit(Nationality::German, "i", "de inf", Composition::Organic { current_toe: 4 });
+        let de_gun = g.spawn_unit(Nationality::German, "v", "de gun", wpn("10.5cm (K18) Medium Gun"));
+        for u in [de_inf, de_gun] { at_a(&mut g, u); }
+        assert_eq!(g.apply(Command::AttachUnit { unit: de_inf, parent: arty_hq }), Err(CommandError::ReorgIllegal));
+        assert_eq!(g.apply(Command::AttachUnit { unit: de_gun, parent: arty_hq }), Ok(CommandOutcome::UnitAttached));
+
+        // §19.5 Mersa Matruh Garrison (GT 1–12): no tank, at most 1 gun class.
+        g.active_player = Side::Commonwealth;
+        g.game_turn = 1;
+        let matruh = g.spawn_unit(Nationality::Commonwealth, "b", "Matruh Garrison HQ", Composition::Weapons { groups: vec![] });
+        g.unit_mut(matruh).unwrap().org_size = OrgSize::StandardBrigade;
+        g.unit_mut(matruh).unwrap().formation_role = FormationRole::MatruhSelby;
+        at_a(&mut g, matruh);
+        let cw_tank = g.spawn_unit(Nationality::Commonwealth, "g", "cw tank", wpn("A9 Cruiser"));
+        let cw_inf = g.spawn_unit(Nationality::Commonwealth, "i", "cw inf", Composition::Organic { current_toe: 4 });
+        let cw_gun1 = g.spawn_unit(Nationality::Commonwealth, "x", "cw gun1", wpn("25-pounder Gun"));
+        let cw_gun2 = g.spawn_unit(Nationality::Commonwealth, "x", "cw gun2", wpn("25-pounder Gun"));
+        for u in [cw_tank, cw_inf, cw_gun1, cw_gun2] { at_a(&mut g, u); }
+        assert_eq!(g.apply(Command::AttachUnit { unit: cw_tank, parent: matruh }), Err(CommandError::ReorgIllegal)); // no tank
+        assert_eq!(g.apply(Command::AttachUnit { unit: cw_inf, parent: matruh }), Ok(CommandOutcome::UnitAttached));
+        assert_eq!(g.apply(Command::AttachUnit { unit: cw_gun1, parent: matruh }), Ok(CommandOutcome::UnitAttached));
+        assert_eq!(g.apply(Command::AttachUnit { unit: cw_gun2, parent: matruh }), Err(CommandError::ReorgIllegal)); // >1 gun
+
+        // §19.5 Selby Force (GT 13+): no recce; at most 3 infantry.
+        g.game_turn = 20;
+        let selby = g.spawn_unit(Nationality::Commonwealth, "b", "Selby Force HQ", Composition::Weapons { groups: vec![] });
+        g.unit_mut(selby).unwrap().org_size = OrgSize::StandardBrigade;
+        g.unit_mut(selby).unwrap().formation_role = FormationRole::MatruhSelby;
+        at_a(&mut g, selby);
+        let recce = g.spawn_unit(Nationality::Commonwealth, "hh", "cw recce", Composition::Weapons { groups: vec![] });
+        at_a(&mut g, recce);
+        assert_eq!(g.apply(Command::AttachUnit { unit: recce, parent: selby }), Err(CommandError::ReorgIllegal)); // no recce
+        let inf: Vec<_> = (0..4)
+            .map(|_| {
+                let u = g.spawn_unit(Nationality::Commonwealth, "i", "gi", Composition::Organic { current_toe: 4 });
+                at_a(&mut g, u);
+                u
+            })
+            .collect();
+        assert_eq!(g.apply(Command::AttachUnit { unit: inf[0], parent: selby }), Ok(CommandOutcome::UnitAttached));
+        assert_eq!(g.apply(Command::AttachUnit { unit: inf[1], parent: selby }), Ok(CommandOutcome::UnitAttached));
+        assert_eq!(g.apply(Command::AttachUnit { unit: inf[2], parent: selby }), Ok(CommandOutcome::UnitAttached));
+        assert_eq!(g.apply(Command::AttachUnit { unit: inf[3], parent: selby }), Err(CommandError::ReorgIllegal)); // >3 infantry
+    }
+
+    #[test]
     fn reorganization_nesting_19_46() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;
