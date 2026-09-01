@@ -148,6 +148,14 @@ pub enum Command {
         unit: UnitId,
         path: Vec<HexCoord>,
     },
+    /// Retreat Before Assault (§13): a non-phasing, unpinned unit voluntarily withdraws along
+    /// `path` after barrages, before the assault sub-segments. Ordinary voluntary movement (CP +
+    /// Fuel + breakdown + §8.6 break-off), but capped at 4 CP / one hex if it did not begin the
+    /// step adjacent to an enemy combat unit (§13.24). Distinct from React (§8.5).
+    RetreatBeforeAssault {
+        unit: UnitId,
+        path: Vec<HexCoord>,
+    },
     /// Off-map movement (§8.8): advance an off-map unit one Operations Stage in `direction`,
     /// entering the map at the junction hex (Nofilia) when it completes the last leg toward it.
     MoveOffMap {
@@ -504,6 +512,8 @@ pub enum CommandOutcome {
     },
     /// A reaction move was carried out (§8.5).
     Reacted,
+    /// A Retreat Before Assault was carried out (§13); `cp` = tenths of a CP expended.
+    RetreatedBeforeAssault { cp: i32 },
     /// An off-map movement step was carried out (§8.8).
     OffMapMoved(crate::state::game::OffMapMove),
     /// A convoy was planned (§56.15).
@@ -720,6 +730,12 @@ pub enum CommandError {
     /// The unit is not eligible to React (§8.53: phasing, engaged, already in an enemy ZOC,
     /// or non-motorized).
     CannotReact,
+    /// §13: the unit may not Retreat Before Assault — it is phasing, Pinned, or its Cohesion Level
+    /// is −26 or worse (§13.1).
+    CannotRetreatBeforeAssault,
+    /// §13.24: a unit not beginning the step adjacent to an enemy combat unit may retreat at most
+    /// 4 CP (or one hex).
+    RetreatBeforeAssaultTooFar,
     /// Reaction requires an enemy combat unit to have moved adjacent (§8.51).
     NoReactionTrigger,
     /// §8.55: a reacting unit may never move into an enemy Zone of Control.
@@ -873,6 +889,7 @@ impl GameState {
             }
             Command::Retreat { unit, path } => self.cmd_retreat(unit, &path),
             Command::React { unit, path } => self.cmd_react(unit, &path),
+            Command::RetreatBeforeAssault { unit, path } => self.cmd_retreat_before_assault(unit, &path),
             Command::MoveOffMap { unit, direction } => self.cmd_move_off_map(unit, direction),
             Command::PlanConvoy {
                 lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, die,
@@ -3729,6 +3746,109 @@ impl GameState {
         let cpa = self.effective_cpa(unit).unwrap_or(0);
         self.expend_cp_against(unit, total_cp, cpa);
         Ok(CommandOutcome::Reacted)
+    }
+
+    /// §13 Retreat Before Assault: a non-phasing, unpinned unit voluntarily withdraws along `path`
+    /// (resolved after barrages, before the assault sub-segments). It is ordinary voluntary
+    /// movement — CP + Fuel, vehicle breakdown, the §8.6 break-off cost on leaving an enemy ZOC, and
+    /// the §8.14/§10.24 ZOC rules — but a unit that did *not* begin the step adjacent to an enemy
+    /// combat unit may spend at most 4 CP (or move one hex, §13.24). Not to be confused with
+    /// Reaction (§8.5). §13.1: it may not be Pinned, and a Cohesion Level of −26 or worse bars it.
+    fn cmd_retreat_before_assault(&mut self, unit: UnitId, path: &[HexCoord]) -> Result<CommandOutcome, CommandError> {
+        if self.phase != Phase::MovementAndCombat {
+            return Err(CommandError::WrongPhase);
+        }
+        if path.is_empty() {
+            return Err(CommandError::NotAdjacent);
+        }
+        let (side, start, pinned, cohesion, engaged, in_contact) = {
+            let u = self.unit(unit).ok_or(CommandError::UnitNotFound)?;
+            let start = u.hex().ok_or(CommandError::UnitNotOnMap)?;
+            (u.nationality.side(), start, u.status.pinned, u.cohesion, u.status.engaged, u.status.in_contact)
+        };
+        let enemy = side.opponent();
+        // §13.1: only a non-Phasing, non-Pinned unit whose Cohesion is better than −26 may retreat.
+        if side == self.active_player || pinned || cohesion <= -26 {
+            return Err(CommandError::CannotRetreatBeforeAssault);
+        }
+        let mode = if self.unit_is_motorized(unit) { MoveMode::Motorized } else { MoveMode::NonMotorized };
+        // §13.23/§13.24: unlimited CP if adjacent to an enemy combat unit at the start; else ≤4 CP.
+        let adjacent_at_start = start
+            .neighbors()
+            .into_iter()
+            .any(|n| !self.enemy_units_in_hex(n, side).is_empty());
+        // Validate and cost the path.
+        let mut prev = start;
+        let mut total = Fixed(0);
+        for (i, &h) in path.iter().enumerate() {
+            if !prev.is_adjacent(h) {
+                return Err(CommandError::NotAdjacent);
+            }
+            if !self.enemy_units_in_hex(h, side).is_empty() {
+                return Err(CommandError::ProhibitedTerrain); // §8.13: not into an enemy-held hex
+            }
+            let from_zoc = self.hex_in_zoc_of(prev, enemy);
+            let to_zoc = self.hex_in_zoc_of(h, enemy);
+            if from_zoc && to_zoc {
+                return Err(CommandError::ZocToZoc); // §13.26 / §8.15.1
+            }
+            if to_zoc && i + 1 != path.len() {
+                return Err(CommandError::MustStopInZoc); // §13.26: stop upon entering a ZOC
+            }
+            let mut cp = match self.move_step_cost(prev, h, mode).ok_or(CommandError::DestinationOffMap)? {
+                MoveCost::Cost(f) => f,
+                MoveCost::Prohibited | MoveCost::EntireCpa => return Err(CommandError::ProhibitedTerrain),
+            };
+            // §8.6 break-off on leaving the start hex's enemy ZOC (Contact +2 CP, Engaged +4 CP).
+            if i == 0 && from_zoc {
+                let extra = if engaged { 40 } else if in_contact { 20 } else { 0 };
+                cp = Fixed(cp.0 + extra);
+            }
+            total = Fixed(total.0 + cp.0);
+            prev = h;
+        }
+        // §13.24: the 4-CP cap when not starting adjacent to an enemy (one hex is always allowed).
+        if !adjacent_at_start && path.len() > 1 && total.0 > 40 {
+            return Err(CommandError::RetreatBeforeAssaultTooFar);
+        }
+        // Destination Stacking Limit (§9).
+        let dest = *path.last().expect("non-empty");
+        if let Some(limit) = self
+            .map
+            .terrain(dest)
+            .and_then(|t| self.reference.terrain.get(&t))
+            .and_then(|p| p.stacking_limit)
+        {
+            if self.hex_stacking_points(dest) + self.effective_stacking_points(unit) > limit {
+                return Err(CommandError::StackingLimitExceeded);
+            }
+        }
+        // §13.21: pay the move's Fuel from the mover's tanks / start-hex dump; no Fuel → illegal.
+        if !self.consume_move_fuel(unit, start, total.0) {
+            return Err(CommandError::InsufficientFuel);
+        }
+        // Apply: relocate, expend CP (with §6.21 over-CPA Disorganization), breakdown, ZOC status.
+        self.unit_mut(unit).expect("checked").location = Some(crate::state::unit::UnitLocation::OnMap(dest));
+        let cpa = self.effective_cpa(unit).unwrap_or(0);
+        self.expend_cp_against(unit, total, cpa);
+        for &h in path {
+            let bp = self
+                .map
+                .terrain(h)
+                .and_then(|t| self.reference.terrain.get(&t))
+                .map(|p| p.breakdown.0)
+                .unwrap_or(0);
+            for m in self.formation_members(unit) {
+                if let Some(mu) = self.unit_mut(m) {
+                    mu.breakdown_points += bp;
+                }
+                self.resolve_breakdown(m);
+            }
+        }
+        if self.hex_in_zoc_of(dest, enemy) {
+            self.unit_mut(unit).expect("checked").moved_into_zoc = true;
+        }
+        Ok(CommandOutcome::RetreatedBeforeAssault { cp: total.0 })
     }
 
     fn move_step(

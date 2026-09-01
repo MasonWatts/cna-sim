@@ -10405,6 +10405,92 @@ mod tests {
     }
 
     #[test]
+    fn retreat_before_assault_13() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(
+            Nationality::Commonwealth,
+            include_str!("../../../data/reference/unit-characteristics/commonwealth.ron"),
+        )
+        .unwrap();
+        refs.load_unit_characteristics(
+            Nationality::German,
+            include_str!("../../../data/reference/unit-characteristics/german.ron"),
+        )
+        .unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Axis; // the Commonwealth is the non-phasing player
+
+        let start = HexCoord::new(5, 5);
+        // A straight retreat line directly away from the (future) enemy: repeatedly take neighbour 3.
+        let mut line = vec![start];
+        for _ in 0..6 {
+            line.push(line.last().unwrap().neighbors()[3]);
+        }
+        for h in &line {
+            g.map.set_hex(*h, HexTerrain::Clear);
+        }
+        let mk = |g: &mut GameState| {
+            let u = g.spawn_unit(Nationality::Commonwealth, "h", "cw", Composition::Organic { current_toe: 4 });
+            g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(start));
+            u
+        };
+        let rba = |unit, path: Vec<HexCoord>| Command::RetreatBeforeAssault { unit, path };
+
+        // §13.1: a Pinned unit may not Retreat Before Assault.
+        let u = mk(&mut g);
+        g.unit_mut(u).unwrap().status.pinned = true;
+        assert_eq!(g.apply(rba(u, vec![line[1]])), Err(CommandError::CannotRetreatBeforeAssault));
+        g.unit_mut(u).unwrap().status.pinned = false;
+        // §13.1: Cohesion of −26 or worse bars it.
+        g.unit_mut(u).unwrap().cohesion = -26;
+        assert_eq!(g.apply(rba(u, vec![line[1]])), Err(CommandError::CannotRetreatBeforeAssault));
+        g.unit_mut(u).unwrap().cohesion = 0;
+        // §13: a phasing unit may not (the Axis is phasing here).
+        let axis = g.spawn_unit(Nationality::German, "i", "de", Composition::Organic { current_toe: 4 });
+        g.unit_mut(axis).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(20, 20)));
+        g.map.set_hex(HexCoord::new(20, 20), HexTerrain::Clear);
+        g.map.set_hex(HexCoord::new(21, 20), HexTerrain::Clear);
+        assert_eq!(
+            g.apply(rba(axis, vec![HexCoord::new(21, 20)])),
+            Err(CommandError::CannotRetreatBeforeAssault),
+        );
+
+        // A single-hex retreat by the non-phasing unit is always allowed (§13.24 "or one hex").
+        assert!(matches!(g.apply(rba(u, vec![line[1]])), Ok(CommandOutcome::RetreatedBeforeAssault { .. })));
+        assert_eq!(g.unit(u).unwrap().hex(), Some(line[1]));
+
+        // §13.24: with no enemy adjacent at the start, a multi-hex retreat over 4 CP is refused.
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(start));
+        g.unit_mut(u).unwrap().cp_expended = crate::reference::terrain::Fixed(0);
+        assert_eq!(
+            g.apply(rba(u, line[1..=6].to_vec())),
+            Err(CommandError::RetreatBeforeAssaultTooFar),
+        );
+
+        // §13.23: adjacent to an enemy combat unit at the start, the 4-CP cap is lifted. Place an
+        // enemy on the opposite neighbour (so the retreat line never re-enters its ZOC).
+        let enemy_hex = start.neighbors()[0];
+        g.map.set_hex(enemy_hex, HexTerrain::Clear);
+        g.unit_mut(axis).unwrap().location = Some(UnitLocation::OnMap(enemy_hex));
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(start));
+        g.unit_mut(u).unwrap().cp_expended = crate::reference::terrain::Fixed(0);
+        assert!(matches!(
+            g.apply(rba(u, line[1..=6].to_vec())),
+            Ok(CommandOutcome::RetreatedBeforeAssault { .. })
+        ));
+        assert_eq!(g.unit(u).unwrap().hex(), Some(line[6]));
+    }
+
+    #[test]
     fn barrage_resolver_applies_results() {
         use crate::reference::crt::{BarrageResult, BarrageTargetClass};
         use crate::state::game::GameState;
