@@ -618,6 +618,22 @@ eliminated by close assault or armorless anti-armor (§16.46). Range paths use h
 simplifications; the §16.45 dummy disclosure and §16.34 Prisoner-Point accounting fold into the
 defender's narration / the deferred §28 POW logistics.
 
+### 8.12 Reorganization (§19)
+Units carry both an `assigned_parent` (organizational membership, occupies TOE space even when not
+co-located) and an `attached_parent` (physically combined onto the parent's counter, same hex),
+set at scenario setup (§19.1). The reorganization commands act on them: **`AttachUnit`** (§19.41/42
+— 1 CP each for an assigned unit any time, 2 CP each for a non-assigned unit in the Organization
+Phase within the §19.5 limit), **`DetachUnit`** (§19.43/44 — 1 CP each, Organization/Movement),
+**`ReassignUnit`** (§19.21/28 — a currently-attached, not-assigned-elsewhere unit, Organization
+Phase, no CP). The §19.5 Maximum Attachment Chart is transcribed (`maximum-attachment-19.5.md`) and
+its numeric caps enforced by `nonassigned_attachment_limit` (keyed by parent org-size/nationality/
+Game-Turn). Documented simplifications: the engine does not track a formation's arm, so §19.5's
+type-split columns use the more permissive value, and the type sub-constraints, German OR-alternatives,
+Matruh/Selby specials, and the finer §19.3 assignment maxima (Formation Organization Chart, not
+located) are not yet enforced; CW battalion-shuffle (§19.26), historical assignment shifts
+(§19.24/25), substitution (§19.45) and nesting constraints (§19.46) fall out of the general
+reassign/attach rules or are left as flavor.
+
 As we digitize physical game components (charts, tables, counters, OA sheets, scenario
 setups), we save a faithful, human-readable transcription so future agents and humans
 can reference them without the physical materials or repeated OCR.
