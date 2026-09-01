@@ -4238,9 +4238,13 @@ impl GameState {
             1
         } else {
             // §19.42: a non-assigned unit — 2 CP each, Reorganization Phase only, within §19.5.
+            // §19.46: the attachment counts against `parent` and every formation it is transitively
+            // attached to — each must have room under its §19.5 limit.
             self.require_phase(Phase::Organization)?;
-            if self.nonassigned_attachments(parent) + 1 > self.nonassigned_attachment_limit(parent) {
-                return Err(CommandError::ReorgIllegal);
+            for f in self.attachment_ancestors(parent) {
+                if self.transitive_nonassigned_attachments(f) + 1 > self.nonassigned_attachment_limit(f) {
+                    return Err(CommandError::ReorgIllegal);
+                }
             }
             2
         };

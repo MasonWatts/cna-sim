@@ -6549,6 +6549,49 @@ impl GameState {
             .count() as u32
     }
 
+    /// §19.46: the formations a new attachment to `parent` counts against — `parent` itself plus
+    /// every formation `parent` is (transitively) attached to.
+    pub fn attachment_ancestors(&self, parent: UnitId) -> Vec<UnitId> {
+        let mut chain = vec![parent];
+        let mut cur = parent;
+        let mut guard = 0;
+        while let Some(next) = self.units.get(&cur).and_then(|u| u.attached_parent) {
+            if chain.contains(&next) || guard > 32 {
+                break; // cycle / depth guard
+            }
+            chain.push(next);
+            cur = next;
+            guard += 1;
+        }
+        chain
+    }
+
+    /// Whether `unit`'s attachment chain reaches `formation` (at any depth).
+    fn attaches_up_to(&self, unit: UnitId, formation: UnitId) -> bool {
+        let mut cur = unit;
+        let mut guard = 0;
+        while let Some(p) = self.units.get(&cur).and_then(|u| u.attached_parent) {
+            if p == formation {
+                return true;
+            }
+            if guard > 32 {
+                break;
+            }
+            cur = p;
+            guard += 1;
+        }
+        false
+    }
+
+    /// §19.46: units transitively attached to `formation` (at any depth) that are not assigned to it
+    /// — the count the §19.5 Maximum Attachment limit governs once nesting is accounted for.
+    pub fn transitive_nonassigned_attachments(&self, formation: UnitId) -> u32 {
+        self.units
+            .iter()
+            .filter(|(&id, u)| id != formation && u.assigned_parent != Some(formation) && self.attaches_up_to(id, formation))
+            .count() as u32
+    }
+
     /// §19.5 Maximum Attachment Chart: the cap on **non-assigned** units attachable to `parent`,
     /// keyed by its effective org size, nationality and the Game-Turn. This encodes the chart's
     /// numeric limits (PDF p101); the sub-type distinctions it also makes (armor vs infantry

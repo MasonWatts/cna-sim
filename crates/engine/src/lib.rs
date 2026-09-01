@@ -10805,6 +10805,44 @@ mod tests {
     }
 
     #[test]
+    fn reorganization_nesting_19_46() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, OrgSize, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        g.active_player = Side::Axis;
+        let a = HexCoord::new(0, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+        let mk = |g: &mut GameState| {
+            let u = g.spawn_unit(Nationality::German, "i", "u", Composition::Organic { current_toe: 4 });
+            g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(a));
+            u
+        };
+        let bde = g.spawn_unit(Nationality::German, "b", "bde", Composition::Weapons { groups: vec![] });
+        g.unit_mut(bde).unwrap().org_size = OrgSize::StandardBrigade; // §19.5 German brigade limit = 1
+        g.unit_mut(bde).unwrap().location = Some(UnitLocation::OnMap(a));
+        let bn = mk(&mut g);
+        let leaf = mk(&mut g);
+
+        // Fill the brigade with one non-assigned battalion (its §19.5 limit is 1).
+        assert_eq!(g.apply(Command::AttachUnit { unit: bn, parent: bde }), Ok(CommandOutcome::UnitAttached));
+        // §19.46: attaching `leaf` to `bn` also counts against the brigade — which is full — so it is
+        // refused, even though `bn` itself has room.
+        assert_eq!(g.apply(Command::AttachUnit { unit: leaf, parent: bn }), Err(CommandError::ReorgIllegal));
+        // Detach the battalion from the brigade; now `leaf` may attach to it (no full ancestor).
+        assert_eq!(g.apply(Command::DetachUnit { unit: bn }), Ok(CommandOutcome::UnitDetached));
+        assert_eq!(g.apply(Command::AttachUnit { unit: leaf, parent: bn }), Ok(CommandOutcome::UnitAttached));
+    }
+
+    #[test]
     fn barrage_resolver_applies_results() {
         use crate::reference::crt::{BarrageResult, BarrageTargetClass};
         use crate::state::game::GameState;

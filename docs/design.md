@@ -632,9 +632,13 @@ in the shared Charts & Tables (its note defers "singular" formations to their OA
 anyway), each formation's historical assignment count from the loaded OB is captured at scenario
 setup as its `assigned_capacity`, and `ReassignUnit` refuses an assignment that would push a
 parent's assigned count above it (§19.21; eliminated units don't count, §19.23).
+§19.46 nesting is enforced: a non-assigned attachment counts against `parent` **and every formation
+it is transitively attached to** (`attachment_ancestors` × `transitive_nonassigned_attachments`), so a
+nested attach is refused if any ancestor is at its §19.5 limit.
 Documented simplifications: the engine does not track a formation's arm, so §19.5's
 type-split columns use the more permissive value, and its type sub-constraints, German OR-alternatives
-and Matruh/Selby specials are not enforced; CW battalion-shuffle (§19.26), historical assignment shifts
+and Matruh/Selby specials are not enforced (an OB arm tag — the faithful representation — would close
+this); CW battalion-shuffle (§19.26), historical assignment shifts
 (§19.24/25), substitution (§19.45) and nesting constraints (§19.46) fall out of the general
 reassign/attach rules or are left as flavor.
 
