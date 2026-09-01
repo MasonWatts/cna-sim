@@ -601,6 +601,23 @@ recon.) The view layer now covers every major hidden-info category — units, du
 minefields, wells. No command *enforces* acting only on observed info (rules resolution legitimately
 uses ground truth); consuming the view is a Phase-2 agent concern.
 
+### 8.11 Patrols, reconnaissance & retreat-before-assault (§13 / §16)
+**§13 Retreat Before Assault** (`RetreatBeforeAssault`) — a non-phasing, unpinned unit (Cohesion
+> −26) voluntarily withdraws after barrages: ordinary movement (CP + Fuel, breakdown, §8.6
+break-off, ZOC rules) capped at 4 CP / one hex unless it began adjacent to an enemy (§13.24).
+**§16 Patrol & Reconnaissance** (`Patrol`, Patrol Phase) — the phasing player detaches Patrol
+Points (≤2/hex, ≤3 total) from Recce/light-tank/motorized-infantry units (§16.11), spending
+1 Ammo + 2 Fuel each (§16.16), to reconnoitre an enemy hex ≤5 away, resolving on the §16.6
+Survival / §16.7 Reconnaissance / §16.8 Objective-Loss tables (`reference/patrol.rs`, transcribed
+from PDF p96/p98). The defender's disclosures are command inputs — a reported TOE within ±2 of
+actual (§16.51), the defender choosing which units within §16.53/54/55 — returned once in a
+`PatrolReport` (not persisted; the player remembers externally). §16.21's no-combat/no-barraged-hex
+preconditions use per-stage `land_combat_this_stage` / `barraged_hexes_this_stage`. **§16.4 Dummy
+Tank Formations** (`PlaceDummyTank`) — a per-side bluff (10 Stores, ≤3/side, ≤1/hex, §16.42/43),
+eliminated by close assault or armorless anti-armor (§16.46). Range paths use hex-distance
+simplifications; the §16.45 dummy disclosure and §16.34 Prisoner-Point accounting fold into the
+defender's narration / the deferred §28 POW logistics.
+
 As we digitize physical game components (charts, tables, counters, OA sheets, scenario
 setups), we save a faithful, human-readable transcription so future agents and humans
 can reference them without the physical materials or repeated OCR.
