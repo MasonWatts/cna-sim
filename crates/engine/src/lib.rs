@@ -890,6 +890,73 @@ mod tests {
     }
 
     #[test]
+    fn contact_engaged_lifecycle_8_67() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, OrgSize, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::Italian, include_str!("../../../data/reference/unit-characteristics/italian.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::MovementAndCombat;
+
+        let e = HexCoord::new(0, 0);
+        let inzoc = HexCoord::new(1, 0); // in the big enemy's ZOC
+        let out = HexCoord::new(2, 0);
+        let p = HexCoord::new(10, 0); // small enemy (no ZOC)
+        let q = HexCoord::new(11, 0); // adjacent to p — engaged lane
+        let r = HexCoord::new(12, 0); // away from p
+        let f1 = HexCoord::new(6, 0); // control lane
+        let f2 = HexCoord::new(7, 0);
+        for h in [e, inzoc, out, p, q, r, f1, f2] {
+            g.map.set_hex(h, HexTerrain::Clear);
+        }
+        let at = |g: &mut GameState, u, h| g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(h));
+
+        // A brigade projects ZOC into `inzoc`; a lone battalion at `p` projects none (§10.11).
+        let big = g.spawn_unit(Nationality::Commonwealth, "h", "zoc bde", Composition::Organic { current_toe: 5 });
+        at(&mut g, big, e);
+        g.unit_mut(big).unwrap().org_size = OrgSize::StandardBrigade;
+        let small = g.spawn_unit(Nationality::Commonwealth, "h", "small bn", Composition::Organic { current_toe: 4 });
+        at(&mut g, small, p);
+        g.unit_mut(small).unwrap().org_size = OrgSize::Battalion;
+        assert!(g.hex_in_zoc_of(inzoc, Side::Commonwealth));
+        assert!(!g.hex_in_zoc_of(q, Side::Commonwealth), "a lone battalion projects no ZOC");
+
+        // §8.62: In-Contact is derived from enemy ZOCs on refresh — no combat needed.
+        let c = g.spawn_unit(Nationality::Italian, "n", "c", Composition::Organic { current_toe: 4 });
+        at(&mut g, c, inzoc);
+        assert!(!g.unit(c).unwrap().status.in_contact);
+        g.refresh_contact_status();
+        assert!(g.unit(c).unwrap().status.in_contact, "§8.62 in an enemy ZOC = In Contact");
+        // Leaving the ZOC clears it (the refresh after the move).
+        assert_eq!(g.apply(Command::MoveStep { unit: c, to: out, mode: MoveMode::NonMotorized }), Ok(CommandOutcome::Moved));
+        assert!(!g.unit(c).unwrap().status.in_contact, "§8.62 left the ZOC");
+
+        // §8.66/§8.67: an Engaged unit adjacent to a non-ZOC enemy.
+        let x = g.spawn_unit(Nationality::Italian, "n", "x", Composition::Organic { current_toe: 4 });
+        at(&mut g, x, q);
+        g.unit_mut(x).unwrap().status.engaged = true;
+        let y = g.spawn_unit(Nationality::Italian, "n", "y", Composition::Organic { current_toe: 4 });
+        at(&mut g, y, f1);
+        // §8.67: refresh does not clear an engagement while an opposing combat unit is still adjacent.
+        g.refresh_contact_status();
+        assert!(g.unit(x).unwrap().status.engaged);
+        // §8.66: breaking off costs +4 CP even though `x` is not in a ZOC.
+        assert_eq!(g.apply(Command::MoveStep { unit: x, to: r, mode: MoveMode::NonMotorized }), Ok(CommandOutcome::Moved));
+        assert_eq!(g.apply(Command::MoveStep { unit: y, to: f2, mode: MoveMode::NonMotorized }), Ok(CommandOutcome::Moved));
+        assert_eq!(g.unit(x).unwrap().cp_expended.0, g.unit(y).unwrap().cp_expended.0 + 40);
+        // §8.67: having moved away from the last enemy, `x` is no longer Engaged.
+        assert!(!g.unit(x).unwrap().status.engaged);
+    }
+
+    #[test]
     fn retreat_full_and_shortfall() {
         use crate::reference::terrain::HexTerrain;
         use crate::state::command::{Command, CommandError, CommandOutcome};

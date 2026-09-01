@@ -79,4 +79,37 @@ impl GameState {
             self.hex_projects_zoc(adj) == Some(side) && self.zoc_hexes(adj).contains(&hex)
         })
     }
+
+    /// Whether an enemy **combat** unit (a `side` unit that is not a bare, parenthesized HQ) is in
+    /// `hex` or an adjacent hex — the presence that sustains an Engagement (§8.63/§8.67).
+    fn enemy_combat_adjacent(&self, hex: HexCoord, side: Side) -> bool {
+        std::iter::once(hex).chain(hex.neighbors()).any(|h| {
+            self.units_in_hex(h).into_iter().any(|id| {
+                self.units.get(&id).map(|u| u.nationality.side()) == Some(side)
+                    && !self.is_noncombat_hq(id)
+            })
+        })
+    }
+
+    /// §8.62/§8.67: refresh every unit's Contact/Engaged status. A unit is **In Contact** iff its
+    /// hex lies in an enemy ZOC (§8.62) — recomputed from position each Movement Segment, so it is
+    /// gained and lost as units move. **Engaged** (§8.63) is a Close-Assault result that persists
+    /// until broken off; per §8.67 it is cleared here once no opposing combat unit remains adjacent
+    /// (the enemy that held the engagement has gone, or every friendly unit has broken off). Engaged
+    /// is only ever *cleared* here — it is set by combat resolution, never granted by this refresh.
+    pub fn refresh_contact_status(&mut self) {
+        let ids: Vec<UnitId> = self.units.keys().copied().collect();
+        for id in ids {
+            let Some(hex) = self.effective_hex(id) else { continue };
+            let Some(side) = self.units.get(&id).map(|u| u.nationality.side()) else { continue };
+            let enemy = side.opponent();
+            let in_contact = self.hex_in_zoc_of(hex, enemy);
+            let was_engaged = self.units.get(&id).is_some_and(|u| u.status.engaged);
+            let engaged = was_engaged && self.enemy_combat_adjacent(hex, enemy);
+            if let Some(u) = self.units.get_mut(&id) {
+                u.status.in_contact = in_contact;
+                u.status.engaged = engaged;
+            }
+        }
+    }
 }

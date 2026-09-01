@@ -6921,6 +6921,9 @@ impl GameState {
         // barraged/bombed hexes are per-stage.
         self.land_combat_this_stage.clear();
         self.barraged_hexes_this_stage.clear();
+        // §8.62: In-Contact status is derived from enemy ZOCs at the start of the Movement Segment;
+        // §8.67 clears any Engagement no longer held by an adjacent opposing combat unit.
+        self.refresh_contact_status();
         // §28: prisoners reaching a Departure Point leave; then resolve escapes/rejoins/recaptures
         // (§28.23–25) and refresh each stack's movement allowance for the new Convoy Segment (§28.13).
         self.process_prisoner_departures();

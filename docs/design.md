@@ -342,8 +342,12 @@ losses, prisoners (§15.89), Engaged/In-Contact status, overrun (§15.77), and g
 (§15.84). Barrage/Anti-Armor enforce adjacency (§12.31/§12.35 no LOS); Barrage applies the
 §12.33/§12.34 terrain column shift. **Movement**: CPA over-expenditure/Disorganization (§6.21),
 terrain & multi-feature hexside costs (§8.37) with escarpment rules (§8.42), continual movement
-(as repeated single-hex steps), ZOC-to-ZOC prohibition and leave-ZOC surcharge (§8.14/§8.15/
-§10.24), **reaction** (§8.5 with §8.54 pinning), **retreat** (§15.82), **breakdown** (§21), and
+(as repeated single-hex steps), ZOC-to-ZOC prohibition and the §8.6 **break-off** surcharge — In
+Contact (§8.62, in an enemy ZOC at segment start) costs +2 CP, Engaged (§8.63, a Close-Assault
+result) +4 CP and applies even outside a ZOC (§8.66). Contact/Engaged status has a full **lifecycle**
+(`refresh_contact_status`): In-Contact is re-derived from ZOCs each Movement Segment (§8.62), and an
+Engagement clears once no opposing combat unit remains adjacent — i.e. when the last unit breaks off
+(§8.67). Also **reaction** (§8.5 with §8.54 pinning), **retreat** (§15.82), **breakdown** (§21), and
 combat ammo/fuel/water gating. **Fortifications & minefields are modeled:** a per-hex Fortification
 Level (`fort_level` — placed forts plus the §25.12 static major-city/capital levels) applies its
 column shift in anti-armor (§14.33 best-of), barrage (§12.34 best-of) and close assault (§15.35

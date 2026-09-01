@@ -3810,9 +3810,12 @@ impl GameState {
             return Err(CommandError::WrongPhase);
         }
         self.unit(unit).ok_or(CommandError::UnitNotFound)?;
-        self.advance_off_map(unit, direction)
+        let out = self.advance_off_map(unit, direction)
             .map(CommandOutcome::OffMapMoved)
-            .map_err(CommandError::OffMap)
+            .map_err(CommandError::OffMap)?;
+        // §8.62/§8.67: a unit leaving the map can no longer hold any enemy in Contact/Engaged.
+        self.refresh_contact_status();
+        Ok(out)
     }
 
     fn cmd_react(&mut self, unit: UnitId, path: &[HexCoord]) -> Result<CommandOutcome, CommandError> {
@@ -3913,10 +3916,10 @@ impl GameState {
         if path.is_empty() {
             return Err(CommandError::NotAdjacent);
         }
-        let (side, start, pinned, cohesion, engaged, in_contact) = {
+        let (side, start, pinned, cohesion, engaged) = {
             let u = self.unit(unit).ok_or(CommandError::UnitNotFound)?;
             let start = u.hex().ok_or(CommandError::UnitNotOnMap)?;
-            (u.nationality.side(), start, u.status.pinned, u.cohesion, u.status.engaged, u.status.in_contact)
+            (u.nationality.side(), start, u.status.pinned, u.cohesion, u.status.engaged)
         };
         let enemy = side.opponent();
         // §13.1: only a non-Phasing, non-Pinned unit whose Cohesion is better than −26 may retreat.
@@ -3951,10 +3954,10 @@ impl GameState {
                 MoveCost::Cost(f) => f,
                 MoveCost::Prohibited | MoveCost::EntireCpa => return Err(CommandError::ProhibitedTerrain),
             };
-            // §8.6 break-off on leaving the start hex's enemy ZOC (Contact +2 CP, Engaged +4 CP).
-            if i == 0 && from_zoc {
-                let extra = if engaged { 40 } else if in_contact { 20 } else { 0 };
-                cp = Fixed(cp.0 + extra);
+            // §8.6 break-off on the first step: in an enemy ZOC at the start = In Contact (§8.62,
+            // +2 CP); Engaged (§8.63) costs +4 CP and applies even outside a ZOC (§8.66).
+            if i == 0 && (from_zoc || engaged) {
+                cp = Fixed(cp.0 + if engaged { 40 } else { 20 });
             }
             total = Fixed(total.0 + cp.0);
             prev = h;
@@ -4000,6 +4003,8 @@ impl GameState {
         if self.hex_in_zoc_of(dest, enemy) {
             self.unit_mut(unit).expect("checked").moved_into_zoc = true;
         }
+        // §8.62/§8.67: recompute Contact from ZOC and clear any engagement this retreat broke off.
+        self.refresh_contact_status();
         Ok(CommandOutcome::RetreatedBeforeAssault { cp: total.0 })
     }
 
@@ -4506,17 +4511,11 @@ impl GameState {
                 return Err(CommandError::ProhibitedTerrain)
             }
         };
-        // §8.15.2/3: leaving an enemy ZOC costs +2 CP if in Contact, +4 CP if Engaged.
-        if from_zoc {
-            let u = self.unit(unit).expect("checked");
-            let extra = if u.status.engaged {
-                40
-            } else if u.status.in_contact {
-                20
-            } else {
-                0
-            };
-            cp = Fixed(cp.0 + extra);
+        // §8.6 break-off: in an enemy ZOC at segment start = In Contact (§8.62, +2 CP); Engaged
+        // (§8.63) costs +4 CP and applies even when the unit is not in a ZOC (§8.66).
+        let engaged = self.unit(unit).expect("checked").status.engaged;
+        if from_zoc || engaged {
+            cp = Fixed(cp.0 + if engaged { 40 } else { 20 });
         }
         // §26.21/26.24: entering an enemy minefield. In addition to terrain, a non-engineer
         // expends its full CPA (§26.22 "far over CPA"); an Engineer/HQ pays only +4 CP. A Friendly
@@ -4646,6 +4645,8 @@ impl GameState {
         if to_zoc {
             self.unit_mut(unit).expect("checked").moved_into_zoc = true;
         }
+        // §8.62/§8.67: recompute Contact from ZOC and clear any engagement this move broke off.
+        self.refresh_contact_status();
         Ok(CommandOutcome::Moved)
     }
 }
