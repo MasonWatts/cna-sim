@@ -3221,6 +3221,203 @@ mod tests {
     }
 
     #[test]
+    fn can_move_step_matches_dry_run() {
+        // The enumerator's fast path (`can_move_step` → `plan_move_step`) must accept exactly the
+        // single-hex moves the command boundary (clone + `apply`) accepts. Guards against the
+        // shared-validation refactor silently diverging from execution.
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::Command;
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 3);
+        for col in 0..8 {
+            for row in 0..4 {
+                g.map.set_hex(HexCoord::new(col, row), HexTerrain::Clear);
+            }
+        }
+        // A cluster: cruisers with fuel, infantry with fuel, one fuel-starved tank (motorized cost),
+        // and enemy units adjacent (enemy-occupied hexes, ZOC) — varied accept/reject cases.
+        let mk = |g: &mut GameState, nat, id: &str, comp, col, row, fuel| {
+            let u = g.spawn_unit(nat, id, "u", comp);
+            let unit = g.unit_mut(u).unwrap();
+            unit.location = Some(UnitLocation::OnMap(HexCoord::new(col, row)));
+            unit.fuel = fuel;
+            unit.ammo = 200;
+            u
+        };
+        let cruiser = || Composition::Weapons { groups: vec![WeaponGroup { system: "A13 Cruiser".into(), count: 6 }] };
+        mk(&mut g, Nationality::Commonwealth, "g", cruiser(), 2, 1, 500);
+        mk(&mut g, Nationality::Commonwealth, "h", Composition::Organic { current_toe: 6 }, 2, 2, 500);
+        mk(&mut g, Nationality::Commonwealth, "g", cruiser(), 3, 1, 0); // fuel-starved
+        mk(&mut g, Nationality::Italian, "p", Composition::Organic { current_toe: 6 }, 3, 2, 500);
+        mk(&mut g, Nationality::Italian, "p", Composition::Organic { current_toe: 6 }, 4, 1, 500);
+        g.advance_to_movement_combat(120);
+
+        let own: Vec<crate::state::unit::UnitId> = g
+            .units
+            .values()
+            .filter(|u| u.nationality.side() == Side::Commonwealth)
+            .map(|u| u.id)
+            .collect();
+        let mut checked = 0;
+        for unit in own {
+            let Some(from) = g.unit(unit).and_then(|u| u.hex()) else { continue };
+            for to in g.map.neighbors(from) {
+                for mode in [MoveMode::NonMotorized, MoveMode::Motorized] {
+                    let fast = g.can_move_step(unit, to, mode);
+                    let slow = g.dry_run(&Command::MoveStep { unit, to, mode }).is_ok();
+                    assert_eq!(fast, slow, "fast/dry_run disagree: unit {unit:?} to {to:?} {mode:?} (fast={fast}, dry_run={slow})");
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 20, "exercised a range of move candidates ({checked})");
+    }
+
+    #[test]
+    fn can_move_step_matches_dry_run_over_evolving_game() {
+        // Stronger guard: drive a small game forward with random legal moves and, at every state,
+        // assert `can_move_step` agrees with `dry_run` for every unit/neighbor/mode on BOTH sides.
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::Command;
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 7);
+        for col in 0..10 {
+            for row in 0..5 {
+                g.map.set_hex(HexCoord::new(col, row), HexTerrain::Clear);
+            }
+        }
+        let mk = |g: &mut GameState, nat, id: &str, comp, col, row| {
+            let u = g.spawn_unit(nat, id, "u", comp);
+            let unit = g.unit_mut(u).unwrap();
+            unit.location = Some(UnitLocation::OnMap(HexCoord::new(col, row)));
+            unit.fuel = 400;
+            unit.ammo = 400;
+        };
+        let cruiser = || Composition::Weapons { groups: vec![WeaponGroup { system: "A13 Cruiser".into(), count: 6 }] };
+        for i in 0..4 {
+            mk(&mut g, Nationality::Commonwealth, "g", cruiser(), i, i % 5);
+            mk(&mut g, Nationality::Commonwealth, "h", Composition::Organic { current_toe: 6 }, i, (i + 1) % 5);
+            mk(&mut g, Nationality::Italian, "p", Composition::Organic { current_toe: 6 }, 9 - i, i % 5);
+            mk(&mut g, Nationality::Italian, "k", Composition::Weapons { groups: vec![WeaponGroup { system: "M 11/39".into(), count: 6 }] }, 9 - i, (i + 1) % 5);
+        }
+        g.advance_to_movement_combat(120);
+
+        let mut rng: u64 = 0x9E37_79B9_7F4A_7C15;
+        let mut next = || {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            rng
+        };
+        let mut states = 0;
+        for _ in 0..120 {
+            if g.phase == Phase::MovementAndCombat {
+                states += 1;
+                for side in [Side::Commonwealth, Side::Axis] {
+                    let ids: Vec<_> = g.units.values().filter(|u| u.nationality.side() == side).map(|u| u.id).collect();
+                    for unit in ids {
+                        let Some(from) = g.unit(unit).and_then(|u| u.hex()) else { continue };
+                        for to in g.map.neighbors(from) {
+                            for mode in [MoveMode::NonMotorized, MoveMode::Motorized] {
+                                assert_eq!(
+                                    g.can_move_step(unit, to, mode),
+                                    g.dry_run(&Command::MoveStep { unit, to, mode }).is_ok(),
+                                    "divergence: {unit:?} {from:?}->{to:?} {mode:?} at state {states}"
+                                );
+                            }
+                        }
+                    }
+                }
+                // Advance the game by a random legal move for the active side (mutates real state).
+                let moves = g.legal_move_steps(g.active_player);
+                if !moves.is_empty() {
+                    let pick = moves[(next() as usize) % moves.len()].clone();
+                    let _ = g.apply(pick);
+                }
+            }
+            g.advance_phase();
+        }
+        assert!(states > 5, "visited several Movement & Combat states ({states})");
+    }
+
+    #[test]
+    #[ignore = "microbenchmark: prints hot-path timings; run with --ignored --nocapture"]
+    fn perf_hotpath_microbench() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+        use std::time::Instant;
+
+        // ~40 units per side on a 20×10 clear board — a mid-size state that stresses the
+        // O(units) dry_run clone the enumerator pays per candidate.
+        let mut g = GameState::new(ReferenceData::load_campaign(), 5);
+        for col in 0..20 {
+            for row in 0..10 {
+                g.map.set_hex(HexCoord::new(col, row), HexTerrain::Clear);
+            }
+        }
+        let place = |g: &mut GameState, nat, id: &str, comp, col, row| {
+            let u = g.spawn_unit(nat, id, "u", comp);
+            let unit = g.unit_mut(u).unwrap();
+            unit.location = Some(UnitLocation::OnMap(HexCoord::new(col, row)));
+            unit.fuel = 900;
+            unit.ammo = 900;
+        };
+        for i in 0..40 {
+            place(&mut g, Nationality::Commonwealth, "h", Composition::Organic { current_toe: 6 }, i % 18, i % 5);
+            place(&mut g, Nationality::Italian, "p", Composition::Organic { current_toe: 6 }, 19 - (i % 18), 5 + i % 5);
+        }
+        let _ = g.spawn_unit(Nationality::Commonwealth, "g", "t", Composition::Weapons { groups: vec![WeaponGroup { system: "A13 Cruiser".into(), count: 6 }] });
+        g.advance_to_movement_combat(120);
+        let n_units = g.units.len();
+
+        let t = Instant::now();
+        for _ in 0..50 {
+            let _ = std::hint::black_box(g.clone());
+        }
+        let clone_us = t.elapsed().as_secs_f64() * 1e6 / 50.0;
+
+        let cmd = crate::state::command::Command::MoveStep {
+            unit: crate::state::unit::UnitId(0),
+            to: HexCoord::new(0, 0),
+            mode: crate::rules::movement::MoveMode::NonMotorized,
+        };
+        let t = Instant::now();
+        for _ in 0..200 {
+            let _ = std::hint::black_box(g.dry_run(&cmd));
+        }
+        let dry_us = t.elapsed().as_secs_f64() * 1e6 / 200.0;
+
+        let t = Instant::now();
+        let mut moves = 0;
+        for _ in 0..20 {
+            moves += std::hint::black_box(g.legal_move_steps(Side::Commonwealth)).len();
+        }
+        let moves_ms = t.elapsed().as_secs_f64() * 1e3 / 20.0;
+
+        let t = Instant::now();
+        let mut total = 0;
+        for _ in 0..20 {
+            total += std::hint::black_box(g.legal_commands(Side::Commonwealth)).len();
+        }
+        let legal_ms = t.elapsed().as_secs_f64() * 1e3 / 20.0;
+
+        println!("\n[perf] units={n_units}  clone={clone_us:.1}µs  dry_run={dry_us:.1}µs  legal_move_steps={moves_ms:.2}ms ({} mv)  legal_commands={legal_ms:.2}ms ({} cmds)", moves / 20, total / 20);
+    }
+
+    #[test]
     fn tournament_round_robin_is_consistent_and_deterministic() {
         // The round-robin harness: cheap agents on the micro-board. Asserts the bookkeeping
         // invariants (every contender plays the same count; wins == losses; margins cancel; sorted

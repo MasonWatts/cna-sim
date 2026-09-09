@@ -828,7 +828,9 @@ pub fn play_match(
 /// Round-robin tournament: every distinct pair plays `seeds` seeds × both side assignments, each
 /// game running `turns` Game-Turns. A game is a win for the side whose `outcome_score` leads by
 /// more than `draw_margin`, else a draw. Returns standings sorted best-first (points, then average
-/// margin). Deterministic for fixed inputs. Each contender plays `(n-1) * seeds * 2` games.
+/// margin). Each contender plays `(n-1) * seeds * 2` games. Reproducible **within a process**;
+/// results vary slightly across processes because combat resolution iterates units in `HashMap`
+/// order (randomized per process) — full cross-process determinism is a separate follow-up.
 pub fn round_robin(
     make_game: &impl Fn() -> GameState,
     contenders: &[Contender],

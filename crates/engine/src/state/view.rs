@@ -213,18 +213,23 @@ impl GameState {
         if self.phase != Phase::MovementAndCombat {
             return out;
         }
-        let units: Vec<(UnitId, HexCoord)> = self
+        let mut units: Vec<(UnitId, HexCoord)> = self
             .units
             .values()
             .filter(|u| u.nationality.side() == side)
             .filter_map(|u| Some((u.id, u.hex()?)))
             .collect();
+        // Deterministic enumeration order (independent of HashMap iteration, which is randomized
+        // per process) — so agents and tournaments reproduce across runs.
+        units.sort_by_key(|(id, _)| id.0);
         for (unit, from) in units {
             for to in self.map.neighbors(from) {
                 for mode in [MoveMode::NonMotorized, MoveMode::Motorized] {
-                    let cmd = Command::MoveStep { unit, to, mode };
-                    if self.dry_run(&cmd).is_ok() {
-                        out.push(cmd);
+                    // Fast path: `can_move_step` shares `plan_move_step`'s validation with the
+                    // command but does not clone or execute — the enumerator's hot loop was
+                    // dominated by the clone+apply the old `dry_run` paid per candidate.
+                    if self.can_move_step(unit, to, mode) {
+                        out.push(Command::MoveStep { unit, to, mode });
                     }
                 }
             }
@@ -401,12 +406,14 @@ impl GameState {
         let mut out = self.legal_move_steps(side);
         // Enemy-occupied hexes with at least one adjacent friendly combat unit.
         let enemy = side.opponent();
-        let friendly: Vec<(UnitId, HexCoord)> = self
+        let mut friendly: Vec<(UnitId, HexCoord)> = self
             .units
             .values()
             .filter(|u| u.nationality.side() == side && u.total_toe() > 0)
             .filter_map(|u| Some((u.id, u.hex()?)))
             .collect();
+        // Deterministic attacker ordering (HashMap iteration is randomized per process).
+        friendly.sort_by_key(|(id, _)| id.0);
         let mut enemy_hexes: Vec<HexCoord> = self
             .units
             .values()

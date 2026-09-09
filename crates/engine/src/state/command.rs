@@ -4790,13 +4790,18 @@ impl GameState {
     /// Shared single-hex move for a counter. `cpa` governs the CPA over-expenditure
     /// penalty (§6.21) — the unit's own CPA for a lone counter, or the formation CPA for a
     /// formation move.
-    fn move_counter(
-        &mut self,
+    /// Immutable validation + cost/flag computation for a single-hex [`Command::MoveStep`], shared
+    /// by `move_counter` (which then executes) and `can_move_step` (the enumerator's fast path).
+    /// Returns the CP cost and the flags execution needs, or the rejection reason — **without any
+    /// mutation**, so it neither clones nor runs the move's side effects. The single source of truth
+    /// for move legality: `move_counter` executes exactly the moves this accepts.
+    fn plan_move_step(
+        &self,
         unit: UnitId,
         to: HexCoord,
         mode: MoveMode,
         cpa: i32,
-    ) -> Result<CommandOutcome, CommandError> {
+    ) -> Result<MoveStepPlan, CommandError> {
         // Phase gate (§3.6).
         if self.phase != Phase::MovementAndCombat {
             return Err(CommandError::WrongPhase);
@@ -4934,11 +4939,42 @@ impl GameState {
                 return Err(CommandError::AirdropCpaLimit);
             }
         }
-        // §49.13/49.16: pay the move's Fuel from the mover's (and riders') tanks and any
-        // Supply Dump in the start hex; a move with no available Fuel is illegal.
-        if !self.consume_move_fuel(unit, from, cp.0) {
+        // §49.13/49.16: the move's Fuel must be payable from the mover's (and riders') tanks and any
+        // start-hex Supply Dump; a move with no available Fuel is illegal. (Availability only —
+        // `move_counter` performs the actual consumption.)
+        if !self.move_fuel_available(unit, from, cp.0) {
             return Err(CommandError::InsufficientFuel);
         }
+        Ok(MoveStepPlan { cp, to_zoc, entered_enemy_dummy, mine_casualty_check })
+    }
+
+    /// Whether `unit` may legally step to adjacent `to` in `mode` in the current state — the action
+    /// enumerator's fast path, sharing `plan_move_step`'s validation with the command (no clone/apply).
+    pub fn can_move_step(&self, unit: UnitId, to: HexCoord, mode: MoveMode) -> bool {
+        let cpa = self.effective_cpa(unit).unwrap_or(0);
+        self.plan_move_step(unit, to, mode, cpa).is_ok()
+    }
+
+    /// Move a single counter one hex (§8): validate via `plan_move_step`, then pay Fuel/CP and apply
+    /// the move's side effects (rail control, minefield reveal/casualty, breakdown, ZOC-stop, and the
+    /// §8.62/§8.67 contact refresh).
+    fn move_counter(
+        &mut self,
+        unit: UnitId,
+        to: HexCoord,
+        mode: MoveMode,
+        cpa: i32,
+    ) -> Result<CommandOutcome, CommandError> {
+        let MoveStepPlan { cp, to_zoc, entered_enemy_dummy, mine_casualty_check } =
+            self.plan_move_step(unit, to, mode, cpa)?;
+        let from = self
+            .unit(unit)
+            .expect("validated by plan_move_step")
+            .hex()
+            .expect("validated by plan_move_step");
+        // §49.13/49.16: pay the move's Fuel (availability already verified by plan_move_step).
+        let paid = self.consume_move_fuel(unit, from, cp.0);
+        debug_assert!(paid, "plan_move_step verified fuel availability");
         // Apply: move and accumulate CP expended this Operations Stage (with any
         // Disorganization for exceeding the governing CPA).
         self.unit_mut(unit)
@@ -4979,4 +5015,17 @@ impl GameState {
         self.refresh_contact_status();
         Ok(CommandOutcome::Moved)
     }
+}
+
+/// The validated cost and side-effect flags of a single-hex move, produced by
+/// `GameState::plan_move_step` and consumed by `move_counter` when it executes.
+struct MoveStepPlan {
+    /// Total CP cost (tenths) of the step, after §8.6 contact/engagement and §26 minefield surcharges.
+    cp: Fixed,
+    /// The destination is in an enemy ZOC (§8.14: the unit must then stop for the stage).
+    to_zoc: bool,
+    /// The step enters an enemy **dummy** minefield (§26.15/26.23: revealed on entry).
+    entered_enemy_dummy: bool,
+    /// A non-engineer vehicle entered an enemy minefield (§26.25: roll a mine casualty).
+    mine_casualty_check: bool,
 }

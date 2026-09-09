@@ -801,13 +801,26 @@ The `tournament` bin runs it over a compact **skirmish** (default — a few supp
 small clear map) or the full **campaign** (opt-in). A `tournament_round_robin_is_consistent_and_deterministic`
 test asserts the bookkeeping invariants (equal game counts, wins == losses, margins cancel, sorted, and
 byte-identical on replay); an `#[ignore]`d campaign run asserts Random never finishes top-half.
-Measured (skirmish, `fast` roster, 6 turns × 4 seeds, 48 games): **Lookahead 72.9 %, Rollout 62.5 %,
-Greedy 43.8 %, Random 20.8 %** — the eval/search agents clearly dominate and Random is worst, validating
-the whole Phase-2 stack. **Key finding — search cost:** `MctsAgent::standard` (100 iterations × depth-6
-rollouts ≈ 600 enumerate+apply per move) and `CrossPhaseMctsAgent` are impractical for a round-robin
-even on the skirmish, and the full campaign's ~100-unit action space (`self_play` issues `3·units+8`
-moves per phase) is too large for a tournament with *any* agent. So the next lever is **engine `apply`/
-enumerate performance** (or cheaper search configs), now confirmed as the bottleneck rather than assumed.
+Measured (skirmish, `fast` roster, 6 turns × 4 seeds, 48 games), representative run: **Rollout ≈ 63–71 %,
+Lookahead ≈ 58–73 %, Greedy ≈ 56 %, Random ≈ 12–23 %** — the eval/search agents clearly dominate and
+Random is decisively worst, validating the whole Phase-2 stack. (The exact percentages vary a little
+across process runs — combat resolution iterates units in per-process-randomized `HashMap` order — but
+the ordering shape is stable; results reproduce within a process. Deterministic cross-process tournaments
+would need ordered iteration in combat/casualty allocation, a separate follow-up.)
+
+**Enumerator performance (the confirmed bottleneck, then fixed).** The tournament first showed even the
+cheap agents were slow, and a microbenchmark (`perf_hotpath_microbench`, 81 units) localised it:
+`legal_commands` took **≈187 ms** per call, essentially all in `legal_move_steps`, because each of the
+~1 000 candidate moves was validated by `dry_run` = clone + full `apply` (the move's execution — fuel/CP
+mutation, breakdown, `refresh_contact_status` — all O(units)). The fix splits move handling into an
+immutable **`plan_move_step`** (all validation + cost, no mutation) shared by both `move_counter` (which
+then executes) and a new **`can_move_step`** the enumerator calls instead of `dry_run` — so enumeration
+pays neither the clone nor the execution. Result: `legal_commands` **≈187 ms → ≈5 ms (~36×)**. Two
+equivalence tests (`can_move_step_matches_dry_run{,_over_evolving_game}`) assert the fast path accepts
+exactly the moves `apply` does, so the shared validation cannot silently diverge. `MctsAgent::standard`
+(100 iterations × depth-6 rollouts) is now far more tractable, though its per-move clone+apply search
+cost still makes a full six-agent campaign round-robin heavy; the remaining lever is a cheaper
+`GameState` clone (units are a plain `HashMap<UnitId, Unit>`, deep-copied per clone).
 
 ### 8.11 Patrols, reconnaissance & retreat-before-assault (§13 / §16)
 **§13 Retreat Before Assault** (`RetreatBeforeAssault`) — a non-phasing, unpinned unit (Cohesion

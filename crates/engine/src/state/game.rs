@@ -4341,6 +4341,39 @@ impl GameState {
         }
     }
 
+    /// §49: read-only companion to [`consume_move_fuel`] — whether a move of `cp_tenths` by `unit`
+    /// and its formation members could be paid (tanks + carried cargo + friendly start-hex dumps),
+    /// consuming nothing. The exact legality condition `consume_move_fuel` uses, factored out so the
+    /// action enumerator can test a move without cloning and applying it.
+    pub fn move_fuel_available(&self, unit: UnitId, from: HexCoord, cp_tenths: i32) -> bool {
+        let Some(side) = self.unit(unit).map(|u| u.nationality.side()) else {
+            return true;
+        };
+        let mut dump_demand: u32 = 0;
+        let mut any_user = false;
+        for m in self.formation_members(unit) {
+            let cost = self.unit_move_fuel_cost(m, cp_tenths);
+            if cost == 0 {
+                continue;
+            }
+            any_user = true;
+            let onboard = self.unit(m).map_or(0, |u| u.fuel);
+            let after_tank = cost - onboard.min(cost);
+            let cargo = self.unit(m).map_or(0, |u| u.truck_cargo.fuel);
+            dump_demand += after_tank - cargo.min(after_tank);
+        }
+        if !any_user {
+            return true; // no fuel users
+        }
+        let dump_fuel: u32 = self
+            .supply_dumps
+            .iter()
+            .filter(|d| d.side == side && !d.dummy && d.location.hex() == Some(from))
+            .map(|d| d.supply.fuel)
+            .sum();
+        dump_demand <= dump_fuel
+    }
+
     /// Pay the Fuel for a move of `cp_tenths` by `unit` and its formation members (§49.13/16):
     /// each vehicle draws its cost from its own tank first, then from friendly Supply Dumps in
     /// the start hex `from`. Returns `false` (consuming nothing) if the collective demand

@@ -11,7 +11,9 @@
 //!   game   = `skirmish` (compact, fast — the useful default) | `campaign` (full §64)
 //! Use `--release` — MCTS is far too slow in a debug build. NB: the full `campaign` has a ~100-unit
 //! action space, so even Greedy/Lookahead cost seconds per move there and MCTS is impractical; the
-//! `skirmish` board is sized so a full six-agent round-robin finishes in seconds. Deterministic.
+//! `skirmish` board is sized so a full six-agent round-robin finishes in seconds. Results are
+//! reproducible within a process but vary slightly across runs (combat resolution iterates units
+//! in per-process-randomized `HashMap` order); the standings *shape* is stable.
 
 use std::time::Instant;
 
