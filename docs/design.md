@@ -793,6 +793,22 @@ optimisation stays a job for a purpose-built logistics planner). Agents act acro
 phases. `legal_commands` is a broad, faithful action surface end to end; the remaining AI work is
 stronger optimisation (real self-play tuning runs, tuning the search agents), not more enumeration.
 
+**Tournament harness (agent strength measurement), `crate::agent`.** `round_robin` plays every agent
+pair over N seeds × **both side assignments** (cancelling the side/initiative bias), scoring each game
+by the final `outcome_score` margin and returning `Standing`s (games/W/D/L, win-rate, average margin)
+sorted best-first; `format_standings` renders the table and `Contender` wraps a per-game agent factory.
+The `tournament` bin runs it over a compact **skirmish** (default — a few supplied units per side on a
+small clear map) or the full **campaign** (opt-in). A `tournament_round_robin_is_consistent_and_deterministic`
+test asserts the bookkeeping invariants (equal game counts, wins == losses, margins cancel, sorted, and
+byte-identical on replay); an `#[ignore]`d campaign run asserts Random never finishes top-half.
+Measured (skirmish, `fast` roster, 6 turns × 4 seeds, 48 games): **Lookahead 72.9 %, Rollout 62.5 %,
+Greedy 43.8 %, Random 20.8 %** — the eval/search agents clearly dominate and Random is worst, validating
+the whole Phase-2 stack. **Key finding — search cost:** `MctsAgent::standard` (100 iterations × depth-6
+rollouts ≈ 600 enumerate+apply per move) and `CrossPhaseMctsAgent` are impractical for a round-robin
+even on the skirmish, and the full campaign's ~100-unit action space (`self_play` issues `3·units+8`
+moves per phase) is too large for a tournament with *any* agent. So the next lever is **engine `apply`/
+enumerate performance** (or cheaper search configs), now confirmed as the bottleneck rather than assumed.
+
 ### 8.11 Patrols, reconnaissance & retreat-before-assault (§13 / §16)
 **§13 Retreat Before Assault** (`RetreatBeforeAssault`) — a non-phasing, unpinned unit (Cohesion
 > −26) voluntarily withdraws after barrages: ordinary movement (CP + Fuel, breakdown, §8.6

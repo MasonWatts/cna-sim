@@ -3188,6 +3188,107 @@ mod tests {
         let _ = Side::Axis;
     }
 
+    /// A fresh micro-battlefield (CW cruisers vs an Italian battalion, both stocked) for the
+    /// tournament harness — full reference data, tiny action space so a round-robin is fast.
+    #[cfg(test)]
+    fn tournament_micro_game() -> crate::state::game::GameState {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Nationality;
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+        let mut g = GameState::new(ReferenceData::load_campaign(), 9);
+        for col in 0..8 {
+            for row in 0..3 {
+                g.map.set_hex(HexCoord::new(col, row), HexTerrain::Clear);
+            }
+        }
+        let cw = g.spawn_unit(Nationality::Commonwealth, "g", "cruisers", Composition::Weapons { groups: vec![WeaponGroup { system: "A13 Cruiser".into(), count: 6 }] });
+        let it = g.spawn_unit(Nationality::Italian, "p", "infantry", Composition::Organic { current_toe: 10 });
+        {
+            let u = g.unit_mut(cw).unwrap();
+            u.location = Some(UnitLocation::OnMap(HexCoord::new(1, 1)));
+            u.fuel = 500;
+            u.ammo = 500;
+        }
+        {
+            let u = g.unit_mut(it).unwrap();
+            u.location = Some(UnitLocation::OnMap(HexCoord::new(6, 1)));
+            u.fuel = 500;
+            u.ammo = 500;
+        }
+        g
+    }
+
+    #[test]
+    fn tournament_round_robin_is_consistent_and_deterministic() {
+        // The round-robin harness: cheap agents on the micro-board. Asserts the bookkeeping
+        // invariants (every contender plays the same count; wins == losses; margins cancel; sorted
+        // best-first) and that the whole tournament is deterministic (identical when replayed).
+        use crate::agent::{round_robin, Contender, GreedyAgent, LookaheadAgent, RandomAgent};
+
+        let template = tournament_micro_game();
+        let make_game = || template.clone();
+        let roster = || {
+            vec![
+                Contender::new("Random", |s| Box::new(RandomAgent::new(s))),
+                Contender::new("Greedy", |s| Box::new(GreedyAgent::new(s))),
+                Contender::new("Lookahead", |s| Box::new(LookaheadAgent::new(s))),
+            ]
+        };
+        let (seeds, turns) = (2u32, 2u32);
+        let st = round_robin(&make_game, &roster(), seeds, turns, 0);
+
+        assert_eq!(st.len(), 3);
+        let per_agent = (3 - 1) * seeds * 2; // (n-1) * seeds * both sides
+        let mut wins = 0u32;
+        let mut losses = 0u32;
+        let mut margin = 0i64;
+        for s in &st {
+            assert_eq!(s.games, per_agent, "{} played {} games, expected {}", s.name, s.games, per_agent);
+            assert_eq!(s.wins + s.draws + s.losses, s.games, "W+D+L must equal games");
+            wins += s.wins;
+            losses += s.losses;
+            margin += s.margin_sum;
+        }
+        assert_eq!(wins, losses, "every win is someone's loss");
+        assert_eq!(margin, 0, "per-game margins are equal and opposite, so they cancel");
+        for w in st.windows(2) {
+            assert!(w[0].points() >= w[1].points(), "standings are sorted best-first");
+        }
+        // Determinism: replaying the identical tournament yields identical standings.
+        let st2 = round_robin(&make_game, &roster(), seeds, turns, 0);
+        for (a, b) in st.iter().zip(&st2) {
+            assert_eq!((&a.name, a.games, a.wins, a.draws, a.losses, a.margin_sum),
+                       (&b.name, b.games, b.wins, b.draws, b.losses, b.margin_sum));
+        }
+    }
+
+    #[test]
+    #[ignore = "slow: full-campaign agent tournament (all six agents incl. MCTS); run with --ignored --nocapture"]
+    fn tournament_campaign_agent_strength() {
+        // Full round-robin over the Campaign Game with the whole agent roster. Prints the standings
+        // (see with --nocapture) and asserts the sanity floor: RandomAgent must not finish top-half.
+        use crate::agent::{
+            format_standings, round_robin, Contender, CrossPhaseMctsAgent, GreedyAgent,
+            LookaheadAgent, MctsAgent, RandomAgent, RolloutAgent,
+        };
+        let template = build_campaign_game();
+        let make_game = || template.clone();
+        let contenders = vec![
+            Contender::new("Random", |s| Box::new(RandomAgent::new(s))),
+            Contender::new("Greedy", |s| Box::new(GreedyAgent::new(s))),
+            Contender::new("Lookahead", |s| Box::new(LookaheadAgent::new(s))),
+            Contender::new("Rollout", |s| Box::new(RolloutAgent::flat(s))),
+            Contender::new("MCTS", |s| Box::new(MctsAgent::standard(s))),
+            Contender::new("CrossMCTS", |s| Box::new(CrossPhaseMctsAgent::standard(s))),
+        ];
+        let st = round_robin(&make_game, &contenders, 2, 4, 0);
+        println!("\n{}", format_standings(&st));
+        let random_rank = st.iter().position(|s| s.name == "Random").unwrap();
+        assert!(random_rank >= st.len() / 2, "RandomAgent should not finish in the top half");
+    }
+
     #[test]
     fn legal_commands_includes_adjacent_combat() {
         use crate::reference::terrain::HexTerrain;

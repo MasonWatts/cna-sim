@@ -748,3 +748,150 @@ pub fn tune_weights(
     }
     best
 }
+
+// ---------------------------------------------------------------------------------------------
+// Tournament harness — agent strength evaluation.
+//
+// A round-robin plays every distinct pair of agents over a set of seeds and *both* side
+// assignments (to cancel the side / first-initiative bias), scoring each game by the final
+// `outcome_score` margin. It answers the questions the Phase-2 toolkit could not on its own:
+// does MCTS actually beat Greedy, do tuned weights beat the default, is an agent worth its cost?
+// ---------------------------------------------------------------------------------------------
+
+/// A named participant: a label plus a factory that builds a **fresh** agent for each game, seeded
+/// per game so a tournament is deterministic yet varied across seeds.
+pub struct Contender {
+    pub name: &'static str,
+    pub make: Box<dyn Fn(u64) -> Box<dyn Agent>>,
+}
+
+impl Contender {
+    pub fn new(name: &'static str, make: impl Fn(u64) -> Box<dyn Agent> + 'static) -> Self {
+        Contender { name, make: Box::new(make) }
+    }
+}
+
+/// A contender's aggregate record across a tournament.
+#[derive(Clone, Debug, Default)]
+pub struct Standing {
+    pub name: String,
+    pub games: u32,
+    pub wins: u32,
+    pub draws: u32,
+    pub losses: u32,
+    /// Sum over all this agent's games of (its `outcome_score` − the opponent's).
+    pub margin_sum: i64,
+}
+
+impl Standing {
+    /// Match points: 1 per win, ½ per draw.
+    pub fn points(&self) -> f64 {
+        self.wins as f64 + 0.5 * self.draws as f64
+    }
+    /// Win rate in `[0,1]`, counting draws as ½ (0 if it played no games).
+    pub fn win_rate(&self) -> f64 {
+        if self.games == 0 { 0.0 } else { self.points() / self.games as f64 }
+    }
+    /// Average per-game score margin (this agent − opponent).
+    pub fn avg_margin(&self) -> f64 {
+        if self.games == 0 { 0.0 } else { self.margin_sum as f64 / self.games as f64 }
+    }
+}
+
+/// Play one game between `a` (assigned `a_side`) and `b` (the other side) on a fresh board from
+/// `make_game`, running `turns` Game-Turns. Returns `(a_score, b_score)` — each side's
+/// [`outcome_score`] at the end. Deterministic in `seed`.
+pub fn play_match(
+    make_game: &impl Fn() -> GameState,
+    a: &Contender,
+    a_side: Side,
+    b: &Contender,
+    seed: u64,
+    turns: u32,
+) -> (i64, i64) {
+    let b_side = match a_side {
+        Side::Commonwealth => Side::Axis,
+        Side::Axis => Side::Commonwealth,
+    };
+    let mut game = make_game();
+    let mut agent_a = (a.make)(seed);
+    let mut agent_b = (b.make)(seed ^ 0x9E37_79B9_7F4A_7C15);
+    let (cw, ax): (&mut dyn Agent, &mut dyn Agent) = if a_side == Side::Commonwealth {
+        (agent_a.as_mut(), agent_b.as_mut())
+    } else {
+        (agent_b.as_mut(), agent_a.as_mut())
+    };
+    self_play(&mut game, cw, ax, turns);
+    (outcome_score(&game, a_side), outcome_score(&game, b_side))
+}
+
+/// Round-robin tournament: every distinct pair plays `seeds` seeds × both side assignments, each
+/// game running `turns` Game-Turns. A game is a win for the side whose `outcome_score` leads by
+/// more than `draw_margin`, else a draw. Returns standings sorted best-first (points, then average
+/// margin). Deterministic for fixed inputs. Each contender plays `(n-1) * seeds * 2` games.
+pub fn round_robin(
+    make_game: &impl Fn() -> GameState,
+    contenders: &[Contender],
+    seeds: u32,
+    turns: u32,
+    draw_margin: i64,
+) -> Vec<Standing> {
+    let mut st: Vec<Standing> = contenders
+        .iter()
+        .map(|c| Standing { name: c.name.to_string(), ..Default::default() })
+        .collect();
+    for i in 0..contenders.len() {
+        for j in (i + 1)..contenders.len() {
+            for s in 0..seeds.max(1) {
+                for &i_side in &[Side::Commonwealth, Side::Axis] {
+                    let seed = 0x5EED_0000 ^ ((i as u64) << 40) ^ ((j as u64) << 24) ^ (s as u64);
+                    let (si, sj) = play_match(make_game, &contenders[i], i_side, &contenders[j], seed, turns);
+                    let diff = si - sj;
+                    st[i].games += 1;
+                    st[j].games += 1;
+                    st[i].margin_sum += diff;
+                    st[j].margin_sum -= diff;
+                    if diff > draw_margin {
+                        st[i].wins += 1;
+                        st[j].losses += 1;
+                    } else if diff < -draw_margin {
+                        st[j].wins += 1;
+                        st[i].losses += 1;
+                    } else {
+                        st[i].draws += 1;
+                        st[j].draws += 1;
+                    }
+                }
+            }
+        }
+    }
+    st.sort_by(|a, b| {
+        b.points()
+            .partial_cmp(&a.points())
+            .unwrap()
+            .then(b.avg_margin().partial_cmp(&a.avg_margin()).unwrap())
+    });
+    st
+}
+
+/// Render standings as a fixed-width table, best-first.
+pub fn format_standings(standings: &[Standing]) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    writeln!(out, "{:<18}{:>6}{:>5}{:>5}{:>5}{:>8}{:>10}", "agent", "games", "W", "D", "L", "win%", "avg margin").unwrap();
+    for s in standings {
+        writeln!(
+            out,
+            "{:<18}{:>6}{:>5}{:>5}{:>5}{:>7.1}%{:>10.1}",
+            s.name,
+            s.games,
+            s.wins,
+            s.draws,
+            s.losses,
+            100.0 * s.win_rate(),
+            s.avg_margin()
+        )
+        .unwrap();
+    }
+    out
+}
