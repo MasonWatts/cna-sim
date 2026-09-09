@@ -6,6 +6,8 @@
 
 **Counter layout:** top-left `(N)` = quantity of identical counters (absent = 1); top-center = combat value; top-right = size (XX=division, X=brigade, III=regiment, II=battalion, I=company); center box = §4.46 type glyph; below box = designation; bottom = parent formation (`-` or `*` = independent). Top-left letters `G`/`EG`/`E` are class/nationality markers (G ≈ Garrison), recorded in Notes.
 
+> **Size column = historical echelon only.** Per §9.22 the game organizational level is set by the *printed Stacking Point value* (§9.4), **not** by this size symbol or the unit name — a III "Regiment" is routinely a battalion-equivalent, and §9.24 fixes *every* artillery unit at Stacking Point 1 (battalion-equivalent) regardless of a "Reggimento" designation. The engine's `org_size` therefore follows the §4.44 Bn-/Bde-/Coy-Equivalent classification, not this column. (H2, 2026-09-09.)
+
 ## Symbol legend used (center glyph → type)
 
 | Glyph | Type |

@@ -141,11 +141,21 @@ New shared helper `within_cp_budget` (cost-limited Dijkstra over `move_step_cost
   each Organic unit's starting TOE from its §4.44 code (`N`→id Max-TOE via `unit_max_toe`, `U@x`/`O@x`→x)
   and Weapons units carry the chart's real counts. The `current_toe: 0` is a transient placeholder
   overwritten before placement. (Stale module/design comment corrected.)
-- [-] **H2 — §9.2 counter size-symbol verification (D14).** Blocked on source digitization: only the
-  §4.46 *type* glyphs are transcribed; the §9.2 *size* symbols are not (design D14: "the size-symbol
-  verification remains open"). Verifying requires reading the physical counter sheets (PDF p182–185)
-  — a vision/OCR audit that can't be done reliably in-engine. Current `org_size` inference (id
-  `unit_type` suffix + HQ hierarchy) is the accepted stand-in until that pass.
+- [x] **H2 — §9.2 unit-size verification (2026-09-09).** Resolved with the rulebook (PDF read via
+  `tools/pdf-page.sh`). **The premise was a mislabel:** §9.2 is *"Unit Equivalents"*, not counter
+  size-symbols, and §9.22 states the game org level "is guided **NOT by the unit designation on the
+  counter** or the unit's name **but rather through the printed Stacking Point value**" (cross-ref
+  §9.4). So the XX/X/III/II/I symbols are the *historical* echelon (§3.2), explicitly non-authoritative
+  for game size — a III "Regiment" is routinely a battalion-equivalent (Italian regiments, British
+  "brigades" that are really battalions). The engine's `org_size` derives from the §4.44
+  Bn-/Bde-/Coy-Equivalent groupings — i.e. §9.2 itself — so it is authoritative by construction; the
+  61 org_size-vs-symbol differences are the rulebook's own documented "maze", not errors.
+  **Verified the one absolute rule, §9.24** ("every artillery unit … has a Stacking Point value of 1"
+  = battalion-equivalent, batteries excepted): found and fixed **4 Italian artillery regiments** wrongly
+  set to `StandardBrigade` (203rd/44th/45th border-division + 185th Folgore Artigliera Regt, all id `kk`
+  "Artillery Bn-Equivalent") → `Battalion`. Added a §9.24 regression assertion to
+  `ob_ids_are_valid_characteristics_keys`. Coastal-defense arty *groups* (Battalion) and *batteries*
+  (Company) are §9.24-consistent; garrison/oasis "Bn"s follow their designation per §9.23.
 - [x] **H3 — OB `Deployed`-arrival verification pass (2026-09-08).** Every `Deployed`-default unit in
   `data/ob/commonwealth.ron` and `data/ob/italian.ron` was cross-checked, formation-scoped, against
   the §4.44a/§4.44b OA-sheet "Arrives" columns in `docs/source-materials/*-ob-4.44*.transcribed.md`.

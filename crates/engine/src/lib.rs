@@ -3464,6 +3464,17 @@ mod tests {
                             nat, u.name, u.org_size, p.name, p.org_size
                         );
                     }
+                    // §9.24: every artillery unit is a battalion-equivalent (Stacking Point 1),
+                    // except scattered batteries (company, SP 0) and the rare Artillery HQ — it may
+                    // never be brigade-or-larger regardless of a "Regiment"/"Reggimento" designation
+                    // (§9.22: game size follows the printed Stacking Point value, not the counter name).
+                    if chars[&u.id].unit_type.contains("Artillery") && !u.name.ends_with("HQ") {
+                        assert!(
+                            matches!(u.org_size, crate::state::unit::OrgSize::Battalion | crate::state::unit::OrgSize::Company),
+                            "{:?}: §9.24 artillery unit {:?} has org_size {:?} (must be Battalion or Company)",
+                            nat, u.name, u.org_size
+                        );
+                    }
                 }
             }
         }
