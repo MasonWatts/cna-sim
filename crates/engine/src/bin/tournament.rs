@@ -106,8 +106,9 @@ fn main() {
     if roster == "tuned" {
         // Coordinate-ascent tune the eval weights via self-play on this game, then enter a Lookahead
         // using them alongside the default one — the head-to-head shows whether tuning actually helps.
-        eprintln!("tuning eval weights (coordinate ascent, self-play)…");
-        let tuned = tune_weights(&make_game, 4, 2, turns, 20);
+        eprintln!("tuning eval weights (co-evolutionary steepest ascent, self-play)…");
+        // Higher seeds = more games per evaluation = less noise (the main signal lever); finer step.
+        let tuned = tune_weights(&make_game, 5, 6, turns, 15);
         eprintln!("tuned weights: {tuned:?}");
         contenders.push(Contender::new("Tuned", move |s| Box::new(LookaheadAgent::with_weights(s, tuned))));
     } else if roster != "fast" {

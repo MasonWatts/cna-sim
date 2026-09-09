@@ -702,12 +702,14 @@ pub fn evaluate_weights(
     total as f64 / n as f64
 }
 
-/// Greedy coordinate-ascent tuning of the eval weights via self-play against the default blend.
-/// Starting from [`EvalWeights::default`], each round tries raising and lowering each weight by
-/// `step` and keeps any change that improves `evaluate_weights` (measured against the fixed default
-/// opponent). Returns the best weights found; `iters` bounds the rounds. Deterministic. This is a
-/// simple local search — a starting point for stronger optimisation (population methods, more games
-/// per evaluation, self-play against the current best rather than the fixed default).
+/// **Co-evolutionary** steepest-ascent tuning of the eval weights via self-play. Starting from
+/// [`EvalWeights::default`], each round holds the current champion fixed as the opponent, evaluates
+/// every ±`step` neighbour against it, and promotes the neighbour that beats the champion by the
+/// largest average margin (steepest ascent). The search stops when **no** neighbour beats the
+/// champion — i.e. the champion is a self-play local optimum, a stronger convergence test than the
+/// old "beat the fixed default" (which capped the agent at exploiting the default's weaknesses).
+/// `iters` bounds the rounds; `seeds` sets the games per evaluation (higher = less noise, the main
+/// lever for the objective to have signal). Deterministic for fixed inputs.
 pub fn tune_weights(
     make_game: &impl Fn() -> GameState,
     iters: u32,
@@ -715,11 +717,14 @@ pub fn tune_weights(
     turns: u32,
     step: i64,
 ) -> EvalWeights {
-    let opponent = EvalWeights::default();
     let mut best = EvalWeights::default();
-    let mut best_score = evaluate_weights(make_game, best, opponent, seeds, turns);
     for _ in 0..iters {
-        let mut improved = false;
+        // The champion is this round's fixed opponent. A neighbour is stronger only if it beats the
+        // champion by more than the champion beats *itself* (~0, but measured for consistency), so
+        // that is the acceptance bar — filtering neutral/noise candidates and never regressing.
+        let champion = best;
+        let mut best_gain = evaluate_weights(make_game, champion, champion, seeds, turns);
+        let mut round_best = best;
         for field in 0..5 {
             for &delta in &[step, -step] {
                 let mut cand = best;
@@ -734,17 +739,17 @@ pub fn tune_weights(
                 if cand.material <= 0 || cand.vp < 0 || cand.cohesion < 0 || cand.supply_penalty < 0 || cand.closeness < 0 {
                     continue;
                 }
-                let score = evaluate_weights(make_game, cand, opponent, seeds, turns);
-                if score > best_score {
-                    best = cand;
-                    best_score = score;
-                    improved = true;
+                let gain = evaluate_weights(make_game, cand, champion, seeds, turns);
+                if gain > best_gain {
+                    best_gain = gain;
+                    round_best = cand;
                 }
             }
         }
-        if !improved {
-            break;
+        if round_best == best {
+            break; // no neighbour beat the champion → self-play local optimum
         }
+        best = round_best;
     }
     best
 }
