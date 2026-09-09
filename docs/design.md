@@ -782,6 +782,12 @@ against a fixed default-weight opponent, over several seeds and both side assign
 local search — a foundation for stronger optimisation (population methods, self-play against the
 current best, more games per evaluation, deeper agents) — and, thanks to the O(1) clone, evaluations
 are cheap: a game builder can hand out `template.clone()` rather than reloading the reference layer.
+The tournament bin's **`tuned` roster** closes the loop: it tunes on the chosen game, then enters a
+Lookahead using the tuned weights alongside the default one. Measured today it returns *exactly* the
+default blend (Tuned vs default is an even 3-0-3) — at the harness's low game-per-evaluation count the
+win/loss signal is too noisy for a single-step change to register, so coordinate ascent stalls
+immediately. So the hand-picked weights hold up, and the clear improvement lever for tuning is
+variance reduction (many more games per evaluation) before finer steps or population methods.
 
 The remaining **narrow enumerator gaps** are now filled: **off-shore bombardment** (`OffShoreBombard`
 — a heavy Commonwealth ship at sea shells an adjacent enemy-held hex, per target class, in Movement &

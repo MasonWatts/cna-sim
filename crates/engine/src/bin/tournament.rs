@@ -8,6 +8,7 @@
 //! Run: `cargo run --release --bin tournament -- [turns] [seeds] [roster] [game]`
 //!   defaults: turns=6  seeds=4  roster=all  game=skirmish
 //!   roster = `all` (all six agents) | `fast` (Random/Greedy/Lookahead/Rollout — no MCTS)
+//!            | `tuned` (fast set + a Lookahead using self-play-tuned eval weights, vs the default)
 //!   game   = `skirmish` (compact, fast — the useful default) | `campaign` (full §64)
 //! Use `--release` — MCTS is far too slow in a debug build. NB: the full `campaign` has a ~100-unit
 //! action space, so even Greedy/Lookahead cost seconds per move there and MCTS is impractical; the
@@ -18,8 +19,8 @@
 use std::time::Instant;
 
 use cna_engine::agent::{
-    format_head_to_head, format_standings, round_robin, Contender, CrossPhaseMctsAgent, GreedyAgent,
-    LookaheadAgent, MctsAgent, RandomAgent, RolloutAgent,
+    format_head_to_head, format_standings, round_robin, tune_weights, Contender, CrossPhaseMctsAgent,
+    GreedyAgent, LookaheadAgent, MctsAgent, RandomAgent, RolloutAgent,
 };
 use cna_engine::reference::ReferenceData;
 use cna_engine::state::game::GameState;
@@ -102,7 +103,14 @@ fn main() {
         Contender::new("Lookahead", |s| Box::new(LookaheadAgent::new(s))),
         Contender::new("Rollout", |s| Box::new(RolloutAgent::flat(s))),
     ];
-    if roster != "fast" {
+    if roster == "tuned" {
+        // Coordinate-ascent tune the eval weights via self-play on this game, then enter a Lookahead
+        // using them alongside the default one — the head-to-head shows whether tuning actually helps.
+        eprintln!("tuning eval weights (coordinate ascent, self-play)…");
+        let tuned = tune_weights(&make_game, 4, 2, turns, 20);
+        eprintln!("tuned weights: {tuned:?}");
+        contenders.push(Contender::new("Tuned", move |s| Box::new(LookaheadAgent::with_weights(s, tuned))));
+    } else if roster != "fast" {
         contenders.push(Contender::new("MCTS", |s| Box::new(MctsAgent::standard(s))));
         contenders.push(Contender::new("CrossMCTS", |s| Box::new(CrossPhaseMctsAgent::standard(s))));
     }
