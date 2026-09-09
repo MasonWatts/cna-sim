@@ -8,6 +8,8 @@ resolution layer partial). See §8 for the detailed status.
 **Scope of this document:** Project goals, guiding principles, phased roadmap, key
 decisions, and technology direction. Detailed data schemas/types are deliberately
 *out of scope here* and will follow as a separate document once this is settled.
+**Related docs:** `deferred-items.md` (rules-fidelity backlog); `visualization-architecture.md`
+(the spectator website — record-then-replay, WASM client-side replay, event-log schema).
 
 ---
 
