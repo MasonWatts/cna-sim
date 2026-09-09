@@ -78,15 +78,21 @@ loaded OB. Implementing the below with guessed maxima would be *less* faithful t
 blocked on either that chart or hierarchical-OB modeling — not on engine logic.
 - [-] **D1 — Hierarchical OB non-shell children vs OA maxima** (§9.26/§9.27). Blocked: needs
   hierarchical OB modeling (units currently flat with parent pointers).
-- [-] **D2 — §19.3 real assignment maxima.** Blocked: the §19.3 chart isn't digitized;
-  `assigned_capacity` (historical count from the OB) is the accepted stand-in.
+- [-] **D2 — §19.3 real assignment maxima.** Resolved as approximated-by-design (2026-09-09): there
+  is **no dedicated §19.3 chart** (confirmed with the rulebook owner) — §19.3 defers each formation's
+  organization to its OA-sheet structure, which the engine already captures as `assigned_capacity`
+  (the historical assigned count) and enforces in `ReassignUnit`. This is the faithful representation,
+  not a stand-in. (Distinct from the §19.5 Maximum Attachment Chart, which *is* digitized and enforced.)
 - [x] **D3 — CW battalion-shuffle** (§19.26). Already supported: `ReassignUnit`/`DetachUnit`/`AttachUnit`
   let CW freely shuffle battalions within a brigade's `assigned_capacity` — the rule "falls out" of
   the general reorg commands.
-- [-] **D4 — Historical (time-phased) assignment shifts** (§19.24/§19.25). Blocked: needs the §19.3
-  chart's three time-phased CW maxima (not digitized); `assigned_capacity` is a single static value.
-- [-] **D5 — Substitution** (§19.45). Blocked: needs the §19.3 per-slot maxima to know a "missing"
-  assigned unit's limits.
+- [-] **D4 — Historical (time-phased) assignment shifts** (§19.24/§19.25). Approximated-by-design
+  (2026-09-09): with no §19.3 chart (see D2), there are no per-slot time-phased assignment maxima to
+  model; `assigned_capacity` is the OA-sheet organization. The §19.5 *attachment* caps that ARE
+  time-phased (CW armor division / Tank Brigade GT-1–67 vs 68+, Matruh/Selby GT windows) are enforced.
+- [-] **D5 — Substitution** (§19.45). Approximated-by-design (2026-09-09): needs §19.3 per-slot maxima
+  which don't exist as a chart (see D2); the general reassign/attach commands already cover the
+  observable behavior within `assigned_capacity`.
 
 ## E. Prisoners & morale training (§8.13, §8.4, `state/game.rs`)
 
@@ -157,5 +163,7 @@ New shared helper `within_cp_budget` (cost-limited Dijkstra over `move_step_cost
 
 - [-] Hex-placed convoy / sea-movement model — violates §56.11 faithful lane model.
 - [-] Command-level enforcement of "act only on observed info" — Phase-2 agent concern (§8.10).
-- [-] Scenario-level §60.8 victory — only §64.7 campaign victory is modeled (§8.2).
 - [-] Air recon "operational abstraction" ceiling already ruled acceptable (2026-08-29) beyond B6/B7.
+
+Note: the earlier "only §64.7 campaign victory is modeled" entry is retired — §60.81 Scenario-1
+("Graziani's Offensive") victory is now implemented (`GameState::scenario1_victory`, `view.rs`).

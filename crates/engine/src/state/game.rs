@@ -6975,13 +6975,18 @@ impl GameState {
             FormationRole::MatruhSelby => return if gt <= 12 { 6 } else { 5 },
             FormationRole::Normal => {}
         }
+        let armor = u.is_armor;
         match self.effective_org_size(parent) {
             OrgSize::Division | OrgSize::SuperBrigade => match side {
-                Side::Commonwealth => if gt < 68 { 2 } else { 3 },
-                Side::Axis => if italian { 2 } else { 4 },
+                // §19.5: CW armor division 2 (GT 1–67) / 3 (GT 68+); infantry division always 2.
+                Side::Commonwealth => if armor && gt >= 68 { 3 } else { 2 },
+                // German armor division 4 ("1 Bde and 1 unit *or* 4 units"); German infantry
+                // division 3 ("1 Bde *or* 3 units"); Italian division 2 (armor or infantry).
+                Side::Axis => if italian { 2 } else if armor { 4 } else { 3 },
             },
             OrgSize::StandardBrigade => match side {
-                Side::Commonwealth => if gt < 68 { 2 } else { 1 },
+                // §19.5: CW Tank Brigade 2 (GT 1–67) / 1 (GT 68+); any other brigade 1.
+                Side::Commonwealth => if armor && gt < 68 { 2 } else { 1 },
                 Side::Axis => 1, // German regiment / Italian brigade or regiment
             },
             OrgSize::BattleGroup => match side {

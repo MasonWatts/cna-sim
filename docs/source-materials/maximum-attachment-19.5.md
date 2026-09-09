@@ -43,6 +43,8 @@ own parent freely.
 Modification: any nation's Division- and Brigade-equivalent may attach two non-shell
 company-equivalents at no cost to the maximum; three company-equivalents equal one
 battalion-equivalent, and the company-equivalents must respect the type restrictions.
+*(Not yet modeled — `nonassigned_attachment_limit` currently counts every attachment
+equally, so the two free company-equivalents are not exempted. Remaining §19.5 refinement.)*
 
 ## Engine encoding
 `nonassigned_attachment_limit` gives the numeric cap, keyed on the parent's effective `OrgSize`,

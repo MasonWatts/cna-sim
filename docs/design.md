@@ -819,7 +819,11 @@ Phase within the §19.5 limit), **`DetachUnit`** (§19.43/44 — 1 CP each, Orga
 **`ReassignUnit`** (§19.21/28 — a currently-attached, not-assigned-elsewhere unit, Organization
 Phase, no CP). The §19.5 Maximum Attachment Chart is transcribed (`maximum-attachment-19.5.md`) and
 its numeric caps enforced by `nonassigned_attachment_limit` (keyed by parent org-size/nationality/
-Game-Turn). The **§19.3 assignment maxima** are enforced too: since §19.3's Formation Organization Chart is not
+**arm** (`is_armor`)/Game-Turn — the arm split matters: a CW infantry division is capped at 2 even
+at GT 68+ where an armor division rises to 3, a CW non-tank brigade at 1 where a Tank Brigade is 2
+before GT 68, and a German infantry division at 3 where an armor division is 4). The one un-modeled
+§19.5 detail is the chart's *Modification* allowing two non-shell company-equivalents to attach free
+of the maximum (3 company-eq = 1 Bn-eq) — every attachment currently counts equally. The **§19.3 assignment maxima** are enforced too: since §19.3's Formation Organization Chart is not
 in the shared Charts & Tables (its note defers "singular" formations to their OA-sheet structure
 anyway), each formation's historical assignment count from the loaded OB is captured at scenario
 setup as its `assigned_capacity`, and `ReassignUnit` refuses an assignment that would push a

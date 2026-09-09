@@ -12216,6 +12216,66 @@ mod tests {
     }
 
     #[test]
+    fn attachment_count_distinguishes_arm_19_5() {
+        // §19.5 Maximum Attachment Chart: the numeric cap depends on the parent's ARM
+        // (armor vs infantry/other), not just its org size, nationality and Game-Turn.
+        use crate::state::game::{GameState, Phase};
+        use crate::state::unit::{Composition, OrgSize};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        for nat in [Nationality::German, Nationality::Commonwealth, Nationality::Italian] {
+            let uc: &str = match nat {
+                Nationality::German => include_str!("../../../data/reference/unit-characteristics/german.ron"),
+                Nationality::Commonwealth => include_str!("../../../data/reference/unit-characteristics/commonwealth.ron"),
+                _ => include_str!("../../../data/reference/unit-characteristics/italian.ron"),
+            };
+            refs.load_unit_characteristics(nat, uc).unwrap();
+        }
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+
+        let mk = |g: &mut GameState, nat, size, armor| {
+            let u = g.spawn_unit(nat, "a", "hq", Composition::Weapons { groups: vec![] });
+            g.unit_mut(u).unwrap().org_size = size;
+            g.unit_mut(u).unwrap().is_armor = armor;
+            u
+        };
+
+        // Commonwealth divisions: armor 2 (GT 1–67) / 3 (GT 68+); infantry division always 2.
+        let cw_arm = mk(&mut g, Nationality::Commonwealth, OrgSize::Division, true);
+        let cw_inf = mk(&mut g, Nationality::Commonwealth, OrgSize::Division, false);
+        g.game_turn = 20;
+        assert_eq!(g.nonassigned_attachment_limit(cw_arm), 2);
+        assert_eq!(g.nonassigned_attachment_limit(cw_inf), 2);
+        g.game_turn = 70;
+        assert_eq!(g.nonassigned_attachment_limit(cw_arm), 3);
+        assert_eq!(g.nonassigned_attachment_limit(cw_inf), 2); // infantry division stays 2 (was wrongly 3)
+
+        // Commonwealth brigades: Tank Brigade 2 (GT 1–67) / 1 (GT 68+); any other brigade 1.
+        let cw_tank_bde = mk(&mut g, Nationality::Commonwealth, OrgSize::StandardBrigade, true);
+        let cw_other_bde = mk(&mut g, Nationality::Commonwealth, OrgSize::StandardBrigade, false);
+        g.game_turn = 20;
+        assert_eq!(g.nonassigned_attachment_limit(cw_tank_bde), 2);
+        assert_eq!(g.nonassigned_attachment_limit(cw_other_bde), 1); // other brigade 1 (was wrongly 2)
+        g.game_turn = 70;
+        assert_eq!(g.nonassigned_attachment_limit(cw_tank_bde), 1);
+        assert_eq!(g.nonassigned_attachment_limit(cw_other_bde), 1);
+
+        // German divisions: armor 4 ("1 Bde and 1 unit or 4 units"); infantry 3 ("1 Bde or 3 units").
+        let de_arm = mk(&mut g, Nationality::German, OrgSize::Division, true);
+        let de_inf = mk(&mut g, Nationality::German, OrgSize::Division, false);
+        assert_eq!(g.nonassigned_attachment_limit(de_arm), 4);
+        assert_eq!(g.nonassigned_attachment_limit(de_inf), 3); // infantry division 3 (was wrongly 4)
+
+        // Italian divisions: both 2 (the chart draws no arm distinction).
+        let it_arm = mk(&mut g, Nationality::Italian, OrgSize::Division, true);
+        let it_inf = mk(&mut g, Nationality::Italian, OrgSize::Division, false);
+        assert_eq!(g.nonassigned_attachment_limit(it_arm), 2);
+        assert_eq!(g.nonassigned_attachment_limit(it_inf), 2);
+    }
+
+    #[test]
     fn reorganization_special_roles_19_5() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;
