@@ -123,11 +123,19 @@ pub enum Command {
         attackers: Vec<UnitId>,
         target: HexCoord,
         target_class: BarrageTargetClass,
+        /// §12.23: a specific target unit the firer *knows* is present (via Patrol or previous
+        /// combat). When `None` the firer barrages "blind" at `target_class` (§12.24). When `Some`
+        /// the unit must be a valid target of `target_class` in `target` and known to the firer
+        /// (currently In-Contact/Engaged with the firing side — the "previous combat" path).
+        target_unit: Option<UnitId>,
     },
     /// Anti-Armor fire (§14) by the attacking units against a target hex.
     AntiArmor {
         attackers: Vec<UnitId>,
         target_hex: HexCoord,
+        /// §14.21: defending units the defender has withheld from *both* Anti-Armor and Close
+        /// Assault — they take no Anti-Armor damage. Empty in the common case (fire hits the hex).
+        withheld: Vec<UnitId>,
     },
     /// Close Assault (§15) by the attacking units against an adjacent target hex; every
     /// enemy unit in that hex defends together (§15.23).
@@ -463,6 +471,17 @@ pub enum Command {
         cap_type: crate::reference::aircraft::CapType,
         planes: u32,
     },
+    /// §42.27: fly `planes` on an air-reconnaissance mission from the squadron's base to `target`,
+    /// validating Recon capability (§42.21), flight range (§37.12) and weather (§37.22). Rolls a d6
+    /// `die`; the §42.27 table (with +1 per 4 planes) gives how many enemy battalion-equivalents in
+    /// the hex have their TOE Strength revealed to the flier this Operations Stage (§42.24a order:
+    /// Tanks, then Infantry, then Artillery). (Land Support Air.)
+    ReconHex {
+        squadron: crate::state::air::SquadronId,
+        target: HexCoord,
+        planes: u32,
+        die: u32,
+    },
     /// §40.5–40.8: fly `planes` on a strafing mission from the squadron's base to `target`,
     /// validating strafing capability (§40.51), flight range (§37.12) and weather (§37.22), then
     /// resolving on the Strafing Table with the §40.8 column shift for `strafe_target` and the
@@ -738,6 +757,8 @@ pub enum CommandOutcome {
     InfantryProduced { arrival_game_turn: u32, points: u32 },
     /// §40.2: a Combat Air Patrol was established — `fighters` planes flew to the patrolled hex.
     CapDesignated { fighters: u32 },
+    /// §42.27: air reconnaissance revealed these enemy units' TOE Strength to the flier this stage.
+    ReconRevealed { revealed: Vec<UnitId> },
     /// §40.5–40.8: a strafing mission resolved with Strafing-Table `result` (0–3); `effect`
     /// describes what it did to the target (e.g. dump percent destroyed, pipeline destroyed).
     Strafed { result: u32, effect: crate::state::game::StrafeEffect },
@@ -814,6 +835,9 @@ pub enum CommandError {
     NonCombatHq,
     /// The target hex holds no eligible enemy units (of the required class, for barrage).
     NoTargets,
+    /// §12.23: a specific barrage target was designated but the firer does not know it is there
+    /// (it is not In-Contact/Engaged, i.e. not revealed through previous combat).
+    TargetNotKnown,
     /// The attacking units do not all belong to the same side.
     AttackersMixedSides,
     /// A Retreat command was issued for a unit that owes no retreat.
@@ -1003,11 +1027,11 @@ impl GameState {
             Command::FormationMove { formation, to, mode } => {
                 self.formation_move(formation, to, mode)
             }
-            Command::Barrage { attackers, target, target_class } => {
-                self.cmd_barrage(&attackers, target, target_class)
+            Command::Barrage { attackers, target, target_class, target_unit } => {
+                self.cmd_barrage(&attackers, target, target_class, target_unit)
             }
-            Command::AntiArmor { attackers, target_hex } => {
-                self.cmd_anti_armor(&attackers, target_hex)
+            Command::AntiArmor { attackers, target_hex, withheld } => {
+                self.cmd_anti_armor(&attackers, target_hex, &withheld)
             }
             Command::CloseAssault { attackers, target } => {
                 self.cmd_close_assault(&attackers, target)
@@ -1405,6 +1429,9 @@ impl GameState {
                     }
                 }
                 Ok(CommandOutcome::BombingMission(outcome))
+            }
+            Command::ReconHex { squadron, target, planes, die } => {
+                self.cmd_recon_hex(squadron, target, planes, die)
             }
             Command::DesignateCap { squadron, center, cap_type, planes } => {
                 self.cmd_designate_cap(squadron, center, cap_type, planes)
@@ -2400,28 +2427,43 @@ impl GameState {
     }
 
     /// §27.59 InterceptTruckConvoy: during the enemy's Truck Convoy Phase, a raider within four
-    /// Movement CPs of a passing convoy may halt and attack it (§27.58 mechanics). Distance is
-    /// approximated by hex range ≤ 4 (a documented simplification of "within 4 Movement CPs").
+    /// Movement CPs of a passing convoy may halt and attack it (§27.58 mechanics). Range is the
+    /// true "within 4 Movement CPs" — a cost-limited reach over the raider's (motorized) movement,
+    /// paying real terrain costs, not a flat hex distance.
     fn cmd_intercept_truck_convoy(&mut self, raider: usize, convoy: usize, roll: u32) -> Result<CommandOutcome, CommandError> {
         self.require_phase(Phase::TruckConvoy)?;
         let r = self.raiders.get(raider).ok_or(CommandError::RaiderNotAvailable)?;
         let rhex = r.hex.ok_or(CommandError::RaiderNotAvailable)?;
         let rside = r.side;
         let c = self.truck_convoys.get(convoy).ok_or(CommandError::RaiderCannotMove)?;
-        // The convoy must be the enemy's and within interception range of the raider.
-        if c.side != rside.opponent() || rhex.distance(c.hex) > 4 {
+        let chex = c.hex;
+        // The convoy must be the enemy's and within 4 Movement CPs of the raider (§27.59).
+        if c.side != rside.opponent() || !self.within_cp_budget(rhex, chex, MoveMode::Motorized, 40) {
             return Err(CommandError::RaiderCannotMove);
         }
         self.resolve_truck_convoy_raid(raider, convoy, roll)
     }
 
     /// Shared §27.58 truck-convoy raid resolution (used by both the direct raid and the §27.59
-    /// interception): 5 CP; a d6 1-2 destroys one Truck Point + its cargo share; replacement cargo
-    /// adds 1 to the roll and a resulting 6 eliminates the raider.
+    /// interception): 5 CP; a d6 1-2 destroys one Truck Point + its cargo share. §27.58 replacement
+    /// cargo: if *any* truck carries Replacement Points the raider adds 1 to the roll and a resulting
+    /// 6 eliminates the raider; if *all* trucks carry Replacement Points (the convoy hauls
+    /// Replacement Points and no commodity cargo) the raider is automatically eliminated with no
+    /// truck losses.
     fn resolve_truck_convoy_raid(&mut self, raider: usize, convoy: usize, roll: u32) -> Result<CommandOutcome, CommandError> {
         use crate::state::game::Commodity;
         let carries_repl = self.truck_convoys[convoy].carries_replacements;
+        // §27.58: "all trucks carrying Replacement Points" — the convoy hauls replacements and has
+        // no remaining commodity cargo.
+        let all_repl = carries_repl && self.truck_convoys[convoy].cargo.is_empty();
         let mut eliminated = self.raider_pay_raid_cp(raider);
+        if all_repl {
+            if !eliminated {
+                self.eliminate_raider(raider);
+                eliminated = true;
+            }
+            return Ok(CommandOutcome::RaidResolved { success: false, raider_eliminated: eliminated });
+        }
         let eff = roll + u32::from(carries_repl);
         let success = (1..=2).contains(&eff);
         if success {
@@ -2663,6 +2705,85 @@ impl GameState {
         }
         self.sas_last_raid = Some((self.game_turn, self.operations_stage));
         Ok(CommandOutcome::SasRaided { planes_pct: pct })
+    }
+
+    /// §42.27 ReconHex: fly `planes` on an air-reconnaissance mission to `target` and reveal enemy
+    /// TOE Strength there. Validates Recon capability (§42.21), range (§37.12), and weather (§37.22).
+    /// The §42.27 table (with +1 per four planes) converts the d6 `die` into how many enemy
+    /// battalion-equivalents are revealed (`None` = all), taken in §42.24a order (Tanks, Infantry,
+    /// Artillery). Revealed units' strength is visible to the flier via `observe_units` this stage.
+    fn cmd_recon_hex(&mut self, squadron: crate::state::air::SquadronId, target: HexCoord, planes: u32, die: u32) -> Result<CommandOutcome, CommandError> {
+        use crate::state::game::Weather;
+        self.require_phase(Phase::LandSupportAir)?;
+        let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+        if sgsu.in_transit() {
+            return Err(CommandError::SquadronInTransit);
+        }
+        let side = sgsu.nationality.side();
+        let nationality = sgsu.nationality;
+        if !self.squadron_is_based(squadron) {
+            return Err(CommandError::SquadronNotBased);
+        }
+        let grounded = |g: &Self, h: HexCoord| matches!(g.weather_at(h), Weather::Sandstorm | Weather::Rainstorm);
+        if grounded(self, target) || self.flight_base_weather_hex(squadron).is_some_and(|b| grounded(self, b)) {
+            return Err(CommandError::WeatherGrounded);
+        }
+        // §42.25: no Recon over a hex undergoing air bombardment (barraged/bombed this stage).
+        if self.barraged_hexes_this_stage.contains(&target) {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        // Shortest range among ready plane types; at least one must have Recon capability (§42.21).
+        let chart = self.reference.aircraft_charts.get(&nationality);
+        let mut min_range = u32::MAX;
+        let mut can_r = false;
+        for g in sgsu.planes.iter().filter(|g| g.ready > 0) {
+            if let Some(ac) = chart.and_then(|c| c.get(&g.aircraft_type)) {
+                min_range = min_range.min(ac.max_range());
+                if crate::rules::air::can_recon(&ac.missions) {
+                    can_r = true;
+                }
+            }
+        }
+        if min_range == u32::MAX {
+            return Err(CommandError::NoReadyPlanes);
+        }
+        if !can_r {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        let distance = self.flight_distance(squadron, target);
+        if !distance.is_some_and(|d| crate::rules::air::can_fly(min_range, d, false)) {
+            return Err(CommandError::TargetOutOfRange);
+        }
+        let flown = self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?.fly(planes);
+        if flown == 0 {
+            return Err(CommandError::NoReadyPlanes);
+        }
+        // §42.27: how many battalion-equivalents are revealed (None = all).
+        let reveal_n = self
+            .reference
+            .air_recon
+            .as_ref()
+            .and_then(|t| t.reveal(die, flown));
+        // Enemy units in the hex, in §42.24a reveal order: Tanks, then Infantry, then Artillery.
+        let enemy = side.opponent();
+        let mut targets: Vec<UnitId> = self
+            .units_in_hex(target)
+            .into_iter()
+            .filter(|&id| self.unit(id).is_some_and(|u| u.nationality.side() == enemy && u.total_toe() > 0))
+            .collect();
+        let order_key = |g: &Self, id: UnitId| -> u8 {
+            if g.unit_has_tank(id) { 0 } else if g.is_gun_unit(id) { 2 } else { 1 }
+        };
+        targets.sort_by_key(|&id| order_key(self, id));
+        let take = match reveal_n {
+            None => targets.len(),
+            Some(n) => (n as usize).min(targets.len()),
+        };
+        let revealed: Vec<UnitId> = targets.into_iter().take(take).collect();
+        for &id in &revealed {
+            self.recon_revealed.insert((side, id));
+        }
+        Ok(CommandOutcome::ReconRevealed { revealed })
     }
 
     /// §40.2 DesignateCap: commit `planes` fighters of a located squadron to Combat Air Patrol over
@@ -3484,10 +3605,10 @@ impl GameState {
         if let Some(chart) = self.reference.malta_commitment.as_ref() {
             match chart.commitment(&self.scenario_name, level) {
                 Some(MaltaCommitment::NotAllowed) => return Err(CommandError::MaltaLevelUnavailable),
-                Some(MaltaCommitment::Turns(limit)) => {
-                    if self.malta_level_used.get(&level).copied().unwrap_or(0) >= limit {
-                        return Err(CommandError::MaltaLevelUnavailable);
-                    }
+                Some(MaltaCommitment::Turns(limit))
+                    if self.malta_level_used.get(&level).copied().unwrap_or(0) >= limit =>
+                {
+                    return Err(CommandError::MaltaLevelUnavailable);
                 }
                 _ => {} // Unlimited, or scenario/level not listed — not limited here.
             }
@@ -3599,14 +3720,18 @@ impl GameState {
         Ok(())
     }
 
-    /// Barrage (§12.6). The firer names an adjacent hex and a target class (§12.23–24);
-    /// the engine resolves against an enemy unit of that class there. There is no
-    /// line-of-fire check by rule (§12.35: no LOS restrictions in the desert).
+    /// Barrage (§12.6). The firer names an adjacent hex and a target class (§12.23–24); the engine
+    /// resolves against an enemy unit of that class there. There is no line-of-fire check by rule
+    /// (§12.35: no LOS restrictions in the desert). §12.23: the firer may instead designate a
+    /// *specific* known target unit (`target_unit`) — allowed only when that unit is a valid target
+    /// of `target_class` in the hex and known to the firer (In-Contact/Engaged, the "previous
+    /// combat" path; the Patrol-knowledge path is not persisted, §8.11).
     fn cmd_barrage(
         &mut self,
         attackers: &[UnitId],
         target: HexCoord,
         target_class: BarrageTargetClass,
+        target_unit: Option<UnitId>,
     ) -> Result<CommandOutcome, CommandError> {
         self.require_combat_phase()?;
         if attackers.is_empty() {
@@ -3617,14 +3742,32 @@ impl GameState {
         let side = self.attackers_side(attackers)?;
         // §12.31: artillery barrages an *adjacent* occupied hex.
         self.require_all_adjacent(attackers, target)?;
-        // §12.22–24: eligible targets are enemy combat counters of the named class in the
-        // hex (empty HQs excluded). The firer picks by class; we resolve against one such
-        // unit (a specific-unit designation via Patrol, §12.23, is deferred).
-        let target_unit = self
+        // §12.22–24: eligible targets are enemy combat counters of the named class in the hex
+        // (empty HQs excluded). Normally the firer picks by class and we resolve against one such
+        // unit; §12.23 lets the firer designate a *specific* known unit instead.
+        let candidates: Vec<UnitId> = self
             .enemy_units_in_hex(target, side)
             .into_iter()
-            .find(|&id| !self.is_noncombat_hq(id) && self.barrage_class(id) == target_class)
-            .ok_or(CommandError::NoTargets)?;
+            .filter(|&id| !self.is_noncombat_hq(id) && self.barrage_class(id) == target_class)
+            .collect();
+        let target_unit = match target_unit {
+            Some(designated) => {
+                // §12.23: the designated unit must be one of the eligible targets, and the firer
+                // must actually know it is there — modeled as In-Contact/Engaged (previous combat).
+                if !candidates.contains(&designated) {
+                    return Err(CommandError::NoTargets);
+                }
+                let known = self
+                    .unit(designated)
+                    .map(|u| u.status.in_contact || u.status.engaged)
+                    .unwrap_or(false);
+                if !known {
+                    return Err(CommandError::TargetNotKnown);
+                }
+                designated
+            }
+            None => candidates.into_iter().next().ok_or(CommandError::NoTargets)?,
+        };
         // §50.14: each barraging unit expends Ammo (rate × TOE) from its reserve / hex dumps.
         if !self.consume_combat_ammo(attackers, crate::state::game::CombatAction::Barrage) {
             return Err(CommandError::InsufficientAmmo);
@@ -3640,6 +3783,7 @@ impl GameState {
         &mut self,
         attackers: &[UnitId],
         target_hex: HexCoord,
+        withheld: &[UnitId],
     ) -> Result<CommandOutcome, CommandError> {
         self.require_combat_phase()?;
         if attackers.is_empty() {
@@ -3663,7 +3807,8 @@ impl GameState {
         if let Some(s) = atk_side {
             self.land_combat_this_stage.insert(s);
         }
-        let outcome = self.resolve_anti_armor(attackers, target_hex);
+        let dice = self.rng.two_dice_raw();
+        let outcome = self.resolve_anti_armor_core(attackers, target_hex, dice, withheld);
         // §16.46: anti-armor fire eliminates a Dummy Tank once the defender has no real armor left.
         if let Some(s) = atk_side {
             let defender = s.opponent();
@@ -3815,6 +3960,93 @@ impl GameState {
         Some(base)
     }
 
+    /// Whether `target` is reachable from `origin` within `cp_budget` tenths of a Capability Point,
+    /// paying real terrain/hexside movement costs for `mode` (a cost-limited Dijkstra over
+    /// `move_step_cost`). Prohibited / EntireCpa steps are impassable. This replaces the earlier
+    /// hex-distance proxies for the "within N Movement CPs" ranges (§16.22 / §27.59 / §28.24).
+    pub(crate) fn within_cp_budget(
+        &self,
+        origin: HexCoord,
+        target: HexCoord,
+        mode: MoveMode,
+        cp_budget: i32,
+    ) -> bool {
+        use std::cmp::Reverse;
+        use std::collections::{BinaryHeap, HashMap};
+        if origin == target {
+            return true;
+        }
+        let mut best: HashMap<HexCoord, i32> = HashMap::new();
+        best.insert(origin, 0);
+        // Heap of (cost, col, row); col/row give a deterministic tie-break without needing Ord on
+        // HexCoord.
+        let mut heap: BinaryHeap<Reverse<(i32, i16, i16)>> = BinaryHeap::new();
+        heap.push(Reverse((0, origin.col, origin.row)));
+        while let Some(Reverse((cost, col, row))) = heap.pop() {
+            let here = HexCoord::new(col, row);
+            if cost > *best.get(&here).unwrap_or(&i32::MAX) {
+                continue; // stale heap entry
+            }
+            if here == target {
+                return cost <= cp_budget;
+            }
+            for n in self.map.neighbors(here) {
+                let step = match self.move_step_cost(here, n, mode) {
+                    Some(MoveCost::Cost(f)) => f.0,
+                    _ => continue, // off-map / prohibited / entire-CPA: impassable for range
+                };
+                let nc = cost + step;
+                if nc <= cp_budget && nc < *best.get(&n).unwrap_or(&i32::MAX) {
+                    best.insert(n, nc);
+                    heap.push(Reverse((nc, n.col, n.row)));
+                }
+            }
+        }
+        false
+    }
+
+    /// §16.22: whether a legal Patrol path of at most five hexes runs from `origin` to `target`.
+    /// The path may not cross terrain impassable to the (motorized) patrol points (§16.11), and no
+    /// hex along the way — other than the enemy-occupied `target` itself — may be enemy-occupied.
+    /// (The rule also bars "enemy-controlled" hexes, but the target's own ZOC blankets every hex
+    /// adjacent to it, so enforcing a ZOC-free approach would make any ZOC-projecting target
+    /// un-patrollable; we therefore gate on enemy *occupancy*, which is unambiguous.) A
+    /// breadth-first search bounded to five steps.
+    pub(crate) fn patrol_path_exists(&self, origin: HexCoord, target: HexCoord, enemy: Side) -> bool {
+        use std::collections::VecDeque;
+        if origin == target {
+            return true;
+        }
+        let mut seen = std::collections::HashSet::new();
+        seen.insert(origin);
+        let mut q: VecDeque<(HexCoord, u32)> = VecDeque::new();
+        q.push_back((origin, 0));
+        while let Some((here, depth)) = q.pop_front() {
+            if depth >= 5 {
+                continue;
+            }
+            for n in self.map.neighbors(here) {
+                if seen.contains(&n) {
+                    continue;
+                }
+                // The patrol points must be able to enter `n` (impassable terrain blocks, §16.11).
+                if !matches!(self.move_step_cost(here, n, MoveMode::Motorized), Some(MoveCost::Cost(_))) {
+                    continue;
+                }
+                if n == target {
+                    return true; // the enemy-occupied objective, reached in ≤5 hexes
+                }
+                // §16.22: may not pass through an enemy-occupied hex.
+                if !self.enemy_units_in_hex(n, enemy.opponent()).is_empty() {
+                    continue;
+                }
+                seen.insert(n);
+                q.push_back((n, depth + 1));
+            }
+        }
+        false
+    }
+
     /// Off-map movement toward the map (§8.8), gated to the Movement & Combat phase. Only
     /// Axis units are ever in the off-map complex (§8.82); `advance_off_map_toward_map`
     /// enforces this by returning `NotOffMap` for any on-map unit.
@@ -3835,7 +4067,9 @@ impl GameState {
     /// be non-phasing, motorized, not Engaged, not already in an enemy ZOC), triggered by an adjacent
     /// enemy (§8.51), and the §8.53b/§8.54 CPA-and-size "pinning" is enforced (a fast, large-enough
     /// adjacent enemy bars the reaction); the reaction path may never enter an enemy ZOC (§8.55).
-    /// Deferred: the §8.53a truck-stacking exception and detach-to-react (§8.56).
+    /// §8.56: an attached unit may react by detaching first (1 CP for the detachment). The §8.53a
+    /// Truck-Convoy stacking exception is N/A here — truck convoys move via `MoveTruckConvoy`, not
+    /// `React`; the motorized gate is the faithful §8.53a rule for regular units.
     fn cmd_react(&mut self, unit: UnitId, path: &[HexCoord]) -> Result<CommandOutcome, CommandError> {
         if self.phase != Phase::MovementAndCombat {
             return Err(CommandError::WrongPhase);
@@ -3882,10 +4116,20 @@ impl GameState {
         if pinned {
             return Err(CommandError::Pinned);
         }
+        // §8.56: a unit attached to a parent formation may react — it detaches first (1 CP for the
+        // detachment, §19.43) and then reacts. A unit that is itself a parent of other attachments
+        // (e.g. a brigade HQ with units attached to it) may not detach-and-react unless those units
+        // also detach, which we do not orchestrate mid-reaction, so it is refused here. (The §8.54
+        // "parent becomes a pinned shell" and "no detaching low-CPA units purely to free the parent"
+        // guards concern the *parent's* own reaction and are documented simplifications.)
+        let detaches = self.unit(unit).and_then(|u| u.attached_parent).is_some();
+        if detaches && self.units.values().any(|o| o.attached_parent == Some(unit)) {
+            return Err(CommandError::CannotReact);
+        }
         // §8.55: reaction moves normally but may never enter an enemy ZOC (and expends no
-        // Break-Off cost, §8.52).
+        // Break-Off cost, §8.52). §8.56: the detachment CP is charged with the reaction CP.
         let mut prev = start;
-        let mut total_cp = Fixed(0);
+        let mut total_cp = if detaches && !path.is_empty() { Fixed(10) } else { Fixed(0) };
         for &h in path {
             if !prev.is_adjacent(h) {
                 return Err(CommandError::NotAdjacent);
@@ -3913,6 +4157,10 @@ impl GameState {
                 if self.hex_stacking_points(dest) + self.effective_stacking_points(unit) > limit {
                     return Err(CommandError::StackingLimitExceeded);
                 }
+            }
+            // §8.56: reacting away from the parent's counter completes the detachment.
+            if detaches {
+                self.unit_mut(unit).expect("checked").attached_parent = None;
             }
             self.unit_mut(unit).expect("checked").location = Some(crate::state::unit::UnitLocation::OnMap(dest));
         }
@@ -4085,15 +4333,16 @@ impl GameState {
         if per_hex.keys().any(|&h| storm(self, h)) {
             return Err(CommandError::PatrolNotAllowed);
         }
-        // §16.17/§16.22/§16.21: the target must be a non-storm, enemy-occupied hex within 5 hexes of
-        // every origin (a documented range simplification of the §16.22 path), not barraged/bombed.
+        // §16.17/§16.22/§16.21: the target must be a non-storm, enemy-occupied hex reachable by a
+        // legal ≤5-hex Patrol path from every origin (passable terrain, not through an
+        // enemy-occupied/controlled hex), and not barraged/bombed this stage.
         if self.map.terrain(target).is_none() || storm(self, target) {
             return Err(CommandError::PatrolTargetInvalid);
         }
         if self.barraged_hexes_this_stage.contains(&target) {
             return Err(CommandError::PatrolTargetInvalid);
         }
-        if per_hex.keys().any(|&h| h.distance(target) > 5) {
+        if per_hex.keys().any(|&h| !self.patrol_path_exists(h, target, enemy)) {
             return Err(CommandError::PatrolTargetInvalid);
         }
         let enemy_units: Vec<UnitId> = self
@@ -4418,8 +4667,13 @@ impl GameState {
         if !self.enemy_units_in_hex(to, side).is_empty() || self.hex_in_zoc_of(to, enemy) {
             return Err(CommandError::PrisonerActionIllegal);
         }
-        // §28.13: CPA 8 (80 tenths). Each hex costs 1 CP here (a documented simplification).
-        if self.prisoner_groups[gi].cpa_used + 10 > 80 {
+        // §28.13: CPA 8 (80 tenths). Entering `to` costs its real foot (non-motorized) movement
+        // cost — the guarded column marches, paying terrain, not a flat 1 CP per hex.
+        let step = match self.move_step_cost(from, to, MoveMode::NonMotorized) {
+            Some(MoveCost::Cost(f)) => f.0.max(0) as u32,
+            _ => return Err(CommandError::PrisonerActionIllegal), // prohibited / off-map
+        };
+        if self.prisoner_groups[gi].cpa_used + step > 80 {
             return Err(CommandError::PrisonerActionIllegal);
         }
         // §28.17/§28.23: the guards can escort 5 prisoners each; the excess escapes at the origin.
@@ -4437,7 +4691,7 @@ impl GameState {
             return Ok(CommandOutcome::PrisonersMoved { escaped });
         }
         self.prisoner_groups[gi].hex = to;
-        self.prisoner_groups[gi].cpa_used += 10;
+        self.prisoner_groups[gi].cpa_used += step;
         // §28.16: reaching a Departure Point removes them permanently.
         if self.is_pow_departure(to, side) {
             self.prisoner_groups.remove(gi);
@@ -4469,9 +4723,9 @@ impl GameState {
 
     /// §17.3 designate a Commonwealth unit to Train this Operations Stage (raising its Basic Morale
     /// toward its trained reference, §17.31). Validates: a green Commonwealth unit (current Basic
-    /// Morale below its reference); in a §17.32 training area (a Commonwealth capital hex —
-    /// Cairo/Helwan or Alexandria; the minor Amiriya/Abougir/Deghelia areas are a documented data
-    /// gap); no Capability Points expended this stage (§17.33); and a co-located §17.35 instruction
+    /// Morale below its reference); in a §17.32 training area (Cairo/Helwan, either Alexandria hex,
+    /// or the minor Amiriya/Abougir/Deghelia areas — see `is_cw_training_area`); no Capability
+    /// Points expended this stage (§17.33); and a co-located §17.35 instruction
     /// battalion — a fully-trained Commonwealth combat battalion of ≥¼ its assigned TOE and matching
     /// arm (a Tank battalion for an armored trainee, else an Infantry battalion). Sets `in_training`;
     /// the +1 Basic Morale after every six uninterrupted stages (§17.34) is applied at stage rollover.
@@ -4568,6 +4822,11 @@ impl GameState {
             .nationality
             .side()
             .opponent();
+        // §8.13: a unit may not move into a hex occupied by an enemy combat unit (you attack it,
+        // you do not enter it). Non-combat enemy markers do not block entry.
+        if self.enemy_units_in_hex(to, enemy.opponent()).iter().any(|&e| self.is_combat_unit(e)) {
+            return Err(CommandError::ProhibitedTerrain);
+        }
         let from_zoc = self.hex_in_zoc_of(from, enemy);
         let to_zoc = self.hex_in_zoc_of(to, enemy);
         if from_zoc && to_zoc {

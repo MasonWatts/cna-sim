@@ -107,7 +107,7 @@ impl TruckChart {
         if cap == 0 {
             return None;
         }
-        Some((toe * 10 + cap - 1) / cap) // ⌈toe / (cap/10)⌉
+        Some((toe * 10).div_ceil(cap)) // ⌈toe / (cap/10)⌉
     }
 }
 

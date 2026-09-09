@@ -5,5 +5,5 @@ edition = "2021"
 description = "Core rules engine for the Campaign for North Africa simulation."
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 ron = "0.8"

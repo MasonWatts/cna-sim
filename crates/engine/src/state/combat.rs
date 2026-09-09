@@ -1,9 +1,15 @@
 //! Combat resolvers. First: Anti-Armor Fire (§14). Rolls flow through the seeded RNG;
 //! the `*_with_dice` variants take the roll explicitly for deterministic testing.
 //!
-//! Deferred (later increments): the phasing-player −1-row modifier, mutual (both-sides) fire,
-//! unit commitment/withholding, self-propelled and halftrack absorption specifics (§14.47–48),
-//! and destroyed-tank capture. (§14.3 terrain column shifts on anti-armor fire are implemented.)
+//! Implemented for anti-armor: §14.3 terrain column shifts, the §14.6 phasing-player −1-row
+//! modifier, §14.47 self-propelled-gun absorption (AP + Vulnerability), and §14.46/§14.5
+//! destroyed-tank markers (knocked-out tanks become retrievable, enemy-capturable equipment).
+//! §14.21 withholding is honored: defending units passed as `withheld` take no Anti-Armor damage.
+//! §14.12 defensive/mutual fire is supported at the command layer — the `AntiArmor` command is not
+//! gated to the phasing player, so the non-phasing side fires it at the assaulting armor's hex, and
+//! two calls (one per side) give a mutual exchange. Deferred (later increments): the §15.16
+//! per-TOE-point close-assault commitment split, and §14.48 halftrack absorption (needs halftrack
+//! TOE + truck-linkage modeling).
 
 use crate::reference::crt::{
     BarrageResult, BarrageTargetClass, CloseAssaultResult, CloseAssaultSide, MoraleModifier,
@@ -37,6 +43,8 @@ pub struct AntiArmorOutcome {
     pub damage: i32,
     /// Armor TOE Strength Points removed from the target.
     pub armor_toe_removed: u32,
+    /// §14.6 note: whether the Phasing-Player −1-row modifier was applied to the dice read.
+    pub phasing_penalty: bool,
 }
 
 impl GameState {
@@ -57,6 +65,18 @@ impl GameState {
         target_hex: HexCoord,
         dice: u8,
     ) -> AntiArmorOutcome {
+        self.resolve_anti_armor_core(attackers, target_hex, dice, &[])
+    }
+
+    /// Resolve an anti-armor attack with an explicit dice read and a set of defending units the
+    /// defender has **withheld** from combat (§14.21) — those units take no Anti-Armor damage.
+    pub(crate) fn resolve_anti_armor_core(
+        &mut self,
+        attackers: &[UnitId],
+        target_hex: HexCoord,
+        dice: u8,
+        withheld: &[UnitId],
+    ) -> AntiArmorOutcome {
         // Total Raw Anti-Armor Points across attackers (§11.34), then Actual (÷10). §14.34
         // excludes any attacker whose fire crosses a prohibited hexside.
         let raw: i32 = attackers
@@ -64,7 +84,7 @@ impl GameState {
             .filter_map(|id| self.units.get(id))
             .filter(|u| {
                 u.hex()
-                    .map_or(true, |fh| !self.anti_armor_fire_blocked(fh, target_hex))
+                    .is_none_or(|fh| !self.anti_armor_fire_blocked(fh, target_hex))
             })
             .map(|u| u.raw_strength(&self.reference, RatingKind::AntiArmor))
             .sum();
@@ -75,14 +95,28 @@ impl GameState {
         let terrain_shift = self.anti_armor_terrain_shift(attackers, target_hex);
         let column = (actual + terrain_shift).max(0);
 
+        // §14.6 note: the Phasing Player fires one row lower (rows 11,12 unaffected). Anti-Armor
+        // fire in Movement & Combat is the phasing player's fire (§14.12); infer it from the
+        // firing units' side against the active (phasing) player.
+        let phasing = attackers
+            .iter()
+            .filter_map(|id| self.units.get(id))
+            .any(|u| u.nationality.side() == self.active_player);
+        let effective_dice = if phasing {
+            crate::reference::crt::AntiArmorCrt::phasing_row_dice(dice)
+        } else {
+            dice
+        };
+        let phasing_penalty = phasing && effective_dice != dice;
+
         let damage = self
             .reference
             .anti_armor_crt
             .as_ref()
-            .map(|crt| crt.damage(dice, column, raw))
+            .map(|crt| crt.damage(effective_dice, column, raw))
             .unwrap_or(0);
 
-        let armor_toe_removed = self.apply_armor_damage(target_hex, damage);
+        let armor_toe_removed = self.apply_armor_damage(target_hex, damage, withheld);
         AntiArmorOutcome {
             dice,
             raw_points: raw,
@@ -91,6 +125,7 @@ impl GameState {
             column,
             damage,
             armor_toe_removed,
+            phasing_penalty,
         }
     }
 
@@ -147,15 +182,22 @@ impl GameState {
     }
 
     /// Apply Damage Points to the armored TOE in `hex` (§14.42–43). Each armor TOE point
-    /// absorbs its Armor-Protection rating in damage; we remove highest-AP points first
-    /// so the fewest TOE are lost (a default choice; a player/AI may override later).
-    fn apply_armor_damage(&mut self, hex: HexCoord, damage: i32) -> u32 {
+    /// absorbs its Armor-Protection rating in damage; we remove highest-absorption points first
+    /// so the fewest TOE are lost (a default choice; a player/AI may override later). §14.47: a
+    /// self-propelled gun (an Artillery/Anti-Tank weapon that also carries an Armor-Protection
+    /// rating) absorbs at its Armor Protection **plus** its Vulnerability rating.
+    fn apply_armor_damage(&mut self, hex: HexCoord, damage: i32, withheld: &[UnitId]) -> u32 {
         if damage <= 0 {
             return 0;
         }
-        // Collect (unit, group index, armor protection) for every armored weapon group.
-        let mut armored: Vec<(UnitId, usize, i32)> = Vec::new();
+        // Collect (unit, group index, absorption-per-TOE, is-tank, nationality, system) for every
+        // armored weapon group. §14.21: a unit withheld from both Anti-Armor and Close Assault is
+        // not affected by Anti-Armor fire and is excluded here.
+        let mut armored: Vec<(UnitId, usize, i32, bool, crate::reference::units::Nationality, String)> = Vec::new();
         for id in self.units_in_hex(hex) {
+            if withheld.contains(&id) {
+                continue;
+            }
             let Some(unit) = self.units.get(&id) else {
                 continue;
             };
@@ -164,24 +206,26 @@ impl GameState {
             };
             let nat = unit.nationality;
             for (gi, g) in groups.iter().enumerate() {
-                let ap = self
-                    .reference
-                    .weapons_systems
-                    .get(&nat)
-                    .and_then(|m| m.get(&g.system))
-                    .and_then(|ws| ws.armor_protection)
+                let ws = self.reference.weapons_systems.get(&nat).and_then(|m| m.get(&g.system));
+                let ap = ws.and_then(|w| w.armor_protection).map(|r| r.value).unwrap_or(0);
+                // §14.47 self-propelled gun: a gun weapon that also has armor protection.
+                let sp_bonus = ws
+                    .filter(|w| matches!(w.kind, WeaponKind::Artillery | WeaponKind::AntiTank))
+                    .and_then(|w| w.vulnerability)
                     .map(|r| r.value)
                     .unwrap_or(0);
-                if ap > 0 && g.count > 0 {
-                    armored.push((id, gi, ap));
+                let is_tank = ws.map(|w| matches!(w.kind, WeaponKind::Tank)).unwrap_or(false);
+                let absorb = ap + sp_bonus;
+                if absorb > 0 && g.count > 0 {
+                    armored.push((id, gi, absorb, is_tank, nat, g.system.clone()));
                 }
             }
         }
-        armored.sort_by(|a, b| b.2.cmp(&a.2)); // highest Armor Protection first
+        armored.sort_by_key(|a| std::cmp::Reverse(a.2)); // highest absorption first
 
         let mut remaining = damage;
         let mut removed = 0u32;
-        for (id, gi, ap) in armored {
+        for (id, gi, absorb, is_tank, nat, system) in armored {
             if remaining <= 0 {
                 break;
             }
@@ -192,17 +236,35 @@ impl GameState {
             if count == 0 {
                 continue;
             }
-            let needed = ((remaining + ap - 1) / ap) as u32; // ceil(remaining / ap)
+            let needed = ((remaining + absorb - 1) / absorb) as u32; // ceil(remaining / absorb)
             let take = needed.min(count);
             if let Some(unit) = self.units.get_mut(&id) {
                 if let Composition::Weapons { groups } = &mut unit.composition {
                     groups[gi].count -= take;
                 }
             }
+            // §14.46/§14.51: destroyed *tanks* leave retrievable Destroyed Tank Markers (owned by
+            // their side until captured, §14.52); other destroyed vehicles are simply removed.
+            if is_tank && take > 0 {
+                self.record_destroyed_tank(hex, nat, system, take);
+            }
             removed += take;
-            remaining -= (take as i32) * ap;
+            remaining -= (take as i32) * absorb;
         }
         removed
+    }
+
+    /// Whether a unit holds any Tank-kind weapon TOE (for the §42.24a recon reveal order).
+    pub(crate) fn unit_has_tank(&self, id: UnitId) -> bool {
+        let Some(u) = self.units.get(&id) else { return false };
+        let Composition::Weapons { groups } = &u.composition else { return false };
+        let table = self.reference.weapons_systems.get(&u.nationality);
+        groups.iter().any(|g| {
+            table
+                .and_then(|m| m.get(&g.system))
+                .map(|w| matches!(w.kind, WeaponKind::Tank))
+                .unwrap_or(false)
+        })
     }
 
     /// Whether a unit is a "gun" for §15.84 (has Artillery or Anti-Tank weapons). AA/Flak
@@ -250,7 +312,7 @@ impl GameState {
                 }
             }
         }
-        pts.sort_by(|a, b| b.2.cmp(&a.2)); // highest Vulnerability first
+        pts.sort_by_key(|a| std::cmp::Reverse(a.2)); // highest Vulnerability first
         let mut remaining = damage;
         let mut removed = 0u32;
         for (id, gi, vuln) in pts {
@@ -639,7 +701,7 @@ impl GameState {
         for (_, (tanks, support)) in by_hex {
             let unsupported = tanks.saturating_sub(support);
             if unsupported > 0 {
-                reduction += ((unsupported + 2) / 3) as i32; // ceil(unsupported / 3)
+                reduction += unsupported.div_ceil(3) as i32; // ceil(unsupported / 3)
             }
         }
         reduction.min(4)
@@ -1008,9 +1070,13 @@ impl GameState {
 
     /// Terrain column shift (§15.3): the defender-hex terrain (§15.32) plus the hexside
     /// crossed into the defender's hex (§15.33). Per §15.35 the defender benefits from only
-    /// one hexside, so among distinct attacking hexes we apply the single most
-    /// defender-favorable hexside shift. Signs follow the chart (right = attacker favor).
-    /// Uses each unit's effective hex; if the defender has no location, the shift is 0.
+    /// one *type* of hexside — so among distinct attacking hexes we apply the single most
+    /// defender-favorable edge — **except** when one crossed edge itself carries two terrain
+    /// features (the rare §15.35 "wadi-along-slope" case, e.g. B5810–B5809), where both apply:
+    /// `hexsides_on` returns every feature on an edge and we sum them before picking the best edge.
+    /// Signs follow the chart (right = attacker favor). Uses each unit's effective hex; if the
+    /// defender has no location, the shift is 0. (Close Assault always targets one hex — the whole
+    /// enemy stack there, §15.23 — so there are no multi-hex defenders to reconcile.)
     fn close_assault_terrain_shift(&self, attackers: &[UnitId], defenders: &[UnitId]) -> i32 {
         let Some(def_hex) = defenders.iter().find_map(|&id| self.effective_hex(id)) else {
             return 0;
@@ -1180,7 +1246,7 @@ impl GameState {
             if count == 0 {
                 continue;
             }
-            let take = ((((remaining + ca - 1) / ca) as u32)).min(count);
+            let take = (((remaining + ca - 1) / ca) as u32).min(count);
             if let Some(u) = self.units.get_mut(&id) {
                 match &mut u.composition {
                     Composition::Organic { current_toe } => *current_toe -= take,

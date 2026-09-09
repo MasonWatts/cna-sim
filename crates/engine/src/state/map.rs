@@ -8,6 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::reference::terrain::{HexTerrain, HexsideTerrain};
 
@@ -283,10 +284,15 @@ fn edge_key(a: HexCoord, b: HexCoord) -> (HexCoord, HexCoord) {
 }
 
 /// The game map: a sparse grid of hexes plus hexside features on their edges.
+///
+/// The two collections are held behind `Rc` with copy-on-write in the mutators, so cloning a
+/// `Map` (and therefore a whole `GameState`) is O(1) — a refcount bump — until something actually
+/// writes to the map. This makes `GameState::dry_run` / the legal-action enumerator cheap: a
+/// `MoveStep` or combat command never touches the map, so the probing clone shares it for free.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Map {
-    hexes: HashMap<HexCoord, Hex>,
-    hexsides: HashMap<(HexCoord, HexCoord), Vec<Hexside>>,
+    hexes: Rc<HashMap<HexCoord, Hex>>,
+    hexsides: Rc<HashMap<(HexCoord, HexCoord), Vec<Hexside>>>,
 }
 
 impl Map {
@@ -296,7 +302,7 @@ impl Map {
 
     /// Place (or overwrite) a hex with the given base terrain (no features).
     pub fn set_hex(&mut self, coord: HexCoord, terrain: HexTerrain) {
-        self.hexes.insert(coord, Hex { terrain, features: Vec::new() });
+        Rc::make_mut(&mut self.hexes).insert(coord, Hex { terrain, features: Vec::new() });
     }
 
     /// Place (or overwrite) a hex with base terrain and point features.
@@ -306,7 +312,7 @@ impl Map {
         terrain: HexTerrain,
         features: Vec<Feature>,
     ) {
-        self.hexes.insert(coord, Hex { terrain, features });
+        Rc::make_mut(&mut self.hexes).insert(coord, Hex { terrain, features });
     }
 
     pub fn hex(&self, coord: HexCoord) -> Option<&Hex> {
@@ -406,7 +412,7 @@ impl Map {
         kind: HexsideKind,
         high_side: Option<HexCoord>,
     ) {
-        let v = self.hexsides.entry(edge_key(a, b)).or_default();
+        let v = Rc::make_mut(&mut self.hexsides).entry(edge_key(a, b)).or_default();
         if let Some(h) = v.iter_mut().find(|h| h.kind == kind) {
             h.high_side = high_side;
         } else {
@@ -422,12 +428,13 @@ impl Map {
     /// Remove every hexside feature of `kind` from the edge between two hexes (e.g. converting an
     /// UnfinishedRoad into a Road via construction). Returns whether anything was removed.
     pub fn remove_hexside(&mut self, a: HexCoord, b: HexCoord, kind: HexsideKind) -> bool {
-        if let Some(v) = self.hexsides.get_mut(&edge_key(a, b)) {
+        let sides = Rc::make_mut(&mut self.hexsides);
+        if let Some(v) = sides.get_mut(&edge_key(a, b)) {
             let before = v.len();
             v.retain(|h| h.kind != kind);
             let removed = v.len() != before;
             if v.is_empty() {
-                self.hexsides.remove(&edge_key(a, b));
+                sides.remove(&edge_key(a, b));
             }
             removed
         } else {

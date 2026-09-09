@@ -135,7 +135,7 @@
             basic_morale: 2,
             units: [
                 (name: "Ramcke Bde HQ",           abbr: "Ramcke", id: "b", comp: Organic(Normal), org_size: StandardBrigade, arrival: Turn(game_turn: 86, stage: 2), parent: ""),
-                (name: "I Bn (Kroh)",             abbr: "I Kroh", id: "h", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "Ramcke Bde HQ", airdroppable: true),
+                (name: "I Bn (Kroh)",             abbr: "I Kroh", id: "h", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 91, stage: 1), parent: "Ramcke Bde HQ", airdroppable: true),
                 (name: "II Bn (von der Heydte)",  abbr: "II vdH", id: "h", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 92, stage: 1), parent: "Ramcke Bde HQ", airdroppable: true),
                 (name: "III Bn (Hübner)",         abbr: "III Hub", id: "h", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 93, stage: 1), parent: "Ramcke Bde HQ", airdroppable: true),
                 (name: "IV Bn (Schweiger)",       abbr: "IV Sch", id: "h", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 87, stage: 2), parent: "Ramcke Bde HQ", airdroppable: true),
@@ -192,7 +192,7 @@
                 (name: "528 Artillery Bn",         abbr: "528", id: "v", comp: Weapons([("155mm (french 1915 short)", 3)]), org_size: Battalion, arrival: Turn(game_turn: 24, stage: 3), parent: ""),
                 (name: "155th Artillery Regt HQ",  abbr: "155", id: "b", comp: Organic(Normal), org_size: StandardBrigade, arrival: Turn(game_turn: 35, stage: 3), parent: ""),
                 (name: "I/155 Artillery Bn",       abbr: "I/155",   id: "v", comp: Weapons([("15cm (K18) Gun", 3)]), org_size: Battalion, arrival: Turn(game_turn: 32, stage: 3), parent: "155th Artillery Regt HQ"),
-                (name: "II/155 Artillery Bn",      abbr: "II/155",  id: "v", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "155th Artillery Regt HQ", notes: "reassigned I/75 counter (footnote e): no weapon/arrival printed on the sheet"),
+                (name: "II/155 Artillery Bn",      abbr: "II/155",  id: "v", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 58, stage: 2), parent: "155th Artillery Regt HQ", notes: "reassigned I/75 counter (footnote e): no arrival printed; dated to the Nov-1941 (2/58) reassignment, not Deployed — no Germans are on-map at the Sept-1940 start"),
                 (name: "III/155 Artillery Bn",     abbr: "III/155", id: "v", comp: Weapons([("15cm (K18) Gun", 3)]), org_size: Battalion, arrival: Turn(game_turn: 34, stage: 2), parent: "155th Artillery Regt HQ"),
                 (name: "364 Artillery Bty",        abbr: "364", id: "w", comp: Weapons([("17cm (K18) Gun", 1)]), org_size: Company, arrival: Turn(game_turn: 74, stage: 1), parent: ""),
                 (name: "523 Coastal Def Arty Bn",  abbr: "523", id: "v", comp: Weapons([("155mm (french 1915 short)", 3)]), org_size: Battalion, arrival: Turn(game_turn: 24, stage: 3), parent: ""),

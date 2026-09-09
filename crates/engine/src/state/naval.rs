@@ -175,11 +175,7 @@ impl Ship {
 
     /// §30.13: current AA Rating, reduced in proportion to Gun Rating loss.
     pub fn current_aa(&self) -> u32 {
-        if self.max_gun == 0 {
-            0
-        } else {
-            self.max_aa * self.gun_rating / self.max_gun
-        }
+        (self.max_aa * self.gun_rating).checked_div(self.max_gun).unwrap_or(0)
     }
 
     /// §30.36: a ship is sunk when its entire Gun Rating is eliminated (unrepairable).

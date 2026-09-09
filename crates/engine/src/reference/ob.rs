@@ -104,16 +104,11 @@ pub enum Toe {
 }
 
 /// The chart's "Arrives" column.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub enum Arrival {
     /// `D` — on the map at the start of Game-Turn 1.
+    #[default]
     Deployed,
     /// `stage/turn` — arrives on that Operations Stage of that Game-Turn.
     Turn { game_turn: u16, stage: u8 },
-}
-
-impl Default for Arrival {
-    fn default() -> Self {
-        Arrival::Deployed
-    }
 }

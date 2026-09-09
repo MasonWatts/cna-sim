@@ -23,6 +23,16 @@ impl AntiArmorCrt {
         (tens - 1) * 3 + (ones - 1) / 2
     }
 
+    /// §14.6 note: the Phasing Player decreases his dice roll by one row (the top row 11,12 is
+    /// unaffected). Given a two-dice read, returns a representative read for the row one above it,
+    /// suitable for `row_index` / `damage`. Rows 11,12 return themselves.
+    pub fn phasing_row_dice(dice: u8) -> u8 {
+        let up = Self::row_index(dice).saturating_sub(1);
+        let tens = (up / 3) as u8 + 1;
+        let ones = (up % 3) as u8 * 2 + 1;
+        tens * 10 + ones
+    }
+
     /// Column index from Actual and Raw Anti-Armor Points. The `0*` column (index 0) is
     /// used only when Actual is 0 but Raw is 1..4 (§14.6 footnote); returns `None` when
     /// no column applies (no effective fire).

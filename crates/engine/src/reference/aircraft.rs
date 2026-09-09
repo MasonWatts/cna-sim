@@ -21,9 +21,10 @@ pub enum AircraftClass {
 }
 
 /// A mission-capability level for a given role (the chart's `.`/`!`/`N`/`A`/`S`/`0` symbols).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MissionCap {
     /// `.` — does not possess this mission capability.
+    #[default]
     No,
     /// `!` — possesses it, but may not be flown on night missions.
     Day,
@@ -35,12 +36,6 @@ pub enum MissionCap {
     StrafeOnly,
     /// `0` — may be assigned only Night Scramble missions (no daylight Scramble).
     NightScrambleOnly,
-}
-
-impl Default for MissionCap {
-    fn default() -> Self {
-        MissionCap::No
-    }
 }
 
 /// A specific air mission a plane may be assigned (§39). Every mission except [`Mission::Transfer`]

@@ -207,11 +207,17 @@ pub struct CapturedEquipment {
     /// §28.3: captured equipment may not be used until repaired.
     #[serde(default)]
     pub repaired: bool,
+    /// §14.46: this entry is a Destroyed Tank Marker (knocked out by Anti-Armor fire, not
+    /// surrendered). It starts owned by the tank's side and may be captured by the enemy under
+    /// §14.52 (they control the hex); either owner may repair it (§14.54 / §28.3 pipeline).
+    #[serde(default)]
+    pub destroyed_tank: bool,
 }
 
 /// §28.24 escaped prisoners of `side` at `hex` heading home. In the modelled scope they wait to be
 /// rejoined (when a friendly unit is within 8 hexes) or recaptured (an enemy enters the hex, §28.25);
-/// the far-escapee autonomous movement/water-attrition of §28.24 is a documented simplification.
+/// a far escapee (beyond 8 CP) moves one hex/Operations Stage toward the nearest friendly unit and
+/// takes 10% thirst attrition without water (§28.24, in `resolve_prisoner_escapes`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Escapee {
     pub side: Side,
@@ -716,7 +722,10 @@ const STAGE_SEQUENCE: [(Phase, StageActor); 17] = [
 /// The complete mutable game state plus reference data and RNG.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
-    pub reference: ReferenceData,
+    /// Immutable reference/rulebook data. Behind `Rc` so cloning a `GameState` (for `dry_run` /
+    /// legal-action enumeration) does not deep-copy the entire chart/OB layer — the dominant clone
+    /// cost. Mutate (during setup, to load extra charts) only via `reference_mut`.
+    pub reference: std::rc::Rc<ReferenceData>,
     pub map: Map,
     pub units: HashMap<UnitId, Unit>,
     /// Squadron Ground Support Units — the Air Game's base counters (§35).
@@ -890,6 +899,11 @@ pub struct GameState {
     /// §28.24 escaped prisoners waiting to rejoin their own side or be recaptured (§28.25).
     #[serde(default)]
     pub escapees: Vec<Escapee>,
+    /// §42.27: `(viewer, unit)` pairs whose TOE Strength an air-reconnaissance mission has revealed
+    /// to `viewer` this Operations Stage — `observe_units` shows the strength of these enemy units.
+    /// Cleared each Operations Stage (recon is a per-stage snapshot).
+    #[serde(default)]
+    pub recon_revealed: std::collections::HashSet<(Side, UnitId)>,
     /// Truck Points produced (§20.78A / §20.66a) awaiting arrival at their delivery city.
     #[serde(default)]
     pub pending_trucks: Vec<PendingTruckDelivery>,
@@ -946,6 +960,10 @@ pub struct GameState {
     /// too). Static city levels (§25.12) are added on top in `fort_level`.
     #[serde(default)]
     pub fortifications: std::collections::HashMap<HexCoord, u8>,
+    /// §41.37: levels knocked off a Major City's *static* §25.12 Fortification Level by bombing.
+    /// `fort_level` subtracts this from the city's inherent level (capped at it).
+    #[serde(default)]
+    pub city_fort_damage: std::collections::HashMap<HexCoord, u8>,
     /// §51.23: units the owning player has placed on half rations (stores requirement 4→2, but
     /// may not voluntarily exceed CPA or enter an enemy ZOC).
     #[serde(default)]
@@ -1049,7 +1067,7 @@ fn default_side() -> Side {
 impl GameState {
     pub fn new(reference: ReferenceData, seed: u64) -> Self {
         Self {
-            reference,
+            reference: std::rc::Rc::new(reference),
             map: Map::new(),
             units: HashMap::new(),
             sgsus: HashMap::new(),
@@ -1119,6 +1137,8 @@ impl GameState {
             no_pasta: std::collections::HashSet::new(),
             pasta_saved_cohesion: std::collections::HashMap::new(),
             fortifications: std::collections::HashMap::new(),
+            city_fort_damage: std::collections::HashMap::new(),
+            recon_revealed: std::collections::HashSet::new(),
             half_rations: std::collections::HashSet::new(),
             construction: Vec::new(),
             minefields: std::collections::HashMap::new(),
@@ -1131,6 +1151,43 @@ impl GameState {
             axis_rail_tons_used: 0,
             axis_rail_dir: None,
         }
+    }
+
+    /// Mutable access to the reference data, for loading extra charts into an already-built engine
+    /// during setup. Valid only while the reference is not shared by a clone (`Rc::get_mut`); it
+    /// panics otherwise, which is correct — mutating shared rulebook data would be a bug.
+    pub fn reference_mut(&mut self) -> &mut ReferenceData {
+        std::rc::Rc::get_mut(&mut self.reference).expect("reference data is uniquely owned during setup")
+    }
+
+    /// Replace this state's RNG with a fresh one seeded from `seed`. Used by Monte-Carlo rollout
+    /// agents: cloned probe states share the parent's RNG, so applying the same command to two
+    /// clones yields *identical* stochastic outcomes; reseeding each probe gives the independent
+    /// dice draws needed to sample (and average over) combat/breakdown variance. Never call this on
+    /// a live game — it would break `(seed, commands)` reproducibility.
+    pub fn reseed_rng(&mut self, seed: u64) {
+        self.rng = Rng::new(seed);
+    }
+
+    /// Advance the Sequence of Play until the next Movement & Combat phase, or until `game_turn`
+    /// exceeds `turn_limit`. Returns `true` if a Movement & Combat phase was reached (the next
+    /// decision point), `false` if the turn horizon was hit first. If already at a Movement &
+    /// Combat phase it advances at least one phase first, so repeated calls make progress. Used by
+    /// cross-phase planning agents to jump between decision points across the SoP.
+    pub fn advance_to_movement_combat(&mut self, turn_limit: u32) -> bool {
+        let mut guard = 0u32;
+        self.advance_phase();
+        while self.game_turn <= turn_limit {
+            if self.phase == Phase::MovementAndCombat {
+                return true;
+            }
+            self.advance_phase();
+            guard += 1;
+            if guard > 100_000 {
+                return false;
+            }
+        }
+        false
     }
 
     /// Create a unit with default dynamic state and register it, returning its id.
@@ -1478,14 +1535,10 @@ impl GameState {
     pub fn unit_water_requirement(&self, id: UnitId, acted: bool) -> u32 {
         match self.units.get(&id).map(|u| &u.composition) {
             Some(Composition::Organic { .. }) => 1,
-            Some(Composition::Weapons { .. }) => {
-                if acted {
-                    self.units.get(&id).map_or(0, |u| u.total_toe())
-                } else {
-                    0
-                }
+            Some(Composition::Weapons { .. }) if acted => {
+                self.units.get(&id).map_or(0, |u| u.total_toe())
             }
-            None => 0,
+            _ => 0,
         }
     }
 
@@ -1874,7 +1927,7 @@ impl GameState {
         let mut to_repair = if attempt == 1 && pct == 10 {
             0
         } else {
-            ((attempt * pct + 99) / 100).min(attempt)
+            (attempt * pct).div_ceil(100).min(attempt)
         };
         let mut total = 0;
         for (sys, cnt) in broken {
@@ -1965,7 +2018,7 @@ impl GameState {
         if pct == 0 {
             return 0;
         }
-        let ceil_pct = |n: u32| ((n * pct + 99) / 100).min(n);
+        let ceil_pct = |n: u32| (n * pct).div_ceil(100).min(n);
         let mut total = 0;
         if let Some(u) = self.unit_mut(id) {
             for (broken, active) in [
@@ -2214,7 +2267,7 @@ impl GameState {
                 .get(&u.nationality)
                 .and_then(|m| m.get(&u.id_code))
                 .and_then(|uc| uc.max_toe.as_ref())
-                .map(|m| m.value.max(0) as u32)
+                .map(|m| m.value)
         });
         let Some(u) = self.unit_mut(id) else {
             return 0;
@@ -2328,7 +2381,7 @@ impl GameState {
             .and_then(|m| m.get(&u.id_code))
             .and_then(|c| c.max_toe.as_ref())
         {
-            Some(m) => (m.value.max(0) as u32).saturating_sub(cur),
+            Some(m) => m.value.saturating_sub(cur),
             None => u32::MAX,
         }
     }
@@ -2379,6 +2432,21 @@ impl GameState {
     /// recce battalion still defaults to the Armored-Reconnaissance row, and a few genuinely
     /// out-of-legend counter glyphs (Italian divisional AA/AT support companies, coastal-defence
     /// counters) are recorded with `?` in the transcription docs — none change the current OBs' rows.
+    /// Whether `id` holds any weapon TOE point with an Armor-Protection Rating (armored cars,
+    /// recce tanks, tanks, SP guns) — used to tell an Armored-Reconnaissance unit from a light
+    /// (Organic/motorized) recce unit for the §20.3 conversion rows.
+    fn unit_has_armored_points(&self, id: UnitId) -> bool {
+        let Some(u) = self.units.get(&id) else { return false };
+        let Composition::Weapons { groups } = &u.composition else { return false };
+        let table = self.reference.weapons_systems.get(&u.nationality);
+        groups.iter().any(|g| {
+            table
+                .and_then(|m| m.get(&g.system))
+                .and_then(|ws| ws.armor_protection)
+                .is_some_and(|r| r.value > 0)
+        })
+    }
+
     pub fn conversion_row_for_unit(&self, id: UnitId) -> &'static str {
         let Some(u) = self.units.get(&id) else { return "Any other Infantry" };
         let ut = self
@@ -2405,13 +2473,18 @@ impl GameState {
         } else if ut.contains("Anti-air") {
             "Anti-air"
         } else if ut.contains("Reconnaissance") || ut.contains("Recce") {
-            // §20.3 has three recce rows; disambiguate by name where possible, else assume armored.
+            // §20.3 has three recce rows. Prefer the name; otherwise derive from composition — a
+            // recce unit carrying armor-protected weapon points (armored cars / recce tanks) is
+            // Armored Reconnaissance, while an Organic or unarmored recce unit is the light
+            // Motorcycle/Camel/Reconnaissance row (motorcycle, camel, or horsed cavalry recce).
             if name.contains("Armored Car") || name.contains("Armoured Car") {
                 "Armored Car"
             } else if name.contains("Motorcycle") || name.contains("Camel") || name.contains("Cavalry") {
                 "Motorcycle/Camel/Reconnaissance"
+            } else if self.unit_has_armored_points(id) {
+                "Armored Reconnaissance"
             } else {
-                "Armored Reconnaissance" // provisional default for a plain recce battalion
+                "Motorcycle/Camel/Reconnaissance"
             }
         } else if ut.contains("Infantry") {
             // §20.3 footnotes a/b/c/d: special-infantry rows keyed off the unit's identity. Detected
@@ -2622,7 +2695,7 @@ impl GameState {
                 if !self.axis_controls_rail(from) {
                     return false;
                 }
-                let tons = 900 * sp.max(0) as u32;
+                let tons = 900 * sp;
                 if !self.reserve_axis_rail_tons(tons, west) {
                     return false;
                 }
@@ -2923,11 +2996,25 @@ impl GameState {
             let is_capital = ["E1430", "E3613"] // Cairo, Alexandria (§25.12)
                 .iter()
                 .any(|s| HexId::parse(s).map(|h| h.to_hex_coord()) == Some(hex));
-            if is_capital { 3 } else { 2 }
+            let base: u8 = if is_capital { 3 } else { 2 };
+            // §41.37: bombing can knock the static city level down (tracked in `city_fort_damage`).
+            base.saturating_sub(self.city_fort_damage.get(&hex).copied().unwrap_or(0))
         } else {
             0
         };
         placed.max(static_lvl)
+    }
+
+    /// The Major City's inherent §25.12 Fortification Level (before bomb damage): 3 for Cairo /
+    /// Alexandria, 2 for any other Major City, 0 elsewhere.
+    fn city_static_fort_base(&self, hex: HexCoord) -> u8 {
+        if self.map.terrain(hex) != Some(crate::reference::terrain::HexTerrain::MajorCity) {
+            return 0;
+        }
+        let is_capital = ["E1430", "E3613"]
+            .iter()
+            .any(|s| HexId::parse(s).map(|h| h.to_hex_coord()) == Some(hex));
+        if is_capital { 3 } else { 2 }
     }
 
     /// The defensive column shift from a hex's Fortification Level (§25.11): −1 per level, in the
@@ -2936,11 +3023,12 @@ impl GameState {
         -(self.fort_level(hex) as i32)
     }
 
-    /// §17.32 Commonwealth Training area: a Commonwealth capital hex (Cairo/Helwan E1430, or
-    /// Alexandria E3613). The minor named areas (Amiriya, Abougir, Deghelia) are a documented data
-    /// gap — they are additional training locations near Alexandria, not yet keyed on the map.
+    /// §17.32 Commonwealth Training area. A unit trains in any one of: Cairo (E1430, the engine's
+    /// single Cairo/Helwan hex), Alexandria (both city hexes, E3613/E3714), or the three minor
+    /// named areas near Alexandria — Amiriya (E2212), Abougir/Aboukir (E3815), and
+    /// Deghelia/Dekheila (E3512). (Hexes per the §4.44 city index; PDF p28.)
     pub(crate) fn is_cw_training_area(&self, hex: HexCoord) -> bool {
-        ["E1430", "E3613"]
+        ["E1430", "E3613", "E3714", "E2212", "E3815", "E3512"]
             .iter()
             .any(|s| HexId::parse(s).map(|h| h.to_hex_coord()) == Some(hex))
     }
@@ -4176,13 +4264,16 @@ impl GameState {
     /// §51.21) and, every second consecutive such turn, loses that percentage of its
     /// **infantry** TOE (§51.22 — guns and tanks are unaffected). §51.23 half-rations are modeled
     /// (`half_rations` set: requirement cut 4→2 in `unit_stores_requirement`, with the movement
-    /// restrictions enforced at the move command). Prisoners/guards (§51.12/17) remain deferred.
+    /// restrictions enforced at the move command). Prisoner Stores (§51.12) and Guard-Point Stores
+    /// (§51.17, 2 Stores/point/Game-Turn) are drawn first via `feed_prisoners`/`feed_guards`.
     pub fn expend_stores(&mut self) {
         // §49.3 / §52.44: Fuel and Water evaporate/spill during the Stores Expenditure Stage
         // (6%/Game-Turn, or the Commonwealth's early-war 9% through August 1941).
         self.evaporate_base_supplies();
-        // §28.15: prisoners are fed first — 1 Store per 5 Prisoner Points, from the nearest dump.
+        // §28.15/§51.12: prisoners are fed first — 1 Store per 5 Prisoner Points, from the nearest
+        // dump. §51.17: their Guard Points each cost 2 Stores per Game-Turn, likewise from the dump.
         self.feed_prisoners();
+        self.feed_guards();
         // §52.6: distribute the Italian Pasta Point (1 Water) alongside Stores.
         self.distribute_pasta();
         let ids: Vec<UnitId> = self.units.keys().copied().collect();
@@ -4519,7 +4610,53 @@ impl GameState {
         {
             e.count += count;
         } else {
-            self.captured_equipment.push(CapturedEquipment { captor, hex, nationality: owner, system, count, repaired: false });
+            self.captured_equipment.push(CapturedEquipment { captor, hex, nationality: owner, system, count, repaired: false, destroyed_tank: false });
+        }
+    }
+
+    /// §14.46: record `count` Destroyed Tank Markers of `system` (owned by `owner`) knocked out by
+    /// Anti-Armor fire at `hex`, held by their own side (`owner.side()`) until captured. Merges into
+    /// an existing unrepaired destroyed-tank entry for the same owner/system/hex.
+    pub(crate) fn record_destroyed_tank(&mut self, hex: HexCoord, owner: Nationality, system: String, count: u32) {
+        if count == 0 {
+            return;
+        }
+        let side = owner.side();
+        if let Some(e) = self.captured_equipment.iter_mut().find(|e| {
+            e.destroyed_tank && !e.repaired && e.captor == side && e.hex == hex && e.nationality == owner && e.system == system
+        }) {
+            e.count += count;
+        } else {
+            self.captured_equipment.push(CapturedEquipment {
+                captor: side, hex, nationality: owner, system, count, repaired: false, destroyed_tank: true,
+            });
+        }
+    }
+
+    /// §14.52: a Destroyed Tank Marker in a hex the enemy now controls — an enemy combat unit is
+    /// present and no unit of the current owner is — is captured (its `captor` flips to the enemy).
+    /// The owner-decides-to-eliminate option (§14.55) is modeled as always capturing. Resolved once
+    /// per Operations Stage.
+    pub(crate) fn resolve_destroyed_tank_capture(&mut self) {
+        for i in 0..self.captured_equipment.len() {
+            let (owner_side, hex) = {
+                let e = &self.captured_equipment[i];
+                if !e.destroyed_tank {
+                    continue;
+                }
+                (e.captor, e.hex)
+            };
+            let enemy = owner_side.opponent();
+            let ids = self.units_in_hex(hex);
+            let enemy_present = ids.iter().any(|&id| {
+                self.units.get(&id).is_some_and(|u| u.nationality.side() == enemy && u.total_toe() > 0)
+            });
+            let owner_present = ids.iter().any(|&id| {
+                self.units.get(&id).is_some_and(|u| u.nationality.side() == owner_side && u.total_toe() > 0)
+            });
+            if enemy_present && !owner_present {
+                self.captured_equipment[i].captor = enemy;
+            }
         }
     }
 
@@ -4578,6 +4715,23 @@ impl GameState {
         spent
     }
 
+    /// §51.17: feed Guard Points — two Stores per Guard Point per Game-Turn, drawn (like prisoners,
+    /// §51.12) from the nearest friendly Supply Dump regardless of distance. Called in the Stores
+    /// Expenditure Stage. Returns the total Stores expended.
+    pub fn feed_guards(&mut self) -> u32 {
+        let demands: Vec<(HexCoord, Side, u32)> = self
+            .prisoner_groups
+            .iter()
+            .map(|g| (g.hex, g.captor, g.guards * 2))
+            .filter(|&(_, _, need)| need > 0)
+            .collect();
+        let mut spent = 0;
+        for (hex, captor, need) in demands {
+            spent += self.draw_stores_from_nearest_dump(hex, captor, need);
+        }
+        spent
+    }
+
     /// Expend up to `amount` Stores for `side` from the non-dummy Supply Dump nearest `hex` (by hex
     /// distance), draining successive nearest dumps as needed. Returns the amount actually drawn.
     fn draw_stores_from_nearest_dump(&mut self, hex: HexCoord, side: Side, amount: u32) -> u32 {
@@ -4619,10 +4773,10 @@ impl GameState {
 
     /// §28.23–25: resolve escapes, rejoins and recaptures. Called at the start of each Operations
     /// Stage. (1) §28.25 an escapee whose hex holds an enemy unit is recaptured; (2) §28.24 an
-    /// escapee with a friendly unit within eight hexes rejoins and returns as Replacement Points a
+    /// escapee with a friendly unit within eight Capability Points (foot movement) rejoins and returns as Replacement Points a
     /// month later; (3) §28.23 any standing Prisoner stack left with no guard has its prisoners
-    /// escape. The far-escapee autonomous movement of §28.24 is a documented simplification —
-    /// escapees otherwise wait in place.
+    /// escape; (4) §28.24 each remaining far escapee steps one hex toward the nearest friendly unit
+    /// and takes 10% thirst attrition (ceil) when its hex has no water source.
     pub fn resolve_prisoner_escapes(&mut self) {
         // Order matters — escape first, then rejoin/recapture — so a just-recaptured stack (§28.25)
         // is not re-escaped in the same pass; it holds until a guard is posted (or re-escapes a
@@ -4638,12 +4792,12 @@ impl GameState {
         for (side, hex, points) in escaped {
             self.escape_points(side, hex, points); // rejoins immediately if a friendly is within 8
         }
-        // (2) §28.24 rejoin: a pre-existing escapee with a friendly unit within eight hexes rejoins
+        // (2) §28.24 rejoin: a pre-existing escapee with a friendly unit within eight Capability Points (foot movement) rejoins
         // and returns as Replacement Points.
         let mut i = 0;
         while i < self.escapees.len() {
             let e = self.escapees[i].clone();
-            if self.friendly_unit_within(e.side, e.hex, 8) {
+            if self.friendly_unit_within(e.side, e.hex, 80) {
                 self.schedule_escapee_replacements(e.side, e.hex, e.points);
                 self.escapees.remove(i);
             } else {
@@ -4665,16 +4819,65 @@ impl GameState {
                 i += 1;
             }
         }
+        // (4) §28.24 far-escapee autonomous movement + water attrition (Truck Convoy Phase; resolved
+        // once per Operations Stage). Each still-wandering escapee steps one hex toward the nearest
+        // friendly combat unit over passable, non-enemy-occupied desert, then — if its hex has no
+        // water source — loses 10% of its strength (rounded up) to thirst; a stack reduced to zero
+        // dies out. Rejoin/recapture at the new position resolve next stage.
+        let mut i = 0;
+        while i < self.escapees.len() {
+            let e = self.escapees[i].clone();
+            // Head toward the nearest friendly combat unit, if one exists.
+            let target = self
+                .units
+                .values()
+                .filter(|u| u.nationality.side() == e.side && u.total_toe() > 0)
+                .filter_map(|u| u.hex())
+                .min_by_key(|h| h.distance(e.hex));
+            if let Some(tgt) = target {
+                let next = self
+                    .map
+                    .neighbors(e.hex)
+                    .filter(|&n| {
+                        matches!(
+                            step_cost(&self.reference, &self.map, e.hex, n, MoveMode::NonMotorized),
+                            Some(MoveCost::Cost(_))
+                        )
+                    })
+                    .filter(|&n| {
+                        !self.units_in_hex(n).into_iter().any(|id| {
+                            self.units.get(&id).is_some_and(|u| u.nationality.side() == e.side.opponent())
+                        })
+                    })
+                    .min_by_key(|&n| n.distance(tgt));
+                if let Some(n) = next {
+                    if n.distance(tgt) < e.hex.distance(tgt) {
+                        self.escapees[i].hex = n;
+                    }
+                }
+            }
+            // §28.24 water: no water source in the (new) hex → lose 10% (ceil) of strength to thirst.
+            let hex = self.escapees[i].hex;
+            if self.hex_water_source(hex).is_none() {
+                let loss = self.escapees[i].points.div_ceil(10);
+                self.escapees[i].points = self.escapees[i].points.saturating_sub(loss);
+            }
+            if self.escapees[i].points == 0 {
+                self.escapees.remove(i);
+            } else {
+                i += 1;
+            }
+        }
     }
 
     /// §28.24: `points` prisoners of `side` escape at `hex` — if a friendly unit is within eight
-    /// hexes they rejoin immediately (→ Replacement Points a month later); otherwise they become an
-    /// [`Escapee`] awaiting rejoin or recapture.
+    /// Capability Points (foot movement) they rejoin immediately (→ Replacement Points a month
+    /// later); otherwise they become an [`Escapee`] awaiting rejoin or recapture.
     pub(crate) fn escape_points(&mut self, side: Side, hex: HexCoord, points: u32) {
         if points == 0 {
             return;
         }
-        if self.friendly_unit_within(side, hex, 8) {
+        if self.friendly_unit_within(side, hex, 80) {
             self.schedule_escapee_replacements(side, hex, points);
         } else if let Some(e) = self.escapees.iter_mut().find(|e| e.side == side && e.hex == hex) {
             e.points += points;
@@ -4699,14 +4902,15 @@ impl GameState {
         );
     }
 
-    /// Whether a combat-capable unit of `side` (TOE > 0) is within `radius` hexes of `hex`
-    /// (a documented hex-distance simplification of the §28.24 "eight Capability Points").
-    fn friendly_unit_within(&self, side: Side, hex: HexCoord, radius: u32) -> bool {
-        self.units.values().any(|u| {
-            u.nationality.side() == side
-                && u.total_toe() > 0
-                && u.hex().is_some_and(|h| h.distance(hex) <= radius)
-        })
+    /// §28.24: whether a friendly (same-`side`) combat unit (TOE > 0) is within `cp_budget` tenths
+    /// of a Capability Point of `hex` for a foot escapee — the true "eight Capability Points" reach
+    /// over real terrain, not a flat hex radius.
+    fn friendly_unit_within(&self, side: Side, hex: HexCoord, cp_budget: i32) -> bool {
+        self.units
+            .values()
+            .filter(|u| u.nationality.side() == side && u.total_toe() > 0)
+            .filter_map(|u| u.hex())
+            .any(|uh| self.within_cp_budget(hex, uh, MoveMode::NonMotorized, cp_budget))
     }
 
     /// Whether `hex` holds any armor-protection TOE for `side` (a real armored unit). Used for the
@@ -4782,6 +4986,8 @@ impl GameState {
         } else {
             (None, axis, cw)
         };
+        // Explicit divide-by-zero guard with distinct 100 / u32::MAX fallbacks; not a plain checked_div.
+        #[allow(clippy::manual_checked_ops)]
         let ratio_pct = if least == 0 {
             if most == 0 { 100 } else { u32::MAX }
         } else {
@@ -4850,7 +5056,7 @@ impl GameState {
         if ut.contains("Anti-Air") || ut.contains("Anti-air") || ut.contains("AA") {
             return false; // AA excluded (§64.75 A)
         }
-        let max_toe = uc.and_then(|c| c.max_toe.as_ref()).map(|m| m.value.max(0) as u32).unwrap_or(0);
+        let max_toe = uc.and_then(|c| c.max_toe.as_ref()).map(|m| m.value).unwrap_or(0);
         max_toe > 0 && u.total_toe() * 4 >= max_toe * 3 // ≥ 75% TOE
     }
 
@@ -5094,6 +5300,8 @@ impl GameState {
                 .and_then(|a| a.loadouts.first())
                 .map_or(0, |l| l.fuel);
             let by_budget = candidates.min(budget);
+            // fuel_per == 0 means "no fuel cost", so the budget is the only cap — not a checked_div.
+            #[allow(clippy::manual_checked_ops)]
             let n = if fuel_per == 0 {
                 by_budget
             } else {
@@ -5148,7 +5356,16 @@ impl GameState {
                 Some(s) => (s.nationality.side(), s.location),
                 None => continue,
             };
-            let Some(hex) = hex else { continue };
+            let Some(hex) = hex else {
+                // §43.21: a Box-based (off-map Mediterranean) squadron is auto-supplied by the Box —
+                // no Fuel/Water/Stores upkeep is drawn, and it counts as supplied.
+                if self.sgsus.get(&id).is_some_and(|s| s.med_base.is_some()) {
+                    if let Some(s) = self.sgsus.get_mut(&id) {
+                        s.supplied = true;
+                    }
+                }
+                continue;
+            };
             let has_dump = self
                 .supply_dumps
                 .iter()
@@ -5304,6 +5521,8 @@ impl GameState {
             removed -= n;
         }
         // Cargo the destroyed trucks were carrying is lost in proportion (§40.62 "evenly").
+        // The `> 0` guard both skips the loss entirely and protects the division.
+        #[allow(clippy::manual_checked_ops)]
         if total_before > 0 {
             for c in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
                 let have = u.truck_cargo.get(c);
@@ -5570,6 +5789,7 @@ impl GameState {
     /// - **City/Fortification (§41.37):** knock a *placed* Fortification Level down one.
     /// - **Road / Railroad (§41.38):** destroy the road (Road→UnfinishedRoad, rebuildable §24.53) or
     ///   railroad (all Railroad edges of the hex → DestroyedRailroad, rebuildable §24.63) on `result`≥1.
+    ///
     /// Ships/air facilities have dedicated commands (§41.34/§41.36); static §25.12 major-city levels
     /// are not reducible (no damage tracker). Mining-harbor is resolved on its own table.
     pub fn apply_land_bombing_effect(
@@ -5632,11 +5852,19 @@ impl GameState {
                 self.strafe_first_line_trucks(target, bomber_side, result);
             }
             M::CityFortification => {
-                // §41.37: at most one *placed* Fortification Level destroyed per Operations Stage.
-                // (Static §25.12 major-city levels are not reducible without a damage tracker.)
+                // §41.37: at most one Fortification Level destroyed per Operations Stage. Knock down
+                // whichever level is currently effective — a placed fort if it is at least as high as
+                // the (possibly already-damaged) static city level, otherwise the §25.12 city level.
                 if result >= 1 {
-                    if let Some(l) = self.fortifications.get_mut(&target) {
-                        *l = l.saturating_sub(1);
+                    let placed = self.fortifications.get(&target).copied().unwrap_or(0);
+                    let city_base = self.city_static_fort_base(target);
+                    let city_eff = city_base.saturating_sub(self.city_fort_damage.get(&target).copied().unwrap_or(0));
+                    if placed > 0 && placed >= city_eff {
+                        if let Some(l) = self.fortifications.get_mut(&target) {
+                            *l = l.saturating_sub(1);
+                        }
+                    } else if city_eff > 0 {
+                        *self.city_fort_damage.entry(target).or_insert(0) += 1;
                     }
                 }
             }
@@ -5935,6 +6163,7 @@ impl GameState {
     }
 
     /// The result of resolving a bombing mission (§39.0 procedure).
+    #[allow(clippy::too_many_arguments)]
     pub fn resolve_bombing_mission(
         &mut self,
         squadron: SquadronId,
@@ -6601,13 +6830,13 @@ impl GameState {
             .get(&u.nationality)?
             .get(&u.id_code)?;
         match &u.composition {
-            Composition::Organic { .. } => uc.max_toe.map(|m| m.value.max(0) as u32),
+            Composition::Organic { .. } => uc.max_toe.map(|m| m.value),
             Composition::Weapons { .. } => {
                 let s: u32 = uc.assignments.iter().map(|a| a.max_count).sum();
                 if s > 0 {
                     Some(s)
                 } else {
-                    uc.max_toe.map(|m| m.value.max(0) as u32)
+                    uc.max_toe.map(|m| m.value)
                 }
             }
         }
@@ -6997,6 +7226,7 @@ impl GameState {
         // barraged/bombed hexes are per-stage.
         self.land_combat_this_stage.clear();
         self.barraged_hexes_this_stage.clear();
+        self.recon_revealed.clear(); // §42.27 recon reveals are a per-stage snapshot
         // §8.62: In-Contact status is derived from enemy ZOCs at the start of the Movement Segment;
         // §8.67 clears any Engagement no longer held by an adjacent opposing combat unit.
         self.refresh_contact_status();
@@ -7004,6 +7234,8 @@ impl GameState {
         // (§28.23–25) and refresh each stack's movement allowance for the new Convoy Segment (§28.13).
         self.process_prisoner_departures();
         self.resolve_prisoner_escapes();
+        // §14.52: Destroyed Tank Markers in hexes the enemy now controls are captured.
+        self.resolve_destroyed_tank_capture();
         for g in self.prisoner_groups.iter_mut() {
             g.cpa_used = 0;
         }

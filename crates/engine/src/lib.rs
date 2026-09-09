@@ -3,9 +3,11 @@
 //! Architecture (see `docs/design.md`):
 //! - `reference` — Tier 1: immutable rulebook DATA (parameters), loaded at startup.
 //! - `rules`     — the RULES/logic (code) that consume reference data and game state.
-//!
-//! Tier 2 (mutable game state: map, units, sequence-of-play) will be added next.
+//! - `state`     — Tier 2: mutable game state (map, units, combat, turn driver) and the
+//!   phase-gated `Command`/`CommandOutcome`/`CommandError` boundary.
+//! - `scenario`  — loads an order of battle + turn state into a `GameState`.
 
+pub mod agent;
 pub mod reference;
 pub mod rng;
 pub mod rules;
@@ -460,14 +462,8 @@ mod tests {
             Err(CommandError::WrongPhase)
         );
         g.phase = Phase::Organization;
-        assert!(matches!(
-            g.apply(Command::BlockHarbor { port: "Benghazi".into(), has_engineer: true }),
-            Ok(_)
-        ));
-        assert!(matches!(
-            g.apply(Command::UnblockHarbor { port: "Benghazi".into(), engineers: 2 }),
-            Ok(_)
-        ));
+        assert!(g.apply(Command::BlockHarbor { port: "Benghazi".into(), has_engineer: true }).is_ok());
+        assert!(g.apply(Command::UnblockHarbor { port: "Benghazi".into(), engineers: 2 }).is_ok());
     }
 
     #[test]
@@ -960,6 +956,14 @@ mod tests {
         g.begin_operations_stage();
         assert_eq!(g.unit(recce).unwrap().training_progress, 0, "§17.33 interrupted by CP expenditure");
         assert_eq!(g.unit(recce).unwrap().basic_morale, 0, "no step gained when interrupted");
+
+        // §17.32: all six training areas are recognized — Cairo/Helwan, both Alexandria hexes,
+        // and the three minor areas (Amiriya, Abougir, Deghelia).
+        for id in ["E1430", "E3613", "E3714", "E2212", "E3815", "E3512"] {
+            let h = HexId::parse(id).unwrap().to_hex_coord();
+            assert!(g.is_cw_training_area(h), "{id} should be a §17.32 training area");
+        }
+        assert!(!g.is_cw_training_area(HexCoord::new(0, 0)), "arbitrary hex is not a training area");
     }
 
     #[test]
@@ -1210,6 +1214,124 @@ mod tests {
         assert_eq!(
             g.apply(Command::React { unit: tank2, path: vec![HexCoord::new(4, 2)] }),
             Err(CommandError::ReactIntoZoc)
+        );
+    }
+
+    #[test]
+    fn far_escapee_moves_and_thirsts_28_24() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::game::{Escapee, GameState};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        // A waterless Clear corridor from the escapee at (10,5) toward a friendly unit at (5,5).
+        for c in 5..=10 {
+            g.map.set_hex(HexCoord::new(c, 5), HexTerrain::Clear);
+        }
+        // Friendly Commonwealth unit at (5,5): 5 Clear hexes = 100 tenths > the 80-tenth (8 CP)
+        // rejoin range, so the escapee is a "far" escapee that must wander.
+        let friend = g.spawn_unit(Nationality::Commonwealth, "h", "friend", Composition::Organic { current_toe: 4 });
+        g.unit_mut(friend).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(5, 5)));
+        g.escapees.push(Escapee { side: Side::Commonwealth, hex: HexCoord::new(10, 5), points: 10 });
+
+        // One Operations Stage: steps one hex toward the friend (10→9,5) and, with no water there,
+        // loses 10% (ceil(10/10)=1) of its strength to thirst.
+        g.resolve_prisoner_escapes();
+        assert_eq!(g.escapees.len(), 1, "still too far to rejoin");
+        assert_eq!(g.escapees[0].hex, HexCoord::new(9, 5), "§28.24 moved one hex toward the friend");
+        assert_eq!(g.escapees[0].points, 9, "§28.24 lost 10% to thirst (no water source)");
+    }
+
+    #[test]
+    fn within_cp_budget_respects_terrain() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::rules::movement::MoveMode;
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::MovementAndCombat;
+        // A clear corridor hexes 0..=4; hex (5,0) is left unset (a gap), (6,0) is an isolated island.
+        for c in 0..=4 {
+            g.map.set_hex(HexCoord::new(c, 0), HexTerrain::Clear);
+        }
+        g.map.set_hex(HexCoord::new(6, 0), HexTerrain::Clear);
+        let a = HexCoord::new(0, 0);
+        // Non-motorized enter cost is 2 CP (20 tenths) per Clear hex: two hexes (40) fit a 40 budget,
+        // three (60) do not.
+        assert!(g.within_cp_budget(a, HexCoord::new(2, 0), MoveMode::NonMotorized, 40));
+        assert!(!g.within_cp_budget(a, HexCoord::new(3, 0), MoveMode::NonMotorized, 40));
+        // The (5,0) gap is impassable, so the (6,0) island is unreachable at any budget.
+        assert!(!g.within_cp_budget(a, HexCoord::new(6, 0), MoveMode::NonMotorized, 400));
+    }
+
+    #[test]
+    fn reaction_detach_to_react_8_56() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::Italian, include_str!("../../../data/reference/unit-characteristics/italian.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Axis; // Italian phasing; Commonwealth reacts
+        for c in 0..5 {
+            g.map.set_hex(HexCoord::new(c, 0), HexTerrain::Clear);
+        }
+        let cruiser = || Composition::Weapons { groups: vec![WeaponGroup { system: "A13 Cruiser".into(), count: 6 }] };
+
+        // Phasing Italian battalion adjacent to a CW parent stack (triggers reaction).
+        let enemy = g.spawn_unit(Nationality::Italian, "p", "enemy", Composition::Organic { current_toe: 4 });
+        g.unit_mut(enemy).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(1, 0)));
+
+        // A motorized CW tank attached to a co-located parent.
+        let parent = g.spawn_unit(Nationality::Commonwealth, "g", "parent", cruiser());
+        g.unit_mut(parent).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(2, 0)));
+        let tank = g.spawn_unit(Nationality::Commonwealth, "g", "tank", cruiser());
+        {
+            let u = g.unit_mut(tank).unwrap();
+            u.location = Some(UnitLocation::OnMap(HexCoord::new(2, 0)));
+            u.attached_parent = Some(parent);
+        }
+
+        // §8.56: the attached tank reacts by detaching first — it moves and is no longer attached.
+        assert_eq!(
+            g.apply(Command::React { unit: tank, path: vec![HexCoord::new(3, 0)] }),
+            Ok(CommandOutcome::Reacted)
+        );
+        assert_eq!(g.unit(tank).unwrap().hex(), Some(HexCoord::new(3, 0)));
+        assert_eq!(g.unit(tank).unwrap().attached_parent, None, "§8.56 detaches on reacting");
+
+        // A unit that is itself a parent of an attachment may not detach-and-react (§8.56: its
+        // attachments would have to detach too). Attach a child to `parent`, then have `parent`
+        // (attached to a grandparent) try to react.
+        let grand = g.spawn_unit(Nationality::Commonwealth, "g", "grand", cruiser());
+        g.unit_mut(grand).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(2, 0)));
+        let child = g.spawn_unit(Nationality::Commonwealth, "g", "child", cruiser());
+        {
+            let u = g.unit_mut(child).unwrap();
+            u.location = Some(UnitLocation::OnMap(HexCoord::new(2, 0)));
+            u.attached_parent = Some(parent);
+        }
+        g.unit_mut(parent).unwrap().attached_parent = Some(grand);
+        assert_eq!(
+            g.apply(Command::React { unit: parent, path: vec![HexCoord::new(3, 0)] }),
+            Err(CommandError::CannotReact),
+            "§8.56: a unit with its own attachments cannot detach-and-react"
         );
     }
 
@@ -1911,6 +2033,29 @@ mod tests {
         let out = g.resolve_close_assault_with_rolls(&[atk], &[def], 33, 33, 33, 33);
         assert_eq!(out.terrain_shift, 1);
         assert_eq!(out.adjusted_column, 8);
+
+        // §15.35 two-terrain-hexside exception: when one crossed edge carries two terrain
+        // features (a Wadi running along an up-Slope), the defender benefits from BOTH — the
+        // edge's shift is the sum, not the single best. Measure each feature alone, then together.
+        let build = |sides: &[(HexsideKind, Option<HexCoord>)]| -> i32 {
+            let mut g = GameState::new(close_assault_refs(), 1);
+            g.map.set_hex(def_hex, HexTerrain::Clear);
+            g.map.set_hex(atk_hex, HexTerrain::Clear);
+            for &(k, hs) in sides {
+                g.map.set_hexside(atk_hex, def_hex, k, hs);
+            }
+            let a = g.spawn_unit(Nationality::Commonwealth, "h", "atk", Composition::Organic { current_toe: 10 });
+            let d = g.spawn_unit(Nationality::Commonwealth, "h", "def", Composition::Organic { current_toe: 10 });
+            g.unit_mut(a).unwrap().location = Some(crate::state::unit::UnitLocation::OnMap(atk_hex));
+            g.unit_mut(d).unwrap().location = Some(crate::state::unit::UnitLocation::OnMap(def_hex));
+            g.resolve_close_assault_with_rolls(&[a], &[d], 33, 33, 33, 33).terrain_shift
+        };
+        // Up-slope: high_side = defender hex (attacker crosses uphill → defender benefit).
+        let wadi = build(&[(HexsideKind::Wadi, None)]);
+        let slope = build(&[(HexsideKind::Slope, Some(def_hex))]);
+        let both = build(&[(HexsideKind::Wadi, None), (HexsideKind::Slope, Some(def_hex))]);
+        assert!(wadi < 0 && slope < 0, "both features favor the defender");
+        assert_eq!(both, wadi + slope, "§15.35: two features on one edge both apply");
     }
 
     #[test]
@@ -2109,7 +2254,7 @@ mod tests {
 
         // Combat is illegal outside the Movement & Combat phase.
         assert_eq!(
-            g.apply(Command::Barrage { attackers: vec![arty], target: hex_d, target_class: BarrageTargetClass::Infantry }),
+            g.apply(Command::Barrage { attackers: vec![arty], target: hex_d, target_class: BarrageTargetClass::Infantry, target_unit: None }),
             Err(CommandError::WrongPhase)
         );
 
@@ -2123,7 +2268,7 @@ mod tests {
 
         // Barrage resolves through the boundary.
         assert!(matches!(
-            g.apply(Command::Barrage { attackers: vec![arty], target: hex_d, target_class: BarrageTargetClass::Infantry }),
+            g.apply(Command::Barrage { attackers: vec![arty], target: hex_d, target_class: BarrageTargetClass::Infantry, target_unit: None }),
             Ok(CommandOutcome::Barrage(_))
         ));
 
@@ -2148,18 +2293,73 @@ mod tests {
 
         // Barrage from a non-adjacent attacker is rejected (§12.31 adjacency).
         assert_eq!(
-            g.apply(Command::Barrage { attackers: vec![far], target: hex_d, target_class: BarrageTargetClass::Infantry }),
+            g.apply(Command::Barrage { attackers: vec![far], target: hex_d, target_class: BarrageTargetClass::Infantry, target_unit: None }),
             Err(CommandError::NotAdjacent)
         );
 
         // Anti-armor at the adjacent attacked hex resolves; from far it is rejected.
         assert!(matches!(
-            g.apply(Command::AntiArmor { attackers: vec![atk], target_hex: hex_d }),
+            g.apply(Command::AntiArmor { attackers: vec![atk], target_hex: hex_d, withheld: vec![] }),
             Ok(CommandOutcome::AntiArmor(_))
         ));
         assert_eq!(
-            g.apply(Command::AntiArmor { attackers: vec![far], target_hex: hex_d }),
+            g.apply(Command::AntiArmor { attackers: vec![far], target_hex: hex_d, withheld: vec![] }),
             Err(CommandError::NotAdjacent)
+        );
+    }
+
+    #[test]
+    fn barrage_specific_target_designation_12_23() {
+        use crate::reference::crt::BarrageTargetClass;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut refs = close_assault_refs();
+        refs.load_barrage_crt(include_str!("../../../data/reference/crt/barrage.ron")).unwrap();
+        let mut g = GameState::new(refs, 5);
+        g.phase = Phase::MovementAndCombat;
+        let hex_d = HexCoord::new(0, 0);
+        let hex_a = HexCoord::new(1, 0);
+        g.map.set_hex(hex_d, HexTerrain::Clear);
+        g.map.set_hex(hex_a, HexTerrain::Clear);
+
+        // Two Italian infantry in the target hex; one is In-Contact (known via previous combat).
+        let known = g.spawn_unit(Nationality::Italian, "p", "known", Composition::Organic { current_toe: 10 });
+        let hidden = g.spawn_unit(Nationality::Italian, "p", "hidden", Composition::Organic { current_toe: 10 });
+        for id in [known, hidden] {
+            g.unit_mut(id).unwrap().location = Some(UnitLocation::OnMap(hex_d));
+        }
+        g.unit_mut(known).unwrap().status.in_contact = true;
+        let arty = g.spawn_unit(
+            Nationality::Commonwealth, "x", "arty",
+            Composition::Weapons { groups: vec![WeaponGroup { system: "25-pounder Gun".into(), count: 8 }] },
+        );
+        g.unit_mut(arty).unwrap().location = Some(UnitLocation::OnMap(hex_a));
+
+        // §12.23: designating the In-Contact unit is allowed and hits exactly that unit.
+        let before_known = g.unit(known).unwrap().total_toe();
+        let before_hidden = g.unit(hidden).unwrap().total_toe();
+        match g.apply(Command::Barrage { attackers: vec![arty], target: hex_d, target_class: BarrageTargetClass::Infantry, target_unit: Some(known) }) {
+            Ok(CommandOutcome::Barrage(_)) => {}
+            other => panic!("expected barrage, got {other:?}"),
+        }
+        assert!(g.unit(known).unwrap().total_toe() <= before_known);
+        assert_eq!(g.unit(hidden).unwrap().total_toe(), before_hidden, "the un-designated unit is untouched");
+
+        // §12.23: designating a unit the firer does not know is present is rejected.
+        assert_eq!(
+            g.apply(Command::Barrage { attackers: vec![arty], target: hex_d, target_class: BarrageTargetClass::Infantry, target_unit: Some(hidden) }),
+            Err(CommandError::TargetNotKnown)
+        );
+
+        // Designating a unit of the wrong class (none here) → NoTargets.
+        let gun = g.spawn_unit(Nationality::Italian, "x", "gun", Composition::Weapons { groups: vec![WeaponGroup { system: "25-pounder Gun".into(), count: 2 }] });
+        g.unit_mut(gun).unwrap().location = Some(UnitLocation::OnMap(hex_d));
+        assert_eq!(
+            g.apply(Command::Barrage { attackers: vec![arty], target: hex_d, target_class: BarrageTargetClass::Infantry, target_unit: Some(gun) }),
+            Err(CommandError::NoTargets)
         );
     }
 
@@ -2338,6 +2538,747 @@ mod tests {
         // also runs the §51 Stores Expenditure Stage, which draws from the dumps above.)
         g.advance_phase();
         assert_eq!(g.initiative, Side::Axis);
+    }
+
+    /// Build the full engine for the Campaign Game (§64): reference bootstrap + all five map
+    /// sections + the campaign scenario + player-choice dump placement.
+    #[cfg(test)]
+    fn build_campaign_game() -> crate::state::game::GameState {
+        use crate::state::game::GameState;
+        let mut g = GameState::new(ReferenceData::load_campaign(), 7);
+        for s in [
+            include_str!("../../../data/maps/section-a.ron"),
+            include_str!("../../../data/maps/section-b.ron"),
+            include_str!("../../../data/maps/section-c.ron"),
+            include_str!("../../../data/maps/section-d.ron"),
+            include_str!("../../../data/maps/section-e.ron"),
+        ] {
+            g.map.load_section(s).unwrap();
+        }
+        g.load_scenario(include_str!("../../../data/scenarios/campaign.ron"))
+            .expect("campaign scenario loads (all formation names resolve against the OBs)");
+        g.auto_place_dump_choices();
+        g
+    }
+
+    #[test]
+    fn campaign_game_deploys_and_reaches_rommel() {
+        // §64.3: the campaign starts from the §60.0 Sept-1940 deployment and runs on. Verify the
+        // start force is Italian + Commonwealth only (no Germans in Sept 1940), then advance past
+        // General Rommel's Game-Turn 26 arrival (§64.2) and confirm the DAK has entered.
+        use crate::reference::units::{Nationality, Side};
+
+        let mut g = build_campaign_game();
+        assert_eq!(g.game_turn, 1);
+
+        let on_map_sides = |g: &crate::state::game::GameState, nat: Nationality| {
+            g.units.values().any(|u| u.nationality == nat && u.hex().is_some())
+        };
+        assert!(on_map_sides(&g, Nationality::Italian), "Italian border force on map at start");
+        assert!(g.units.values().any(|u| u.nationality.side() == Side::Commonwealth && u.hex().is_some()), "CW border force on map at start");
+        assert!(!on_map_sides(&g, Nationality::German), "no Germans on the map in Sept 1940 (§60.0)");
+        assert!(g.rommel.is_some(), "Rommel is scheduled");
+        assert_eq!(g.rommel.as_ref().unwrap().arrival_game_turn, 26);
+
+        // Advance through Game-Turn 27 (past Rommel's GT26 arrival and the DAK's GT21+ schedule).
+        let mut guard = 0;
+        while g.game_turn <= 27 {
+            g.advance_phase();
+            guard += 1;
+            assert!(guard < 2_000_000, "campaign turn loop failed to progress");
+        }
+        assert!(g.game_turn >= 28, "advanced past Game-Turn 27");
+        // The DAK arrived on schedule: German units are now in play.
+        assert!(g.units.values().any(|u| u.nationality == Nationality::German), "DAK reinforcements entered by GT27");
+        // Rommel is on the map (arrived GT26, off the Germany recall).
+        assert!(g.rommel.as_ref().and_then(|r| r.hex).is_some() || g.rommel.as_ref().is_some_and(|r| r.in_germany),
+            "Rommel has entered play (on map or recalled)");
+    }
+
+    /// A deterministic, order-independent digest of the key game state (sorted, so it does not
+    /// depend on HashMap iteration order) — used to compare two runs or a save/load round-trip.
+    #[cfg(test)]
+    fn campaign_digest(g: &crate::state::game::GameState) -> String {
+        let mut units: Vec<String> = g
+            .units
+            .values()
+            .map(|u| format!("{:?}|{:?}|{:?}|{}", u.id, u.nationality, u.hex(), u.total_toe()))
+            .collect();
+        units.sort();
+        format!(
+            "gt{} os{} phase{:?} active{:?} units{} rommel_gt{:?} | {}",
+            g.game_turn, g.operations_stage, g.phase, g.active_player, g.units.len(),
+            g.rommel.as_ref().map(|r| r.arrival_game_turn),
+            units.join(";"),
+        )
+    }
+
+    #[test]
+    fn campaign_is_deterministic_and_serializes_round_trip() {
+        // §3.7 determinism + §3.3 serialization: (1) two fresh builds with the same seed, advanced
+        // through the same phase sequence, reach identical state; (2) serializing mid-game and
+        // reloading yields a state that continues identically.
+        use crate::state::game::GameState;
+
+        let advance = |g: &mut GameState, n: usize| for _ in 0..n { g.advance_phase(); };
+
+        // (1) Determinism: same seed + same commands → identical digest.
+        let mut a = build_campaign_game();
+        let mut b = build_campaign_game();
+        advance(&mut a, 400);
+        advance(&mut b, 400);
+        assert_eq!(campaign_digest(&a), campaign_digest(&b), "same seed must reproduce the game (§3.7)");
+
+        // (2) Serialization round-trip: save mid-game, reload, and confirm identical continuation.
+        let saved = ron::to_string(&a).expect("GameState serializes");
+        let mut reloaded: GameState = ron::from_str(&saved).expect("GameState deserializes");
+        assert_eq!(campaign_digest(&a), campaign_digest(&reloaded), "reloaded state matches the save");
+        advance(&mut a, 60);
+        advance(&mut reloaded, 60);
+        assert_eq!(campaign_digest(&a), campaign_digest(&reloaded), "reloaded game continues identically (§3.3)");
+    }
+
+    #[test]
+    fn legal_move_steps_enumerates_valid_moves() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.active_player = Side::Commonwealth;
+        // Clear terrain around a motorized cruiser tank at (2,0).
+        for c in 0..5 {
+            g.map.set_hex(HexCoord::new(c, 0), HexTerrain::Clear);
+            g.map.set_hex(HexCoord::new(c, 1), HexTerrain::Clear);
+        }
+        let tank = g.spawn_unit(Nationality::Commonwealth, "g", "tank", Composition::Weapons { groups: vec![WeaponGroup { system: "A13 Cruiser".into(), count: 6 }] });
+        g.unit_mut(tank).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(2, 0)));
+
+        // Outside the Movement & Combat phase, nothing is enumerable.
+        g.phase = Phase::Organization;
+        assert!(g.legal_move_steps(Side::Commonwealth).is_empty());
+
+        // In Movement & Combat, the tank has legal single-hex moves — and every enumerated command
+        // is accepted by the command boundary (the engine is the oracle).
+        g.phase = Phase::MovementAndCombat;
+        let moves = g.legal_move_steps(Side::Commonwealth);
+        assert!(!moves.is_empty(), "a mobile unit on open ground has legal moves");
+        assert!(moves.iter().all(|c| matches!(c, Command::MoveStep { unit, .. } if *unit == tank)));
+        for cmd in &moves {
+            let mut probe = g.clone();
+            assert!(matches!(probe.apply(cmd.clone()), Ok(CommandOutcome::Moved)),
+                "every enumerated move applies: {cmd:?}");
+        }
+        // The enemy has no units, hence no legal moves.
+        assert!(g.legal_move_steps(Side::Axis).is_empty());
+    }
+
+    #[test]
+    #[ignore] // timing probe, run explicitly with --ignored
+    fn bench_legal_commands_on_campaign() {
+        use crate::reference::units::Side;
+        use crate::state::game::Phase;
+        let mut g = build_campaign_game();
+        let mut guard = 0;
+        while g.phase != Phase::MovementAndCombat { g.advance_phase(); guard += 1; assert!(guard < 100); }
+        let n_units = g.units.values().filter(|u| u.nationality.side() == g.active_player && u.hex().is_some()).count();
+        let t = std::time::Instant::now();
+        let cmds = g.legal_commands(g.active_player);
+        let dt = t.elapsed();
+        // Isolate clone-only cost vs full dry_run (clone + apply).
+        let tc = std::time::Instant::now();
+        for _ in 0..1000 { let _c = g.clone(); }
+        let clone_dt = tc.elapsed() / 1000;
+        println!("BENCH: {} active units, {} legal cmds in {:?} | clone-only {:?}", n_units, cmds.len(), dt, clone_dt);
+        let _ = Side::Axis;
+    }
+
+    #[test]
+    fn lookahead_agent_improves_its_position() {
+        use crate::agent::{Agent, LookaheadAgent};
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::Command;
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 9);
+        for col in 0..8 {
+            g.map.set_hex(HexCoord::new(col, 1), HexTerrain::Clear);
+        }
+        // Foot infantry as the mover (no §21 vehicle breakdown to muddy the material term).
+        let inf = g.spawn_unit(Nationality::Commonwealth, "h", "infantry", Composition::Organic { current_toe: 8 });
+        let foe = g.spawn_unit(Nationality::Italian, "p", "infantry", Composition::Organic { current_toe: 10 });
+        { let u = g.unit_mut(inf).unwrap(); u.location = Some(UnitLocation::OnMap(HexCoord::new(1, 1))); u.fuel = 500; u.ammo = 500; }
+        g.unit_mut(foe).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(6, 1)));
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+
+        // The eval rewards material: wiping the enemy's TOE strictly raises the Commonwealth value.
+        let base = g.heuristic_value(Side::Commonwealth);
+        {
+            let mut probe = g.clone();
+            probe.unit_mut(foe).unwrap().composition = Composition::Organic { current_toe: 0 };
+            assert!(probe.heuristic_value(Side::Commonwealth) > base, "fewer enemy TOE → higher value");
+        }
+
+        // The lookahead agent chooses a move that improves its position (advancing toward contact).
+        let mut agent = LookaheadAgent::new(5);
+        let cmd = agent.choose(&g, Side::Commonwealth).expect("a position-improving action exists");
+        assert!(matches!(cmd, Command::MoveStep { .. }), "no adjacent enemy yet → it maneuvers");
+        let dist_before = HexCoord::new(1, 1).distance(HexCoord::new(6, 1));
+        g.apply(cmd).unwrap();
+        let dist_after = g.unit(inf).unwrap().hex().unwrap().distance(HexCoord::new(6, 1));
+        assert!(dist_after < dist_before, "the agent advanced toward the enemy");
+        assert!(g.heuristic_value(Side::Commonwealth) > base, "the chosen action improved its eval");
+    }
+
+    #[test]
+    fn rollout_agent_advances_and_is_reproducible() {
+        use crate::agent::{Agent, RolloutAgent};
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::Command;
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 3);
+        for col in 0..8 {
+            g.map.set_hex(HexCoord::new(col, 1), HexTerrain::Clear);
+        }
+        // Foot infantry approaching a distant enemy (no §21 breakdown; deterministic advance so the
+        // averaged rollout value is stable). Combat de-noising is the agent's motivation (documented
+        // in `agent::RolloutAgent`); here we assert the robust, reproducible behavior.
+        let inf = g.spawn_unit(Nationality::Commonwealth, "h", "infantry", Composition::Organic { current_toe: 10 });
+        let foe = g.spawn_unit(Nationality::Italian, "p", "infantry", Composition::Organic { current_toe: 10 });
+        { let u = g.unit_mut(inf).unwrap(); u.location = Some(UnitLocation::OnMap(HexCoord::new(1, 1))); u.fuel = 500; u.ammo = 500; }
+        g.unit_mut(foe).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(6, 1)));
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+
+        let mut agent = RolloutAgent::new(77, 6, 0);
+        let cmd = agent.choose(&g, Side::Commonwealth).expect("rollouts find a value-improving action");
+        assert!(matches!(cmd, Command::MoveStep { .. }), "no favorable adjacent target → it advances");
+        // Reproducible: a fresh agent with the same seed makes the same choice.
+        let mut agent2 = RolloutAgent::new(77, 6, 0);
+        assert_eq!(agent2.choose(&g, Side::Commonwealth), Some(cmd.clone()));
+        // The chosen move presses toward the enemy.
+        g.apply(cmd).unwrap();
+        assert!(g.unit(inf).unwrap().hex().unwrap().distance(HexCoord::new(6, 1)) < 5, "advanced toward the enemy");
+    }
+
+    #[test]
+    fn legal_commands_air_convoy_repair_phases() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::Command;
+        use crate::state::game::{GameState, Phase, TruckConvoy};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        g.active_player = Side::Commonwealth;
+        for c in 0..5 {
+            for r in 0..3 {
+                g.map.set_hex(HexCoord::new(c, r), HexTerrain::Clear);
+            }
+        }
+
+        // --- Truck Convoy phase: a free CW convoy can be moved one hex. ---
+        g.truck_convoys.push(TruckConvoy {
+            side: Side::Commonwealth,
+            hex: HexCoord::new(2, 1),
+            trucks: TruckPoints { light: 5, medium: 0, heavy: 0 },
+            cargo: Default::default(),
+            cpa_used: 0,
+            carries_replacements: false,
+        });
+        g.phase = Phase::TruckConvoy;
+        assert!(g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::MoveTruckConvoy { convoy: 0, .. })),
+            "Truck Convoy phase enumerates moving the free convoy");
+
+        // --- Repair phase: captured enemy equipment can be repaired back into play (§28.3). ---
+        let city = HexCoord::new(2, 1);
+        g.capture_equipment(Side::Commonwealth, city, Nationality::Italian, "M 13/40".into(), 3);
+        g.phase = Phase::Repair;
+        assert!(g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::RepairCapturedEquipment { system, .. } if system == "M 13/40")),
+            "Repair phase enumerates repairing the captured equipment");
+
+        // --- Land Support Air phase: a based, ready recon squadron reconnoiters an enemy hex. ---
+        let base = HexCoord::new(1, 1);
+        let foe_hex = HexCoord::new(3, 1);
+        let mut sq = Sgsu::new(SquadronId(1), Nationality::Commonwealth, SquadronClass::Bomber, "AC", 5, Some(base));
+        assert!(sq.add_planes("Lysander Mk.I", AircraftClass::Reconnaissance, 2, 1));
+        for pg in sq.planes.iter_mut() { pg.refitted = pg.count; pg.ready = pg.count; }
+        g.sgsus.insert(SquadronId(1), sq);
+        let foe = g.spawn_unit(Nationality::Italian, "p", "foe", Composition::Organic { current_toe: 6 });
+        g.unit_mut(foe).unwrap().location = Some(UnitLocation::OnMap(foe_hex));
+        g.phase = Phase::LandSupportAir;
+        let air = g.legal_commands(Side::Commonwealth);
+        assert!(air.iter().any(|c| matches!(c, Command::ReconHex { target, .. } if *target == foe_hex)),
+            "Land Support Air phase enumerates an air-recon mission over the enemy hex");
+        // The Lysander is strafe-capable (strike: StrafeOnly), so a strafing run is enumerated too.
+        assert!(air.iter().any(|c| matches!(c, Command::Strafe { target, .. } if *target == foe_hex)),
+            "air depth: strafing missions are enumerated for a strike-capable squadron");
+    }
+
+    #[test]
+    fn self_play_weight_tuning_runs_and_does_not_regress() {
+        use crate::agent::{evaluate_weights, tune_weights};
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+        use crate::state::view::EvalWeights;
+
+        // A small, self-contained battlefield built once; cloned (O(1)) for each self-play game.
+        let mut template = GameState::new(ReferenceData::load_campaign(), 1);
+        for c in 0..6 {
+            template.map.set_hex(HexCoord::new(c, 1), HexTerrain::Clear);
+        }
+        for (nat, col) in [(Nationality::Commonwealth, 1), (Nationality::Italian, 4)] {
+            let id = template.spawn_unit(nat, if nat == Nationality::Commonwealth { "h" } else { "p" }, "inf", Composition::Organic { current_toe: 8 });
+            let u = template.unit_mut(id).unwrap();
+            u.location = Some(UnitLocation::OnMap(HexCoord::new(col, 1)));
+            u.fuel = 500;
+            u.ammo = 500;
+        }
+        let make = || template.clone();
+
+        // Tiny budget: one coordinate-ascent round, one seed, one Game-Turn.
+        let default = EvalWeights::default();
+        let base = evaluate_weights(&make, default, default, 1, 1);
+        let tuned = tune_weights(&make, 1, 1, 1, 20);
+        let tuned_score = evaluate_weights(&make, tuned, default, 1, 1);
+
+        // Coordinate ascent only accepts improvements, so the tuned blend never scores below default.
+        assert!(tuned_score >= base, "tuning does not regress against the fixed objective");
+        // Deterministic: same budget + same games → same tuned weights.
+        assert_eq!(tune_weights(&make, 1, 1, 1, 20), tuned);
+        let _ = Side::Axis;
+    }
+
+    #[test]
+    fn air_bombing_enumerates_escort_variants() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::Command;
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        g.active_player = Side::Commonwealth;
+        for c in 0..4 {
+            g.map.set_hex(HexCoord::new(c, 1), HexTerrain::Clear);
+        }
+        let base = HexCoord::new(1, 1);
+        let target = HexCoord::new(2, 1);
+        // A Commonwealth day-bomber and a Hurricane fighter, both based and ready.
+        let mut bomber = Sgsu::new(SquadronId(1), Nationality::Commonwealth, SquadronClass::Bomber, "bombers", 5, Some(base));
+        assert!(bomber.add_planes("167 Maryland", AircraftClass::Bomber, 6, 1));
+        let mut fighter = Sgsu::new(SquadronId(2), Nationality::Commonwealth, SquadronClass::Fighter, "fighters", 5, Some(base));
+        assert!(fighter.add_planes("Hurricane Mk.I", AircraftClass::Fighter, 4, 1));
+        for sq in [&mut bomber, &mut fighter] {
+            for pg in sq.planes.iter_mut() { pg.refitted = pg.count; pg.armed = pg.count; pg.ready = pg.count; }
+        }
+        g.sgsus.insert(SquadronId(1), bomber);
+        g.sgsus.insert(SquadronId(2), fighter);
+        let foe = g.spawn_unit(Nationality::Italian, "p", "foe", Composition::Organic { current_toe: 8 });
+        g.unit_mut(foe).unwrap().location = Some(UnitLocation::OnMap(target));
+        g.phase = Phase::LandSupportAir;
+
+        let air = g.legal_commands(Side::Commonwealth);
+        // The bomber can attack the enemy hex both unescorted and escorted by the Hurricane.
+        assert!(air.iter().any(|c| matches!(c, Command::FlyBombingMissionAt { squadron, escort: None, target: t, .. } if *squadron == SquadronId(1) && *t == target)),
+            "an unescorted bombing mission is enumerated");
+        assert!(air.iter().any(|c| matches!(c, Command::FlyBombingMissionAt { squadron, escort: Some(e), target: t, .. } if *squadron == SquadronId(1) && *e == SquadronId(2) && *t == target)),
+            "parameter breadth: an escorted variant (Hurricane escort) is enumerated");
+    }
+
+    #[test]
+    fn enumerator_offshore_bombard_and_convoy_planning() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::Command;
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::naval::{Ship, ShipLocation};
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        for c in 0..5 {
+            for r in 0..3 {
+                g.map.set_hex(HexCoord::new(c, r), HexTerrain::Clear);
+            }
+        }
+        // A heavy Commonwealth ship at sea, with an enemy unit on an adjacent hex.
+        let sea = HexCoord::new(2, 1);
+        let target = g.map.neighbors(sea).next().unwrap();
+        g.fleet.push(Ship {
+            name: "HMS Heavy".into(), max_gun: 8, gun_rating: 8, max_aa: 3,
+            location: ShipLocation::AtSea(sea), at_sea_stages: 0, repair_stages: 0,
+            fired_this_stage: false, rest_owed: 0,
+        });
+        let foe = g.spawn_unit(Nationality::Italian, "p", "foe", Composition::Organic { current_toe: 6 });
+        g.unit_mut(foe).unwrap().location = Some(UnitLocation::OnMap(target));
+
+        // Movement & Combat: the ship can shell the adjacent enemy hex (off-shore bombardment).
+        g.phase = Phase::MovementAndCombat;
+        assert!(g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::OffShoreBombard { target: t, .. } if *t == target)),
+            "off-shore bombardment of the adjacent enemy hex is enumerated");
+
+        // Naval Convoy Schedule: the Axis can plan a supply convoy on a shipping lane; the CW cannot.
+        g.phase = Phase::NavalConvoySchedule;
+        assert!(g.legal_commands(Side::Axis).iter().any(|c| matches!(c, Command::PlanConvoy { .. })),
+            "convoy-planning policy offers an Axis convoy on an available lane");
+        assert!(g.legal_commands(Side::Commonwealth).is_empty(), "the Commonwealth plans no Axis convoys");
+    }
+
+    #[test]
+    fn legal_commands_fleet_phase_repairs_ships() {
+        use crate::reference::units::Side;
+        use crate::state::command::Command;
+        use crate::state::game::{GameState, Phase};
+        use crate::state::naval::{Ship, ShipLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        g.active_player = Side::Commonwealth;
+        // A damaged Commonwealth cruiser resting in Alexandria (gun rating below its maximum).
+        g.fleet.push(Ship {
+            name: "HMS Test".into(),
+            max_gun: 8,
+            gun_rating: 4,
+            max_aa: 2,
+            location: ShipLocation::Alexandria,
+            at_sea_stages: 0,
+            repair_stages: 0,
+            fired_this_stage: false,
+            rest_owed: 0,
+        });
+        g.phase = Phase::CommonwealthFleet;
+        assert!(g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::RepairShip { ship_index: 0 })),
+            "Commonwealth Fleet phase enumerates repairing the damaged ship");
+        // The Axis has no Fleet, so it has no fleet-phase actions.
+        assert!(g.legal_commands(Side::Axis).is_empty());
+    }
+
+    #[test]
+    fn legal_commands_are_phase_aware_organization_logistics() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::Command;
+        use crate::state::game::{Commodities, GameState, Phase, SupplyDump};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        g.active_player = Side::Commonwealth;
+        let hex = HexCoord::new(2, 2);
+        g.map.set_hex(hex, HexTerrain::Clear);
+        // A fuel-starved cruiser squadron co-located with a Commonwealth fuel dump.
+        let tank = g.spawn_unit(Nationality::Commonwealth, "g", "cruisers", Composition::Weapons { groups: vec![WeaponGroup { system: "A13 Cruiser".into(), count: 4 }] });
+        { let u = g.unit_mut(tank).unwrap(); u.location = Some(UnitLocation::OnMap(hex)); u.fuel = 0; }
+        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(hex), side: Side::Commonwealth, supply: Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 }, dummy: false });
+
+        // In the Organization phase the enumerator offers logistics — refuelling the starved unit.
+        g.phase = Phase::Organization;
+        let org = g.legal_commands(Side::Commonwealth);
+        assert!(org.iter().any(|c| matches!(c, Command::RefuelUnit { unit } if *unit == tank)),
+            "Organization phase enumerates a refuel for the fuel-starved unit at the dump");
+        assert!(org.iter().all(|c| !matches!(c, Command::MoveStep { .. })), "no movement in the Organization phase");
+
+        // The same query in Movement & Combat yields movement, not logistics.
+        g.phase = Phase::MovementAndCombat;
+        let mc = g.legal_commands(Side::Commonwealth);
+        assert!(mc.iter().all(|c| !matches!(c, Command::RefuelUnit { .. })), "no refuel in Movement & Combat");
+    }
+
+    #[test]
+    fn scenario1_victory_60_81() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::game::{Commodities, GameState, SupplyDump};
+        use crate::state::map::{HexCoord, HexId};
+        use crate::state::unit::{Composition, UnitLocation};
+        use crate::state::view::ScenarioVictory;
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        let tobruk = HexId::parse("C4807").unwrap().to_hex_coord();
+        let off = HexCoord::new(0, 0);
+        g.map.set_hex(tobruk, HexTerrain::MajorCity); // water source
+        g.map.set_hex(off, HexTerrain::Clear);
+        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(tobruk), side: Side::Commonwealth, supply: Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 }, dummy: false });
+
+        // No one holds anything yet.
+        assert_eq!(g.scenario1_victory(Side::Commonwealth), ScenarioVictory::None);
+        assert_eq!(g.scenario1_victory(Side::Axis), ScenarioVictory::None);
+
+        // §60.81: a supplied Commonwealth combat unit holding Tobruk is a Strategic Victory.
+        let cw = g.spawn_unit(Nationality::Commonwealth, "h", "cw", Composition::Organic { current_toe: 8 });
+        g.unit_mut(cw).unwrap().location = Some(UnitLocation::OnMap(tobruk));
+        assert_eq!(g.scenario1_victory(Side::Commonwealth), ScenarioVictory::Strategic);
+        assert_eq!(g.scenario1_victory(Side::Axis), ScenarioVictory::None);
+
+        // Step off Tobruk → no longer a victory.
+        g.unit_mut(cw).unwrap().location = Some(UnitLocation::OnMap(off));
+        assert_eq!(g.scenario1_victory(Side::Commonwealth), ScenarioVictory::None);
+    }
+
+    #[test]
+    fn heuristic_value_rewards_objectives_and_cohesion() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::game::{Commodities, GameState, SupplyDump};
+        use crate::state::map::{HexCoord, HexId};
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        let tobruk = HexId::parse("C4807").unwrap().to_hex_coord(); // §64.73 city, CW VP 100
+        let off = HexCoord::new(0, 0);
+        g.map.set_hex(tobruk, HexTerrain::MajorCity); // a Major City is a water source
+        g.map.set_hex(off, HexTerrain::Clear);
+        let stock = || Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 };
+        for at in [tobruk, off] {
+            g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(at), side: Side::Commonwealth, supply: stock(), dummy: false });
+        }
+        // A single in-supply Commonwealth combat unit; no enemy (isolates the objective term).
+        let u = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 8 });
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(tobruk));
+
+        // Holding Tobruk is worth its CW Geographical-Occupation VP (100) × the objective weight (60).
+        let eval_hold = g.heuristic_value(Side::Commonwealth);
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(off)); // step off the objective
+        let eval_off = g.heuristic_value(Side::Commonwealth);
+        assert_eq!(eval_hold - eval_off, 100 * 60, "holding a §64.73 objective adds its VP × weight");
+
+        // Cohesion: a steadier force scores higher, all else equal.
+        let before = g.heuristic_value(Side::Commonwealth);
+        g.unit_mut(u).unwrap().cohesion += 10;
+        assert_eq!(g.heuristic_value(Side::Commonwealth) - before, 10, "cohesion contributes at weight 1");
+    }
+
+    #[test]
+    fn mcts_agent_plans_and_is_reproducible() {
+        use crate::agent::{Agent, MctsAgent};
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 3);
+        for col in 0..8 {
+            g.map.set_hex(HexCoord::new(col, 1), HexTerrain::Clear);
+        }
+        let inf = g.spawn_unit(Nationality::Commonwealth, "h", "infantry", Composition::Organic { current_toe: 10 });
+        let foe = g.spawn_unit(Nationality::Italian, "p", "infantry", Composition::Organic { current_toe: 10 });
+        { let u = g.unit_mut(inf).unwrap(); u.location = Some(UnitLocation::OnMap(HexCoord::new(1, 1))); u.fuel = 500; u.ammo = 500; }
+        g.unit_mut(foe).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(6, 1)));
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+
+        // UCT plans the phase and commits to an action; advancing improves the position, so it does
+        // not simply Pass.
+        let mut mcts = MctsAgent::new(101, 80, 4, 4);
+        let cmd = mcts.choose(&g, Side::Commonwealth).expect("MCTS commits to an action, not Pass");
+        assert!(matches!(cmd, Command::MoveStep { .. }), "no favorable adjacent target → it maneuvers");
+        // Reproducible for a fixed seed.
+        let mut mcts2 = MctsAgent::new(101, 80, 4, 4);
+        assert_eq!(mcts2.choose(&g, Side::Commonwealth), Some(cmd.clone()));
+        // The committed action is one the command boundary accepts.
+        assert_eq!(g.apply(cmd), Ok(CommandOutcome::Moved));
+    }
+
+    #[test]
+    fn cross_phase_mcts_plans_across_the_sequence_of_play() {
+        use crate::agent::{Agent, CrossPhaseMctsAgent};
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 3);
+        for col in 0..6 {
+            g.map.set_hex(HexCoord::new(col, 1), HexTerrain::Clear);
+        }
+        let cw = g.spawn_unit(Nationality::Commonwealth, "h", "cw", Composition::Organic { current_toe: 10 });
+        let it = g.spawn_unit(Nationality::Italian, "p", "it", Composition::Organic { current_toe: 10 });
+        { let u = g.unit_mut(cw).unwrap(); u.location = Some(UnitLocation::OnMap(HexCoord::new(1, 1))); u.fuel = 500; u.ammo = 500; }
+        { let u = g.unit_mut(it).unwrap(); u.location = Some(UnitLocation::OnMap(HexCoord::new(4, 1))); u.fuel = 500; u.ammo = 500; }
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+
+        // Small search (rollouts advance the whole SoP, so keep it bounded): it looks one Game-Turn
+        // ahead and models the Axis reply. The search runs to a valid decision without panicking.
+        let mut mcts = CrossPhaseMctsAgent::new(202, 30, 1, 4, 10);
+        let decision = mcts.choose(&g, Side::Commonwealth);
+        // Same seed reproduces the plan (deterministic search over reseeded rollouts).
+        let mut mcts2 = CrossPhaseMctsAgent::new(202, 30, 1, 4, 10);
+        assert_eq!(mcts2.choose(&g, Side::Commonwealth), decision);
+        // Whatever it commits to is accepted by the command boundary (or it yields).
+        if let Some(cmd) = decision {
+            assert!(g.apply(cmd).is_ok(), "the planned action is legal");
+        }
+    }
+
+    #[test]
+    fn agents_self_play_drives_real_moves() {
+        // Phase-2 smoke: greedy Axis vs random Commonwealth play a few Game-Turns on a small front
+        // (full reference data, tiny action space so it is fast). Confirms the agent → enumerator →
+        // command loop drives real, accepted play — units maneuver — without stalling or panicking.
+        use crate::agent::{self, GreedyAgent, RandomAgent};
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 9);
+        // A small clear battlefield.
+        for col in 0..8 {
+            for row in 0..3 {
+                g.map.set_hex(HexCoord::new(col, row), HexTerrain::Clear);
+            }
+        }
+        // A Commonwealth cruiser squadron and an Italian infantry battalion a few hexes apart, each
+        // stocked with fuel + ammo so the agents can actually move and fight.
+        let cw_tank = g.spawn_unit(Nationality::Commonwealth, "g", "cruisers", Composition::Weapons { groups: vec![WeaponGroup { system: "A13 Cruiser".into(), count: 6 }] });
+        let it_inf = g.spawn_unit(Nationality::Italian, "p", "infantry", Composition::Organic { current_toe: 10 });
+        {
+            let u = g.unit_mut(cw_tank).unwrap();
+            u.location = Some(UnitLocation::OnMap(HexCoord::new(1, 1)));
+            u.fuel = 500; u.ammo = 500;
+        }
+        {
+            let u = g.unit_mut(it_inf).unwrap();
+            u.location = Some(UnitLocation::OnMap(HexCoord::new(6, 1)));
+            u.fuel = 500; u.ammo = 500;
+        }
+        let start_cw = g.unit(cw_tank).unwrap().hex();
+        let start_it = g.unit(it_inf).unwrap().hex();
+
+        let mut axis = GreedyAgent::new(42);
+        let mut cw = RandomAgent::new(1234);
+        let applied = agent::self_play(&mut g, &mut cw, &mut axis, 3);
+
+        assert!(g.game_turn >= 4, "self-play advanced through the sequence of play");
+        assert!(applied > 0, "agents issued accepted commands");
+        let moved = g.unit(cw_tank).and_then(|u| u.hex()) != start_cw
+            || g.unit(it_inf).and_then(|u| u.hex()) != start_it;
+        assert!(moved, "agents maneuvered at least one unit");
+        let _ = Side::Axis;
+    }
+
+    #[test]
+    fn legal_commands_includes_adjacent_combat() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::Command;
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::Italian, include_str!("../../../data/reference/unit-characteristics/italian.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let a = HexCoord::new(2, 0);
+        let d = HexCoord::new(3, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+        g.map.set_hex(d, HexTerrain::Clear);
+        g.map.set_hex(HexCoord::new(1, 0), HexTerrain::Clear); // a free hex to move into (not the enemy's)
+        // A rifle-infantry attacker (no ammo cost) adjacent to an enemy-held hex.
+        let inf = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 8 });
+        g.unit_mut(inf).unwrap().location = Some(UnitLocation::OnMap(a));
+        let foe = g.spawn_unit(Nationality::Italian, "p", "foe", Composition::Organic { current_toe: 6 });
+        g.unit_mut(foe).unwrap().location = Some(UnitLocation::OnMap(d));
+
+        let cmds = g.legal_commands(Side::Commonwealth);
+        assert!(cmds.iter().any(|c| matches!(c, Command::CloseAssault { target, .. } if *target == d)),
+            "a close assault against the adjacent enemy hex is enumerated");
+        assert!(cmds.iter().any(|c| matches!(c, Command::MoveStep { .. })), "moves are enumerated too");
+        // dry_run does not mutate the caller's state.
+        let before = g.unit(foe).unwrap().total_toe();
+        let _ = g.dry_run(&Command::CloseAssault { attackers: vec![inf], target: d });
+        assert_eq!(g.unit(foe).unwrap().total_toe(), before, "dry_run leaves state untouched");
+    }
+
+    #[test]
+    fn campaign_fuzz_survives_random_play() {
+        // Robustness: drive the full campaign with thousands of random (often illegal) commands and
+        // confirm the command boundary never panics/overflows — illegal commands must return Err,
+        // not crash. Deterministic (fixed local PRNG) so a failure is reproducible.
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::Command;
+        use crate::state::game::Phase;
+        use crate::state::map::HexCoord;
+
+        struct Lcg(u64);
+        impl Lcg {
+            fn next(&mut self) -> u64 {
+                self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                self.0
+            }
+            fn below(&mut self, n: usize) -> usize {
+                if n == 0 { 0 } else { ((self.next() >> 33) as usize) % n }
+            }
+        }
+
+        let mut g = build_campaign_game();
+        let mut r = Lcg(0x00C0_FFEE_1234_5678);
+        let mut steps = 0u32;
+        while g.game_turn <= 6 && steps < 40_000 {
+            steps += 1;
+            if g.phase == Phase::MovementAndCombat && r.below(3) != 0 {
+                let side = g.active_player;
+                let ids: Vec<_> = g
+                    .units
+                    .values()
+                    .filter(|u| u.nationality.side() == side && u.hex().is_some())
+                    .map(|u| u.id)
+                    .collect();
+                if !ids.is_empty() {
+                    let unit = ids[r.below(ids.len())];
+                    let from = g.unit(unit).unwrap().hex().unwrap();
+                    let neighbors: Vec<HexCoord> = g.map.neighbors(from).collect();
+                    let to = neighbors[r.below(neighbors.len())];
+                    let cmd = match r.below(4) {
+                        0 => Command::MoveStep { unit, to, mode: MoveMode::Motorized },
+                        1 => Command::MoveStep { unit, to, mode: MoveMode::NonMotorized },
+                        2 => Command::CloseAssault { attackers: vec![unit], target: to },
+                        _ => Command::AntiArmor { attackers: vec![unit], target_hex: to, withheld: vec![] },
+                    };
+                    let _ = g.apply(cmd); // Err is expected and fine; a panic would fail the test
+                    continue;
+                }
+            }
+            g.advance_phase();
+        }
+        assert!(g.game_turn >= 2, "the fuzzed campaign still advanced through the sequence of play");
+        // No unit should have been left with an impossible strength by any accepted command.
+        assert!(g.units.values().all(|u| u.total_toe() <= 1000), "TOE strengths stayed sane");
     }
 
     #[test]
@@ -2860,7 +3801,7 @@ mod tests {
         reset(&mut g);
         g.units.clear();
         for _ in 0..4 {
-            assert!(matches!(g.apply(Command::RaidRommel { raider: 0, roll: 5 }), Ok(_)));
+            assert!(g.apply(Command::RaidRommel { raider: 0, roll: 5 }).is_ok());
         }
         assert_eq!(g.apply(Command::RaidRommel { raider: 0, roll: 5 }), Err(CommandError::RaiderCannotMove));
     }
@@ -5262,8 +6203,8 @@ mod tests {
 
         let refs = ReferenceData::new();
         let mut g = GameState::new(refs, 1);
-        g.reference.load_aircraft_refit(include_str!("../../../data/reference/aircraft-refit.ron")).unwrap();
-        g.reference.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        g.reference_mut().load_aircraft_refit(include_str!("../../../data/reference/aircraft-refit.ron")).unwrap();
+        g.reference_mut().load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
         let mut sq = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Fighter, "JG 27", 5, Some(HexCoord::new(1, 1)));
         sq.add_planes("Bf.109F", AircraftClass::Fighter, 16, 1);
         g.sgsus.insert(SquadronId(1), sq);
@@ -5588,7 +6529,7 @@ mod tests {
 
         let refs = ReferenceData::new();
         let mut g = GameState::new(refs, 1);
-        g.reference.load_aircraft_refit(include_str!("../../../data/reference/aircraft-refit.ron")).unwrap();
+        g.reference_mut().load_aircraft_refit(include_str!("../../../data/reference/aircraft-refit.ron")).unwrap();
         let u = g.spawn_unit(Nationality::Commonwealth, "h", "bn", Composition::Organic { current_toe: 5 });
         g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(3, 3)));
         let sq = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Fighter, "JG 27", 5, Some(HexCoord::new(1, 1)));
@@ -6489,15 +7430,20 @@ mod tests {
 
         let mut refs = ReferenceData::new();
         refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::German, include_str!("../../../data/reference/weapons/german.ron")).unwrap();
         refs.load_replacement_conversion(include_str!("../../../data/reference/replacement-conversion.ron")).unwrap();
         let mut g = GameState::new(refs, 1);
         let a = HexCoord::new(0, 0);
 
-        // Provisional classifier (§20.3): recce/HQ/infantry rows, incl. name-based specials.
+        // §20.3 classifier: recce/HQ/infantry rows, incl. name-based specials.
+        // An Organic (unarmored) recce unit is the light Motorcycle/Camel/Reconnaissance row; a
+        // recce unit carrying armor-protected points is Armored Reconnaissance (composition-derived).
         let recce = g.spawn_unit(Nationality::German, "ee", "recce", Composition::Organic { current_toe: 2 });
+        let armored_recce = g.spawn_unit(Nationality::German, "ee", "armored recce", Composition::Weapons { groups: vec![crate::state::unit::WeaponGroup { system: "Pz II".into(), count: 2 }] });
         let hq = g.spawn_unit(Nationality::German, "e", "hq", Composition::Weapons { groups: vec![] });
         let commando = g.spawn_unit(Nationality::German, "p", "Layforce Commando", Composition::Organic { current_toe: 1 });
-        assert_eq!(g.conversion_row_for_unit(recce), "Armored Reconnaissance");
+        assert_eq!(g.conversion_row_for_unit(recce), "Motorcycle/Camel/Reconnaissance");
+        assert_eq!(g.conversion_row_for_unit(armored_recce), "Armored Reconnaissance");
         assert_eq!(g.conversion_row_for_unit(hq), "Any Headquarters Unit");
         assert_eq!(g.conversion_row_for_unit(commando), "Commando");
         // §20.3 footnote-driven name detection.
@@ -6574,8 +7520,75 @@ mod tests {
         }
         // §41.31: a unit in a major city (Fortification Level 2) may not be pinned by bombing.
         ready(&mut g);
-        assert!(matches!(g.apply(bomb(city, BombingMission::Personnel)), Ok(_)));
+        assert!(g.apply(bomb(city, BombingMission::Personnel)).is_ok());
         assert!(!g.unit(cw).unwrap().status.pinned);
+
+        // §41.37 (B5): bombing the Major City itself knocks its static §25.12 Fortification Level
+        // down (tracked in `city_fort_damage`), even with no placed fort present.
+        ready(&mut g);
+        let before = g.fort_level(city);
+        assert_eq!(before, 2, "a Major City starts at static Level 2");
+        match g.apply(bomb(city, BombingMission::CityFortification)) {
+            Ok(CommandOutcome::BombingMission(o)) => {
+                let expected = if o.result >= 1 { before - 1 } else { before };
+                assert_eq!(g.fort_level(city), expected, "§41.37 damaged the static city level");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn air_recon_reveals_enemy_strength_42_27() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_aircraft_chart(Nationality::Commonwealth, include_str!("../../../data/reference/aircraft/commonwealth.ron")).unwrap();
+        refs.load_air_recon(include_str!("../../../data/reference/air-recon.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::Italian, include_str!("../../../data/reference/unit-characteristics/italian.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::Italian, include_str!("../../../data/reference/weapons/italian.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::LandSupportAir;
+        g.active_player = Side::Commonwealth;
+        let base = HexCoord::new(0, 0);
+        let target = HexCoord::new(1, 0);
+        g.map.set_hex(base, HexTerrain::Clear);
+        g.map.set_hex(target, HexTerrain::Clear);
+
+        // A Commonwealth squadron holding two ready recon-capable Lysanders (§42.21).
+        let mut sq = Sgsu::new(SquadronId(1), Nationality::Commonwealth, SquadronClass::Bomber, "AC recon", 5, Some(base));
+        assert!(sq.add_planes("Lysander Mk.I", AircraftClass::Reconnaissance, 2, 1), "recon planes added");
+        for pg in sq.planes.iter_mut() { pg.refitted = pg.count; pg.ready = pg.count; }
+        g.sgsus.insert(SquadronId(1), sq);
+
+        // Two Italian units in the target hex.
+        let inf = g.spawn_unit(Nationality::Italian, "p", "inf", Composition::Organic { current_toe: 4 });
+        let tank = g.spawn_unit(Nationality::Italian, "tank", "tank", Composition::Weapons { groups: vec![WeaponGroup { system: "M 13/40".into(), count: 3 }] });
+        for id in [inf, tank] {
+            g.unit_mut(id).unwrap().location = Some(UnitLocation::OnMap(target));
+        }
+
+        // Before recon, the Commonwealth cannot see enemy TOE strength (§3.5).
+        let hidden = |g: &GameState, id| g.observe_units(Side::Commonwealth).into_iter().find(|v| v.id == id).unwrap().strength;
+        assert!(hidden(&g, inf).is_none() && hidden(&g, tank).is_none());
+
+        // die 5 with 2 planes (no bonus) → the §42.27 table reveals 2 battalion-equivalents.
+        match g.apply(Command::ReconHex { squadron: SquadronId(1), target, planes: 2, die: 5 }) {
+            Ok(CommandOutcome::ReconRevealed { revealed }) => assert_eq!(revealed.len(), 2),
+            other => panic!("unexpected: {other:?}"),
+        }
+        // Now the Commonwealth sees both units' strength; the Axis view is unchanged.
+        assert!(hidden(&g, inf).is_some() && hidden(&g, tank).is_some(), "§42.27 revealed strength to the flier");
+        let axis_sees = g.observe_units(Side::Axis).into_iter().find(|v| v.id == inf).unwrap().strength;
+        assert!(axis_sees.is_some(), "the Axis owns the unit, so it always sees its own strength");
     }
 
     #[test]
@@ -6598,7 +7611,7 @@ mod tests {
         assert_eq!(*g.malta_level_used.get(&3).unwrap(), 2);
         // §44.25: Level I is unlimited — always usable.
         for _ in 0..5 {
-            assert!(matches!(g.apply(avail(1)), Ok(_)));
+            assert!(g.apply(avail(1)).is_ok());
         }
         // A level marked "na" for the scenario is not allowed at all (Graziani's Level II).
         g.scenario_name = "Graziani's Offensive".to_string();
@@ -6661,10 +7674,7 @@ mod tests {
             grp.refitted = grp.count;
             grp.ready = grp.count;
         }
-        assert!(matches!(
-            g.apply(Command::TransferSquadron { squadron: SquadronId(3), to: MedBaseDest::Africa { hex: afr } }),
-            Ok(_)
-        ));
+        assert!(g.apply(Command::TransferSquadron { squadron: SquadronId(3), to: MedBaseDest::Africa { hex: afr } }).is_ok());
         g.phase = Phase::LandSupportAir;
         assert_eq!(
             g.apply(Command::DesignateCap { squadron: SquadronId(3), center: afr, cap_type: crate::reference::aircraft::CapType::Offensive, planes: 4 }),
@@ -6780,10 +7790,7 @@ mod tests {
             g.advance_phase();
         }
         // A Commonwealth offensive CAP of 4 fighters covers the target (§40.23 air ZOC).
-        assert!(matches!(
-            g.apply(Command::DesignateCap { squadron: SquadronId(3), center: target, cap_type: CapType::Offensive, planes: 4 }),
-            Ok(_)
-        ));
+        assert!(g.apply(Command::DesignateCap { squadron: SquadronId(3), center: target, cap_type: CapType::Offensive, planes: 4 }).is_ok());
 
         let abort = |escort| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
@@ -6838,10 +7845,7 @@ mod tests {
             g.advance_phase();
         }
         // A Commonwealth offensive CAP covers the target so a screen is required for the abort.
-        assert!(matches!(
-            g.apply(Command::DesignateCap { squadron: SquadronId(3), center: target, cap_type: CapType::Offensive, planes: 4 }),
-            Ok(_)
-        ));
+        assert!(g.apply(Command::DesignateCap { squadron: SquadronId(3), center: target, cap_type: CapType::Offensive, planes: 4 }).is_ok());
         // Abort 4 of 12 (sufficient escort screen); the other 8 press on and resolve.
         match g.apply(Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
@@ -6940,7 +7944,7 @@ mod tests {
         // With no §37.4 chart loaded, a Box squadron has no computable flight distance.
         assert_eq!(g.apply(bomb(derna)), Err(CommandError::TargetOutOfRange));
         // §37.4: Crete→Derna is 27 hexes (Ju.88D range 118) → the mission flies.
-        g.reference.load_air_distance(include_str!("../../../data/reference/air-distance.ron")).unwrap();
+        g.reference_mut().load_air_distance(include_str!("../../../data/reference/air-distance.ron")).unwrap();
         assert_eq!(g.box_flight_distance(MedBase::Crete, derna), Some(27));
         assert!(matches!(g.apply(bomb(derna)), Ok(CommandOutcome::BombingMission(_))));
         // A target far past every reference point exceeds the Ju.88D's 118-hex range.
@@ -7288,7 +8292,7 @@ mod tests {
 
         let refs = ReferenceData::new();
         let mut g = GameState::new(refs, 1);
-        g.reference.load_aircraft_refit(include_str!("../../../data/reference/aircraft-refit.ron")).unwrap();
+        g.reference_mut().load_aircraft_refit(include_str!("../../../data/reference/aircraft-refit.ron")).unwrap();
         let mut sq = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Fighter, "JG 27", 5, Some(HexCoord::new(2, 2)));
         sq.add_planes("Bf.109F", AircraftClass::Fighter, 12, 1);
         g.sgsus.insert(SquadronId(1), sq);
@@ -7780,7 +8784,7 @@ mod tests {
         // §20.66 per-Game-Turn cap is 12: 10 already planned this turn, so 3 more is too many...
         assert_eq!(g.apply(plan("Infantry", 3)), Err(CommandError::ProductionRateExceeded));
         // ...but 2 more fits (10 + 2 = 12).
-        assert!(matches!(g.apply(plan("Infantry", 2)), Ok(_)));
+        assert!(g.apply(plan("Infantry", 2)).is_ok());
 
         // Next Game-Turn the per-turn window resets (12 available again), but the lifetime total
         // (400) is enforced across the whole game.
@@ -9282,11 +10286,13 @@ mod tests {
         );
         g.unit_mut(target).unwrap().location = Some(crate::state::unit::UnitLocation::OnMap(target_hex));
 
-        // Dice 66 (row 65,66), col 4 -> 9 Damage Points; AP 3 -> ceil(9/3)=3 TOE removed.
+        // Dice 66 (row 65,66); the phasing Commonwealth attacker fires one row lower (§14.6),
+        // row 63,64 — col 4 -> 9 Damage Points on both rows here; AP 3 -> ceil(9/3)=3 TOE removed.
         let out = g.resolve_anti_armor_with_dice(&[attacker], target_hex, 66);
         assert_eq!(out.raw_points, 35);
         assert_eq!(out.actual_points, 4);
         assert_eq!(out.dice, 66);
+        assert!(out.phasing_penalty, "§14.6: phasing player fires one row lower");
         assert_eq!(out.damage, 9);
         assert_eq!(out.armor_toe_removed, 3);
 
@@ -9295,6 +10301,173 @@ mod tests {
             _ => unreachable!(),
         };
         assert_eq!(remaining, 1);
+    }
+
+    #[test]
+    fn non_phasing_defensive_anti_armor_14_12() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        // §14.12: the non-phasing player may fire Anti-Armor at the phasing armor assaulting it.
+        // The AntiArmor command is symmetric (not gated to the phasing player), so a non-phasing
+        // defender simply issues it against the phasing armor's hex.
+        let mut g = GameState::new(combat_refs(), 3);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Axis; // Axis is phasing; the Commonwealth gun fires defensively
+        let atk_hex = HexCoord::new(0, 0);
+        let def_hex = HexCoord::new(1, 0);
+        g.map.set_hex(atk_hex, HexTerrain::Clear);
+        g.map.set_hex(def_hex, HexTerrain::Clear);
+        // Phasing Axis tanks in def_hex; a non-phasing CW anti-tank gun adjacent in atk_hex.
+        let tanks = g.spawn_unit(Nationality::Italian, "tank", "M13", Composition::Weapons { groups: vec![WeaponGroup { system: "M 13/40".into(), count: 4 }] });
+        g.unit_mut(tanks).unwrap().location = Some(UnitLocation::OnMap(def_hex));
+        let gun = g.spawn_unit(Nationality::Commonwealth, "x", "AT", Composition::Weapons { groups: vec![WeaponGroup { system: "6-pounder".into(), count: 5 }] });
+        {
+            let u = g.unit_mut(gun).unwrap();
+            u.location = Some(UnitLocation::OnMap(atk_hex));
+            u.ammo = 20;
+        }
+        let before = match &g.unit(tanks).unwrap().composition { Composition::Weapons { groups } => groups[0].count, _ => unreachable!() };
+        let out = g.apply(Command::AntiArmor { attackers: vec![gun], target_hex: def_hex, withheld: vec![] });
+        assert!(matches!(out, Ok(CommandOutcome::AntiArmor(_))), "non-phasing AA fire resolves: {out:?}");
+        let after = match &g.unit(tanks).unwrap().composition { Composition::Weapons { groups } => groups[0].count, _ => unreachable!() };
+        assert!(after < before, "§14.12 defensive fire damaged the phasing armor");
+    }
+
+    #[test]
+    fn anti_armor_withheld_armor_immune_14_21() {
+        use crate::reference::units::Side;
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        // Two Italian tank units in the target hex; the defender withholds one (§14.21), so only
+        // the committed unit takes Anti-Armor damage.
+        let mut g = GameState::new(combat_refs(), 1);
+        g.active_player = Side::Axis; // CW attacker is non-phasing (no §14.6 penalty)
+        let hex = HexCoord::new(0, 0);
+        let atk = g.spawn_unit(
+            Nationality::Commonwealth, "gun", "AT bn",
+            Composition::Weapons { groups: vec![WeaponGroup { system: "6-pounder".into(), count: 5 }] },
+        );
+        let committed = g.spawn_unit(Nationality::Italian, "tank", "committed", Composition::Weapons { groups: vec![WeaponGroup { system: "M 13/40".into(), count: 4 }] });
+        let withheld = g.spawn_unit(Nationality::Italian, "tank", "withheld", Composition::Weapons { groups: vec![WeaponGroup { system: "M 13/40".into(), count: 4 }] });
+        for id in [committed, withheld] {
+            g.unit_mut(id).unwrap().location = Some(UnitLocation::OnMap(hex));
+        }
+
+        // With `withheld` excluded, dice 66 (9 damage, AP 3) removes 3 TOE — all from the committed
+        // unit; the withheld unit is untouched.
+        let out = g.resolve_anti_armor_core(&[atk], hex, 66, &[withheld]);
+        assert_eq!(out.armor_toe_removed, 3);
+        let committed_left = match &g.unit(committed).unwrap().composition {
+            Composition::Weapons { groups } => groups[0].count, _ => unreachable!(),
+        };
+        let withheld_left = match &g.unit(withheld).unwrap().composition {
+            Composition::Weapons { groups } => groups[0].count, _ => unreachable!(),
+        };
+        assert_eq!(committed_left, 1, "committed unit absorbed all 3 losses");
+        assert_eq!(withheld_left, 4, "§14.21 withheld unit is immune to Anti-Armor fire");
+    }
+
+    #[test]
+    fn destroyed_tank_markers_and_capture_14_46() {
+        use crate::reference::units::Side;
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut g = GameState::new(combat_refs(), 1);
+        g.active_player = Side::Axis; // CW gun is the non-phasing firer (no §14.6 row penalty)
+        let hex = HexCoord::new(0, 0);
+        let atk = g.spawn_unit(
+            Nationality::Commonwealth, "gun", "AT bn",
+            Composition::Weapons { groups: vec![WeaponGroup { system: "6-pounder".into(), count: 5 }] },
+        );
+        let _ = atk;
+        let target = g.spawn_unit(
+            Nationality::Italian, "tank", "tank bn",
+            Composition::Weapons { groups: vec![WeaponGroup { system: "M 13/40".into(), count: 4 }] },
+        );
+        g.unit_mut(target).unwrap().location = Some(UnitLocation::OnMap(hex));
+
+        // Dice 66, col 4 -> 9 Damage; AP 3 -> 3 TOE removed -> 3 Destroyed Tank Markers (§14.46),
+        // owned by the tanks' side (Axis) until captured.
+        let out = g.resolve_anti_armor_with_dice(&[atk], hex, 66);
+        assert_eq!(out.armor_toe_removed, 3);
+        let marker = g.captured_equipment.iter().find(|e| e.destroyed_tank).expect("a destroyed-tank marker");
+        assert_eq!(marker.captor, Side::Axis, "§14.46 markers start owned by the tank's side");
+        assert_eq!(marker.system, "M 13/40");
+        assert_eq!(marker.count, 3);
+
+        // §14.52: a Commonwealth unit now controls the hex (no Axis unit present) — the markers are
+        // captured (captor flips to Commonwealth).
+        g.unit_mut(target).unwrap().location = None; // the destroyed Italian unit leaves the hex
+        let cw = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 4 });
+        g.unit_mut(cw).unwrap().location = Some(UnitLocation::OnMap(hex));
+        g.resolve_destroyed_tank_capture();
+        let marker = g.captured_equipment.iter().find(|e| e.destroyed_tank).expect("marker persists");
+        assert_eq!(marker.captor, Side::Commonwealth, "§14.52 enemy control captures the markers");
+    }
+
+    #[test]
+    fn anti_armor_phasing_row_penalty_14_6() {
+        use crate::reference::crt::AntiArmorCrt;
+        use crate::reference::units::Side;
+        use crate::state::game::GameState;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+        use crate::state::map::HexCoord;
+
+        // The row-shift helper: down one row, top row (11,12) unaffected.
+        assert_eq!(AntiArmorCrt::phasing_row_dice(66), 63); // row 65,66 -> row 63,64
+        assert_eq!(AntiArmorCrt::phasing_row_dice(15), 13); // row 15,16 -> row 13,14
+        assert_eq!(AntiArmorCrt::phasing_row_dice(12), 11); // row 11,12 -> itself
+        assert_eq!(AntiArmorCrt::phasing_row_dice(11), 11);
+
+        let mut g = GameState::new(combat_refs(), 1);
+        let hex = HexCoord::new(0, 0);
+        // 3× 6-pounder (anti-armor 7) -> raw 21 -> actual 2.
+        let atk = g.spawn_unit(
+            Nationality::Commonwealth, "gun", "AT bn",
+            Composition::Weapons { groups: vec![WeaponGroup { system: "6-pounder".into(), count: 3 }] },
+        );
+        let make_target = |g: &mut GameState| {
+            let t = g.spawn_unit(
+                Nationality::Italian, "tank", "tank bn",
+                Composition::Weapons { groups: vec![WeaponGroup { system: "M 13/40".into(), count: 4 }] },
+            );
+            g.unit_mut(t).unwrap().location = Some(UnitLocation::OnMap(hex));
+            t
+        };
+        let target = make_target(&mut g);
+
+        // Non-phasing (active player is the Axis, so the CW attacker is the non-phasing firer):
+        // dice 15, row 15,16, col 2 -> 1 Damage Point, removes 1 TOE. No row penalty.
+        g.active_player = Side::Axis;
+        let np = g.resolve_anti_armor_with_dice(&[atk], hex, 15);
+        assert!(!np.phasing_penalty);
+        assert_eq!(np.actual_points, 2);
+        assert_eq!(np.damage, 1);
+        assert_eq!(np.armor_toe_removed, 1);
+
+        // Phasing (active player is the Commonwealth firer): dice 15 fires one row lower,
+        // row 13,14 col 2 -> 0 Damage Points, so no TOE is lost.
+        let mut g2 = GameState::new(combat_refs(), 1);
+        g2.active_player = Side::Commonwealth;
+        let atk2 = g2.spawn_unit(
+            Nationality::Commonwealth, "gun", "AT bn",
+            Composition::Weapons { groups: vec![WeaponGroup { system: "6-pounder".into(), count: 3 }] },
+        );
+        let _t2 = make_target(&mut g2);
+        let ph = g2.resolve_anti_armor_with_dice(&[atk2], hex, 15);
+        assert!(ph.phasing_penalty);
+        assert_eq!(ph.damage, 0, "§14.6 phasing row shift drops damage below the threshold");
+        assert_eq!(ph.armor_toe_removed, 0);
+
+        let _ = target;
     }
 
     #[test]
@@ -10080,7 +11253,7 @@ mod tests {
         // Spawn a German unit on the line and rail it. Import enough stock for 900 t/Stacking Point.
         let u = g.spawn_unit(Nationality::German, "i", "pz gren", Composition::Organic { current_toe: 8 });
         g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(hs[1]));
-        let sp = g.effective_stacking_points(u) as u32;
+        let sp = g.effective_stacking_points(u);
         assert!(sp >= 1, "the mover must not be a shell for this test");
         while g.axis_rolling_stock_tons < 900 * sp {
             assert!(g.import_rolling_stock(hs[0]));
@@ -10686,8 +11859,10 @@ mod tests {
         g.phase = Phase::Patrol;
         g.active_player = Side::Commonwealth;
         let (a, b) = (HexCoord::new(5, 5), HexCoord::new(8, 5));
-        g.map.set_hex(a, HexTerrain::Clear);
-        g.map.set_hex(b, HexTerrain::Clear);
+        // Clear the whole a→b corridor so a legal ≤5-hex Patrol path exists (§16.22).
+        for c in 5..=8 {
+            g.map.set_hex(HexCoord::new(c, 5), HexTerrain::Clear);
+        }
 
         // Commonwealth Recce battalion ("hh") at A with ammo + fuel for the patrol (§16.16).
         let recce = g.spawn_unit(Nationality::Commonwealth, "hh", "Recce", Composition::Organic { current_toe: 8 });
@@ -10936,6 +12111,10 @@ mod tests {
         assert_eq!(g.apply(Command::FormGuard { group_hex: h }), Ok(CommandOutcome::GuardFormed));
         assert_eq!(g.apply(Command::FormGuard { group_hex: h }), Ok(CommandOutcome::GuardFormed));
         assert_eq!(g.unit(guardsrc).unwrap().total_toe(), 2); // two TOE became guards
+
+        // §51.17: each Guard Point costs 2 Stores per Game-Turn from the nearest dump (2 guards → 4).
+        assert_eq!(g.feed_guards(), 4);
+        assert_eq!(g.supply_dumps.iter().find(|d| d.location.hex() == Some(h)).unwrap().supply.stores, 4);
 
         // §28.13: escort the stack one hex; two guards cover 10 ≥ 6, so none escape.
         g.phase = Phase::TruckConvoy;

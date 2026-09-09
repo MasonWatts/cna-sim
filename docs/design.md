@@ -248,7 +248,7 @@ Settled foundations (no longer open):
   Logistics systems (D15, superseding the §32 abstract mode named in §5) are now
   substantially built. §5's phasing is the original plan; this section is ground truth.
 
-The engine **builds clean and 326 tests pass** across the workspace (unit tests in each
+The engine **builds clean and 366 tests pass** across the workspace (unit tests in each
 module plus integration tests in `lib.rs`). `cargo run --bin demo` narrates the three
 land-combat systems end to end. The layering is consistent throughout: **reference**
 (`reference/*.rs`, pure chart data from RON) → **rules** (`rules/*.rs`, pure stateless
@@ -309,10 +309,13 @@ replenishment. The **declare-A-or-B choice** is a real command (`DeclareInitiati
 defaulting to initiative-player-first. **Victory** is implemented as the **§64.7 campaign
 victory** (geographical occupation points §64.73 requiring an in-supply combat unit; §64.74
 unused-replacement VP; §64.75 CW withdrawal VP; §64.76 band), with §64.71/§64.72 auto-win
-including the one-full-turn objective-hold check. (The scenario-level §60.8 victory is not
-separately modeled.)
+including the one-full-turn objective-hold check. The **§60.81 Scenario-1 victory** ("Graziani's
+Offensive") is also modeled: `scenario1_victory(side)` returns the highest level (Tactical / Decisive
+/ Strategic) a side holds, each level requiring a supplied combat unit on its set of named objective
+hexes (Tobruk, Sollum, Halfaya, Siwa, Mersa Matruh, Cairo/Alexandria, …). The specific §60.81 supply
+trace is approximated by the general §64.73 adequacy test.
 
-### 8.3 Command boundary — ~90 commands, phase-gated
+### 8.3 Command boundary — ~100 commands, phase-gated
 `GameState::apply` covers land movement/combat, air, naval, logistics, and construction. Land:
 `MoveStep`/`FormationMove`, `Barrage`/`AntiArmor`/`CloseAssault`/`Retreat`, `React`,
 `MoveOffMap`, `DesignateReserve`, `RailMove`/`RailMoveSupply` (both sides — Axis rails under
@@ -363,7 +366,10 @@ Cairo/Helwan, Alexandria; the minor Amiriya/Abougir/Deghelia areas are a data ga
 co-located §17.35 instruction battalion (fully trained, ≥¼ TOE, matching arm); six uninterrupted
 CP-free stages (§17.33/§17.34, tracked in `training_progress`) raise Basic Morale one step toward
 the reference. This closes the §27.12 "trained to maximum Morale" gate on desert-raider formation.
-Combat deferrals: §15.35 two-terrain-hexside exception and multi-hex defenders.
+The §15.35 hexside rules are modeled in full: the defender benefits from only one *type* of
+hexside except when a single crossed edge carries two terrain features (the rare wadi-along-slope
+case), where both apply. Close Assault always targets one hex's whole stack (§15.23), so there are
+no multi-hex defenders.
 
 ### 8.5 Air game — rules & reference complete; resolution partial
 The §33–46 ruleset is present as a large, thoroughly-cited pure-rules layer (`rules/air.rs`)
@@ -390,8 +396,10 @@ only; hex-placed convoys aren't modeled), and **City/Fortification** knocks a *p
 down one level (§41.37; units in a major city are shielded from bombing until its level ≤1, §41.31);
 the ship (§41.34) and air-facility (§41.36) effects have dedicated commands, and **Road/Railroad**
 (§41.38) destroys the feature on a positive result (a Road degrades to a track/UnfinishedRoad,
-rebuildable §24.53; a Railroad hex's edges become DestroyedRailroad, rebuildable §24.63). Only the
-static §25.12 major-city Fortification Level (no damage tracker) remains unmodelled.
+rebuildable §24.53; a Railroad hex's edges become DestroyedRailroad, rebuildable §24.63). The static
+§25.12 major-city Fortification Level is now damageable too: §41.37 bombing knocks down whichever
+level is effective (a placed fort, else the city's inherent level via `city_fort_damage`), so a
+bombed-down city eventually drops to ≤1 and stops shielding its units (§41.31).
 The `Strafe` command (§40.5–40.8) flies a map-validated strafing mission and resolves it on the
 Strafing Table with the §40.8 column shift, applying the effect for **supply dumps** (§40.64, r×10%
 of each commodity destroyed), **water pipelines** (§40.67, destroyed on r≥2), **infantry** (§40.6,
@@ -441,8 +449,12 @@ bomber returns fire at each attacker (§45.34). Escort losses are applied to the
 (§39.3):** a bombing mission may set `abort` — before any combat the bombers turn back (planes fly,
 bombload dumped, no interception/flak/effect) if they qualify (§39.36/§39.37 a sufficient escort
 screen — ≥25% of the covering CAP — or §39.35 superior Maneuver); an aborted mission does not engage
-or consume the CAP (partial abort, §39.34, is supported — see below). Land-unit air
-recon waits on fog-of-war. **Malta strategic-air commitment (§43/§44.41) is modeled:** each Axis
+or consume the CAP (partial abort, §39.34, is supported — see below). **Land-unit air recon
+(§42.27)** is modeled: the `ReconHex` command flies a recon-capable squadron (§42.21) to a target
+hex, validates range/weather, rolls the §42.27 table (+1 per four planes) for how many enemy
+battalion-equivalents are revealed — in the §42.24a order Tanks→Infantry→Artillery — and records the
+reveal in `recon_revealed` so `observe_units` shows those enemy units' TOE Strength to the flier for
+that Operations Stage (§8.10 fog-of-war). **Malta strategic-air commitment (§43/§44.41) is modeled:** each Axis
 Malta Availability Level (I–IV) is limited to the scenario's Game-Turn count (the §44.41 chart),
 tracked in `malta_level_used` and gated at `DetermineMaltaAvailability` (Level I unlimited, §44.25);
 SGSUs carry a §43.0 Mediterranean base region (`med_base`: Italy/Sicily or Crete, else on-map
@@ -451,10 +463,13 @@ Africa), and a raid's **absolute plane count** is computed from the in-play Ital
 on-map Africa with one Operations Stage of transit (`transfer_remaining`; a squadron in transit may
 not fly), refusing any move that would drop German strategic bombers below the §43.11 75%-Med
 requirement — date-aware: before Game-Turn 35 it enforces §43.12 (≥75% of all German bombers in
-Italy/Sicily), and from GT35 §43.13 (≥50% of strategic bombers in Crete). Still open — all governing
-flight *from* the Boxes, which awaits Box-based flight execution: the §43.23 Crete→Suez timing and
-§43.24/§43.25 Box-bomber CAP coordination; §43.21 auto-supply is only implicit (a Box-based SGSU has
-no dump, so upkeep is skipped). (Both airborne formations are in the loaded OBs with their
+Italy/Sicily), and from GT35 §43.13 (≥50% of strategic bombers in Crete). Flight *from* the Boxes is
+executed: `flight_distance` routes a Box-based squadron's missions via the §37.4 chart
+(`box_flight_distance`), the bombing/CAP/recon commands accept a Box-based squadron (`squadron_is_based`
+covers `med_base`), §43.23 Crete→Suez timing (`crete_suez_window`) and §43.24/§43.25 Box-bomber escort
+coordination are enforced, and §43.21 Box auto-supply is explicit (`consume_sgsu_upkeep` marks a
+Box squadron supplied and draws no upkeep). Cargo/unit missions (transport, airdrop) still require an
+on-map base, since their cargo is drawn from the base's dumps. (Both airborne formations are in the loaded OBs with their
 battalions flagged `airdroppable: true` per the §42.41 OA sheets — the Italian **185 Folgore**
 (`data/ob/italian.ron`) and the German **Fallschirmjäger-Brigade Ramcke** (`data/ob/german.ron`) —
 so `AirdropUnit` is exercisable against real formations on both sides.) A **pilot
@@ -521,8 +536,10 @@ with requirement kinds collapsed onto the four pool classes — using a unit→r
 (`conversion_row_for_unit`). Its Machinegun / Heavy-Weapons / recce / Commando / Bersaglieri /
 Paratroop detection was **verified against the §4.46 counter glyphs** transcribed from PDF p182–185
 (`docs/source-materials/{italian,german,commonwealth}-counters-4.46.md`); the transcription confirmed
-every MG/HW unit in the three OBs is named accordingly and fixed the German "Machinegewehr" gap. A
-plain (non-armored) recce battalion still defaults to the Armored-Reconnaissance row (residual). With
+every MG/HW unit in the three OBs is named accordingly and fixed the German "Machinegewehr" gap. The
+recce row is now derived from composition: a recce unit carrying armor-protected points is Armored
+Reconnaissance, while an Organic/unarmored recce unit is the light Motorcycle/Camel/Reconnaissance
+row (no longer a blanket "assume armored" default). With
 no §20.3 chart loaded it falls back to legacy 1:1. **Axis Replacement-Point and Truck-Point tonnage
 consume convoy capacity (§20.62):** at planning time (two turns out, before the tonnage die is
 rolled, §20.63/§56.21) `PlanProduction`/`ProduceAxisTrucks` reject an order whose tonnage — added to
@@ -549,8 +566,9 @@ possible across four Game-Turns (GT+4…GT+7). **§20.74 OpStage division** is a
 Commonwealth production: within each arrival Game-Turn the arriving Truck Points / Infantry
 Replacement Points are divided among the three OpStages as evenly as possible (Axis production is
 exempt — §20.62 lets it arrive in any one OpStage). (The production item→class map's
-SP-gun/tankette Tank calls were owner-confirmed 2026-08-29; the §20.3 absorb classifier's
-special-infantry/armored-car distinctions remain provisional.)
+SP-gun/tankette Tank calls were owner-confirmed 2026-08-29. The §20.3 absorb classifier resolves
+special-infantry rows by the verified §4.46 names and recce rows by composition; an "Armored Car"
+still needs an explicit name, absent an armored-car weapon kind in the data.)
 
 ### 8.8 Scenario, map & OB
 The Scenario-1 order of battle and the full map are in: all five map sections (A–E) digitized,
@@ -573,6 +591,32 @@ category-guessed ids. Both airborne formations (Italian **185 Folgore**, German
 side has an `AirdropUnit` formation. The verbatim transcriptions live in
 `docs/source-materials/*-ob-4.44*.transcribed.md`.
 
+**Two scenarios are wired end-to-end.** `data/scenarios/italian-offensive.ron` is Scenario 1 (§60);
+`data/scenarios/campaign.ron` is the **full Campaign Game (§64)** — per §64.3 it uses the §60.0
+Sept-1940 initial deployment and then runs on (GT1→GT111, §64.2), with General Rommel arriving
+Game-Turn 26 and the full reinforcement roster: every OB formation whose units carry explicit `Turn`
+arrivals (the Deutsches Afrika Korps and the later Italian/Commonwealth formations) is listed as a
+`reinforcement` and enters at its §20.14/§20.15 debarkation point on its OB schedule. The
+`campaign_game_deploys_and_reaches_rommel` integration test builds the whole engine, confirms the
+start force is Italian + Commonwealth only, and advances past Rommel's arrival with the DAK entering
+on schedule. The German roster is now complete: two stray `Deployed` units — Ramcke's I Bn (Kroh) and
+the II/155 reassignment counter — were dated from the §4.44c OA sheet (1/91 and the Nov-1941 2/58
+reassignment), so **Ramcke and the Non-Divisional Artillery pool now enter on schedule** rather than
+wrongly at Sept-1940; the **Kampfgruppen HQ's** stay omitted as a dynamic form-at-will pool.
+**D14 verification pass (2026-09-08) — closed.** Every `Deployed`-default unit in the Commonwealth
+and Italian OB was cross-checked, formation-scoped, against the §4.44a/§4.44b OA-sheet "Arrives"
+columns transcribed in `docs/source-materials/*-ob-4.44*.transcribed.md`. All are faithful: the
+Italian 10th Army was entirely in Libya in Sept 1940 (every garrison/division/pool correctly "D");
+6th Australian and 2nd New Zealand carry "D" HQs on their own sheets (footnoted "arrived early, in
+sections, not committed to battle for months"); 70th Infantry matches its sheet exactly (HQ 2/21,
+16th Bde `Deployed` on loan to 4th Indian, 23rd Bde 3/51). **Zero OB corrections were required** —
+unlike the German fixes, these were not transcription gaps. Note that 70th Infantry, 6th Australian,
+and 2nd New Zealand are intentionally *absent* from `campaign.ron`: the on-map start force is the
+§60.41 CW deployment chart (7th Armoured + 4th Indian + the border battalions), and the §4.44 "D" is
+a master-OB availability marker gated by each scenario's own deployment chart — it does not by itself
+place a formation. The loader enforces this: `register_pending_arrivals` only schedules `Arrival::Turn`
+units, so a reinforcement-only formation's `Deployed` units are never spuriously placed.
+
 ### 8.9 Desert raiders & commandos (§27) — implemented
 Desert raiders are a bespoke counter (`Raider`, LRDG ≤2 Commonwealth / DSA ≤1 German): a non-combat
 Recce vehicle with a 50-CP allowance, no ZOC/stacking, formed from a Recce/AC TOE point (§27.13,
@@ -592,10 +636,14 @@ with the §27.84 three-stage supply window and raids grounded Axis planes (`Raid
 (§27.88). §27.59 convoy interception (`InterceptTruckConvoy`) lets a raider within four hexes of a
 passing convoy attack it in the Truck Convoy Phase. Positions are tracked for real; the §27.32
 hidden-movement concealment is now enforced at the *view* layer (§8.10 — a hidden raider is absent
-from the enemy's observation). Flagged simplifications (D): §27.12 "trained to
-max Morale" precondition; per-hex fuel accounting (§27.38); all-replacement convoy auto-elimination
-(§27.58); facility/plane side-tagging (§27.53/54); and §27.59 range as hex distance ≤4 (proxy for
-"4 Movement CPs"). The §27.93 SAS Raid Table (0/10/25/25/33/50 by d6) is owner-confirmed (2026-08-30).
+from the enemy's observation). Faithful details now closed: §27.12 "trained to max Morale" is
+enforced at `raider_source_ok`; §27.38 raiders consume no per-hex fuel (only the §27.35 flat
+allotment), matching the rule; §27.58 replacement-cargo now resolves both the "any truck" case (+1
+to the roll, a 6 eliminates the raider) and the "all trucks" case (raider auto-eliminated, no truck
+losses); §27.54 plane raids are side-tagged to enemy SGSUs and §27.53 airfields are non-denominational
+by §36.15 (no owner to tag — the raid gate is airfield-present / no enemy combat units / not a major
+city). Remaining simplification: §27.59 range as hex distance ≤4 (proxy for "4 Movement CPs"). The
+§27.93 SAS Raid Table (0/10/25/25/33/50 by d6) is owner-confirmed (2026-08-30).
 
 ### 8.10 Fog of war (§3.5 / D5) — per-side observation layer implemented
 The core `GameState` holds ground truth; `crate::state::view` derives a **thin per-side view** of
@@ -617,6 +665,134 @@ recon.) The view layer now covers every major hidden-info category — units, du
 minefields, wells. No command *enforces* acting only on observed info (rules resolution legitimately
 uses ground truth); consuming the view is a Phase-2 agent concern.
 
+**First Phase-2 primitives (agent support).** `dry_run(&cmd)` tests a command against the command
+boundary without mutating state (clone-and-apply), the reusable "is this legal / what would it do?"
+oracle. `legal_move_steps(side)` and `legal_commands(side)` enumerate a side's legal Movement &
+Combat actions (every single-hex move, plus a CloseAssault/AntiArmor against each adjacent
+enemy-held hex), each candidate validated through `dry_run` so the engine — not a re-implemented
+gate — is the source of truth. A seeded campaign **fuzzer** (`campaign_fuzz_survives_random_play`)
+drives tens of thousands of random commands through several Game-Turns to confirm the command
+boundary never panics on illegal input. To make `dry_run`/rollouts cheap, `Map` and `ReferenceData`
+are held behind `Rc` with copy-on-write in their mutators, so cloning a whole `GameState` is O(1)
+(~12µs) rather than a deep copy of the chart/OB layer and the 7,100-hex map — a probing clone shares
+both until something writes to the map. The residual per-move cost is `apply` itself (movement/ZOC
+resolution), not the clone. Remaining enumerator extensions (Barrage, reorg/logistics/air categories)
+are future work.
+
+**Agents (Phase 2 kickoff), `crate::agent`.** An `Agent` trait (`choose(game, side) -> Option<Command>`)
+picks the next command to issue, always from `legal_commands` so an agent can only attempt legal
+actions. Two reference players ship: `RandomAgent` (uniform over the legal set) and `GreedyAgent`
+(assault an adjacent enemy if able, else advance the piece that gets closest to the nearest enemy);
+both are seed-deterministic with their own PRNG separate from the game RNG. `self_play` drives two
+agents against each other through the Sequence of Play — during each Movement & Combat phase the
+active side's agent issues commands (validated by `apply`) up to a per-phase cap, and every other
+phase is driven by `advance_phase`. A third player, `LookaheadAgent`, does a one-ply search: for
+each legal command it clones, applies, and scores the result with `GameState::heuristic_value(side)`
+(material advantage — own minus enemy TOE, weighted — minus a closeness term that presses toward
+contact), choosing the command that most improves its position and yielding when nothing strictly
+does. The O(1) clone makes evaluating the whole action set per decision cheap. `legal_commands` now
+also enumerates Barrage (one candidate per target class in a hex). Two known limits point to the next
+step: the eval scores a single *sampled* combat/breakdown outcome (averaging rollouts would de-noise
+it — e.g. it correctly declines to advance an unreliable tank that broke down on the probe roll), and
+goals/supply/air/logistics actions and deeper search are still to come.
+
+`RolloutAgent` is the flat Monte-Carlo answer to that noise: for each legal command it runs N
+rollouts — clone, **`reseed_rng`** the clone (independent dice per sample; a bare clone would replay
+identically), apply the command, play up to `depth` further random plies, then score with
+`heuristic_value` — and picks the command with the best *average*, so one unlucky/lucky roll no longer
+swings the decision. `depth = 0` is pure immediate-outcome averaging; larger `depth` adds shallow
+lookahead. All rollouts run on throwaway clones, so game determinism is untouched.
+
+Building these agents also flushed out a real movement bug (the value of exercising the command
+boundary this hard): `MoveStep` did not forbid entering an **enemy-occupied** hex — the rollout agent
+gleefully "advanced" onto the enemy to zero its distance term. Fixed in `move_counter` per §8.13 (a
+unit attacks an enemy-held hex, it does not enter it); non-combat enemy markers still don't block.
+
+`MctsAgent` is the tree-search step up from flat rollouts: a UCT search that plans a whole Movement &
+Combat phase. Since the opponent does not act during your own M&C phase, planning is a single-agent
+search over sequences of your commands — tree edges are legal commands plus a **Pass**, a node is
+terminal at Pass or the `max_actions` depth cap. Stochastic transitions are handled by generating
+every node/rollout state on a **reseeded clone** (the tree samples chance rather than assuming it),
+rewards are `heuristic_value` at the rollout leaf, min/max-normalized to `[0,1]` for UCB1, and
+`choose` returns the most-visited root child's action (or Pass → yield). Each decision re-plans from
+the true state (open-loop), adapting to what the dice actually did. The engine now has five agents —
+random, greedy, 1-ply lookahead, flat Monte-Carlo rollout, and UCT — all sharing the `legal_commands`
+enumerator and the O(1) clone.
+
+`CrossPhaseMctsAgent` closes the last gap: an **adversarial UCT that spans multiple phases and models
+the opponent**. A tree node is a decision point (a Movement & Combat phase) tagged with whose decision
+it is; a command edge keeps that side acting, while a **Pass** edge advances the Sequence of Play
+(`advance_to_movement_combat`) to the next decision point — often the opponent's. Rewards are stored
+from the *root* side's perspective, and UCB exploits high values at root-decision nodes but *low* root
+values at opponent nodes (minimax via player-aware exploitation). Rollouts play random self-play across
+phases to a turn horizon, then score `heuristic_value(root)`; all states are reseeded clones, so chance
+is sampled and the live game is untouched. Bounded by `turn_horizon` / `max_depth` / `rollout_steps`.
+The engine now carries six agents from trivial to adversarial-search.
+
+**Richer evaluation.** `heuristic_value(side)` combines five terms: **material** (own − enemy TOE,
+weight 100, dominant), **objectives** (net §64.73 Geographical-Occupation VP of the victory cities the
+side holds with an in-supply combat unit vs. the enemy's, weight 60 — the actual win condition),
+**cohesion** (own − enemy summed Cohesion, weight 1), a **supply** penalty per own out-of-supply
+combat unit (§64.73 adequacy), and the **closeness** tie-breaker (advance toward contact). So every
+agent now trades off strength, ground, order, and logistics rather than raw TOE alone. Remaining AI
+work: progressively widen `legal_commands` to the reorg/logistics/air action categories so search can
+plan those too, and tune the term weights via self-play.
+
+**Phase-aware enumerator.** `legal_commands` now dispatches by phase: Movement & Combat yields
+moves + close-assault + anti-armor + barrage (as before); the **Organization phase** yields a bounded
+logistics/reorg set — refuel and rearm from a co-located dump, detach from a parent, and attach to a
+co-located friendly unit — each validated through `dry_run`. The agents' decision-phase gate and the
+`self_play` driver were widened to act in both phases, so a value-based agent will, e.g., refuel an
+out-of-supply unit in the Organization phase to clear the eval's supply penalty.
+
+The enumerator now covers three more phases on the same `dry_run`-validated pattern: **Land Support
+Air** (air reconnaissance §42.27 over enemy hexes, offensive CAP §40.2 over friendly hexes, per ready
+squadron), **Truck Convoy** (move each free truck convoy §8.98 and escort each prisoner stack §28.13
+one hex), and **Repair** (repair each piece of captured equipment §28.3/§22.5). Agents and the
+`self_play` driver act in all five decision phases now, so a game can be driven end-to-end by agents
+across the Sequence of Play.
+
+**Enumerator depth** fills those categories in: air now fans out **bombing** (`FlyBombingMissionAt`
+over the land-effect §41.3x missions) and **strafing** (`Strafe` over the §40.5x ground targets)
+against each enemy hex, on top of recon/CAP; **Repair** adds the die-carrying `Repair` for a unit's
+broken-down trucks / destroyed tanks / recce points (a representative roll — legality is roll-
+independent) alongside captured-equipment repair; and two naval phases are enumerated — **Commonwealth
+Fleet** (`RepairShip`, `AssignShip` to Alexandria/Valetta per ship) and **Naval Convoy Arrival**
+(`DeliverConvoy` per pending convoy). Every candidate is still `dry_run`-validated, so only legal,
+in-range, capable actions survive. Agents act across all seven decision phases. What's left is mostly
+parameter breadth plus tuning the eval weights via self-play.
+
+**Parameter breadth.** Bombing missions now fan out over **escorts** — unescorted plus each available
+fighter squadron (§45), with `dry_run` rejecting ineligible escorts (e.g. the §43.24 Crete rule); and
+the Fleet enumerator adds **at-sea bombardment stations** — `AssignShip::AtSea` to each sea hex off an
+enemy-held coast, alongside the port/repair options. Convoy *planning* (`PlanConvoy`: lane +
+destination + four tonnage figures + arrival turn) is deliberately **not** brute-enumerated — it is a
+strategic choice better made by a purpose-built policy than by fanning out a huge parameter grid;
+`legal_commands` stays the tactical-action enumerator. Off-shore-bombardment target selection and
+per-plane bombload are the remaining narrow gaps. Net: agents can now attack from the air with escort,
+maneuver the fleet for shore support, and act in all seven decision phases.
+
+**Self-play eval-weight tuning.** The eval's term weights are now an `EvalWeights` struct
+(`heuristic_value_with`); `heuristic_value` delegates to the default blend, and `LookaheadAgent`
+carries its own weights (`with_weights`). `agent::tune_weights` runs greedy **coordinate ascent**:
+from the default weights it tries raising/lowering each of the five terms and keeps any change that
+improves `evaluate_weights` — the average `outcome_score` (a fixed, tuning-independent VP-then-material
+measure, so the objective doesn't move under it) of a `LookaheadAgent` using the candidate weights
+against a fixed default-weight opponent, over several seeds and both side assignments. It's a simple
+local search — a foundation for stronger optimisation (population methods, self-play against the
+current best, more games per evaluation, deeper agents) — and, thanks to the O(1) clone, evaluations
+are cheap: a game builder can hand out `template.clone()` rather than reloading the reference layer.
+
+The remaining **narrow enumerator gaps** are now filled: **off-shore bombardment** (`OffShoreBombard`
+— a heavy Commonwealth ship at sea shells an adjacent enemy-held hex, per target class, in Movement &
+Combat); **per-plane bombload** (each bombing candidate at a light and a heavy load, `dry_run` dropping
+over-capacity ones); and **convoy planning** as a bounded **policy** rather than a brute grid — one
+modest balanced supply convoy per Axis shipping lane to its destination, arriving after the §20.21
+delay (`legal_convoy_planning_commands`, Naval Convoy Schedule phase; full tonnage/destination
+optimisation stays a job for a purpose-built logistics planner). Agents act across eight decision
+phases. `legal_commands` is a broad, faithful action surface end to end; the remaining AI work is
+stronger optimisation (real self-play tuning runs, tuning the search agents), not more enumeration.
+
 ### 8.11 Patrols, reconnaissance & retreat-before-assault (§13 / §16)
 **§13 Retreat Before Assault** (`RetreatBeforeAssault`) — a non-phasing, unpinned unit (Cohesion
 > −26) voluntarily withdraws after barrages: ordinary movement (CP + Fuel, breakdown, §8.6
@@ -632,7 +808,7 @@ preconditions use per-stage `land_combat_this_stage` / `barraged_hexes_this_stag
 Tank Formations** (`PlaceDummyTank`) — a per-side bluff (10 Stores, ≤3/side, ≤1/hex, §16.42/43),
 eliminated by close assault or armorless anti-armor (§16.46). Range paths use hex-distance
 simplifications; the §16.45 dummy disclosure and §16.34 Prisoner-Point accounting fold into the
-defender's narration / the deferred §28 POW logistics.
+defender's narration / the §28 POW logistics (§8.13).
 
 ### 8.12 Reorganization (§19)
 Units carry both an `assigned_parent` (organizational membership, occupies TOE space even when not
@@ -671,10 +847,14 @@ nearest dump (§28.15, in the Stores Expenditure Stage), guarded by Guard Points
 TOE (`FormGuard`/`ReturnGuard`, §28.22), moved one hex at a time in the Truck Convoy Phase
 (`MovePrisoners`, CPA 8, §28.13) with escort (1 guard per 5, §28.17) — un-escortable excess escapes
 (§28.23) — and removed permanently at a Departure Point (`pow_departure_points`, §28.16). Escapes
-(§28.23–25): an unguarded stack escapes; escapees within eight hexes of a friendly unit rejoin and
-return as Infantry Replacement Points a month later (§28.24), and are recaptured if an enemy enters
-their hex (§28.25); the far-escapee autonomous movement/water-attrition is a documented simplification
-(owner decision 2026-08-31). Captured equipment is repaired via `RepairCapturedEquipment` (§28.3):
+(§28.23–25): an unguarded stack escapes; escapees within eight Capability Points (foot) of a friendly
+unit rejoin and return as Infantry Replacement Points a month later (§28.24), and are recaptured if an
+enemy enters their hex (§28.25). A **far** escapee (beyond 8 CP) now moves autonomously: each
+Operations Stage it steps one hex toward the nearest friendly combat unit over passable,
+non-enemy-occupied desert and, with no water source in its hex, loses 10% (rounded up) of its strength
+to thirst until it reaches safety, is recaptured, or dies out (§28.24). Prisoner Stores (§51.12) and
+Guard-Point Stores (§51.17, 2/point/Game-Turn) are drawn from the nearest dump.
+Captured equipment is repaired via `RepairCapturedEquipment` (§28.3):
 per §22.5 a repaired vehicle is "treated as Replacement Points for that type of unit ... except that
 they do not have to undergo Training", so it re-enters play as a **trained** Replacement Point pool of
 the matching class (Tank/Recce/Gun, from the weapon system's kind) at the hex, for the captor — usable

@@ -1,0 +1,168 @@
+// data/scenarios/campaign.ron
+//
+// The full Campaign Game (rules §64). Per §64.3 the campaign uses the §60.0 "Italian Offensive"
+// initial deployment (3rd week of September 1940, 1st OpStage of Game-Turn 1) and then runs — it
+// does NOT stop at Scenario 1's length — through the 3rd OpStage of Game-Turn 111 (§64.2), with
+// the full reinforcement schedule, production, convoys, and the §64.7 campaign victory conditions.
+//
+// STRUCTURE
+//   * `placements` / `units` — the §60.31/§60.41 Sept-1940 start force (identical to
+//     `italian-offensive.ron`; that IS the campaign's initial deployment, §64.3).
+//   * `rommel` — General Rommel arrives Game-Turn 26 (§64.2 "Desert Fox" date), the on-map Axis
+//     fallback hex Benghazi (A4827), since Tripoli is an off-map node.
+//   * `reinforcements` — every formation whose OB units all carry explicit `Turn` arrivals
+//     (the Deutsches Afrika Korps and the later Italian / Commonwealth formations). Each enters at
+//     its nationality debarkation point (§20.14 CW Cairo / §20.15 Axis Tripoli) on its OB schedule.
+//
+// OB-ARRIVAL FIXES: the German Ramcke brigade and the Non-Divisional Artillery pool each had one
+// stray `Deployed` unit (Ramcke's I Bn (Kroh); the II/155 reassignment counter) that wrongly put a
+// German unit on-map in Sept 1940. Those are now dated from the §4.44c OA sheet (I Bn 1/91; II/155
+// to the Nov-1941 2/58 reassignment), so both formations are all-`Turn` and enter here on schedule.
+// The **Kampfgruppen HQ's** are intentionally omitted: they are a dynamic pool the Axis forms and
+// disbands at will (§4.44c prose), not a scheduled arrival.
+//
+// D14 VERIFICATION (2026-09-08, closed): every `Deployed`-default unit in the CW/Italian OB was
+// cross-checked (formation-scoped) against the §4.44a/§4.44b OA-sheet "Arrives" columns and found
+// faithful — the Italian 10th Army was entirely in Libya Sept 1940, and 6th Australian/2nd NZ carry
+// "D" HQs on their own sheets, 70th Infantry matches exactly (HQ 2/21, 16th Bde on loan to 4th
+// Indian). No OB corrections were needed. 70th Inf / 6th Australian / 2nd NZ are intentionally NOT
+// listed here: the on-map start force is the §60.41 chart (7th Armoured + 4th Indian + border
+// battalions); §4.44 "D" is a master-OB availability marker gated by each scenario's deployment
+// chart, and the loader only schedules `Arrival::Turn` units for reinforcement-only formations.
+(
+    name: "Campaign Game",
+    game_turn: 1,
+    first_turn_initiative: Some(Axis),
+    // §31 / §64.2: Rommel and the DAK arrive at Game-Turn 26. On-map fallback hex (Benghazi),
+    // since his historical Tripoli debarkation is an off-map node.
+    rommel: Some((hex: "A4827", arrival_game_turn: 26)),
+
+    // ---- §60.0 initial deployment (Sept 1940) — the campaign start (§64.3) ----
+    placements: [
+        (nationality: Italian, formation: "64 Catanzaro Division", hex: "C4707"),
+        (nationality: Italian, formation: "62 Marmarica Division",  hex: "C3918"),
+        (nationality: Italian, formation: "63 Cirene Division",     hex: "C4120"),
+        (nationality: Commonwealth, formation: "7th Armored Division", hex: "D3612", unit_hexes: [
+            ("1st KRRC",           "C3922"),
+            ("4th Ryl Horse Arty", "C3922"),
+            ("3rd Ryl Horse Arty", "C3721"),
+            ("1st Royal Tank Regt", "C3520"),
+            ("2nd Rifle Brigade",  "C3320"),
+            ("11th Hussars",       "C3020"),
+        ]),
+        (nationality: Commonwealth, formation: "4th Indian Division", hex: "D3615", unit_hexes: [
+            ("31st Field Artillery Regt", "C4131"),
+        ]),
+    ],
+    units: [
+        // ---- Italian border force (§60.31) ----
+        (nationality: Italian, id_code: "p", name: "1 CCNN Division",   org_size: Division, hex: "C4218", composition: Organic(current_toe: 12), trucks: (light: 10, medium: 25, heavy: 10)),
+        (nationality: Italian, id_code: "p", name: "1 Libyan Division",  org_size: Division, hex: "C4020", composition: Organic(current_toe: 12), trucks: (light: 10, medium: 15)),
+        (nationality: Italian, id_code: "p", name: "2 Libyan Division",  org_size: Division, hex: "C3920", composition: Organic(current_toe: 12), trucks: (light: 15, medium: 15)),
+        (nationality: Italian, id_code: "k", name: "Aresca Tank Regiment", org_size: StandardBrigade, hex: "C3919", composition: Weapons(groups: [(system: "M 11/39", count: 6)]), trucks: (medium: 5, heavy: 5)),
+        (nationality: Italian, id_code: "p", name: "Maletti Group", org_size: StandardBrigade, is_hq: true, hex: "C3617", composition: Organic(current_toe: 1), trucks: (light: 5, medium: 30, heavy: 5)),
+        (nationality: Italian, id_code: "k", name: "Maletti Tank Bn",     org_size: Battalion, composition: Weapons(groups: [(system: "M 11/39", count: 6)]), attached_to: "Maletti Group"),
+        (nationality: Italian, id_code: "p", name: "1st Libyan Battalion", org_size: Battalion, composition: Organic(current_toe: 5), attached_to: "Maletti Group"),
+        (nationality: Italian, id_code: "p", name: "2nd Libyan Battalion", org_size: Battalion, composition: Organic(current_toe: 5), attached_to: "Maletti Group"),
+        (nationality: Italian, id_code: "p", name: "4 CCNN Division", org_size: Division, hex: "C4507", composition: Organic(current_toe: 12), trucks: (light: 10, medium: 25, heavy: 10)),
+        (nationality: Italian, id_code: "p", name: "Bardia Garrison", org_size: StandardBrigade, hex: "C4321", composition: Organic(current_toe: 6), trucks: (medium: 20)),
+        (nationality: Italian, id_code: "p", name: "Tobruk Garrison", org_size: StandardBrigade, hex: "C4807", composition: Organic(current_toe: 4), trucks: (medium: 5)),
+        // ---- Commonwealth border force (§60.41) not part of 7th Armoured ----
+        (nationality: Commonwealth, id_code: "h", name: "2nd Scots Guards", org_size: Battalion, hex: "C4131", composition: Organic(current_toe: 4), basic_morale: 1, trucks: (medium: 10)),
+        (nationality: Commonwealth, id_code: "h", name: "1st French Motor Marines", org_size: Battalion, hex: "C3926", composition: Organic(current_toe: 2), trucks: (medium: 2)),
+        (nationality: Commonwealth, id_code: "h", name: "3rd Coldstream Guards", org_size: Battalion, hex: "C3922", composition: Organic(current_toe: 4), basic_morale: 1, trucks: (medium: 15, heavy: 5)),
+        (nationality: Commonwealth, id_code: "x", name: "7th Medium Artillery Regt", org_size: Battalion, hex: "C3922", composition: Weapons(groups: [(system: "4.5\" Gun", count: 3)])),
+        (nationality: Commonwealth, id_code: "h", name: "1st Royal Northumberland Fusiliers", org_size: Battalion, hex: "C3721", composition: Organic(current_toe: 4), basic_morale: 1, trucks: (light: 5, medium: 5)),
+    ],
+
+    // ---- §64 reinforcement schedule: formations that arrive after Game-Turn 1 (all OB units
+    //      carry explicit `Turn` arrivals). They debark at their nationality point (§20.14/§20.15)
+    //      and build their hierarchy there on schedule. ----
+    reinforcements: [
+        // Deutsches Afrika Korps and German follow-on formations (§4.44c).
+        (nationality: German, formation: "5 Leichte / 21 Panzer Division"),
+        (nationality: German, formation: "15 Panzer Division"),
+        (nationality: German, formation: "90 Leichte Afrika Division"),
+        (nationality: German, formation: "164 Leichte Afrika Division"),
+        (nationality: German, formation: "Sonderverband 288"),
+        (nationality: German, formation: "300th Oasis Battalion"),
+        (nationality: German, formation: "Unassigned Infantry Units"),
+        (nationality: German, formation: "Unassigned Anti-Air Units"),
+        (nationality: German, formation: "Fallschirmjaeger-Brigade Ramcke"),
+        (nationality: German, formation: "Non-Divisional Artillery Units"),
+        // Later Italian formations (§4.44b).
+        (nationality: Italian, formation: "132 Ariete Armored Division"),
+        (nationality: Italian, formation: "133 Littorio Armored Division"),
+        (nationality: Italian, formation: "101 Trieste Motorized Division"),
+        (nationality: Italian, formation: "102 Trento Motorized Division"),
+        (nationality: Italian, formation: "185 Folgore Airborne Division"),
+        (nationality: Italian, formation: "16 Pistoia Division"),
+        (nationality: Italian, formation: "60 Sabratha Division"),
+        (nationality: Italian, formation: "17 Pavia Division"),
+        (nationality: Italian, formation: "25 Bologna Division"),
+        (nationality: Italian, formation: "55 Savona Division"),
+        (nationality: Italian, formation: "27 Brescia Division"),
+        (nationality: Italian, formation: "136 Giovani Fascisti Division"),
+        (nationality: Italian, formation: "RECAM"),
+        (nationality: Italian, formation: "Unassigned Armored Units"),
+        (nationality: Italian, formation: "Unassigned Blackshirt Units"),
+        // Later Commonwealth formations (§4.44a).
+        (nationality: Commonwealth, formation: "8th Armored Division"),
+        (nationality: Commonwealth, formation: "10th Armored Division"),
+        (nationality: Commonwealth, formation: "44th Infantry Division"),
+        (nationality: Commonwealth, formation: "50th Infantry Division"),
+        (nationality: Commonwealth, formation: "51st Infantry Division"),
+        (nationality: Commonwealth, formation: "1st Army Tank Brigade"),
+        (nationality: Commonwealth, formation: "22nd Armored Brigade"),
+        (nationality: Commonwealth, formation: "22nd Guards Brigade"),
+        (nationality: Commonwealth, formation: "Unassigned Armor-Class Units"),
+        (nationality: Commonwealth, formation: "9th Australian Division"),
+        (nationality: Commonwealth, formation: "18th Australian Brigade"),
+        (nationality: Commonwealth, formation: "3rd Indian Motorized Brigade Group"),
+        (nationality: Commonwealth, formation: "5th Indian Division"),
+        (nationality: Commonwealth, formation: "10th Indian Division"),
+        (nationality: Commonwealth, formation: "18th Indian Brigade"),
+        (nationality: Commonwealth, formation: "161st Indian Motor Brigade"),
+        (nationality: Commonwealth, formation: "1st South African Infantry Division"),
+        (nationality: Commonwealth, formation: "2nd South African Infantry Division"),
+        (nationality: Commonwealth, formation: "Unassigned South Africa Units"),
+        (nationality: Commonwealth, formation: "Unassigned New Zealand Units"),
+        (nationality: Commonwealth, formation: "1st Free French Brigade"),
+        (nationality: Commonwealth, formation: "2nd Free French Brigade"),
+        (nationality: Commonwealth, formation: "1st Greek Infantry Brigade Group"),
+        (nationality: Commonwealth, formation: "The Polish (Carpathian) Brigade"),
+        (nationality: Commonwealth, formation: "Unassigned Allied Units"),
+    ],
+
+    // ---- Initial supply, dumps, and facilities (§60.34 Axis / §60.44 Commonwealth) ----
+    supply_dumps: [
+        (side: Axis, at: "C4807", ammo: 200, fuel: 2000, stores: 500),   // Tobruk
+        (side: Axis, at: "C4321", ammo: 100, fuel: 1000, stores: 200),   // Bardia
+        (side: Axis, at: "A4827", ammo: 100, fuel: 250,  stores: 100),   // Benghazi
+        (side: Axis, at: "B5925", ammo: 0,   fuel: 250,  stores: 50),    // Derna
+        (side: Axis, at: "Tripoli", ammo: 250, fuel: 5000, stores: 250), // Tripoli box (off-map)
+        (side: Axis, at: "C0716", ammo: 100, fuel: 50, stores: 50),
+        (side: Commonwealth, at: "D3714", ammo: 1000, fuel: 3000, stores: 4000), // Mersa Matruh
+        (side: Commonwealth, at: "C4131", ammo: 250,  fuel: 500,  stores: 100),  // Sidi Barrani
+        (side: Commonwealth, at: "E1430", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Cairo
+        (side: Commonwealth, at: "E3613", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Alexandria
+    ],
+    supply_dump_choices: [
+        (side: Axis, label: "Dump 1", count: 1, ammo: 1000, fuel: 1500, stores: 1500, water: 200,
+            constraint: (section: Some('C'), not_within_of_enemy: Some(4))),
+        (side: Axis, label: "Dump 2", count: 1, ammo: 1000, fuel: 1500, stores: 1000, water: 200,
+            constraint: (section: Some('C'), not_within_of_enemy: Some(4))),
+        (side: Axis, label: "Axis dummies", count: 2, dummy: true,
+            constraint: (section: Some('C'), not_within_of_enemy: Some(4))),
+        (side: Commonwealth, label: "Dump I", count: 1, ammo: 500, fuel: 750, stores: 500,
+            constraint: (east_of: Some("C4021"), west_of: Some("E0100"))),
+        (side: Commonwealth, label: "Dump I dummy", count: 1, dummy: true,
+            constraint: (east_of: Some("C4021"), west_of: Some("E0100"))),
+    ],
+    repair_facilities: [
+        (at: "C4807", kind: Temporary), // Tobruk (Axis)
+        (at: "A4827", kind: Temporary), // Benghazi (Axis)
+        (at: "E3613", kind: Major),     // Alexandria (Commonwealth)
+        (at: "D3714", kind: Temporary), // Mersa Matruh (Commonwealth)
+    ],
+)

@@ -1,8 +1,11 @@
 //! Scenario setup: load an initial order of battle (units + starting hexes) and the
 //! turn/initiative state into a `GameState` from a RON file.
 //!
-//! First cut (design.md Option A): places the units at their hexes with simplified
-//! compositions. Full division org (attachments), trucks, air, and supply are deferred.
+//! Places units at their hexes and wires division org — `assigned_parent` and
+//! `attached_parent` are set from the OB (§19.1), later-arriving units register as pending
+//! reinforcements, and starting supply dumps / repair facilities are placed. Real starting TOE is
+//! resolved from the §4.44 codes (Organic `N`→id Max-TOE, `U@x`/`O@x`→x; Weapons carry chart
+//! counts). Starting trucks / air loadout beyond the OB are minimal.
 
 use serde::Deserialize;
 
@@ -512,7 +515,7 @@ impl GameState {
         }
         // Player-choice Supply Units (§59.51 / §60.92): stored unplaced for a later decision.
         self.pending_dump_choices
-            .extend(data.supply_dump_choices.into_iter());
+            .extend(data.supply_dump_choices);
         // Repair Facilities (§22.3).
         for f in &data.repair_facilities {
             let coord = HexId::parse(&f.at)
