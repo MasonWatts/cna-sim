@@ -11,3 +11,7 @@
 
 # Large source materials (kept locally, not in git; see docs/source-materials/)
 *.pdf
+
+# Recorded game logs emitted by the replay recorder (see docs/visualization-architecture.md)
+/game.json
+*.game.json

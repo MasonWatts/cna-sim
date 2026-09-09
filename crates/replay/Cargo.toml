@@ -1,0 +1,12 @@
+[package]
+name = "cna-replay"
+version = "0.1.0"
+edition = "2021"
+
+# Records a deterministic CNA-Sim game as a JSON event log for the spectator website
+# (see docs/visualization-architecture.md). Keeps serde_json out of the pure engine crate.
+
+[dependencies]
+cna-engine = { path = "../engine" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

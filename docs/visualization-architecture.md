@@ -83,9 +83,22 @@ Start with **full state snapshots** per event (simple; state is small). Add delt
 ever bites — the schema can carry either.
 
 ## Build order
-1. Recorder crate → dump one AI-vs-AI game to `game.json` (serde). *(Doable against `self_play` today.)*
+1. ✅ **Done** — recorder crate (`crates/replay`) dumps an AI-vs-AI game to `game.json`.
+   `cna_replay::record_game` mirrors `self_play` and emits one event per accepted command; the
+   `record` bin writes a Greedy-vs-Random skirmish (`cargo run --release -p cna-replay --bin record
+   -- game.json [turns]`). Header carries scenario/seed/agents + the static map; each event carries
+   phase/turn/stage/side, the action + outcome (v0: `Debug` strings), and post-action unit views.
 2. `ts-rs` → emit TypeScript types from the Rust structs.
 3. React + SVG hex renderer that loads `game.json` and renders any state (dumb client v0).
 4. Timeline scrubber + action log + rules panel over the event log.
 5. WASM-compile the engine; swap the dumb client's "state at N" for `engine.replay_to(N)`.
 6. *(Optional)* WebSocket service for live games.
+
+## v0 recorder notes / follow-ups
+- **Event granularity:** one event per accepted command → fine-grained action tracking (a 5-turn
+  6-unit skirmish records ~1200 events, ~2.8 MB pretty JSON). Fine for a demo; the snapshots→deltas
+  optimization (above) is the lever if it grows.
+- **`rules` is empty for now.** The `§` citations live in engine doc-comments, not runtime data, so
+  the per-action rules panel needs a `Command → §` mapping built later (step 4).
+- **Actions/outcomes are `Debug` strings** in v0. The round-trippable `Command` schema (serde derive
+  on `Command`/`CommandOutcome`, shared with MCP) is a follow-on and unblocks WASM replay (step 5).
