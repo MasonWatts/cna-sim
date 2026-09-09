@@ -18,8 +18,8 @@
 use std::time::Instant;
 
 use cna_engine::agent::{
-    format_standings, round_robin, Contender, CrossPhaseMctsAgent, GreedyAgent, LookaheadAgent,
-    MctsAgent, RandomAgent, RolloutAgent,
+    format_head_to_head, format_standings, round_robin, Contender, CrossPhaseMctsAgent, GreedyAgent,
+    LookaheadAgent, MctsAgent, RandomAgent, RolloutAgent,
 };
 use cna_engine::reference::ReferenceData;
 use cna_engine::state::game::GameState;
@@ -115,9 +115,10 @@ fn main() {
     );
 
     let t0 = Instant::now();
-    let standings = round_robin(&make_game, &contenders, seeds, turns, draw_margin);
+    let result = round_robin(&make_game, &contenders, seeds, turns, draw_margin);
     let dt = t0.elapsed();
 
-    println!("\n{}", format_standings(&standings));
+    println!("\n{}", format_standings(&result.standings));
+    println!("\nHead-to-head (row's W-D-L vs column):\n{}", format_head_to_head(&result));
     println!("({} games in {:.1}s)", games, dt.as_secs_f64());
 }

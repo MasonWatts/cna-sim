@@ -3442,14 +3442,15 @@ mod tests {
             ]
         };
         let (seeds, turns) = (2u32, 2u32);
-        let st = round_robin(&make_game, &roster(), seeds, turns, 0);
+        let t = round_robin(&make_game, &roster(), seeds, turns, 0);
+        let st = &t.standings;
 
         assert_eq!(st.len(), 3);
         let per_agent = (3 - 1) * seeds * 2; // (n-1) * seeds * both sides
         let mut wins = 0u32;
         let mut losses = 0u32;
         let mut margin = 0i64;
-        for s in &st {
+        for s in st {
             assert_eq!(s.games, per_agent, "{} played {} games, expected {}", s.name, s.games, per_agent);
             assert_eq!(s.wins + s.draws + s.losses, s.games, "W+D+L must equal games");
             wins += s.wins;
@@ -3461,9 +3462,25 @@ mod tests {
         for w in st.windows(2) {
             assert!(w[0].points() >= w[1].points(), "standings are sorted best-first");
         }
-        // Determinism: replaying the identical tournament yields identical standings.
-        let st2 = round_robin(&make_game, &roster(), seeds, turns, 0);
-        for (a, b) in st.iter().zip(&st2) {
+        // Head-to-head grid is consistent: i's wins vs j == j's losses vs i, draws symmetric, and
+        // each contender's grid row sums to its overall record.
+        let n = t.names.len();
+        for i in 0..n {
+            assert_eq!(t.grid[i][i].wins + t.grid[i][i].draws + t.grid[i][i].losses, 0, "no self games");
+            let (mut w, mut d, mut l) = (0, 0, 0);
+            for j in 0..n {
+                assert_eq!(t.grid[i][j].wins, t.grid[j][i].losses, "i's win vs j is j's loss vs i");
+                assert_eq!(t.grid[i][j].draws, t.grid[j][i].draws, "draws are symmetric");
+                w += t.grid[i][j].wins;
+                d += t.grid[i][j].draws;
+                l += t.grid[i][j].losses;
+            }
+            let s = st.iter().find(|s| s.name == t.names[i]).unwrap();
+            assert_eq!((w, d, l), (s.wins, s.draws, s.losses), "grid row sums to the standing");
+        }
+        // Determinism (within a process): replaying the identical tournament matches.
+        let t2 = round_robin(&make_game, &roster(), seeds, turns, 0);
+        for (a, b) in st.iter().zip(&t2.standings) {
             assert_eq!((&a.name, a.games, a.wins, a.draws, a.losses, a.margin_sum),
                        (&b.name, b.games, b.wins, b.draws, b.losses, b.margin_sum));
         }
@@ -3488,8 +3505,10 @@ mod tests {
             Contender::new("MCTS", |s| Box::new(MctsAgent::standard(s))),
             Contender::new("CrossMCTS", |s| Box::new(CrossPhaseMctsAgent::standard(s))),
         ];
-        let st = round_robin(&make_game, &contenders, 2, 4, 0);
-        println!("\n{}", format_standings(&st));
+        let t = round_robin(&make_game, &contenders, 2, 4, 0);
+        let st = &t.standings;
+        println!("\n{}", format_standings(st));
+        println!("\n{}", crate::agent::format_head_to_head(&t));
         let random_rank = st.iter().position(|s| s.name == "Random").unwrap();
         assert!(random_rank >= st.len() / 2, "RandomAgent should not finish in the top half");
     }

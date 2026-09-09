@@ -837,13 +837,15 @@ pub fn round_robin(
     seeds: u32,
     turns: u32,
     draw_margin: i64,
-) -> Vec<Standing> {
+) -> Tournament {
+    let n = contenders.len();
     let mut st: Vec<Standing> = contenders
         .iter()
         .map(|c| Standing { name: c.name.to_string(), ..Default::default() })
         .collect();
-    for i in 0..contenders.len() {
-        for j in (i + 1)..contenders.len() {
+    let mut grid = vec![vec![HeadToHead::default(); n]; n];
+    for i in 0..n {
+        for j in (i + 1)..n {
             for s in 0..seeds.max(1) {
                 for &i_side in &[Side::Commonwealth, Side::Axis] {
                     let seed = 0x5EED_0000 ^ ((i as u64) << 40) ^ ((j as u64) << 24) ^ (s as u64);
@@ -856,24 +858,83 @@ pub fn round_robin(
                     if diff > draw_margin {
                         st[i].wins += 1;
                         st[j].losses += 1;
+                        grid[i][j].wins += 1;
+                        grid[j][i].losses += 1;
                     } else if diff < -draw_margin {
                         st[j].wins += 1;
                         st[i].losses += 1;
+                        grid[j][i].wins += 1;
+                        grid[i][j].losses += 1;
                     } else {
                         st[i].draws += 1;
                         st[j].draws += 1;
+                        grid[i][j].draws += 1;
+                        grid[j][i].draws += 1;
                     }
                 }
             }
         }
     }
+    let names: Vec<String> = contenders.iter().map(|c| c.name.to_string()).collect();
     st.sort_by(|a, b| {
         b.points()
             .partial_cmp(&a.points())
             .unwrap()
             .then(b.avg_margin().partial_cmp(&a.avg_margin()).unwrap())
     });
-    st
+    Tournament { standings: st, names, grid }
+}
+
+/// One contender's record against one specific opponent (a cell of the head-to-head grid).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct HeadToHead {
+    pub wins: u32,
+    pub draws: u32,
+    pub losses: u32,
+}
+
+/// A completed round-robin: overall standings (best-first) plus the full head-to-head grid, which
+/// exposes *who beats whom* — including non-transitive cycles the aggregate win-rate hides.
+pub struct Tournament {
+    /// Overall standings, sorted best-first.
+    pub standings: Vec<Standing>,
+    /// Contender names by their **original** (input) index — the row/column order of `grid`.
+    pub names: Vec<String>,
+    /// `grid[i][j]` = contender `i`'s record versus contender `j` (both by original index; the
+    /// diagonal `grid[i][i]` is all-zero).
+    pub grid: Vec<Vec<HeadToHead>>,
+}
+
+/// Render the head-to-head grid as a matrix of `W–D–L` cells (row = that agent's record vs the
+/// column agent), rows/columns in standings order (best-first).
+pub fn format_head_to_head(t: &Tournament) -> String {
+    use std::fmt::Write;
+    // Present in standings order rather than input order, so the strongest agents read top-left.
+    let order: Vec<usize> = t
+        .standings
+        .iter()
+        .map(|s| t.names.iter().position(|n| n == &s.name).unwrap())
+        .collect();
+    let short = |n: &str| n.chars().take(8).collect::<String>();
+    let mut out = String::new();
+    write!(out, "{:<12}", "vs →").unwrap();
+    for &j in &order {
+        write!(out, "{:>10}", short(&t.names[j])).unwrap();
+    }
+    out.push('\n');
+    for &i in &order {
+        write!(out, "{:<12}", short(&t.names[i])).unwrap();
+        for &j in &order {
+            if i == j {
+                write!(out, "{:>10}", "—").unwrap();
+            } else {
+                let h = t.grid[i][j];
+                write!(out, "{:>10}", format!("{}-{}-{}", h.wins, h.draws, h.losses)).unwrap();
+            }
+        }
+        out.push('\n');
+    }
+    out
 }
 
 /// Render standings as a fixed-width table, best-first.
