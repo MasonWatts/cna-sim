@@ -3415,6 +3415,14 @@ mod tests {
         let legal_ms = t.elapsed().as_secs_f64() * 1e3 / 20.0;
 
         println!("\n[perf] units={n_units}  clone={clone_us:.1}µs  dry_run={dry_us:.1}µs  legal_move_steps={moves_ms:.2}ms ({} mv)  legal_commands={legal_ms:.2}ms ({} cmds)", moves / 20, total / 20);
+
+        // One MctsAgent::standard decision — the search cost that gates campaign tournaments.
+        use crate::agent::{Agent, MctsAgent};
+        let mut mcts = MctsAgent::standard(1);
+        let t = Instant::now();
+        let _ = std::hint::black_box(mcts.choose(&g, Side::Commonwealth));
+        let mcts_ms = t.elapsed().as_secs_f64() * 1e3;
+        println!("[perf] MctsAgent::standard.choose = {mcts_ms:.1}ms for one move");
     }
 
     #[test]

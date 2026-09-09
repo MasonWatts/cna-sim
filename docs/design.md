@@ -817,10 +817,20 @@ immutable **`plan_move_step`** (all validation + cost, no mutation) shared by bo
 then executes) and a new **`can_move_step`** the enumerator calls instead of `dry_run` — so enumeration
 pays neither the clone nor the execution. Result: `legal_commands` **≈187 ms → ≈5 ms (~36×)**. Two
 equivalence tests (`can_move_step_matches_dry_run{,_over_evolving_game}`) assert the fast path accepts
-exactly the moves `apply` does, so the shared validation cannot silently diverge. `MctsAgent::standard`
-(100 iterations × depth-6 rollouts) is now far more tractable, though its per-move clone+apply search
-cost still makes a full six-agent campaign round-robin heavy; the remaining lever is a cheaper
-`GameState` clone (units are a plain `HashMap<UnitId, Unit>`, deep-copied per clone).
+exactly the moves `apply` does, so the shared validation cannot silently diverge. This made
+**search-agent tournaments viable**: a full six-agent skirmish round-robin (previously it never
+finished) now completes, and **`MctsAgent` tops the table (~80 %)** ahead of Rollout, Lookahead,
+CrossMCTS, with Random/Greedy at the bottom — tree search is measurably the strongest agent.
+
+**Where the clone does *not* matter (measured, not assumed).** The obvious next guess was the
+`GameState` clone (units are a plain `HashMap<UnitId, Unit>`, deep-copied per clone). Measurement
+killed that idea: `MctsAgent::standard.choose` is ~4 s per move on an 81-unit state, of which the
+clone (~20 µs × ~700 clones ≈ 14 ms) is **under 1 %**. The cost is `legal_commands` itself, which
+`MctsAgent` calls ~700× per move (100 iterations × depth-6 rollouts) — and it is still **O(units²)**
+because each `can_move_step` runs O(units) scans (`units_in_hex`, `hex_stacking_points`,
+`hex_in_zoc_of`). So the real scaling lever for *campaign*-scale MCTS is a **per-hex occupancy /
+ZOC index** (turning those scans O(1), making enumeration O(units)); the clone refactor is not worth
+its churn. Skirmish-scale search tournaments already work today.
 
 ### 8.11 Patrols, reconnaissance & retreat-before-assault (§13 / §16)
 **§13 Retreat Before Assault** (`RetreatBeforeAssault`) — a non-phasing, unpinned unit (Cohesion
