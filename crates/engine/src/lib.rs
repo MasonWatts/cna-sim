@@ -3487,6 +3487,24 @@ mod tests {
     }
 
     #[test]
+    fn standing_win_rate_ci_is_sane() {
+        use crate::agent::Standing;
+        let s = Standing { name: "x".into(), games: 24, wins: 16, draws: 0, losses: 8, margin_sum: 0 };
+        let (lo, hi) = s.win_rate_ci95();
+        let m = s.win_rate();
+        assert!(lo <= m && m <= hi, "CI brackets the mean ({lo} <= {m} <= {hi})");
+        assert!((0.0..=1.0).contains(&lo) && (0.0..=1.0).contains(&hi), "CI clamped to [0,1]");
+        // 10× the games (same rate) gives a strictly narrower interval.
+        let s2 = Standing { name: "x".into(), games: 240, wins: 160, draws: 0, losses: 80, margin_sum: 0 };
+        let (lo2, hi2) = s2.win_rate_ci95();
+        assert!(hi2 - lo2 < hi - lo, "more games → narrower CI");
+        // A perfect record still yields a valid, clamped interval (no panic / out-of-range).
+        let perfect = Standing { name: "x".into(), games: 10, wins: 10, draws: 0, losses: 0, margin_sum: 0 };
+        let (plo, phi) = perfect.win_rate_ci95();
+        assert!(plo <= 1.0 && (phi - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
     #[ignore = "slow: full-campaign agent tournament (all six agents incl. MCTS); run with --ignored --nocapture"]
     fn tournament_campaign_agent_strength() {
         // Full round-robin over the Campaign Game with the whole agent roster. Prints the standings

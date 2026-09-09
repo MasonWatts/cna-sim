@@ -801,6 +801,22 @@ impl Standing {
     pub fn avg_margin(&self) -> f64 {
         if self.games == 0 { 0.0 } else { self.margin_sum as f64 / self.games as f64 }
     }
+    /// Approximate 95% confidence interval for the true win rate (in `[0,1]`), from the normal
+    /// approximation to the mean of the per-game score (win = 1, draw = ½, loss = 0). Wide when
+    /// `games` is small — a reminder that a few games can't separate close agents.
+    pub fn win_rate_ci95(&self) -> (f64, f64) {
+        let n = self.games as f64;
+        if n < 2.0 {
+            return (0.0, 1.0);
+        }
+        let mean = self.win_rate();
+        // Sample variance of the {1, ½, 0} outcome vector (Bessel-corrected).
+        let (w, d, l) = (self.wins as f64, self.draws as f64, self.losses as f64);
+        let ss = w * (1.0 - mean).powi(2) + d * (0.5 - mean).powi(2) + l * mean.powi(2);
+        let se = (ss / (n - 1.0) / n).sqrt();
+        let half = 1.96 * se;
+        ((mean - half).max(0.0), (mean + half).min(1.0))
+    }
 }
 
 /// Play one game between `a` (assigned `a_side`) and `b` (the other side) on a fresh board from
@@ -942,24 +958,41 @@ pub fn format_head_to_head(t: &Tournament) -> String {
     out
 }
 
-/// Render standings as a fixed-width table, best-first.
+/// Render standings as a fixed-width table, best-first, with a 95% win-rate confidence interval per
+/// agent and a note when the top two agents' intervals overlap (their ranking is not statistically
+/// separable at this game count).
 pub fn format_standings(standings: &[Standing]) -> String {
     use std::fmt::Write;
     let mut out = String::new();
-    writeln!(out, "{:<18}{:>6}{:>5}{:>5}{:>5}{:>8}{:>10}", "agent", "games", "W", "D", "L", "win%", "avg margin").unwrap();
+    writeln!(out, "{:<16}{:>6}{:>5}{:>5}{:>5}{:>8}{:>18}{:>10}", "agent", "games", "W", "D", "L", "win%", "95% CI", "avg margin").unwrap();
     for s in standings {
+        let (lo, hi) = s.win_rate_ci95();
         writeln!(
             out,
-            "{:<18}{:>6}{:>5}{:>5}{:>5}{:>7.1}%{:>10.1}",
+            "{:<16}{:>6}{:>5}{:>5}{:>5}{:>7.1}%{:>17}{:>10.1}",
             s.name,
             s.games,
             s.wins,
             s.draws,
             s.losses,
             100.0 * s.win_rate(),
+            format!("[{:.0}–{:.0}%]", 100.0 * lo, 100.0 * hi),
             s.avg_margin()
         )
         .unwrap();
+    }
+    if standings.len() >= 2 {
+        let (a, b) = (&standings[0], &standings[1]);
+        let (_, a_hi) = a.win_rate_ci95();
+        let (b_lo, _) = b.win_rate_ci95();
+        if a_hi.min(1.0) >= b_lo {
+            writeln!(
+                out,
+                "note: {} and {} overlap at 95% — not statistically separable at {} games each (run more seeds).",
+                a.name, b.name, a.games
+            )
+            .unwrap();
+        }
     }
     out
 }
