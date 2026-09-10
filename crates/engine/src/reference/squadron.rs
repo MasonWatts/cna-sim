@@ -408,6 +408,16 @@ impl MaltaCommitmentChart {
     }
 }
 
+/// The capability class of a squadron withdrawal (§34.84 `WD` column): the player removes a
+/// squadron able to perform that role. `F` = a ≥12-plane CAP-capable fighter squadron, `B` = a
+/// ≥12-plane bombing-capable squadron, `R` = a ≥12-plane recon-capable squadron.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WdClass {
+    Fighter,
+    Bomber,
+    Recon,
+}
+
 /// §34.84 / §34.85 Airplane Reinforcement schedule: the planes each nationality receives into its
 /// pool over the campaign. Each period is a monthly total (over its Game-Turn range); the total is
 /// divided as evenly as possible across the period's Game-Turns, remainder front-loaded.
@@ -424,6 +434,11 @@ pub struct AirReinforcementPeriod {
     pub nationality: Nationality,
     /// `(aircraft-type key, monthly total)` — the key indexes the nationality's `AircraftChart`.
     pub planes: Vec<(String, u32)>,
+    /// §34.84 `WD` column: `(capability class, count)` squadrons the player must withdraw at the
+    /// *start* of this month (its `gt_start`). Only the base counts are modeled; the chart's
+    /// `*`/`**`/`‡` qualifiers (multi-squadron / bomb-load conditions) are not yet interpreted.
+    #[serde(default)]
+    pub withdrawals: Vec<(WdClass, u32)>,
 }
 
 impl AirReinforcementSchedule {
@@ -441,6 +456,23 @@ impl AirReinforcementSchedule {
                 let cnt = total / n + if k < total % n { 1 } else { 0 };
                 if cnt > 0 {
                     out.push((p.nationality, ac.clone(), cnt));
+                }
+            }
+        }
+        out
+    }
+
+    /// Squadron withdrawals due in Game-Turn `gt` (§34.84 `WD`) — applied once, at each period's
+    /// `gt_start`. Returns `(nationality, capability class, count)`.
+    pub fn withdrawals_for(&self, gt: u32) -> Vec<(Nationality, WdClass, u32)> {
+        let mut out = Vec::new();
+        for p in &self.periods {
+            if gt != p.gt_start {
+                continue;
+            }
+            for &(class, count) in &p.withdrawals {
+                if count > 0 {
+                    out.push((p.nationality, class, count));
                 }
             }
         }

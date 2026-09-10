@@ -637,10 +637,16 @@ field loads `GameState.pilot_pool` (It 3×"3"/10×"2"/15×"1"; CW 1×"3"/5×"2"/
 and `AssignPilot` consumes a rated pilot from that pool (rejecting with `InsufficientPilotPool` when a
 rating is exhausted) — rating-0 pilots stay an unlimited supply (§40.16). **Remaining air work:** a
 deploy step that spends an available-SGSU pool to place counters (blocked on the printed **SGSU CPA**,
-§35.12 — a physical-counter value not in the text rules, pending a counter scan); the **German SGSU
-plane-type identities** (§35.29, needed only from GT26+); and squadron **withdrawals** (`WD`, §20.8 —
-mechanism is in the rules, entries live on the Reinforcement Track/OA sheets). Opening deployment is
-left to the agent by design (the rulebook leaves placement to the player), so no baked-in default. The
+§35.12 — a physical-counter value not in the text rules, pending a counter scan); and the **German SGSU
+plane-type identities** (§35.29, needed only from GT26+). **Squadron withdrawals (`WD`, §34.84) are now
+loaded:** the schedule's Commonwealth periods carry a `withdrawals` list (capability class F/B/R +
+count, fired once at the month's `gt_start`, queryable via `AirReinforcementSchedule::withdrawals_for`;
+the Axis chart lists none, and the chart's `*`/`**`/`‡` qualifiers are not yet modeled). Enforcing a
+withdrawal removes a deployed SGSU, so the enforcement command waits on the same SGSU-deploy step.
+Opening deployment is left to the agent by design (the rulebook leaves placement to the player), so no
+baked-in default. Note the separate **unit** withdrawal (§20.9/§64.75 voluntary Commonwealth) is fully
+built (`WithdrawUnit`/`ReturnUnit` + VP banking); the §20.8 *mandatory* unit schedule lives only as
+OA-sheet footnote prose, not the §20.81 chart, so it is deferred rather than fabricated. The
 §60.32 "2801 9/9" line (an OCR garble in the text rules — confirmed present but unidentifiable) is
 omitted pending verification. Naval fleet deployment is the analogous still-missing dimension (a
 `fleet` scenario field + a ship OB).

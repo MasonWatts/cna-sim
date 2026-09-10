@@ -2425,6 +2425,17 @@ mod tests {
         g.accrue_air_reinforcements();
         assert_eq!(g.pool_planes(Nationality::Commonwealth, "Hurricane Mk.I"), 2);
         assert_eq!(g.pool_planes(Nationality::Italian, "Ba 65"), 12);
+
+        // §34.84 WD: squadron withdrawals fire once, at the month's gt_start. GT8 = 2F + 2B (CW).
+        use crate::reference::squadron::WdClass;
+        let wd8 = sched.withdrawals_for(8);
+        assert!(wd8.contains(&(Nationality::Commonwealth, WdClass::Fighter, 2)));
+        assert!(wd8.contains(&(Nationality::Commonwealth, WdClass::Bomber, 2)));
+        // GT39 withdraws a recon squadron; a mid-period turn (GT40) fires nothing.
+        assert_eq!(sched.withdrawals_for(39), vec![(Nationality::Commonwealth, WdClass::Recon, 1)]);
+        assert!(sched.withdrawals_for(40).is_empty());
+        // The Axis chart lists no withdrawals at all.
+        assert!((1..=110).flat_map(|gt| sched.withdrawals_for(gt)).all(|(n, _, _)| n == Nationality::Commonwealth));
     }
 
     #[test]
