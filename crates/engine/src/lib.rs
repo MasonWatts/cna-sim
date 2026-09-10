@@ -9025,6 +9025,10 @@ mod tests {
             Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Fighter, "JG 27", 5, Some(h)),
         );
         g.add_air_facility(AirFacility::new(AirFacilityKind::Airfield, h));
+        // §35.2: assignment draws from the nationality's plane pool — seed it.
+        let pool = g.plane_pool.entry(Nationality::German).or_default();
+        pool.insert("Bf.109F".into(), 12);
+        pool.insert("Ju.87D".into(), 4);
         let chart: PortsChart =
             ron::from_str(include_str!("../../../data/reference/port-capacity.ron")).unwrap();
         g.ports.insert("Benghazi".into(), Port::from_spec("Benghazi", &chart.spec("Benghazi")));
@@ -9066,6 +9070,45 @@ mod tests {
             Ok(CommandOutcome::HarborMineRemoved(true))
         );
         assert_eq!(g.ports["Benghazi"].mines, 0);
+    }
+
+    #[test]
+    fn assigning_squadron_planes_draws_from_pool_35_2() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        g.sgsus.insert(
+            SquadronId(1),
+            Sgsu::new(SquadronId(1), Nationality::Italian, SquadronClass::Fighter, "1 Stormo", 5, Some(HexCoord::new(5, 5))),
+        );
+        // Seed a §60.32-style pool of 9 CR.42s.
+        g.plane_pool.entry(Nationality::Italian).or_default().insert("C.R.42 Falco".into(), 9);
+        while g.phase != Phase::Organization {
+            g.advance_phase();
+        }
+        let assign6 = Command::AssignSquadronPlanes {
+            squadron: SquadronId(1), aircraft_type: "C.R.42 Falco".into(), class: AircraftClass::Fighter, count: 6,
+        };
+        // First assignment succeeds and deducts from the pool (9 -> 3).
+        assert_eq!(g.apply(assign6.clone()), Ok(CommandOutcome::SquadronPlanesAssigned));
+        assert_eq!(g.pool_planes(Nationality::Italian, "C.R.42 Falco"), 3);
+        assert_eq!(g.sgsus[&SquadronId(1)].plane_count(), 6);
+        // A second draw of 6 exceeds the remaining pool of 3 — rejected, pool untouched.
+        assert_eq!(g.apply(assign6), Err(CommandError::InsufficientPlanePool));
+        assert_eq!(g.pool_planes(Nationality::Italian, "C.R.42 Falco"), 3);
+        assert_eq!(g.sgsus[&SquadronId(1)].plane_count(), 6);
+        // The remaining 3 can be drawn, emptying the pool.
+        assert_eq!(
+            g.apply(Command::AssignSquadronPlanes { squadron: SquadronId(1), aircraft_type: "C.R.42 Falco".into(), class: AircraftClass::Fighter, count: 3 }),
+            Ok(CommandOutcome::SquadronPlanesAssigned)
+        );
+        assert_eq!(g.pool_planes(Nationality::Italian, "C.R.42 Falco"), 0);
+        assert_eq!(g.sgsus[&SquadronId(1)].plane_count(), 9);
     }
 
     #[test]

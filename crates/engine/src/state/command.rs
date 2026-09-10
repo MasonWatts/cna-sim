@@ -953,6 +953,8 @@ pub enum CommandError {
     /// §35.21/§35.23: the planes cannot be assigned (wrong class for the squadron, or capacity
     /// would be exceeded).
     SquadronRejected,
+    /// §35.2: the nationality's plane pool does not hold enough planes of that type to assign.
+    InsufficientPlanePool,
     /// No matching air facility exists in the target hex.
     NoSuchFacility,
     /// The referenced port does not exist in play.
@@ -3569,12 +3571,23 @@ impl GameState {
     ) -> Result<CommandOutcome, CommandError> {
         self.require_phase(Phase::Organization)?;
         let gt = self.game_turn;
-        let sgsu = self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?;
-        if sgsu.add_planes(aircraft_type, class, count, gt) {
-            Ok(CommandOutcome::SquadronPlanesAssigned)
-        } else {
-            Err(CommandError::SquadronRejected)
+        let nationality = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?.nationality;
+        // §35.2: planes come from the nationality's pool (the §60.32/§60.42 starting pool plus
+        // §34.84/§34.85 reinforcements). Draw only what is available.
+        if self.pool_planes(nationality, aircraft_type) < count {
+            return Err(CommandError::InsufficientPlanePool);
         }
+        let sgsu = self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+        if !sgsu.add_planes(aircraft_type, class, count, gt) {
+            return Err(CommandError::SquadronRejected);
+        }
+        // Assignment succeeded — deduct from the pool.
+        if let Some(m) = self.plane_pool.get_mut(&nationality) {
+            if let Some(n) = m.get_mut(aircraft_type) {
+                *n -= count;
+            }
+        }
+        Ok(CommandOutcome::SquadronPlanesAssigned)
     }
 
     /// §41.36 BombAirFacility: gated to the Land Support Air Phase.

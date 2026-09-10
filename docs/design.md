@@ -625,11 +625,18 @@ per §60.32 (Italian) and §60.42 (Commonwealth) the scenario `initial_planes` f
 GT1 aircraft into `plane_pool` (no German air until the DAK, GT26+) — `campaign_seeds_initial_air_pool`
 verifies 133 SM79 / 70 CR32 (It) and 36 Gladiator / 6 Hurricane I (CW). Per §60, planes are assigned
 to squadron counters and based at airfields **by the player** within class/capacity limits, so the
-pool is the authoritative starting state. **Remaining air work:** the **SGSU counter roster** (how the
-39 Italian / 14 CW squadrons split by class) + a default opening deployment / `AssignSquadronPlanes`
-drawing from the pool; pilots (§60.32/§60.42 give the ratings); and squadron **withdrawals** (`WD`).
-The §60.32 "2801 9/9" line (an OCR garble in the text rules) is omitted pending verification. Naval fleet deployment is the analogous
-still-missing dimension (a `fleet` scenario field + a ship OB).
+pool is the authoritative starting state. `AssignSquadronPlanes` **now draws from that pool** (§35.2):
+an assignment is rejected (`InsufficientPlanePool`) unless the nationality's pool holds enough of that
+type, and the count is deducted on success — so the seeded §60.32/§60.42 totals are the real deployment
+ceiling. On the **SGSU roster question:** §35.29 settles it — Commonwealth and Italian SGSUs are
+*indistinguishable* generic counters (only *German* SGSUs are plane-type-specific), and §35.23 sets
+capacity purely by nationality/date (already modeled: Italian 9+3, German 12+4, CW 15+5→18+6 Jul '41).
+So there is **no class roster to transcribe**: §60.32/§60.42 give only a generic count (39 Italian / 14
+CW available) plus pilots (It 3×"3"/10×"2"/15×"1"; CW 1×"3"/5×"2"/8×"1"). **Remaining air work:** a
+deploy step that spends the available-SGSU pool to place counters + a default opening deployment;
+seeding the pilot pools; and squadron **withdrawals** (`WD`). The §60.32 "2801 9/9" line (an OCR garble
+in the text rules — confirmed present but unidentifiable) is omitted pending verification. Naval fleet
+deployment is the analogous still-missing dimension (a `fleet` scenario field + a ship OB).
 **D14 verification pass (2026-09-08) — closed.** Every `Deployed`-default unit in the Commonwealth
 and Italian OB was cross-checked, formation-scoped, against the §4.44a/§4.44b OA-sheet "Arrives"
 columns transcribed in `docs/source-materials/*-ob-4.44*.transcribed.md`. All are faithful: the
