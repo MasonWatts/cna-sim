@@ -41,15 +41,15 @@ counters on the sheet ("INF REPL C / D") are infantry replacements, not SGSUs, a
 | 2.(H) 14 | (H) | Recon |
 | 4.(H) 12 | (H) | Recon |
 | 1.(F) 121 | (F) | Recon |
-| 5/II KLG 1 | KLG | Bomber — K-prefix; possibly "LG 1"/"KG 1" (see note) |
+| 5/II KLG 1 | KLG | Bomber |
 | 7/III KLG 1 | KLG | Bomber |
-| 7/ KLG 26 | KLG | Bomber — possibly "KG 26" |
+| 7/ KLG 26 | KLG | Bomber |
 | 4/II KG 100 | KG | Bomber |
 | 1/I KG 54 | KG | Bomber |
 | Stab KLG 1 | KLG | Bomber |
 | 3/I KLG 1 | KLG | Bomber |
-| 8/III KLG 77 | KLG | Bomber — possibly "KG 77" |
-| 1/I SG 2 | SG | **UNCERTAIN** — read as "SG 2" (Schlachtgeschwader, ground attack); §35.29 has no SG category. Possibly "St.G 2". Flagged for verification. |
+| 8/III KLG 77 | KLG | Bomber |
+| 1/I SG 2 | SG | **Shelved** — confirmed real counter (Schlachtgeschwader 2); §35.29 has no SG category, and the designation is a cosmetic label, so it stays unclassified (`german_sgsu_role` → `None`) until a role is needed. |
 
 ## Tally by §35.29 role
 
@@ -62,10 +62,12 @@ counters on the sheet ("INF REPL C / D") are infantry replacements, not SGSUs, a
 - **Uncertain (SG 2):** 1
 - **Total: 38**
 
-## Flags for verification (do not affect class except the last)
-- **NJG** (night fighter) and **KLG** are not in §35.29's list; mapped by the gescwader letter
-  (NJG → fighter, K-prefix → bomber). Class is robust regardless of the exact number.
-- The **KLG** designations may be OCR/read slips for **LG** or **KG** — the Bomber class is unchanged.
-- **1/I SG 2** is the one genuinely uncertain read (letters and class). Verify against the counter.
-- This may not be the *complete* German SGSU set if further counters sit on other sheets; this is the
-  captured sheet.
+## Notes (reads confirmed by the owner 2026-09-10)
+- **KLG** is a genuine, distinct designation (Kampf-Lehrgeschwader), not a read error — there are
+  several KLG counters. §35.29 doesn't list it, but the K-prefix bomber role is unambiguous, so
+  `german_sgsu_role` maps it to Bomber (via the `LG`/`KG` branch).
+- **NJG** (night fighter) is likewise absent from §35.29's list; mapped to Fighter (night).
+- **1/I SG 2** is a confirmed real counter (Schlachtgeschwader 2), but §35.29 gives it no role and the
+  label is purely cosmetic, so it is **shelved** — `german_sgsu_role` returns `None` for it until a
+  role is actually needed.
+- This is the captured sheet; further German SGSU counters may sit on other sheets.
