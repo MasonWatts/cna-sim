@@ -29,6 +29,13 @@
 // listed here: the on-map start force is the §60.41 chart (7th Armoured + 4th Indian + border
 // battalions); §4.44 "D" is a master-OB availability marker gated by each scenario's deployment
 // chart, and the loader only schedules `Arrival::Turn` units for reinforcement-only formations.
+//
+// FORTIFICATIONS VERIFICATION (2026-09-10, closed): the full §60.31–60.44 deployment charts (text
+// rules) place NO field-fortification counters, minefields, or explicit Fortification Levels — the
+// only start-of-game forts are the §25.12 inherent Major-City levels (Level 2 each city; Level 3
+// Cairo E1430 / Alexandria E3613), which the engine supplies automatically via
+// `city_static_fort_base`. Hence there is deliberately no `fortifications:` field here; field forts
+// are built in-play with `BuildFortification` (§24.4). Adding any at start would be fabrication.
 (
     name: "Campaign Game",
     game_turn: 1,

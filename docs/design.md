@@ -356,7 +356,9 @@ Engagement clears once no opposing combat unit remains adjacent — i.e. when th
 combat ammo/fuel/water gating. **Fortifications & minefields are modeled:** a per-hex Fortification
 Level (`fort_level` — placed forts plus the §25.12 static major-city/capital levels) applies its
 column shift in anti-armor (§14.33 best-of), barrage (§12.34 best-of) and close assault (§15.35
-cumulative), is raised by `BuildFortification` (§24.4) and reduced by fortification bombing (§41.37);
+cumulative), is raised by `BuildFortification` (§24.4) and reduced by fortification bombing (§41.37); the
+campaign/Scenario-1 §60.31–60.44 charts place no field forts at start, so the only opening
+fortifications are the §25.12 inherent major-city levels (verified against the text rules 2026-09-10);
 minefields (`LayMinefield`/`ClearMinefield`, §24.3) sit on the map with real/dummy status, dummy
 reveal, and §26.2 entry casualty checks. §50.14 **defensive**-assault Ammunition is now consumed
 by the melee defenders too (not just the attacker), and §9.35 retreat enforces the destination
