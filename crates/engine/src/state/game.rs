@@ -736,6 +736,11 @@ pub struct GameState {
     /// squadrons (§35.2).
     #[serde(default)]
     pub plane_pool: HashMap<Nationality, HashMap<String, u32>>,
+    /// §60.32/§60.42: each nationality's pool of unassigned rated pilots, keyed by Rating (1/2/3/…).
+    /// Drawn down when a rated pilot is assigned to a squadron (§40.12); rating-0 pilots are unlimited
+    /// (§40.16) and are not tracked here.
+    #[serde(default)]
+    pub pilot_pool: HashMap<Nationality, HashMap<u32, u32>>,
     /// Placed air facilities — airfields, landing strips, flying-boat basins/alighting areas (§36).
     #[serde(default)]
     pub air_facilities: Vec<AirFacility>,
@@ -1077,6 +1082,7 @@ impl GameState {
             units: HashMap::new(),
             sgsus: HashMap::new(),
             plane_pool: HashMap::new(),
+            pilot_pool: HashMap::new(),
             air_facilities: Vec::new(),
             ports: HashMap::new(),
             convoys: Vec::new(),
@@ -3823,6 +3829,12 @@ impl GameState {
     /// Total planes of `aircraft` currently in `nationality`'s reinforcement pool (unassigned).
     pub fn pool_planes(&self, nationality: Nationality, aircraft: &str) -> u32 {
         self.plane_pool.get(&nationality).and_then(|m| m.get(aircraft)).copied().unwrap_or(0)
+    }
+
+    /// Unassigned rated pilots of `rating` in `nationality`'s pool (§60.32/§60.42). Rating 0 is
+    /// unlimited (§40.16) and always reports 0 here — it is not drawn from the pool.
+    pub fn pool_pilots(&self, nationality: Nationality, rating: u32) -> u32 {
+        self.pilot_pool.get(&nationality).and_then(|m| m.get(&rating)).copied().unwrap_or(0)
     }
 
     /// §56.2/§56.21: the tonnage the Axis may ship in a convoy arriving on `arrival_gt`, given the

@@ -632,11 +632,18 @@ ceiling. On the **SGSU roster question:** §35.29 settles it — Commonwealth an
 *indistinguishable* generic counters (only *German* SGSUs are plane-type-specific), and §35.23 sets
 capacity purely by nationality/date (already modeled: Italian 9+3, German 12+4, CW 15+5→18+6 Jul '41).
 So there is **no class roster to transcribe**: §60.32/§60.42 give only a generic count (39 Italian / 14
-CW available) plus pilots (It 3×"3"/10×"2"/15×"1"; CW 1×"3"/5×"2"/8×"1"). **Remaining air work:** a
-deploy step that spends the available-SGSU pool to place counters + a default opening deployment;
-seeding the pilot pools; and squadron **withdrawals** (`WD`). The §60.32 "2801 9/9" line (an OCR garble
-in the text rules — confirmed present but unidentifiable) is omitted pending verification. Naval fleet
-deployment is the analogous still-missing dimension (a `fleet` scenario field + a ship OB).
+CW available) plus pilots. The **pilot pools are now seeded and drawn from**: the scenario `initial_pilots`
+field loads `GameState.pilot_pool` (It 3×"3"/10×"2"/15×"1"; CW 1×"3"/5×"2"/8×"1"; no German at start),
+and `AssignPilot` consumes a rated pilot from that pool (rejecting with `InsufficientPilotPool` when a
+rating is exhausted) — rating-0 pilots stay an unlimited supply (§40.16). **Remaining air work:** a
+deploy step that spends an available-SGSU pool to place counters (blocked on the printed **SGSU CPA**,
+§35.12 — a physical-counter value not in the text rules, pending a counter scan); the **German SGSU
+plane-type identities** (§35.29, needed only from GT26+); and squadron **withdrawals** (`WD`, §20.8 —
+mechanism is in the rules, entries live on the Reinforcement Track/OA sheets). Opening deployment is
+left to the agent by design (the rulebook leaves placement to the player), so no baked-in default. The
+§60.32 "2801 9/9" line (an OCR garble in the text rules — confirmed present but unidentifiable) is
+omitted pending verification. Naval fleet deployment is the analogous still-missing dimension (a
+`fleet` scenario field + a ship OB).
 **D14 verification pass (2026-09-08) — closed.** Every `Deployed`-default unit in the Commonwealth
 and Italian OB was cross-checked, formation-scoped, against the §4.44a/§4.44b OA-sheet "Arrives"
 columns transcribed in `docs/source-materials/*-ob-4.44*.transcribed.md`. All are faithful: the

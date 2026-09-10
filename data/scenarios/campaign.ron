@@ -192,4 +192,12 @@
             ("Hurricane Mk.I", 6), ("MS406", 4), ("63.11", 2), ("Valentia", 3),
         ]),
     ],
+    // §60.32 Italian pilots (Three's: 3, Two's: 10, One's: 15) and §60.42 Commonwealth pilots
+    // (1 Three, 5 Two's, 8 One's). Rated pilots are a finite pool the player assigns to squadrons
+    // (§40.12); rating-0 pilots are an unlimited supply (§40.16). No German pilots at start (the
+    // Luftwaffe arrives with the DAK, GT26+).
+    initial_pilots: [
+        (nationality: Italian,      pilots: [(3, 3), (2, 10), (1, 15)]),
+        (nationality: Commonwealth, pilots: [(3, 1), (2, 5),  (1, 8)]),
+    ],
 )

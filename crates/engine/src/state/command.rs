@@ -955,6 +955,8 @@ pub enum CommandError {
     SquadronRejected,
     /// §35.2: the nationality's plane pool does not hold enough planes of that type to assign.
     InsufficientPlanePool,
+    /// §40.12: the nationality's pilot pool has no unassigned pilot of that rating to assign.
+    InsufficientPilotPool,
     /// No matching air facility exists in the target hex.
     NoSuchFacility,
     /// The referenced port does not exist in play.
@@ -2907,8 +2909,16 @@ impl GameState {
         if rating != 0 && !crate::rules::air::PILOT_RATINGS.contains(&rating) {
             return Err(CommandError::InvalidPilotRating);
         }
-        if !self.sgsus.contains_key(&squadron) {
-            return Err(CommandError::NoSuchSquadron);
+        let nationality = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?.nationality;
+        // §40.16: rating-0 pilots are an unlimited supply. Rated pilots come from the finite
+        // §60.32/§60.42 pool — draw one, refusing if none of that rating remains.
+        if rating != 0 {
+            if self.pool_pilots(nationality, rating) == 0 {
+                return Err(CommandError::InsufficientPilotPool);
+            }
+            if let Some(n) = self.pilot_pool.get_mut(&nationality).and_then(|m| m.get_mut(&rating)) {
+                *n -= 1;
+            }
         }
         self.pilots.push(crate::state::air::Pilot::new(rating, Some(squadron)));
         Ok(CommandOutcome::PilotAssigned)

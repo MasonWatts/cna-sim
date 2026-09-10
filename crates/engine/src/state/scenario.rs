@@ -295,6 +295,11 @@ struct ScenarioData {
     /// `GameState.plane_pool`.
     #[serde(default)]
     initial_planes: Vec<PlanePoolSpec>,
+    /// Initial pilot pools (§60.32 Italian / §60.42 Commonwealth): the rated pilots each nationality
+    /// has available at Game-Turn 1, which the player assigns to squadrons (§40.12). Seeds
+    /// `GameState.pilot_pool`.
+    #[serde(default)]
+    initial_pilots: Vec<PilotPoolSpec>,
 }
 
 /// A nationality's starting plane pool (§60.32 / §60.42): `(aircraft-type key, count)` pairs.
@@ -302,6 +307,13 @@ struct ScenarioData {
 struct PlanePoolSpec {
     nationality: Nationality,
     planes: Vec<(String, u32)>,
+}
+
+/// A nationality's starting pilot pool (§60.32 / §60.42): `(rating, count)` pairs.
+#[derive(Deserialize)]
+struct PilotPoolSpec {
+    nationality: Nationality,
+    pilots: Vec<(u32, u32)>,
 }
 
 /// A squadron (SGSU) placed at setup (§35). Based on the map (`at`) or in an off-map Med Box
@@ -625,6 +637,13 @@ impl GameState {
             let pool = self.plane_pool.entry(p.nationality).or_default();
             for (aircraft, n) in &p.planes {
                 *pool.entry(aircraft.clone()).or_insert(0) += n;
+            }
+        }
+        // §60.32/§60.42: seed each side's starting rated-pilot pool.
+        for p in &data.initial_pilots {
+            let pool = self.pilot_pool.entry(p.nationality).or_default();
+            for (rating, n) in &p.pilots {
+                *pool.entry(*rating).or_insert(0) += n;
             }
         }
         // §19.3: record each formation's historical assignment capacity (its OA-sheet organization)

@@ -2639,6 +2639,14 @@ mod tests {
         // The Luftwaffe is not present at Sept-1940 start (arrives with the DAK, GT26+).
         let german: u32 = g.plane_pool.get(&Nationality::German).map_or(0, |m| m.values().sum());
         assert_eq!(german, 0);
+        // §60.32/§60.42 pilot pools: Italian 3/10/15 and Commonwealth 1/5/8 by rating, no Germans.
+        assert_eq!(g.pool_pilots(Nationality::Italian, 3), 3);
+        assert_eq!(g.pool_pilots(Nationality::Italian, 2), 10);
+        assert_eq!(g.pool_pilots(Nationality::Italian, 1), 15);
+        assert_eq!(g.pool_pilots(Nationality::Commonwealth, 3), 1);
+        assert_eq!(g.pool_pilots(Nationality::Commonwealth, 2), 5);
+        assert_eq!(g.pool_pilots(Nationality::Commonwealth, 1), 8);
+        assert!(g.pilot_pool.get(&Nationality::German).is_none_or(|m| m.values().sum::<u32>() == 0));
     }
 
     #[test]
@@ -8702,6 +8710,8 @@ mod tests {
         }
 
         // §40.12 AssignPilot (Organization Phase): a rating-4 pilot; an invalid rating is rejected.
+        // §60.42: rated pilots come from the finite pool — seed one rating-4 pilot.
+        g.pilot_pool.entry(Nationality::Commonwealth).or_default().insert(4, 1);
         g.phase = Phase::Organization;
         assert_eq!(g.apply(Command::AssignPilot { rating: 4, squadron: SquadronId(1) }), Ok(CommandOutcome::PilotAssigned));
         assert_eq!(g.apply(Command::AssignPilot { rating: 5, squadron: SquadronId(1) }), Err(CommandError::InvalidPilotRating));
@@ -9109,6 +9119,34 @@ mod tests {
         );
         assert_eq!(g.pool_planes(Nationality::Italian, "C.R.42 Falco"), 0);
         assert_eq!(g.sgsus[&SquadronId(1)].plane_count(), 9);
+    }
+
+    #[test]
+    fn assigning_pilots_draws_from_pool_40_12() {
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        g.sgsus.insert(
+            SquadronId(1),
+            Sgsu::new(SquadronId(1), Nationality::Commonwealth, SquadronClass::Fighter, "33 Sqn", 5, Some(HexCoord::new(5, 5))),
+        );
+        // §60.42-style pool: a single rating-3 pilot.
+        g.pilot_pool.entry(Nationality::Commonwealth).or_default().insert(3, 1);
+        while g.phase != Phase::Organization {
+            g.advance_phase();
+        }
+        // First rating-3 assignment succeeds and empties that rating.
+        assert_eq!(g.apply(Command::AssignPilot { rating: 3, squadron: SquadronId(1) }), Ok(CommandOutcome::PilotAssigned));
+        assert_eq!(g.pool_pilots(Nationality::Commonwealth, 3), 0);
+        // A second rating-3 is refused — the pool is empty.
+        assert_eq!(g.apply(Command::AssignPilot { rating: 3, squadron: SquadronId(1) }), Err(CommandError::InsufficientPilotPool));
+        // Rating-0 pilots are unlimited (§40.16) — always assignable, pool untouched.
+        assert_eq!(g.apply(Command::AssignPilot { rating: 0, squadron: SquadronId(1) }), Ok(CommandOutcome::PilotAssigned));
+        assert_eq!(g.pilots.iter().filter(|p| p.rating == 3).count(), 1);
     }
 
     #[test]
