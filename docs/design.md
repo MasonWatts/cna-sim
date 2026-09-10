@@ -609,10 +609,15 @@ wrongly at Sept-1940; the **Kampfgruppen HQ's** stay omitted as a dynamic form-a
 with their plane groups, based on-map or in an off-map Med Box, planes deployed ready+armed) and
 `air_facilities` (§36 airfields/strips/basins) — the loader builds `sgsus` + `air_facilities`
 (`load_scenario_deploys_air_forces` test). The air *engine* was already complete; this wires air
-into scenario deployment. **Remaining:** the historical air order of battle itself (which squadrons,
-aircraft, bases, arrival turns) is not yet transcribed, so `campaign.ron` deploys no aircraft yet —
-that OB transcription is the next data task. Naval fleet deployment is the analogous still-missing
-piece (a `fleet` scenario field + a ship OB).
+into scenario deployment. The CNA air model decouples planes from squadrons: aircraft arrive as a
+per-turn **plane pool** (§34.84 Commonwealth / §34.85 Axis reinforcement charts — now transcribed to
+`docs/source-materials/air-reinforcements-34.84-34.85.transcribed.md`, GT2→GT110, all three
+nationalities, names mapped to the `data/reference/aircraft/*.ron` keys) and the player assigns them
+to SGSU counters (§35.2). **Remaining air work:** (1) a **plane-pool + scheduled-reinforcement
+mechanism** to consume that schedule; (2) the **§60 initial air deployment** (which squadrons/planes/
+airfields at GT1) to feed the scenario `squadrons` field so `campaign.ron` starts with aircraft; and
+(3) the SGSU counter roster. Naval fleet deployment is the analogous still-missing dimension (a
+`fleet` scenario field + a ship OB).
 **D14 verification pass (2026-09-08) — closed.** Every `Deployed`-default unit in the Commonwealth
 and Italian OB was cross-checked, formation-scoped, against the §4.44a/§4.44b OA-sheet "Arrives"
 columns transcribed in `docs/source-materials/*-ob-4.44*.transcribed.md`. All are faithful: the
