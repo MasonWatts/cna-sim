@@ -3871,6 +3871,59 @@ impl GameState {
         Some(id)
     }
 
+    /// Squadron withdrawals due this Game-Turn (§34.84 `WD`) — the schedule's `withdrawals_for` at
+    /// the current turn. Empty unless this turn is a period's `gt_start`, or if no schedule is loaded.
+    pub fn due_squadron_withdrawals(
+        &self,
+    ) -> Vec<(Nationality, crate::reference::squadron::WdClass, u32)> {
+        self.reference
+            .air_reinforcements
+            .as_ref()
+            .map(|s| s.withdrawals_for(self.game_turn))
+            .unwrap_or_default()
+    }
+
+    /// §34.84: withdraw a deployed SGSU to satisfy a due `WD` requirement (the squadron leaves the
+    /// theatre). Its ground unit is removed — the counter returns to `available_sgsu`, its planes
+    /// return to the nationality's `plane_pool` (a national asset, reassignable), and its pilots are
+    /// unassigned. Allowed only when a matching WD is due this turn: a Fighter/Bomber squadron
+    /// satisfies a `WdClass::Fighter`/`Bomber` (or any due `WdClass::Recon`, which is not tied to a
+    /// squadron class, §35.21). Returns whether it was withdrawn.
+    pub fn withdraw_squadron(&mut self, id: crate::state::air::SquadronId) -> bool {
+        use crate::reference::squadron::{SquadronClass, WdClass};
+        let Some(sgsu) = self.sgsus.get(&id) else {
+            return false;
+        };
+        if sgsu.location.is_none() {
+            return false; // not deployed on the map
+        }
+        let nat = sgsu.nationality;
+        let sc = sgsu.class;
+        let due = self.due_squadron_withdrawals();
+        let matches = |wd: WdClass| due.iter().any(|&(n, c, k)| n == nat && c == wd && k > 0);
+        let satisfies = match sc {
+            SquadronClass::Fighter => matches(WdClass::Fighter),
+            SquadronClass::Bomber => matches(WdClass::Bomber),
+            SquadronClass::Transport => false,
+        } || matches(WdClass::Recon);
+        if !satisfies {
+            return false;
+        }
+        // Remove the squadron: planes → pool, counter → supply, pilots unassigned.
+        let sgsu = self.sgsus.remove(&id).expect("checked above");
+        let pool = self.plane_pool.entry(nat).or_default();
+        for g in &sgsu.planes {
+            *pool.entry(g.aircraft_type.clone()).or_insert(0) += g.count;
+        }
+        *self.available_sgsu.entry(nat).or_insert(0) += 1;
+        for p in self.pilots.iter_mut() {
+            if p.squadron == Some(id) {
+                p.squadron = None;
+            }
+        }
+        true
+    }
+
     /// §56.2/§56.21: the tonnage the Axis may ship in a convoy arriving on `arrival_gt`, given the
     /// die roll — looked up by that turn's month/year (Turn Record Track) on the Convoy Level Chart
     /// then the Capacity Table. `None` if the calendar month has no scheduled level or the chart is

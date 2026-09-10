@@ -646,8 +646,12 @@ SGSU plane-type identities** (§35.29, needed only from GT26+), and the §34.82B
 withdrawals (`WD`, §34.84) are now loaded:** the schedule's Commonwealth periods carry a `withdrawals` list (capability class F/B/R +
 count, fired once at the month's `gt_start`, queryable via `AirReinforcementSchedule::withdrawals_for`;
 the Axis chart lists none, and the chart's `*`/`**`/`‡` qualifiers are not yet modeled). Enforcing a
-withdrawal removes a deployed SGSU; now that `DeploySgsu` exists this can be wired (a `WithdrawSquadron`
-command choosing a squadron of the due capability class) — not yet built.
+withdrawal is now wired: `WithdrawSquadron` removes a deployed squadron to satisfy a due `WD` — allowed
+only on a period's `gt_start` (queryable via `due_squadron_withdrawals`), and only when the squadron's
+class matches the due capability (Fighter/Bomber, or any due Recon since recon isn't a squadron class,
+§35.21). The ground unit leaves: its counter returns to `available_sgsu`, its planes to the pool (a
+national asset, reassignable) and its pilots are unassigned. Per-turn over-withdrawal count-gating is
+left to the driver via the query (removing one's own extra squadrons is self-penalising).
 Opening deployment is left to the agent by design (the rulebook leaves placement to the player), so no
 baked-in default. Note the separate **unit** withdrawal (§20.9/§64.75 voluntary Commonwealth) is fully
 built (`WithdrawUnit`/`ReturnUnit` + VP banking); the §20.8 *mandatory* unit schedule lives only as

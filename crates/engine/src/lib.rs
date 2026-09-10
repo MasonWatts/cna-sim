@@ -2665,6 +2665,48 @@ mod tests {
     }
 
     #[test]
+    fn withdraw_squadron_satisfies_due_wd_34_84() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::{SquadronClass, WdClass};
+        use crate::state::air::{AirFacility, AirFacilityKind};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        // Campaign ReferenceData carries the §34.84 schedule (GT8 CW WD = 2F + 2B).
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        let field = HexCoord::new(7, 7);
+        g.add_air_facility(AirFacility::new(AirFacilityKind::Airfield, field));
+        g.available_sgsu.insert(Nationality::Commonwealth, 1);
+        g.plane_pool.entry(Nationality::Commonwealth).or_default().insert("Gladiator Mk.II".into(), 12);
+        while g.phase != Phase::Organization {
+            g.advance_phase();
+        }
+        // Deploy a CW fighter squadron and fill it from the pool.
+        let id = match g.apply(Command::DeploySgsu { nationality: Nationality::Commonwealth, class: SquadronClass::Fighter, at: field }) {
+            Ok(CommandOutcome::SgsuDeployed(id)) => id,
+            other => panic!("expected SgsuDeployed, got {other:?}"),
+        };
+        g.apply(Command::AssignSquadronPlanes { squadron: id, aircraft_type: "Gladiator Mk.II".into(), class: AircraftClass::Fighter, count: 12 }).unwrap();
+        assert_eq!(g.pool_planes(Nationality::Commonwealth, "Gladiator Mk.II"), 0);
+        assert_eq!(g.available_sgsu[&Nationality::Commonwealth], 0);
+
+        // At GT1 no WD is due — withdrawal is refused.
+        assert_eq!(g.apply(Command::WithdrawSquadron { squadron: id }), Err(CommandError::WithdrawalNotDue));
+
+        // GT8 is a period start with a CW fighter WD — now it succeeds.
+        g.game_turn = 8;
+        assert!(g.due_squadron_withdrawals().iter().any(|&(n, c, _)| n == Nationality::Commonwealth && c == WdClass::Fighter));
+        assert_eq!(g.apply(Command::WithdrawSquadron { squadron: id }), Ok(CommandOutcome::SquadronWithdrawn));
+        // The squadron is gone; its counter returned to supply and its planes to the pool; no pilots
+        // are left dangling on the removed squadron.
+        assert!(!g.sgsus.contains_key(&id));
+        assert_eq!(g.available_sgsu[&Nationality::Commonwealth], 1);
+        assert_eq!(g.pool_planes(Nationality::Commonwealth, "Gladiator Mk.II"), 12);
+        assert!(g.pilots.iter().all(|p| p.squadron != Some(id)));
+    }
+
+    #[test]
     fn deploy_sgsu_spends_counter_and_sets_cpa_34_82() {
         use crate::reference::squadron::SquadronClass;
         use crate::state::air::{AirFacility, AirFacilityKind};

@@ -276,6 +276,8 @@ pub enum Command {
         class: crate::reference::squadron::SquadronClass,
         at: HexCoord,
     },
+    /// §34.84: withdraw a deployed squadron to satisfy a due `WD` requirement (Organization Phase).
+    WithdrawSquadron { squadron: crate::state::air::SquadronId },
     /// §35.2: assign `count` planes of a type/class to a squadron (Organization Phase).
     AssignSquadronPlanes {
         squadron: crate::state::air::SquadronId,
@@ -689,6 +691,8 @@ pub enum CommandOutcome {
     HarborAction { ammo: u32, stores: u32 },
     /// An SGSU counter was deployed to an air facility (§34.82); carries the new squadron's id.
     SgsuDeployed(crate::state::air::SquadronId),
+    /// A squadron was withdrawn from play to satisfy a §34.84 `WD` requirement.
+    SquadronWithdrawn,
     /// Planes were assigned to a squadron (§35.2).
     SquadronPlanesAssigned,
     /// An air facility was bombed (§41.36).
@@ -969,6 +973,9 @@ pub enum CommandError {
     /// §34.82: cannot deploy an SGSU — no counter available for that nationality, or no air facility
     /// at the target hex.
     SgsuDeployFailed,
+    /// §34.84: the squadron cannot be withdrawn — it does not exist, is not deployed, or no matching
+    /// `WD` requirement is due this Game-Turn.
+    WithdrawalNotDue,
     /// No matching air facility exists in the target hex.
     NoSuchFacility,
     /// The referenced port does not exist in play.
@@ -1145,6 +1152,14 @@ impl GameState {
                 match self.deploy_sgsu(nationality, class, at) {
                     Some(id) => Ok(CommandOutcome::SgsuDeployed(id)),
                     None => Err(CommandError::SgsuDeployFailed),
+                }
+            }
+            Command::WithdrawSquadron { squadron } => {
+                self.require_phase(Phase::Organization)?;
+                if self.withdraw_squadron(squadron) {
+                    Ok(CommandOutcome::SquadronWithdrawn)
+                } else {
+                    Err(CommandError::WithdrawalNotDue)
                 }
             }
             Command::AssignSquadronPlanes { squadron, aircraft_type, class, count } => {
