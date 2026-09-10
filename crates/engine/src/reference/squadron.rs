@@ -430,6 +430,47 @@ pub enum WdClass {
     Recon,
 }
 
+/// One row of the §36.53 Allied Off-Map Air Facilities Chart: a Commonwealth off-map air facility
+/// reached through an on-map entry/exit hex.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OffMapAirFacility {
+    /// The on-map hex through which planes enter/exit this off-map facility.
+    pub entry_hex: String,
+    pub name: String,
+    /// Distance (hexes) from the facility to its entry/exit hex (§37.4 flight cost).
+    pub distance: u32,
+    /// Printed SGSU capacity (§36.5b). `None` = unlimited (Ethiopia).
+    pub max_squadrons: Option<u32>,
+    /// A Flying-Boat Basin (§36.3 — flying boats only). Port Said.
+    #[serde(default)]
+    pub flying_boat: bool,
+    /// Game-Turn before which no planes may be based here (§36.53 note — Ethiopia = 35). `None` =
+    /// always available.
+    #[serde(default)]
+    pub available_from_gt: Option<u32>,
+    /// Whether this counts as a "North African" off-map facility for the §34.82C creation test
+    /// (the six Canal-zone boxes; Ethiopia is East African and excluded).
+    pub north_african: bool,
+}
+
+/// The §36.53 Allied Off-Map Air Facilities Chart.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OffMapAirFacilitiesChart {
+    pub facilities: Vec<OffMapAirFacility>,
+}
+
+impl OffMapAirFacilitiesChart {
+    /// §34.82C: the total printed squadron capacity of the Commonwealth North African off-map
+    /// facilities (the sum used to compute the "maximum planes possibly based" threshold).
+    pub fn north_african_squadron_capacity(&self) -> u32 {
+        self.facilities
+            .iter()
+            .filter(|f| f.north_african)
+            .filter_map(|f| f.max_squadrons)
+            .sum()
+    }
+}
+
 /// §34.84 / §34.85 Airplane Reinforcement schedule: the planes each nationality receives into its
 /// pool over the campaign. Each period is a monthly total (over its Game-Turn range); the total is
 /// divided as evenly as possible across the period's Game-Turns, remainder front-loaded.
@@ -701,6 +742,24 @@ mod tests {
         assert_eq!(t.levels_built(2), 1);
         assert_eq!(t.levels_built(5), 1);
         assert_eq!(t.levels_built(6), 2);
+    }
+
+    #[test]
+    fn off_map_air_facilities_36_53() {
+        let c: OffMapAirFacilitiesChart =
+            ron::from_str(include_str!("../../../../data/reference/off-map-air-facilities.ron")).unwrap();
+        assert_eq!(c.facilities.len(), 7);
+        // Port Said is a flying-boat basin with 3 squadrons.
+        let ps = c.facilities.iter().find(|f| f.name == "Port Said").unwrap();
+        assert!(ps.flying_boat);
+        assert_eq!(ps.max_squadrons, Some(3));
+        // Ethiopia: unlimited, East African (not counted), time-gated to GT35.
+        let eth = c.facilities.iter().find(|f| f.name == "Ethiopia").unwrap();
+        assert_eq!(eth.max_squadrons, None);
+        assert!(!eth.north_african);
+        assert_eq!(eth.available_from_gt, Some(35));
+        // §34.82C: the six Canal-zone boxes total 48 printed squadrons.
+        assert_eq!(c.north_african_squadron_capacity(), 48);
     }
 
     #[test]

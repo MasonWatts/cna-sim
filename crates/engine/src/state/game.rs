@@ -3852,7 +3852,10 @@ impl GameState {
         class: crate::reference::squadron::SquadronClass,
         hex: HexCoord,
     ) -> Option<crate::state::air::SquadronId> {
-        if self.available_sgsu.get(&nationality).copied().unwrap_or(0) == 0 {
+        let supply = self.available_sgsu.get(&nationality).copied().unwrap_or(0);
+        // §34.82C/D: once the printed counter supply is exhausted, a counter may still be *created*
+        // if the nationality meets its shortage condition.
+        if supply == 0 && !self.may_create_extra_sgsu(nationality) {
             return None;
         }
         if !self.air_facilities.iter().any(|f| f.hex == hex) {
@@ -3867,8 +3870,54 @@ impl GameState {
             id,
             crate::state::air::Sgsu::new(id, nationality, class, designation, cpa, Some(hex)),
         );
-        *self.available_sgsu.entry(nationality).or_insert(0) -= 1;
+        // Spend a printed counter if one remains; otherwise this is a §34.82C/D created counter.
+        if supply > 0 {
+            *self.available_sgsu.entry(nationality).or_insert(0) -= 1;
+        }
         Some(id)
+    }
+
+    /// §34.82C/D: whether `nationality` may create SGSU counters beyond its printed supply (i.e.
+    /// deploy once `available_sgsu` is exhausted).
+    /// - Axis German/Italian (§34.82D): at least 30% of that nation's total planes are based at
+    ///   off-map (Mediterranean-box) facilities — computed from `med_base` squadrons.
+    /// - Commonwealth (§34.82C): requires every North African off-map facility to be at its printed
+    ///   plane capacity (§36.53). That needs Commonwealth off-map *basing*, which is not yet modeled
+    ///   (the §36.53 boxes share entry hexes), so this returns `false` for now; the printed threshold
+    ///   is available via [`Self::max_off_map_north_african_planes`].
+    pub fn may_create_extra_sgsu(&self, nationality: Nationality) -> bool {
+        match nationality {
+            Nationality::Commonwealth => false,
+            Nationality::German | Nationality::Italian => {
+                let total: u32 = self
+                    .sgsus
+                    .values()
+                    .filter(|s| s.nationality == nationality)
+                    .map(|s| s.plane_count())
+                    .sum();
+                if total == 0 {
+                    return false;
+                }
+                let off_map: u32 = self
+                    .sgsus
+                    .values()
+                    .filter(|s| s.nationality == nationality && s.med_base.is_some())
+                    .map(|s| s.plane_count())
+                    .sum();
+                off_map * 100 >= 30 * total
+            }
+        }
+    }
+
+    /// §34.82C: the "maximum planes possibly based" at the Commonwealth North African off-map
+    /// facilities — the §36.53 printed squadron capacity times a Commonwealth squadron's full
+    /// (ready + reserve) capacity at the current Game-Turn (§35.23). `None` if the chart is not
+    /// loaded. This is the threshold the §34.82C creation condition compares against once
+    /// Commonwealth off-map basing is modeled.
+    pub fn max_off_map_north_african_planes(&self) -> Option<u32> {
+        let chart = self.reference.off_map_air_facilities.as_ref()?;
+        let per = crate::reference::squadron::squadron_capacity(Nationality::Commonwealth, self.game_turn).total();
+        Some(chart.north_african_squadron_capacity() * per)
     }
 
     /// Planes of `nationality` based at *on-map* air facilities — the planes in its SGSUs that have

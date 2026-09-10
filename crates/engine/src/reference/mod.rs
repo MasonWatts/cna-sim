@@ -146,6 +146,9 @@ pub struct ReferenceData {
     /// §34.84 / §34.85 Airplane Reinforcement schedule (planes per Game-Turn into each side's pool).
     #[serde(default)]
     pub air_reinforcements: Option<squadron::AirReinforcementSchedule>,
+    /// §36.53 Allied Off-Map Air Facilities Chart.
+    #[serde(default)]
+    pub off_map_air_facilities: Option<squadron::OffMapAirFacilitiesChart>,
     /// Ammunition Consumption Rates (§50.2).
     #[serde(default)]
     pub ammo_rates: Option<logistics::AmmoConsumptionRates>,
@@ -209,6 +212,7 @@ impl ReferenceData {
         load!(load_off_map_nodes, "../../../../data/reference/off-map-nodes.ron");
         load!(load_weather_table, "../../../../data/reference/weather-table.ron");
         load!(load_air_reinforcements, "../../../../data/reference/air-reinforcements.ron");
+        load!(load_off_map_air_facilities, "../../../../data/reference/off-map-air-facilities.ron");
         load!(load_initiative_ratings, "../../../../data/reference/initiative-ratings.ron");
         load!(load_reinforcement_entry, "../../../../data/reference/reinforcement-entry.ron");
         load!(load_campaign_victory, "../../../../data/reference/campaign-victory.ron");
@@ -502,6 +506,12 @@ impl ReferenceData {
     /// Load the §34.84/§34.85 Airplane Reinforcement schedule.
     pub fn load_air_reinforcements(&mut self, ron_str: &str) -> Result<(), ron::error::SpannedError> {
         self.air_reinforcements = Some(ron::from_str(ron_str)?);
+        Ok(())
+    }
+
+    /// Load the §36.53 Allied Off-Map Air Facilities Chart.
+    pub fn load_off_map_air_facilities(&mut self, ron_str: &str) -> Result<(), ron::error::SpannedError> {
+        self.off_map_air_facilities = Some(ron::from_str(ron_str)?);
         Ok(())
     }
 

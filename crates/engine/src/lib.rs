@@ -2717,6 +2717,46 @@ mod tests {
     }
 
     #[test]
+    fn axis_may_create_extra_sgsu_when_30pct_off_map_34_82d() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{AirFacility, AirFacilityKind, MedBase, Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        let field = HexCoord::new(3, 3);
+        g.add_air_facility(AirFacility::new(AirFacilityKind::Airfield, field));
+        // German counter supply already exhausted (0 available).
+        g.available_sgsu.insert(Nationality::German, 0);
+        g.plane_pool.entry(Nationality::German).or_default().insert("Bf.109F".into(), 20);
+        while g.phase != Phase::Organization {
+            g.advance_phase();
+        }
+
+        // No German planes in play yet → cannot create (§34.82D 30%-off-map fails on 0 total).
+        assert!(!g.may_create_extra_sgsu(Nationality::German));
+        assert_eq!(
+            g.apply(Command::DeploySgsu { nationality: Nationality::German, class: SquadronClass::Fighter, at: field }),
+            Err(CommandError::SgsuDeployFailed)
+        );
+
+        // Put a 10-plane German squadron in an off-map Med box → 100% off-map, condition met.
+        let mut med = Sgsu::new(SquadronId(50), Nationality::German, SquadronClass::Bomber, "KG 26", 25, None);
+        med.med_base = Some(MedBase::ItalySicily);
+        med.add_planes("Ju.88c", AircraftClass::Bomber, 10, 1);
+        g.sgsus.insert(SquadronId(50), med);
+        assert!(g.may_create_extra_sgsu(Nationality::German));
+        // Now an extra SGSU may be created despite the empty supply; supply stays at 0.
+        assert!(matches!(
+            g.apply(Command::DeploySgsu { nationality: Nationality::German, class: SquadronClass::Fighter, at: field }),
+            Ok(CommandOutcome::SgsuDeployed(_))
+        ));
+        assert_eq!(g.available_sgsu[&Nationality::German], 0);
+    }
+
+    #[test]
     fn withdraw_squadron_satisfies_due_wd_34_84() {
         use crate::reference::aircraft::AircraftClass;
         use crate::reference::squadron::{SquadronClass, WdClass};

@@ -1,0 +1,16 @@
+// §36.53 Allied Off-Map Air Facilities Chart. Transcribed from
+// docs/source-materials/off-map-air-facilities-36.53.transcribed.md (desktop screenshot 2026-09-10).
+// max_squadrons: None = Unlimited (Ethiopia). The six Canal-zone boxes are the Commonwealth
+// "North African" off-map facilities referenced by §34.82C; Ethiopia is East African (excluded) and
+// time-gated to Game-Turn 35.
+(
+    facilities: [
+        (entry_hex: "E4033", name: "Port Said", distance: 12, max_squadrons: Some(3), flying_boat: true, north_african: true),
+        (entry_hex: "E3433", name: "Abu Seier", distance: 7,  max_squadrons: Some(9), north_african: true),
+        (entry_hex: "E3433", name: "Ismailia",  distance: 9,  max_squadrons: Some(9), north_african: true),
+        (entry_hex: "E1833", name: "Fayid",     distance: 11, max_squadrons: Some(9), north_african: true),
+        (entry_hex: "E1833", name: "Deversoir", distance: 12, max_squadrons: Some(9), north_african: true),
+        (entry_hex: "E1833", name: "Kabrit",    distance: 13, max_squadrons: Some(9), north_african: true),
+        (entry_hex: "E0127", name: "Ethiopia",  distance: 60, max_squadrons: None, available_from_gt: Some(35), north_african: false),
+    ],
+)
