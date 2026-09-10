@@ -95,6 +95,30 @@ pub fn sgsu_cpa(nationality: Nationality) -> u32 {
     }
 }
 
+/// §35.29: the aircraft role a German SGSU handles, inferred from its Geschwader designation prefix.
+/// German SGSUs are type-specific (unlike the generic Commonwealth/Italian counters): `JG` = Fighter,
+/// `St.G` = Dive Bomber, `KG`/`KLG`/`LG` = Bomber, `ZG` = Fighter-Bomber, `(H)`/`(F)` = Recon; `NJG`
+/// (night fighter) is treated as a Fighter. Returns `None` for a designation that matches no known
+/// prefix (e.g. the uncertain `SG` counter — see the roster transcription). Per §35.29 following this
+/// is optional, so the result is advisory, not a placement rule.
+pub fn german_sgsu_role(designation: &str) -> Option<AircraftClass> {
+    if designation.contains("NJG") {
+        Some(AircraftClass::Fighter)
+    } else if designation.contains("St.G") || designation.contains("StG") {
+        Some(AircraftClass::DiveBomber)
+    } else if designation.contains("ZG") {
+        Some(AircraftClass::FighterBomber)
+    } else if designation.contains("(H)") || designation.contains("(F)") {
+        Some(AircraftClass::Reconnaissance)
+    } else if designation.contains("KG") || designation.contains("KLG") || designation.contains("LG") {
+        Some(AircraftClass::Bomber)
+    } else if designation.contains("JG") {
+        Some(AircraftClass::Fighter)
+    } else {
+        None
+    }
+}
+
 /// The per-nationality maximum 2d6 total that still refits a single plane (§38.37 chart A / §38.39).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ByPlaneMax {
@@ -742,6 +766,22 @@ mod tests {
         assert_eq!(t.levels_built(2), 1);
         assert_eq!(t.levels_built(5), 1);
         assert_eq!(t.levels_built(6), 2);
+    }
+
+    #[test]
+    fn german_sgsu_role_35_29() {
+        // The §35.29 Geschwader-prefix convention, tested against the transcribed roster.
+        assert_eq!(german_sgsu_role("8/III JG 27"), Some(AircraftClass::Fighter));
+        assert_eq!(german_sgsu_role("Stab St.G.3"), Some(AircraftClass::DiveBomber));
+        assert_eq!(german_sgsu_role("1/I KG 54"), Some(AircraftClass::Bomber));
+        assert_eq!(german_sgsu_role("5/II KLG 1"), Some(AircraftClass::Bomber));
+        assert_eq!(german_sgsu_role("8/III ZG 26"), Some(AircraftClass::FighterBomber));
+        assert_eq!(german_sgsu_role("2.(H) 14"), Some(AircraftClass::Reconnaissance));
+        assert_eq!(german_sgsu_role("1.(F) 121"), Some(AircraftClass::Reconnaissance));
+        // NJG (night fighter) is treated as a fighter — and must not be caught by the JG branch first.
+        assert_eq!(german_sgsu_role("1/I NJG 2"), Some(AircraftClass::Fighter));
+        // The uncertain SG counter matches no known prefix.
+        assert_eq!(german_sgsu_role("1/I SG 2"), None);
     }
 
     #[test]

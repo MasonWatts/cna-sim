@@ -655,8 +655,12 @@ time-gated unlimited Ethiopia), and **Commonwealth off-map basing** is modeled b
 on the SGSU (the Allied analogue of the Axis `med_base`, keyed by §36.53 box name since boxes share
 entry hexes), set via `BaseSquadronOffMap` — which enforces printed squadron capacity (§36.5b), the
 Ethiopia GT35 gate, and the flying-boat-basin class restriction (§36.3). `off_map_north_african_planes`
-reaching `max_off_map_north_african_planes` flips `may_create_extra_sgsu(Commonwealth)` true. **Still
-open:** the **German SGSU plane-type identities** (§35.29, GT26+) — the last outstanding scan. **Squadron
+reaching `max_off_map_north_african_planes` flips `may_create_extra_sgsu(Commonwealth)` true. The
+**German SGSU roster (§35.29)** is transcribed (38 counters, all CPA 25) and its Geschwader-prefix →
+aircraft-role convention (JG→Fighter, St.G→DiveBomber, KG/KLG→Bomber, ZG→FighterBomber, (H)/(F)→Recon,
+NJG→night Fighter) is modeled by `german_sgsu_role`; per §35.29 this is advisory (players need not
+follow it), so it is a classification helper rather than a placement rule. The air subsystem is now
+complete for the campaign; no air data remains outstanding. **Squadron
 withdrawals (`WD`, §34.84) are now loaded:** the schedule's Commonwealth periods carry a `withdrawals` list (capability class F/B/R +
 count, fired once at the month's `gt_start`, queryable via `AirReinforcementSchedule::withdrawals_for`;
 the Axis chart lists none, and the chart's `*`/`**`/`‡` qualifiers are not yet modeled). Enforcing a
