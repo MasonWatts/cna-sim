@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GameRecord } from "@bindings/GameRecord";
+import type { UnitView } from "@bindings/UnitView";
 import { HexMap } from "./components/HexMap";
 import { Scrubber } from "./components/Scrubber";
 import { ActionLog } from "./components/ActionLog";
@@ -38,7 +39,21 @@ export function App() {
     };
   }, [playing, lastStep]);
 
-  const event = useMemo(() => record?.events[Math.min(step, lastStep)], [record, step, lastStep]);
+  // The event log stores unit state as deltas; fold it into a full unit array per step once on load.
+  const frames = useMemo<UnitView[][]>(() => {
+    if (!record) return [];
+    const out: UnitView[][] = [];
+    const cur = new Map<number, UnitView>();
+    for (const e of record.events) {
+      for (const u of e.units) cur.set(u.id, u);
+      for (const r of e.removed) cur.delete(r);
+      out.push([...cur.values()]);
+    }
+    return out;
+  }, [record]);
+
+  const idx = Math.min(step, lastStep);
+  const event = record?.events[idx];
 
   if (error) return <div style={{ padding: 24 }}>Failed to load <code>game.json</code>: {error}</div>;
   if (!record || !event) return <div style={{ padding: 24 }}>Loading…</div>;
@@ -57,7 +72,7 @@ export function App() {
       </div>
 
       <div className="map-wrap">
-        <HexMap map={record.map} units={event.units} />
+        <HexMap map={record.map} units={frames[idx] ?? []} />
       </div>
 
       <div className="sidebar">

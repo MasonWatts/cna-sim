@@ -58,11 +58,15 @@ pub struct Event {
     pub outcome: String,
     /// `§` rule citations for this action — populated in a later pass.
     pub rules: Vec<String>,
-    /// Dynamic unit state after the action (the static map lives in the header).
+    /// **Delta**: only the units whose view changed since the previous event (step 0 lists them
+    /// all). To render the board at step N, fold `units` from step 0 through N. Keeps the log small
+    /// on large maps — most steps touch one or two units.
     pub units: Vec<UnitView>,
+    /// Unit ids removed (eliminated / left the map) since the previous event.
+    pub removed: Vec<u32>,
 }
 
-#[derive(Serialize, TS)]
+#[derive(Serialize, TS, Clone, PartialEq)]
 #[ts(export)]
 pub struct UnitView {
     pub id: u32,
@@ -134,7 +138,23 @@ fn unit_views(g: &GameState) -> Vec<UnitView> {
     v
 }
 
-fn frame(game: &GameState, step: u32, side: &str, action: String, outcome: String) -> Event {
+/// Build an event as a **delta** vs `prev` (the units as of the last event): only changed units go
+/// in `units`, removed ids in `removed`. `prev` is updated to the current full set.
+fn delta_frame(
+    game: &GameState,
+    step: u32,
+    side: &str,
+    action: String,
+    outcome: String,
+    rules: Vec<String>,
+    prev: &mut std::collections::HashMap<u32, UnitView>,
+) -> Event {
+    let cur = unit_views(game);
+    let cur_ids: std::collections::HashSet<u32> = cur.iter().map(|u| u.id).collect();
+    let units: Vec<UnitView> = cur.iter().filter(|u| prev.get(&u.id) != Some(*u)).cloned().collect();
+    let mut removed: Vec<u32> = prev.keys().copied().filter(|id| !cur_ids.contains(id)).collect();
+    removed.sort_unstable();
+    *prev = cur.into_iter().map(|u| (u.id, u)).collect();
     Event {
         step,
         game_turn: game.game_turn,
@@ -143,8 +163,9 @@ fn frame(game: &GameState, step: u32, side: &str, action: String, outcome: Strin
         side: side.to_string(),
         action,
         outcome,
-        rules: Vec::new(),
-        units: unit_views(game),
+        rules,
+        units,
+        removed,
     }
 }
 
@@ -162,7 +183,8 @@ pub fn record_game(
     max_turns: u32,
 ) -> GameRecord {
     let map = map_view(&game);
-    let mut events = vec![frame(&game, 0, "-", "start".into(), String::new())];
+    let mut prev: std::collections::HashMap<u32, UnitView> = std::collections::HashMap::new();
+    let mut events = vec![delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev)];
     let mut step = 0u32;
     let mut guard = 0u64;
     while game.game_turn <= max_turns {
@@ -183,9 +205,7 @@ pub fn record_game(
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         if let Ok(outcome) = game.apply(cmd) {
                             step += 1;
-                            let mut ev = frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"));
-                            ev.rules = rules;
-                            events.push(ev);
+                            events.push(delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev));
                         }
                         acted += 1;
                     }
@@ -247,8 +267,19 @@ mod tests {
         for w in rec.events.windows(2) {
             assert_eq!(w[1].step, w[0].step + 1, "steps are contiguous");
         }
-        // Every frame snapshots both units; the game advanced past the start.
-        assert!(rec.events.iter().all(|e| e.units.len() == 2));
+        // Step 0 lists all units; later events are deltas (≤ 2 changed). Folding reconstructs both.
+        assert_eq!(rec.events[0].units.len(), 2, "step 0 lists all units");
+        assert!(rec.events.iter().all(|e| e.units.len() <= 2), "later events are deltas");
+        let mut folded: std::collections::HashMap<u32, UnitView> = std::collections::HashMap::new();
+        for e in &rec.events {
+            for uv in &e.units {
+                folded.insert(uv.id, uv.clone());
+            }
+            for r in &e.removed {
+                folded.remove(r);
+            }
+        }
+        assert_eq!(folded.len(), 2, "folding the deltas reconstructs both units");
         assert!(rec.events.last().unwrap().game_turn >= 1);
         // The whole record round-trips through serde_json.
         let json = serde_json::to_string(&rec).unwrap();

@@ -1,6 +1,11 @@
-//! Record one deterministic AI-vs-AI skirmish to a JSON event log for the spectator website.
+//! Record one deterministic AI-vs-AI game to a JSON event log for the spectator website.
 //!
-//! Run: `cargo run --release --bin record -- [out.json] [turns]`  (defaults: game.json, 5 turns)
+//! Run: `cargo run --release --bin record -- [out.json] [turns] [scenario]`
+//!   defaults: game.json, 5 turns, skirmish
+//!   scenario = `skirmish` (synthetic 6-unit demo) | `scenario1` (§60 Italian Offensive on the
+//!              real section-C map + OB) | `campaign` (full §64)
+//! The real scenarios load all five map sections and the historical order of battle — larger maps
+//! and unit sets, so recording is slower and the JSON is bigger (snapshots per step).
 
 use cna_engine::agent::{GreedyAgent, RandomAgent};
 use cna_engine::reference::terrain::HexTerrain;
@@ -37,16 +42,44 @@ fn build_skirmish(seed: u64) -> GameState {
     g
 }
 
+macro_rules! data {
+    ($p:literal) => {
+        include_str!(concat!("../../../../data/", $p))
+    };
+}
+
+/// The full engine on the real map: reference bootstrap + all five map sections + a scenario RON.
+fn build_real(seed: u64, scenario_ron: &str) -> GameState {
+    let mut g = GameState::new(ReferenceData::load_campaign(), seed);
+    for s in [
+        data!("maps/section-a.ron"),
+        data!("maps/section-b.ron"),
+        data!("maps/section-c.ron"),
+        data!("maps/section-d.ron"),
+        data!("maps/section-e.ron"),
+    ] {
+        g.map.load_section(s).unwrap();
+    }
+    g.load_scenario(scenario_ron).expect("scenario loads");
+    g.auto_place_dump_choices();
+    g
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let out = args.get(1).cloned().unwrap_or_else(|| "game.json".to_string());
     let turns: u32 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(5);
+    let scenario = args.get(3).map(|s| s.as_str()).unwrap_or("skirmish");
 
     let seed = 42;
-    let game = build_skirmish(seed);
+    let (game, label) = match scenario {
+        "scenario1" => (build_real(seed, data!("scenarios/italian-offensive.ron")), "The Italian Offensive (§60)"),
+        "campaign" => (build_real(seed, data!("scenarios/campaign.ron")), "Campaign Game (§64)"),
+        _ => (build_skirmish(seed), "Skirmish"),
+    };
     let mut cw = GreedyAgent::new(1);
     let mut axis = RandomAgent::new(2);
-    let record = record_game(game, "Skirmish", seed, "Greedy", &mut cw, "Random", &mut axis, turns);
+    let record = record_game(game, label, seed, "Greedy", &mut cw, "Random", &mut axis, turns);
 
     let json = serde_json::to_string_pretty(&record).expect("record serializes");
     std::fs::write(&out, &json).unwrap_or_else(|e| panic!("write {out}: {e}"));

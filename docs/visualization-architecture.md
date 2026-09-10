@@ -78,9 +78,13 @@ play. Define the `Command` (de)serialization once (serde + `ts-rs`) as a first-c
 schema serving three consumers: the recorder/visualizer, the future MCP action interface, and
 external tooling.
 
-## Open decision: snapshots vs deltas
-Start with **full state snapshots** per event (simple; state is small). Add deltas only if bandwidth
-ever bites — the schema can carry either.
+## Snapshots vs deltas — resolved (deltas)
+Full snapshots were fine for the toy skirmish but blew up on the real map: Scenario 1 (7,011 hexes,
+80 units) was **15.5 MB for one turn**. So the event log is now **delta-encoded** — each `Event.units`
+lists only the units that changed since the previous step (step 0 lists all), with `Event.removed`
+for eliminations; the frontend folds them into full per-step frames on load. The static map is still
+serialized once. Result: the same Scenario-1 turn dropped to **~0.9 MB (~17×)**, mean 0.68 changed
+units/event. This is also the WASM-replay stepping stone (a command log is the eventual end state).
 
 ## Build order
 1. ✅ **Done** — recorder crate (`crates/replay`) dumps an AI-vs-AI game to `game.json`.
@@ -106,9 +110,10 @@ ever bites — the schema can carry either.
 6. *(Optional)* WebSocket service for live games.
 
 ## v0 recorder notes / follow-ups
-- **Event granularity:** one event per accepted command → fine-grained action tracking (a 5-turn
-  6-unit skirmish records ~1200 events, ~2.8 MB pretty JSON). Fine for a demo; the snapshots→deltas
-  optimization (above) is the lever if it grows.
+- **Event granularity:** one event per accepted command → fine-grained action tracking.
+- **Scenarios:** the `record` bin takes a scenario arg — `skirmish` (synthetic), `scenario1` (§60
+  Italian Offensive on the real five-section map + historical OB, 7,011 hexes / 80 units), or
+  `campaign` (§64). The committed sample (`web/public/game.json`) is a 2-turn Scenario 1 (~1 MB).
 - **`rules` is empty for now.** The `§` citations live in engine doc-comments, not runtime data, so
   the per-action rules panel needs a `Command → §` mapping built later (step 4).
 - **Actions/outcomes are `Debug` strings** in the *event log* for v0. The round-trippable `Command`

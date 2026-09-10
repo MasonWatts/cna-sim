@@ -22,6 +22,12 @@ outcome: string,
  */
 rules: Array<string>, 
 /**
- * Dynamic unit state after the action (the static map lives in the header).
+ * **Delta**: only the units whose view changed since the previous event (step 0 lists them
+ * all). To render the board at step N, fold `units` from step 0 through N. Keeps the log small
+ * on large maps — most steps touch one or two units.
  */
-units: Array<UnitView>, };
+units: Array<UnitView>, 
+/**
+ * Unit ids removed (eliminated / left the map) since the previous event.
+ */
+removed: Array<number>, };
