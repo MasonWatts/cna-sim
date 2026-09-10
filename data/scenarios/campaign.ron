@@ -165,4 +165,24 @@
         (at: "E3613", kind: Major),     // Alexandria (Commonwealth)
         (at: "D3714", kind: Temporary), // Mersa Matruh (Commonwealth)
     ],
+
+    // ---- Initial air: starting plane pools (§60.32 Italian / §60.42 Commonwealth). No German air
+    //      at start (the Luftwaffe arrives with the DAK, GT26+). Planes are assigned to the side's
+    //      SGSU counters and based at airfields by the player/AI (§35.2) within capacity. The
+    //      per-type "refitted" subsets and the SGSU-counter class splits (39 Italian / 14 CW) are
+    //      recorded in the source transcription; deploying squadrons awaits the SGSU roster.
+    //      (§60.32's 9× unidentified type — OCR'd "2801" in the text rules — is omitted pending
+    //      verification.) ----
+    initial_planes: [
+        (nationality: Italian, planes: [
+            ("C.R.42 Falco", 65), ("C.R.32", 70), ("Ba 65", 10), ("Ba 88 Lince", 24),
+            ("S.M.79 Sparviero", 133), ("S.M.81 Pipistrello", 17), ("Ca 309 Ghibli", 56),
+            ("Ro 37bis", 10),
+        ]),
+        (nationality: Commonwealth, planes: [
+            ("Lysander Mk.I", 12), ("Bombay Mk.I", 15), ("Sunderland", 18), ("Blenheim Mk.I", 26),
+            ("Blenheim Mk.IV", 12), ("Blenheim Mk.IVF", 9), ("Gladiator Mk.II", 36),
+            ("Hurricane Mk.I", 6), ("MS406", 4), ("63.11", 2), ("Valentia", 3),
+        ]),
+    ],
 )

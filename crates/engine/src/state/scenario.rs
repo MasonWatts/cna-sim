@@ -290,6 +290,18 @@ struct ScenarioData {
     /// Air facilities (airfields / landing strips / flying-boat basins) present at start (§36).
     #[serde(default)]
     air_facilities: Vec<AirFieldSpec>,
+    /// Initial plane pools (§60.32 Italian / §60.42 Commonwealth): the aircraft each nationality has
+    /// available at Game-Turn 1, which the player assigns to squadrons/airfields (§35.2). Seeds
+    /// `GameState.plane_pool`.
+    #[serde(default)]
+    initial_planes: Vec<PlanePoolSpec>,
+}
+
+/// A nationality's starting plane pool (§60.32 / §60.42): `(aircraft-type key, count)` pairs.
+#[derive(Deserialize)]
+struct PlanePoolSpec {
+    nationality: Nationality,
+    planes: Vec<(String, u32)>,
 }
 
 /// A squadron (SGSU) placed at setup (§35). Based on the map (`at`) or in an off-map Med Box
@@ -607,6 +619,13 @@ impl GameState {
             }
             f.off_map = a.off_map;
             self.add_air_facility(f);
+        }
+        // §60.32/§60.42: seed each side's starting plane pool.
+        for p in &data.initial_planes {
+            let pool = self.plane_pool.entry(p.nationality).or_default();
+            for (aircraft, n) in &p.planes {
+                *pool.entry(aircraft.clone()).or_insert(0) += n;
+            }
         }
         // §19.3: record each formation's historical assignment capacity (its OA-sheet organization)
         // from the units assigned to it at start, for the §19.21 reassignment limit.

@@ -618,11 +618,15 @@ loaded into `ReferenceData::air_reinforcements` from `data/reference/air-reinfor
 (generated from the transcription, 78 monthly periods), `GameState.plane_pool` holds each side's
 received-but-unassigned planes by aircraft type, and `accrue_air_reinforcements` (called on every
 Game-Turn rollover) adds that turn's arrivals — each month's total split evenly across its
-Game-Turns (`AirReinforcementSchedule::arrivals_for`). **Remaining air work:** the **§60 initial air
-deployment** (which squadrons/planes/airfields at GT1) to feed the scenario `squadrons` field so
-`campaign.ron` starts with aircraft, and the **SGSU counter roster** (how many squadrons per side +
-`AssignSquadronPlanes` drawing from the pool). Squadron **withdrawals** (the charts' `WD` entries)
-are noted in the transcription but not yet modeled. Naval fleet deployment is the analogous
+Game-Turns (`AirReinforcementSchedule::arrivals_for`). The **§60 starting plane pools are seeded**:
+per §60.32 (Italian) and §60.42 (Commonwealth) the scenario `initial_planes` field loads each side's
+GT1 aircraft into `plane_pool` (no German air until the DAK, GT26+) — `campaign_seeds_initial_air_pool`
+verifies 133 SM79 / 70 CR32 (It) and 36 Gladiator / 6 Hurricane I (CW). Per §60, planes are assigned
+to squadron counters and based at airfields **by the player** within class/capacity limits, so the
+pool is the authoritative starting state. **Remaining air work:** the **SGSU counter roster** (how the
+39 Italian / 14 CW squadrons split by class) + a default opening deployment / `AssignSquadronPlanes`
+drawing from the pool; pilots (§60.32/§60.42 give the ratings); and squadron **withdrawals** (`WD`).
+The §60.32 "2801 9/9" line (an OCR garble in the text rules) is omitted pending verification. Naval fleet deployment is the analogous
 still-missing dimension (a `fleet` scenario field + a ship OB).
 **D14 verification pass (2026-09-08) — closed.** Every `Deployed`-default unit in the Commonwealth
 and Italian OB was cross-checked, formation-scoped, against the §4.44a/§4.44b OA-sheet "Arrives"

@@ -2628,6 +2628,20 @@ mod tests {
     }
 
     #[test]
+    fn campaign_seeds_initial_air_pool() {
+        use crate::reference::units::Nationality;
+        // §60.32/§60.42 starting plane pools are seeded at GT1 (before any reinforcement accrual).
+        let g = build_campaign_game();
+        assert_eq!(g.pool_planes(Nationality::Italian, "S.M.79 Sparviero"), 133);
+        assert_eq!(g.pool_planes(Nationality::Italian, "C.R.32"), 70);
+        assert_eq!(g.pool_planes(Nationality::Commonwealth, "Gladiator Mk.II"), 36);
+        assert_eq!(g.pool_planes(Nationality::Commonwealth, "Hurricane Mk.I"), 6);
+        // The Luftwaffe is not present at Sept-1940 start (arrives with the DAK, GT26+).
+        let german: u32 = g.plane_pool.get(&Nationality::German).map_or(0, |m| m.values().sum());
+        assert_eq!(german, 0);
+    }
+
+    #[test]
     fn campaign_game_deploys_and_reaches_rommel() {
         // §64.3: the campaign starts from the §60.0 Sept-1940 deployment and runs on. Verify the
         // start force is Italian + Commonwealth only (no Germans in Sept 1940), then advance past
