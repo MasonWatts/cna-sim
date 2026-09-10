@@ -8,6 +8,7 @@
 
 use crate::reference::crt::BarrageTargetClass;
 use crate::reference::terrain::{Fixed, MoveCost};
+use serde::{Deserialize, Serialize};
 use crate::reference::units::Side;
 use crate::rules::movement::{step_cost, MoveMode};
 use crate::state::combat::{AntiArmorOutcome, BarrageOutcome, CloseAssaultOutcome};
@@ -16,7 +17,7 @@ use crate::state::map::HexCoord;
 use crate::state::unit::UnitId;
 
 /// Which broken-down component to repair (§22).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RepairKind {
     /// §22.23 field repair of broken-down first-line trucks.
     Trucks,
@@ -29,7 +30,7 @@ pub enum RepairKind {
 }
 
 /// An action a player attempts. Validated and applied by [`GameState::apply`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
     /// Move one unit one hex to an adjacent, on-map hex, in the given movement mode.
     MoveStep {
@@ -609,7 +610,7 @@ impl Command {
 /// §16.51: the information a Patrol garners about one enemy unit — its historical designation,
 /// type, whether it is motorized, and its reported TOE Strength (the defender's chosen value within
 /// ±2 of actual). A one-time snapshot; not stored in game state.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RevealedUnit {
     pub unit: UnitId,
     pub designation: String,
@@ -620,7 +621,7 @@ pub struct RevealedUnit {
 
 /// §16 Patrol outcome: the patroller's losses, the reconnaissance disclosures (§16.5/§16.51), and
 /// the casualties the patrol inflicted on the reconnoitred hex (§16.8).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PatrolReport {
     pub patroller_killed: u32,
     pub patroller_captured: u32,
@@ -632,7 +633,7 @@ pub struct PatrolReport {
 }
 
 /// The result of successfully applying a [`Command`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CommandOutcome {
     Moved,
     Barrage(BarrageOutcome),

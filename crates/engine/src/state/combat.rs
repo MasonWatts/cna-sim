@@ -11,6 +11,7 @@
 //! per-TOE-point close-assault commitment split, and §14.48 halftrack absorption (needs halftrack
 //! TOE + truck-linkage modeling).
 
+use serde::{Deserialize, Serialize};
 use crate::reference::crt::{
     BarrageResult, BarrageTargetClass, CloseAssaultResult, CloseAssaultSide, MoraleModifier,
 };
@@ -30,7 +31,7 @@ const NO_RESULT: CloseAssaultResult = CloseAssaultResult {
 };
 
 /// The outcome of one anti-armor attack.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AntiArmorOutcome {
     pub dice: u8,
     pub raw_points: i32,
@@ -341,7 +342,7 @@ impl GameState {
 }
 
 /// The outcome of one barrage against a target unit (§12.6).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BarrageOutcome {
     pub dice: u8,
     pub actual_points: i32,
@@ -504,7 +505,7 @@ impl GameState {
 /// and Cohesion Level (largest-unit rule), the morale-table roll and modifier, the
 /// resulting Adjusted Morale Rating (clamped to [-3, +3], §17.23), and whether the side
 /// Surrendered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SideMorale {
     pub basic: i32,
     pub cohesion: i32,
@@ -516,7 +517,7 @@ pub struct SideMorale {
 
 /// The outcome of one close assault (§15.79). Reuses the CRT's per-side result for the
 /// loss %, capture, engaged, retreat, and in-contact flags.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloseAssaultOutcome {
     /// Final Close Assault Differential (attacker CA-off − defender CA-def, §15.28-aware).
     pub differential: i32,

@@ -6,11 +6,12 @@
 //! stacking, fuel/water gating, reaction, retreat, breakdown — lives in
 //! `GameState::move_counter` and the move commands (`crate::state::command`).
 
+use serde::{Deserialize, Serialize};
 use crate::reference::terrain::{Fixed, HexTerrain, MoveCost};
 use crate::reference::ReferenceData;
 
 /// The movement mode of a unit, matching the Terrain Effects Chart's two CP columns.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MoveMode {
     NonMotorized,
     Motorized,

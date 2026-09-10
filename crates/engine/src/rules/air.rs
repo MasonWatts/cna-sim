@@ -6,6 +6,7 @@
 //! sandstorm/rainstorm path prohibition (§37.22) are applied where flight is executed; this module
 //! provides the range/eligibility arithmetic and the random outcomes.
 
+use serde::{Deserialize, Serialize};
 use crate::reference::aircraft::AircraftClass;
 use crate::reference::squadron::SquadronCapacity;
 use crate::reference::units::Nationality;
@@ -274,7 +275,7 @@ pub fn scramble_path_clear(
 // ---- Strafing (§40.5–40.8) ----
 
 /// The target types that may be strafed (§40.54).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StrafeTarget {
     /// Infantry-type units (battalions/companies).
     Infantry,

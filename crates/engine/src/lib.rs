@@ -3487,6 +3487,28 @@ mod tests {
     }
 
     #[test]
+    fn command_serde_round_trips() {
+        // Command/CommandOutcome are Serialize + Deserialize — the round-trippable schema behind
+        // WASM replay and the MCP action interface. Round-trip a representative set (via ron, the
+        // engine's existing serde format) and confirm equality.
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::Command;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::UnitId;
+        let cmds = [
+            Command::MoveStep { unit: UnitId(3), to: HexCoord::new(4, 5), mode: MoveMode::Motorized },
+            Command::CloseAssault { attackers: vec![UnitId(1), UnitId(2)], target: HexCoord::new(0, 0) },
+            Command::AntiArmor { attackers: vec![UnitId(7)], target_hex: HexCoord::new(2, 2), withheld: vec![UnitId(8)] },
+            Command::RefuelUnit { unit: UnitId(5) },
+        ];
+        for cmd in cmds {
+            let s = ron::to_string(&cmd).expect("Command serializes");
+            let back: Command = ron::from_str(&s).expect("Command deserializes");
+            assert_eq!(cmd, back, "Command round-trips: {s}");
+        }
+    }
+
+    #[test]
     fn command_rule_refs_map_the_enumerated_commands() {
         use crate::rules::movement::MoveMode;
         use crate::state::command::Command;

@@ -226,7 +226,7 @@ pub struct CloseAssaultBlock {
 }
 
 /// A fully-resolved Close Assault lookup for one side.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloseAssaultResult {
     /// Casualty percentage (0..=50) from the two-dice read.
     pub loss_percent: u8,

@@ -111,5 +111,9 @@ ever bites — the schema can carry either.
   optimization (above) is the lever if it grows.
 - **`rules` is empty for now.** The `§` citations live in engine doc-comments, not runtime data, so
   the per-action rules panel needs a `Command → §` mapping built later (step 4).
-- **Actions/outcomes are `Debug` strings** in v0. The round-trippable `Command` schema (serde derive
-  on `Command`/`CommandOutcome`, shared with MCP) is a follow-on and unblocks WASM replay (step 5).
+- **Actions/outcomes are `Debug` strings** in the *event log* for v0. The round-trippable `Command`
+  schema now exists: `Command` and `CommandOutcome` derive `Serialize`/`Deserialize` (round-trip
+  test in the engine). This is the shared action vocabulary for **WASM replay** (step 5 — emit a
+  structured command log the browser replays) and the **MCP interface**. Remaining for step 5: swap
+  the recorder's per-step snapshots for a command log, compile the engine to WASM, and expose
+  `replay_to(N)`.

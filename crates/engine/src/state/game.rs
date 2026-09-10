@@ -280,7 +280,7 @@ impl Commodities {
 }
 
 /// A single supply commodity selector (§49–52).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Commodity {
     Fuel,
     Ammo,
@@ -1013,7 +1013,7 @@ pub struct GameState {
 /// A deployed formation's later-arriving units, to be spawned when their turn/stage comes.
 /// Reuses the original placement's hex + dispersion so arrivals join the formation.
 /// Direction of off-map movement in the §8.8 complex.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OffMapDir {
     /// Toward the map (toward Nofilia / lower node index).
     TowardMap,
@@ -1022,7 +1022,7 @@ pub enum OffMapDir {
 }
 
 /// Outcome of one Operations Stage of off-map movement toward the map (§8.8/§8.84).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OffMapMove {
     /// Still moving along the current leg (in an In-Transit box).
     InTransit,

@@ -3,6 +3,8 @@
 //! (§55.3, §56.18, §56.21, §54.5); this module holds the arithmetic and timing rules that do not
 //! depend on those charts.
 
+use serde::{Deserialize, Serialize};
+
 // ---- Ports (§55) ----
 
 /// §55.14: a port operating below its maximum Efficiency Level handles a proportionately reduced
@@ -128,7 +130,7 @@ pub fn convoy_cargo_loss(tonnage: u32, percent: u32) -> u32 {
 }
 
 /// §42.53 convoy size class the Axis reveals on a successful naval reconnaissance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConvoySize {
     Small,
     Medium,
