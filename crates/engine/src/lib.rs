@@ -2717,6 +2717,63 @@ mod tests {
     }
 
     #[test]
+    fn commonwealth_off_map_basing_and_34_82c() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        // A small custom §36.53 chart so the §34.82C threshold is reachable in a test: one N. African
+        // box (capacity 1), a flying-boat basin (marked non-N.African here to isolate the threshold),
+        // and a GT35-gated East African box. (The real 48-squadron chart is tested in squadron.rs.)
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::Commonwealth, include_str!("../../../data/reference/aircraft/commonwealth.ron")).unwrap();
+        refs.load_off_map_air_facilities(r#"(facilities: [
+            (entry_hex: "E1833", name: "Deversoir", distance: 12, max_squadrons: Some(1), north_african: true),
+            (entry_hex: "E4033", name: "Port Said", distance: 12, max_squadrons: Some(3), flying_boat: true, north_african: false),
+            (entry_hex: "E0127", name: "Ethiopia", distance: 60, max_squadrons: None, available_from_gt: Some(35), north_african: false),
+        ])"#).unwrap();
+        let mut g = GameState::new(refs, 1);
+
+        // A CW fighter squadron with a full 20-plane complement (15 ready + 5 reserve, §35.23).
+        let mut fighter = Sgsu::new(SquadronId(1), Nationality::Commonwealth, SquadronClass::Fighter, "33 Sqn", 25, Some(HexCoord::new(2, 2)));
+        fighter.add_planes("Gladiator Mk.II", AircraftClass::Fighter, 20, 1);
+        g.sgsus.insert(SquadronId(1), fighter);
+        // A flying-boat squadron and a second fighter.
+        let mut boats = Sgsu::new(SquadronId(2), Nationality::Commonwealth, SquadronClass::Bomber, "230 Sqn", 25, Some(HexCoord::new(2, 2)));
+        boats.add_planes("Sunderland", AircraftClass::FlyingBoat, 3, 1);
+        g.sgsus.insert(SquadronId(2), boats);
+        g.sgsus.insert(SquadronId(3), Sgsu::new(SquadronId(3), Nationality::Commonwealth, SquadronClass::Fighter, "112 Sqn", 25, Some(HexCoord::new(2, 2))));
+        while g.phase != Phase::Organization {
+            g.advance_phase();
+        }
+
+        // Threshold: 1 N. African squadron slot × 20 (CW ready+reserve) = 20 planes.
+        assert_eq!(g.max_off_map_north_african_planes(), Some(20));
+        assert!(!g.may_create_extra_sgsu(Nationality::Commonwealth));
+
+        // Base the 20-plane fighter squadron at Deversoir.
+        assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(1), facility: "Deversoir".into() }), Ok(CommandOutcome::SquadronBasedOffMap));
+        assert_eq!(g.sgsus[&SquadronId(1)].off_map_box.as_deref(), Some("Deversoir"));
+        assert_eq!(g.sgsus[&SquadronId(1)].location, None);
+        assert_eq!(g.off_map_north_african_planes(), 20);
+        // Now the North African off-map facilities are at printed capacity → §34.82C is satisfied.
+        assert!(g.may_create_extra_sgsu(Nationality::Commonwealth));
+
+        // Deversoir is full (capacity 1) — a second squadron there is refused.
+        assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(3), facility: "Deversoir".into() }), Err(CommandError::OffMapBasingFailed));
+        // A fighter squadron cannot use the Port Said flying-boat basin; a flying-boat squadron can.
+        assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(3), facility: "Port Said".into() }), Err(CommandError::OffMapBasingFailed));
+        assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(2), facility: "Port Said".into() }), Ok(CommandOutcome::SquadronBasedOffMap));
+        // Ethiopia is gated until Game-Turn 35.
+        assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(3), facility: "Ethiopia".into() }), Err(CommandError::OffMapBasingFailed));
+        g.game_turn = 35;
+        assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(3), facility: "Ethiopia".into() }), Ok(CommandOutcome::SquadronBasedOffMap));
+    }
+
+    #[test]
     fn axis_may_create_extra_sgsu_when_30pct_off_map_34_82d() {
         use crate::reference::aircraft::AircraftClass;
         use crate::reference::squadron::SquadronClass;

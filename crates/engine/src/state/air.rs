@@ -129,6 +129,11 @@ pub struct Sgsu {
     /// base region may not fly until this reaches 0 (one OpStage per Italy↔Sicily↔Crete move).
     #[serde(default)]
     pub transfer_remaining: u32,
+    /// §36.53: the Commonwealth off-map air facility (Canal-zone box or Ethiopia) this squadron is
+    /// based in, by chart name. `Some` ⟹ off-map (`location` is `None`); the Allied analogue of the
+    /// Axis `med_base`.
+    #[serde(default)]
+    pub off_map_box: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -162,6 +167,7 @@ impl Sgsu {
             supplied: true,
             med_base: None,
             transfer_remaining: 0,
+            off_map_box: None,
         }
     }
 

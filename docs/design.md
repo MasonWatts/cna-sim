@@ -646,15 +646,17 @@ SGSU cap is modeled** as an invariant: `sgsu_plane_cap` = ⌈on-map-facility pla
 `sgsu_cap_exceeded` helpers. It is exposed for the driver to honour rather than gating `DeploySgsu`,
 because deploy-then-assign and pool-first reinforcements legitimately place empty SGSUs and the Axis
 formula has no `+2` cushion (a per-action gate would deadlock the first Axis base). The §34.82C/D
-**counter-shortage creation** rule is partly modeled: once `available_sgsu` is exhausted, `DeploySgsu`
-may still *create* a counter when `may_create_extra_sgsu` holds — the Axis §34.82D 30%-off-map test
-(from `med_base` squadrons) is computed and enforced; the Commonwealth §34.82C test needs every North
-African off-map facility at printed capacity, so the §36.53 **Allied Off-Map Air Facilities Chart** is
-now transcribed and loaded (`off_map_air_facilities`: the six Canal-zone boxes = 48 printed squadrons,
-plus time-gated unlimited Ethiopia), with `max_off_map_north_african_planes` giving the threshold — but
-the condition returns `false` pending Commonwealth off-map *basing* (the §36.53 boxes share entry hexes,
-so per-box basing isn't yet a location concept). **Still open:** the **German SGSU plane-type identities**
-(§35.29, GT26+) and Commonwealth off-map basing (which would complete §34.82C). **Squadron
+**counter-shortage creation** rule is modeled: once `available_sgsu` is exhausted, `DeploySgsu` may
+still *create* a counter when `may_create_extra_sgsu` holds — the Axis §34.82D 30%-off-map test (from
+`med_base` squadrons) and the Commonwealth §34.82C test (all North African off-map facilities at printed
+capacity) are both computed and enforced. The §36.53 **Allied Off-Map Air Facilities Chart** is
+transcribed and loaded (`off_map_air_facilities`: the six Canal-zone boxes = 48 printed squadrons, plus
+time-gated unlimited Ethiopia), and **Commonwealth off-map basing** is modeled by an `off_map_box` field
+on the SGSU (the Allied analogue of the Axis `med_base`, keyed by §36.53 box name since boxes share
+entry hexes), set via `BaseSquadronOffMap` — which enforces printed squadron capacity (§36.5b), the
+Ethiopia GT35 gate, and the flying-boat-basin class restriction (§36.3). `off_map_north_african_planes`
+reaching `max_off_map_north_african_planes` flips `may_create_extra_sgsu(Commonwealth)` true. **Still
+open:** the **German SGSU plane-type identities** (§35.29, GT26+) — the last outstanding scan. **Squadron
 withdrawals (`WD`, §34.84) are now loaded:** the schedule's Commonwealth periods carry a `withdrawals` list (capability class F/B/R +
 count, fired once at the month's `gt_start`, queryable via `AirReinforcementSchedule::withdrawals_for`;
 the Axis chart lists none, and the chart's `*`/`**`/`‡` qualifiers are not yet modeled). Enforcing a

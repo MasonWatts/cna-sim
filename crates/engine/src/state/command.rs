@@ -278,6 +278,9 @@ pub enum Command {
     },
     /// §34.84: withdraw a deployed squadron to satisfy a due `WD` requirement (Organization Phase).
     WithdrawSquadron { squadron: crate::state::air::SquadronId },
+    /// §36.53: base a Commonwealth squadron in an off-map air facility by chart name (Organization
+    /// Phase).
+    BaseSquadronOffMap { squadron: crate::state::air::SquadronId, facility: String },
     /// §35.2: assign `count` planes of a type/class to a squadron (Organization Phase).
     AssignSquadronPlanes {
         squadron: crate::state::air::SquadronId,
@@ -693,6 +696,8 @@ pub enum CommandOutcome {
     SgsuDeployed(crate::state::air::SquadronId),
     /// A squadron was withdrawn from play to satisfy a §34.84 `WD` requirement.
     SquadronWithdrawn,
+    /// A Commonwealth squadron was based in an off-map air facility (§36.53).
+    SquadronBasedOffMap,
     /// Planes were assigned to a squadron (§35.2).
     SquadronPlanesAssigned,
     /// An air facility was bombed (§41.36).
@@ -976,6 +981,9 @@ pub enum CommandError {
     /// §34.84: the squadron cannot be withdrawn — it does not exist, is not deployed, or no matching
     /// `WD` requirement is due this Game-Turn.
     WithdrawalNotDue,
+    /// §36.53: the squadron cannot be based off-map — unknown/ineligible facility, not Commonwealth,
+    /// facility at capacity, time-gated, or a flying-boat-basin/plane-class mismatch.
+    OffMapBasingFailed,
     /// No matching air facility exists in the target hex.
     NoSuchFacility,
     /// The referenced port does not exist in play.
@@ -1160,6 +1168,14 @@ impl GameState {
                     Ok(CommandOutcome::SquadronWithdrawn)
                 } else {
                     Err(CommandError::WithdrawalNotDue)
+                }
+            }
+            Command::BaseSquadronOffMap { squadron, facility } => {
+                self.require_phase(Phase::Organization)?;
+                if self.base_squadron_off_map(squadron, &facility) {
+                    Ok(CommandOutcome::SquadronBasedOffMap)
+                } else {
+                    Err(CommandError::OffMapBasingFailed)
                 }
             }
             Command::AssignSquadronPlanes { squadron, aircraft_type, class, count } => {

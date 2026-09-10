@@ -3881,13 +3881,18 @@ impl GameState {
     /// deploy once `available_sgsu` is exhausted).
     /// - Axis German/Italian (§34.82D): at least 30% of that nation's total planes are based at
     ///   off-map (Mediterranean-box) facilities — computed from `med_base` squadrons.
-    /// - Commonwealth (§34.82C): requires every North African off-map facility to be at its printed
-    ///   plane capacity (§36.53). That needs Commonwealth off-map *basing*, which is not yet modeled
-    ///   (the §36.53 boxes share entry hexes), so this returns `false` for now; the printed threshold
-    ///   is available via [`Self::max_off_map_north_african_planes`].
+    /// - Commonwealth (§34.82C): every North African off-map facility must be at its printed plane
+    ///   capacity — the planes based off-map (§36.53, via `off_map_box`) reach
+    ///   [`Self::max_off_map_north_african_planes`].
     pub fn may_create_extra_sgsu(&self, nationality: Nationality) -> bool {
         match nationality {
-            Nationality::Commonwealth => false,
+            Nationality::Commonwealth => {
+                // §34.82C: all North African off-map facilities must be at printed plane capacity.
+                match self.max_off_map_north_african_planes() {
+                    Some(max) if max > 0 => self.off_map_north_african_planes() >= max,
+                    _ => false,
+                }
+            }
             Nationality::German | Nationality::Italian => {
                 let total: u32 = self
                     .sgsus
@@ -3918,6 +3923,70 @@ impl GameState {
         let chart = self.reference.off_map_air_facilities.as_ref()?;
         let per = crate::reference::squadron::squadron_capacity(Nationality::Commonwealth, self.game_turn).total();
         Some(chart.north_african_squadron_capacity() * per)
+    }
+
+    /// §34.82C: planes currently based at the Commonwealth North African off-map facilities — the
+    /// planes in Commonwealth SGSUs whose `off_map_box` is a `north_african` §36.53 facility.
+    pub fn off_map_north_african_planes(&self) -> u32 {
+        let Some(chart) = self.reference.off_map_air_facilities.as_ref() else {
+            return 0;
+        };
+        self.sgsus
+            .values()
+            .filter(|s| s.nationality == Nationality::Commonwealth)
+            .filter(|s| {
+                s.off_map_box.as_deref().is_some_and(|b| {
+                    chart.facilities.iter().any(|f| f.name == b && f.north_african)
+                })
+            })
+            .map(|s| s.plane_count())
+            .sum()
+    }
+
+    /// §36.53: base a Commonwealth squadron in an off-map air facility (Canal-zone box or Ethiopia),
+    /// by chart name. Enforces the facility's printed squadron capacity (§36.5b), the Ethiopia
+    /// Game-Turn gate (§36.53 note), and the Port Said flying-boat-only restriction (§36.3). Sets
+    /// `off_map_box` and clears the map location. Returns whether it was based.
+    pub fn base_squadron_off_map(&mut self, id: crate::state::air::SquadronId, facility: &str) -> bool {
+        let Some(chart) = self.reference.off_map_air_facilities.as_ref() else {
+            return false;
+        };
+        let Some(fac) = chart.facilities.iter().find(|f| f.name == facility) else {
+            return false;
+        };
+        // §36.53 time gate (Ethiopia opens at Game-Turn 35).
+        if fac.available_from_gt.is_some_and(|gt| self.game_turn < gt) {
+            return false;
+        }
+        let Some(sgsu) = self.sgsus.get(&id) else {
+            return false;
+        };
+        if sgsu.nationality != Nationality::Commonwealth {
+            return false; // §36.53 is the Allied off-map chart
+        }
+        // §36.3: a flying-boat basin bases flying boats only — i.e. a squadron whose class accepts
+        // flying boats (a bomber squadron, §35.21).
+        if fac.flying_boat
+            && !sgsu.class.accepts(crate::reference::aircraft::AircraftClass::FlyingBoat)
+        {
+            return false;
+        }
+        // §36.5b printed squadron capacity (unless unlimited).
+        if let Some(cap) = fac.max_squadrons {
+            let here = self
+                .sgsus
+                .values()
+                .filter(|s| s.id != id && s.off_map_box.as_deref() == Some(facility))
+                .count() as u32;
+            if here >= cap {
+                return false;
+            }
+        }
+        let sgsu = self.sgsus.get_mut(&id).expect("checked above");
+        sgsu.off_map_box = Some(facility.to_string());
+        sgsu.location = None;
+        sgsu.med_base = None;
+        true
     }
 
     /// Planes of `nationality` based at *on-map* air facilities — the planes in its SGSUs that have
