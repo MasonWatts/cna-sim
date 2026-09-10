@@ -16,12 +16,13 @@ function toCube(col: number, row: number): Cube {
   return { x, z };
 }
 
-/** Pixel center of hex (col,row) for pointy-top layout, before view offset. */
+/** Pixel center of hex (col,row) for pointy-top layout, before view offset. Row increases *upward*
+ *  (the engine's (1,1) is the lower-left tile), so y is negated — SVG y grows downward. */
 export function hexCenter(col: number, row: number): { x: number; y: number } {
   const { x, z } = toCube(col, row);
   return {
     x: HEX_SIZE * Math.sqrt(3) * (x + z / 2),
-    y: HEX_SIZE * 1.5 * z,
+    y: -HEX_SIZE * 1.5 * z,
   };
 }
 
