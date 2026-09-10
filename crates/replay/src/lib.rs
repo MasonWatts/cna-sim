@@ -188,6 +188,10 @@ pub fn record_game(
     let mut step = 0u32;
     let mut guard = 0u64;
     while game.game_turn <= max_turns {
+        // Stop early on a §64.71/§64.72 automatic campaign win (None for non-campaign scenarios).
+        if game.campaign_auto_winner().is_some() {
+            break;
+        }
         if is_decision_phase(game.phase) {
             let side = game.active_player;
             let on_map = game

@@ -520,6 +520,115 @@ impl GameState {
                 }
             }
         }
+        out.extend(self.legal_air_setup_commands(side));
+        out
+    }
+
+    /// Organization-phase air build-up (§34.82 / §35.2 / §40.12 / §34.84 / §36.53): deploy available
+    /// SGSU counters at friendly air facilities, assign pooled planes and pilots to own squadrons,
+    /// base Commonwealth squadrons in off-map facilities, and honour due squadron withdrawals. Each
+    /// candidate is `dry_run`-validated, so class/capacity/supply/timing rules gate the set. Squadrons
+    /// are visited in id order for determinism.
+    fn legal_air_setup_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::units::Nationality;
+        use crate::state::command::Command;
+
+        let mut out = Vec::new();
+        // Air facilities not in an enemy-occupied hex (a plausible friendly base, §34.82).
+        let enemy_hexes = self.side_occupied_hexes(side.opponent());
+        let facilities: Vec<HexCoord> = self
+            .air_facilities
+            .iter()
+            .map(|f| f.hex)
+            .filter(|h| !enemy_hexes.contains(h))
+            .collect();
+        // Deploy an available (or §34.82C/D-creatable) SGSU counter of a friendly nationality.
+        for nat in [Nationality::Commonwealth, Nationality::German, Nationality::Italian] {
+            if nat.side() != side {
+                continue;
+            }
+            for &hex in &facilities {
+                for class in [SquadronClass::Fighter, SquadronClass::Bomber] {
+                    let cmd = Command::DeploySgsu { nationality: nat, class, at: hex };
+                    if self.dry_run(&cmd).is_ok() {
+                        out.push(cmd);
+                    }
+                }
+            }
+        }
+        // Own squadrons in id order.
+        let mut own_sgsus: Vec<crate::state::air::SquadronId> = self
+            .sgsus
+            .iter()
+            .filter(|(_, s)| s.nationality.side() == side)
+            .map(|(&id, _)| id)
+            .collect();
+        own_sgsus.sort_by_key(|s| s.0);
+        for &squadron in &own_sgsus {
+            let nat = self.sgsus[&squadron].nationality;
+            // Assign pooled planes (one candidate per accepted aircraft type; fill remaining capacity).
+            let remaining = self.sgsus[&squadron]
+                .capacity(self.game_turn)
+                .total()
+                .saturating_sub(self.sgsus[&squadron].plane_count());
+            if remaining > 0 {
+                if let Some(pool) = self.plane_pool.get(&nat) {
+                    let mut types: Vec<(String, u32)> =
+                        pool.iter().filter(|(_, &n)| n > 0).map(|(t, &n)| (t.clone(), n)).collect();
+                    types.sort();
+                    for (aircraft_type, avail) in types {
+                        let Some(class) = self
+                            .reference
+                            .aircraft_charts
+                            .get(&nat)
+                            .and_then(|c| c.get(&aircraft_type))
+                            .map(|a| a.class)
+                        else {
+                            continue;
+                        };
+                        let cmd = Command::AssignSquadronPlanes {
+                            squadron,
+                            aircraft_type,
+                            class,
+                            count: remaining.min(avail),
+                        };
+                        if self.dry_run(&cmd).is_ok() {
+                            out.push(cmd);
+                        }
+                    }
+                }
+            }
+            // Assign a rated pilot from the pool (one candidate per available rating).
+            if let Some(pp) = self.pilot_pool.get(&nat) {
+                let mut ratings: Vec<u32> = pp.iter().filter(|(_, &n)| n > 0).map(|(&r, _)| r).collect();
+                ratings.sort_unstable();
+                for rating in ratings {
+                    let cmd = Command::AssignPilot { rating, squadron };
+                    if self.dry_run(&cmd).is_ok() {
+                        out.push(cmd);
+                    }
+                }
+            }
+            // Honour a due §34.84 squadron withdrawal.
+            let wcmd = Command::WithdrawSquadron { squadron };
+            if self.dry_run(&wcmd).is_ok() {
+                out.push(wcmd);
+            }
+            // Commonwealth: base a squadron at an off-map §36.53 facility.
+            if nat == Nationality::Commonwealth {
+                if let Some(chart) = self.reference.off_map_air_facilities.as_ref() {
+                    let mut names: Vec<String> = chart.facilities.iter().map(|f| f.name.clone()).collect();
+                    names.sort();
+                    for facility in names {
+                        let cmd = Command::BaseSquadronOffMap { squadron, facility };
+                        if self.dry_run(&cmd).is_ok() {
+                            out.push(cmd);
+                        }
+                    }
+                }
+            }
+        }
         out
     }
 
@@ -606,6 +715,27 @@ impl GameState {
                     if self.dry_run(&cmd).is_ok() {
                         out.push(cmd);
                     }
+                }
+            }
+        }
+        // Air maintenance (§38): ready (refuel), arm, and refit each own squadron so its assigned
+        // planes become flyable. Counts default to the squadron's plane count; `dry_run` gates
+        // supply/eligibility. Visited in id order for determinism.
+        let mut own_sgsus: Vec<(crate::state::air::SquadronId, u32)> = self
+            .sgsus
+            .iter()
+            .filter(|(_, s)| s.nationality.side() == side && s.plane_count() > 0)
+            .map(|(&id, s)| (id, s.plane_count()))
+            .collect();
+        own_sgsus.sort_by_key(|(id, _)| id.0);
+        for (squadron, n) in own_sgsus {
+            for cmd in [
+                Command::ReadySquadron { squadron, count: n },
+                Command::ArmSquadron { squadron, count: n },
+                Command::RefitSquadron { squadron, base_die: 3, wrong_squadron: false },
+            ] {
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
                 }
             }
         }

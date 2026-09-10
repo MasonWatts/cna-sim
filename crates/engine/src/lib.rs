@@ -2774,6 +2774,43 @@ mod tests {
     }
 
     #[test]
+    fn greedy_agent_drives_air_setup() {
+        use crate::agent::{Agent, GreedyAgent};
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::units::Side;
+        use crate::state::air::{AirFacility, AirFacilityKind};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        // Empty state (no units) with the campaign charts, an airfield, and seeded CW air pools.
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        let field = HexCoord::new(5, 5);
+        g.add_air_facility(AirFacility::new(AirFacilityKind::Airfield, field));
+        g.available_sgsu.insert(Nationality::Commonwealth, 2);
+        g.plane_pool.entry(Nationality::Commonwealth).or_default().insert("Gladiator Mk.II".into(), 12);
+        g.pilot_pool.entry(Nationality::Commonwealth).or_default().insert(2, 3);
+        while g.phase != Phase::Organization {
+            g.advance_phase();
+        }
+
+        // The enumerator now offers DeploySgsu, and the greedy agent prioritises it (build-up).
+        assert!(g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::DeploySgsu { .. })));
+        let mut greedy = GreedyAgent::new(7);
+        assert!(matches!(greedy.choose(&g, Side::Commonwealth), Some(Command::DeploySgsu { .. })));
+
+        // Deploy a fighter squadron directly, exhaust the counter supply, and confirm the agent then
+        // assigns pooled planes to it.
+        let id = g.deploy_sgsu(Nationality::Commonwealth, SquadronClass::Fighter, field).unwrap();
+        g.available_sgsu.insert(Nationality::Commonwealth, 0);
+        let choice = greedy.choose(&g, Side::Commonwealth);
+        assert!(matches!(choice, Some(Command::AssignSquadronPlanes { .. })), "got {choice:?}");
+        assert_eq!(g.apply(choice.unwrap()), Ok(CommandOutcome::SquadronPlanesAssigned));
+        assert_eq!(g.sgsus[&id].plane_count(), 12);
+        assert_eq!(g.pool_planes(Nationality::Commonwealth, "Gladiator Mk.II"), 0);
+    }
+
+    #[test]
     fn axis_may_create_extra_sgsu_when_30pct_off_map_34_82d() {
         use crate::reference::aircraft::AircraftClass;
         use crate::reference::squadron::SquadronClass;

@@ -94,6 +94,19 @@ impl Agent for GreedyAgent {
         }) {
             return Some(c.clone());
         }
+        // In the non-combat phases (Organization / air / convoy / production / repair) there is no
+        // enemy to advance on, so instead of picking a random legal command the agent takes the
+        // highest-priority *constructive* one: satisfy a mandatory squadron withdrawal, build up and
+        // maintain the air force, and keep supply and production flowing. This makes those phases
+        // look purposeful rather than random; the per-phase action cap still bounds the loop.
+        if let Some(c) = cmds
+            .iter()
+            .filter_map(|c| buildup_priority(c).map(|p| (p, c)))
+            .max_by_key(|(p, _)| *p)
+            .map(|(_, c)| c)
+        {
+            return Some(c.clone());
+        }
         // Otherwise advance: among the legal moves, pick one whose destination is closest to an
         // enemy unit (the agent presses toward contact). Random tie-break for variety.
         let enemy = side.opponent();
@@ -124,6 +137,37 @@ impl Agent for GreedyAgent {
         }
         best.map(|(_, c)| c).or_else(|| Some(cmds[self.rng.below(cmds.len())].clone()))
     }
+}
+
+/// A preference score for the non-combat "build-up / upkeep" commands a [`GreedyAgent`] favours over
+/// a random pick, higher first: a mandatory squadron withdrawal, then air-force build-up (deploy an
+/// SGSU, base it, assign planes/pilots), then air maintenance (refit/ready/arm/refuel/rearm), then
+/// keeping supply and production flowing (convoys, trucks, production). Offensive air (bombing,
+/// strafing, raids) is deliberately excluded — it stays a random-fallback choice so the greedy agent
+/// does not fling planes at targets it cannot evaluate. `None` for commands outside this set.
+fn buildup_priority(cmd: &Command) -> Option<u8> {
+    use Command::*;
+    Some(match cmd {
+        WithdrawSquadron { .. } => 90,
+        DeploySgsu { .. } => 80,
+        AssignSquadronPlanes { .. } => 78,
+        AssignPilot { .. } => 76,
+        RefitSquadron { .. } => 60,
+        ReadySquadron { .. } => 58,
+        ArmSquadron { .. } => 56,
+        RefuelUnit { .. } => 54,
+        RearmUnit { .. } => 52,
+        DeliverConvoy { .. } => 48,
+        PlanConvoy { .. } => 46,
+        LoadTrucks { .. } => 44,
+        AssignTrucks { .. } => 42,
+        PlanProduction { .. } => 40,
+        ProduceCommonwealthTrucks { .. } | ProduceCommonwealthInfantry { .. } | ProduceAxisTrucks { .. } => 38,
+        // Off-map basing is a low-priority rear action (mostly the §34.82C relief valve): only after
+        // the agent has nothing more useful to build up or supply.
+        BaseSquadronOffMap { .. } => 20,
+        _ => return None,
+    })
 }
 
 /// A one-ply lookahead player: for each legal command it clones the state, applies the command, and
@@ -635,6 +679,11 @@ pub fn self_play(
     let mut applied = 0u32;
     let mut guard = 0u64;
     while game.game_turn <= max_turns {
+        // Stop early on a §64.71/§64.72 automatic campaign win (no-op for scenarios without campaign
+        // victory conditions loaded, where `campaign_auto_winner` is always `None`).
+        if game.campaign_auto_winner().is_some() {
+            break;
+        }
         if matches!(game.phase, Phase::MovementAndCombat | Phase::Organization | Phase::LandSupportAir | Phase::TruckConvoy | Phase::Repair | Phase::CommonwealthFleet | Phase::NavalConvoyArrival | Phase::NavalConvoySchedule) {
             let side = game.active_player;
             let on_map = game.units.values().filter(|u| u.nationality.side() == side && u.hex().is_some()).count();
