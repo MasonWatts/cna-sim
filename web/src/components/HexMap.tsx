@@ -15,9 +15,9 @@ const TERRAIN_FILL: Record<string, string> = {
 };
 const terrainFill = (t: string) => TERRAIN_FILL[t] ?? "#242a1e";
 
-/** The board at one step: static terrain hexes + the units currently on them. `zoom` scales the
- *  rendered pixel size (the SVG viewBox stays in content coordinates, so it scales crisply). */
-export function HexMap({ map, units, zoom = 1 }: { map: MapView; units: UnitView[]; zoom?: number }) {
+/** The board at one step: static terrain hexes + the units currently on them. Rendered at natural
+ *  content size; the parent applies a CSS transform for pan/zoom (SVG scales crisply). */
+export function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
   const { minX, minY, w, h } = mapBounds(map.hexes);
 
   // Group units by hex so we can fan out stacks.
@@ -29,7 +29,7 @@ export function HexMap({ map, units, zoom = 1 }: { map: MapView; units: UnitView
   }
 
   return (
-    <svg width={w * zoom} height={h * zoom} viewBox={`${minX} ${minY} ${w} ${h}`} role="img" aria-label="game board">
+    <svg width={w} height={h} viewBox={`${minX} ${minY} ${w} ${h}`} style={{ display: "block" }} role="img" aria-label="game board">
       {/* terrain */}
       {map.hexes.map((hex) => {
         const c = hexCenter(hex.col, hex.row);

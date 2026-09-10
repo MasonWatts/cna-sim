@@ -60,8 +60,9 @@ body {
 }
 
 .map-wrap {
-  overflow: auto;
-  padding: 12px;
+  overflow: hidden;
+  position: relative;
+  user-select: none;
 }
 
 .sidebar {
