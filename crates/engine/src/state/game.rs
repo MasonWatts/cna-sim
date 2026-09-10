@@ -4514,16 +4514,26 @@ impl GameState {
     /// Whether a unit is a "combat unit" for occupation/victory (§60.82): its characteristics
     /// carry a non-parenthesized Close Assault rating.
     pub fn is_combat_unit(&self, id: UnitId) -> bool {
-        self.units
-            .get(&id)
-            .and_then(|u| {
-                self.reference
-                    .unit_characteristics
-                    .get(&u.nationality)
-                    .and_then(|m| m.get(&u.id_code))
-            })
-            .and_then(|uc| uc.close_assault)
-            .is_some_and(|ca| !ca.off.parenthesized || !ca.def.parenthesized)
+        let Some(u) = self.units.get(&id) else { return false };
+        // A bare HQ (no combat units attached) is non-combat (§3.33/§9.12), whatever its arm.
+        // (Short-circuit on `is_hq` so the O(units) attachment scan only runs for HQs.)
+        if u.is_hq && !self.has_attached_units(id) {
+            return false;
+        }
+        match &u.composition {
+            // Weapons units (tanks, guns, anti-air) fight via their §4.47 weapon systems — they are
+            // combat units even though their id carries no organic §4.46 close-assault rating.
+            crate::state::unit::Composition::Weapons { groups } => groups.iter().any(|g| g.count > 0),
+            // Organic units: combat unless their §4.46 close-assault rating is fully parenthesized
+            // (support / command counters).
+            crate::state::unit::Composition::Organic { .. } => self
+                .reference
+                .unit_characteristics
+                .get(&u.nationality)
+                .and_then(|m| m.get(&u.id_code))
+                .and_then(|uc| uc.close_assault)
+                .is_some_and(|ca| !ca.off.parenthesized || !ca.def.parenthesized),
+        }
     }
 
     /// §16.11: whether `id` may supply Patrol Points — a Reconnaissance/Armored-Car unit, a

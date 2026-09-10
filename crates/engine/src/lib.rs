@@ -3509,6 +3509,45 @@ mod tests {
     }
 
     #[test]
+    fn cannot_move_onto_enemy_weapons_unit_hex_8_13() {
+        // §8.13: an enemy tank/gun (a Weapons unit) is a combat unit — you attack its hex, you do
+        // not enter it. Regression: is_combat_unit ignored Weapons units (they carry no organic
+        // §4.46 close-assault rating), so infantry could walk onto an enemy tank (seen in a replay).
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let inf_hex = HexCoord::new(1, 1);
+        let tank_hex = HexCoord::new(2, 1);
+        g.map.set_hex(inf_hex, HexTerrain::Clear);
+        g.map.set_hex(tank_hex, HexTerrain::Clear);
+        let inf = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 8 });
+        {
+            let u = g.unit_mut(inf).unwrap();
+            u.location = Some(UnitLocation::OnMap(inf_hex));
+            u.fuel = 400;
+            u.ammo = 400;
+        }
+        let tank = g.spawn_unit(Nationality::Italian, "k", "tank", Composition::Weapons { groups: vec![WeaponGroup { system: "M 11/39".into(), count: 6 }] });
+        g.unit_mut(tank).unwrap().location = Some(UnitLocation::OnMap(tank_hex));
+
+        assert!(g.is_combat_unit(tank), "a tank (Weapons unit) is a combat unit");
+        assert!(!g.can_move_step(inf, tank_hex, MoveMode::NonMotorized), "may not step onto the tank's hex");
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: inf, to: tank_hex, mode: MoveMode::NonMotorized }),
+            Err(CommandError::ProhibitedTerrain),
+            "§8.13 rejects entering an enemy combat unit's hex"
+        );
+    }
+
+    #[test]
     fn command_rule_refs_map_the_enumerated_commands() {
         use crate::rules::movement::MoveMode;
         use crate::state::command::Command;
