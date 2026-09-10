@@ -29,7 +29,11 @@ pub struct HexCoord {
 /// shared seam column resolves to a single coordinate, and load order A→E keeps the right sheet's
 /// copy (§8.71 map layout). The sheets are also slightly staggered vertically (`SECTION_ROW_OFFSET`).
 const SECTION_ADVANCE: i32 = 33;
-const SECTION_ROW_OFFSET: [i32; 5] = [0, 0, 1, 1, 1]; // A, B, C, D, E
+// One continuous pointy-top even-r grid: no per-section row offset. An *odd* offset would flip the
+// even-r stagger parity of the shifted sheets, misaligning the grid at the seam (the "fingers" that
+// appeared from C eastward under the old [0,0,1,1,1]). Any apparent vertical stagger between sheets
+// is just the inherent even-r row stagger, already encoded by row parity — not an extra offset.
+const SECTION_ROW_OFFSET: [i32; 5] = [0, 0, 0, 0, 0]; // A, B, C, D, E
 
 /// The map-section letter (`A`–`E`) for a global column (weather is resolved per section, §29.1).
 pub fn section_char_of_col(col: i16) -> char {
@@ -788,13 +792,13 @@ mod tests {
         fn hc(s: &str) -> HexCoord {
             HexId::parse(s).unwrap().to_hex_coord()
         }
-        // Pointy-top: HexCoord = (col = section*33 + CC, row = section_row_offset + RR).
-        // Section C is index 2 -> col +66, row +1.
-        assert_eq!(hc("C0101"), HexCoord::new(67, 2));
-        assert_eq!(hc("C0102"), HexCoord::new(68, 2));
-        assert_eq!(hc("C0201"), HexCoord::new(67, 3));
-        assert_eq!(hc("C4021"), HexCoord::new(87, 41));
-        assert_eq!(hc("C4022"), HexCoord::new(88, 41));
+        // Pointy-top, one continuous grid: HexCoord = (col = section*33 + CC, row = RR).
+        // Section C is index 2 -> col +66, no row offset.
+        assert_eq!(hc("C0101"), HexCoord::new(67, 1));
+        assert_eq!(hc("C0102"), HexCoord::new(68, 1));
+        assert_eq!(hc("C0201"), HexCoord::new(67, 2));
+        assert_eq!(hc("C4021"), HexCoord::new(87, 40));
+        assert_eq!(hc("C4022"), HexCoord::new(88, 40));
         // Sections don't collide.
         assert_ne!(hc("A0101"), hc("B0101"));
         // Adjacency (pointy-top): same row +1 column = E neighbor; the half-row diagonal;
