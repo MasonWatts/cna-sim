@@ -1,6 +1,6 @@
 import type { MapView } from "@bindings/MapView";
 import type { UnitView } from "@bindings/UnitView";
-import { HEX_SIZE, hexCenter, hexPolygon } from "../hex";
+import { hexCenter, hexPolygon, mapBounds } from "../hex";
 
 const TERRAIN_FILL: Record<string, string> = {
   Clear: "#2a2f1c",
@@ -15,17 +15,10 @@ const TERRAIN_FILL: Record<string, string> = {
 };
 const terrainFill = (t: string) => TERRAIN_FILL[t] ?? "#242a1e";
 
-/** The board at one step: static terrain hexes + the units currently on them. */
-export function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
-  // View bounds from all hex centers.
-  const centers = map.hexes.map((h) => hexCenter(h.col, h.row));
-  const pad = HEX_SIZE * 1.6;
-  const xs = centers.map((c) => c.x);
-  const ys = centers.map((c) => c.y);
-  const minX = Math.min(...xs) - pad;
-  const minY = Math.min(...ys) - pad;
-  const w = Math.max(...xs) - minX + pad;
-  const h = Math.max(...ys) - minY + pad;
+/** The board at one step: static terrain hexes + the units currently on them. `zoom` scales the
+ *  rendered pixel size (the SVG viewBox stays in content coordinates, so it scales crisply). */
+export function HexMap({ map, units, zoom = 1 }: { map: MapView; units: UnitView[]; zoom?: number }) {
+  const { minX, minY, w, h } = mapBounds(map.hexes);
 
   // Group units by hex so we can fan out stacks.
   const byHex = new Map<string, UnitView[]>();
@@ -36,7 +29,7 @@ export function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
   }
 
   return (
-    <svg width={w} height={h} viewBox={`${minX} ${minY} ${w} ${h}`} role="img" aria-label="game board">
+    <svg width={w * zoom} height={h * zoom} viewBox={`${minX} ${minY} ${w} ${h}`} role="img" aria-label="game board">
       {/* terrain */}
       {map.hexes.map((hex) => {
         const c = hexCenter(hex.col, hex.row);

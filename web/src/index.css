@@ -46,6 +46,19 @@ body {
   color: var(--muted);
 }
 
+.header .zoom {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.header .zoom input[type="range"] {
+  width: 120px;
+}
+.header .zoom button {
+  padding: 2px 8px;
+}
+
 .map-wrap {
   overflow: auto;
   padding: 12px;

@@ -26,6 +26,20 @@ export function hexCenter(col: number, row: number): { x: number; y: number } {
   };
 }
 
+/** Pixel bounding box (content coordinates) covering all hexes, with a hex of padding. */
+export function mapBounds(hexes: { col: number; row: number }[]): { minX: number; minY: number; w: number; h: number } {
+  const pad = HEX_SIZE * 1.6;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const hex of hexes) {
+    const c = hexCenter(hex.col, hex.row);
+    if (c.x < minX) minX = c.x;
+    if (c.y < minY) minY = c.y;
+    if (c.x > maxX) maxX = c.x;
+    if (c.y > maxY) maxY = c.y;
+  }
+  return { minX: minX - pad, minY: minY - pad, w: maxX - minX + 2 * pad, h: maxY - minY + 2 * pad };
+}
+
 /** SVG polygon points for a pointy-top hexagon centered at (cx, cy). */
 export function hexPolygon(cx: number, cy: number, size = HEX_SIZE): string {
   const pts: string[] = [];

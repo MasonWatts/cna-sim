@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GameRecord } from "@bindings/GameRecord";
 import type { UnitView } from "@bindings/UnitView";
+import { mapBounds } from "./hex";
 import { HexMap } from "./components/HexMap";
 import { Scrubber } from "./components/Scrubber";
 import { ActionLog } from "./components/ActionLog";
@@ -10,7 +11,17 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [zoom, setZoom] = useState(1);
   const timer = useRef<number | null>(null);
+  const mapWrap = useRef<HTMLDivElement>(null);
+
+  // Zoom the whole map to fit the map pane.
+  const fit = () => {
+    if (!record || !mapWrap.current) return;
+    const b = mapBounds(record.map.hexes);
+    const el = mapWrap.current;
+    setZoom(Math.max(0.02, Math.min(el.clientWidth / b.w, el.clientHeight / b.h)));
+  };
 
   // Load the recorded game.
   useEffect(() => {
@@ -38,6 +49,12 @@ export function App() {
       if (timer.current) window.clearInterval(timer.current);
     };
   }, [playing, lastStep]);
+
+  // Fit the map to the pane once it loads (a 7k-hex map would otherwise render at full pixel size).
+  useEffect(() => {
+    if (record) fit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record]);
 
   // The event log stores unit state as deltas; fold it into a full unit array per step once on load.
   const frames = useMemo<UnitView[][]>(() => {
@@ -69,10 +86,25 @@ export function App() {
         <span className="meta">
           Turn {event.game_turn} · Stage {event.operations_stage} · {event.phase}
         </span>
+        <span className="meta zoom">
+          <button onClick={() => setZoom((z) => Math.max(0.02, z / 1.25))} title="Zoom out">−</button>
+          <input
+            type="range"
+            min={0.05}
+            max={2}
+            step={0.01}
+            value={zoom}
+            onChange={(e) => setZoom(Number(e.target.value))}
+            aria-label="zoom"
+          />
+          <button onClick={() => setZoom((z) => Math.min(4, z * 1.25))} title="Zoom in">+</button>
+          <button onClick={fit} title="Fit map to window">Fit</button>
+          <span style={{ minWidth: 42, textAlign: "right" }}>{Math.round(zoom * 100)}%</span>
+        </span>
       </div>
 
-      <div className="map-wrap">
-        <HexMap map={record.map} units={frames[idx] ?? []} />
+      <div className="map-wrap" ref={mapWrap}>
+        <HexMap map={record.map} units={frames[idx] ?? []} zoom={zoom} />
       </div>
 
       <div className="sidebar">
