@@ -10,3 +10,6 @@ edition = "2021"
 cna-engine = { path = "../engine" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Generates the frontend's TypeScript types from the Rust event-log structs (single source of
+# truth). `cargo test` writes the .ts files (see docs/visualization-architecture.md).
+ts-rs = "10"

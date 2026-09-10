@@ -10,9 +10,14 @@ use cna_engine::agent::Agent;
 use cna_engine::reference::units::Side;
 use cna_engine::state::game::{GameState, Phase};
 use serde::Serialize;
+use ts_rs::TS;
 
 /// A complete recorded game: header (scenario, seed, agents, static map) + the ordered event log.
-#[derive(Serialize)]
+///
+/// The `#[derive(TS)]` on this and the types below generates the frontend's TypeScript types into
+/// `crates/replay/bindings/` when `cargo test` runs — the `game.json` schema is single-sourced here.
+#[derive(Serialize, TS)]
+#[ts(export)]
 pub struct GameRecord {
     pub scenario: String,
     pub seed: u64,
@@ -23,12 +28,14 @@ pub struct GameRecord {
 }
 
 /// The static terrain grid, serialized once in the header.
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
+#[ts(export)]
 pub struct MapView {
     pub hexes: Vec<HexView>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
+#[ts(export)]
 pub struct HexView {
     pub col: i16,
     pub row: i16,
@@ -36,7 +43,8 @@ pub struct HexView {
 }
 
 /// One recorded step: the state *after* an accepted command (or the initial frame).
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
+#[ts(export)]
 pub struct Event {
     pub step: u32,
     pub game_turn: u32,
@@ -54,7 +62,8 @@ pub struct Event {
     pub units: Vec<UnitView>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
+#[ts(export)]
 pub struct UnitView {
     pub id: u32,
     pub name: String,
