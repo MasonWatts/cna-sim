@@ -173,6 +173,18 @@
         (at: "D3714", kind: Temporary), // Mersa Matruh (Commonwealth)
     ],
 
+    // ---- Starting on-map air facilities (§36.1). INFERRED placement (2026-09-10): airfields sit at
+    //      the scenario's own designated base hubs (the repair-facility / major-supply hexes), pending
+    //      a verbatim §60 starting-airfield chart. Commonwealth off-map basing uses the §36.53 chart
+    //      via BaseSquadronOffMap, so those boxes are NOT listed here. ----
+    air_facilities: [
+        (at: "C4807", kind: Airfield), // Tobruk (Axis)
+        (at: "A4827", kind: Airfield), // Benghazi (Axis)
+        (at: "E3613", kind: Airfield), // Alexandria (Commonwealth)
+        (at: "D3714", kind: Airfield), // Mersa Matruh (Commonwealth)
+        (at: "E1430", kind: Airfield), // Cairo (Commonwealth)
+    ],
+
     // ---- Initial air: starting plane pools (§60.32 Italian / §60.42 Commonwealth). No German air
     //      at start (the Luftwaffe arrives with the DAK, GT26+). Planes are assigned to the side's
     //      SGSU counters and based at airfields by the player/AI (§35.2) within capacity. The
