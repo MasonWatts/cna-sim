@@ -640,9 +640,14 @@ rating is exhausted) — rating-0 pilots stay an unlimited supply (§40.16). **R
 scenario `available_sgsu` field — §60.32 Italian 39 / §60.42 Commonwealth 14) to place a squadron at an
 air-facility hex, stamping the §35.12 printed CPA (Italian 20, German 25, Commonwealth 25, from the
 physical counters; USAAF 30 per §34.82A is a distinct Aug-1942 counter type, unmodeled). Placement is
-left to the agent by design, so there is no baked-in default deployment. **Still open:** the **German
-SGSU plane-type identities** (§35.29, needed only from GT26+), and the §34.82B dynamic in-play SGSU cap
-(planes-on-map ÷12 +2 CW / ÷10 Axis) plus the §34.82C/D counter-shortage creation rule. **Squadron
+left to the agent by design, so there is no baked-in default deployment. The **§34.82 in-play
+SGSU cap is modeled** as an invariant: `sgsu_plane_cap` = ⌈on-map-facility planes / 12⌉ + 2 (CW,
+§34.82B) or ⌈…/10⌉ (Axis German & Italian, §34.82A), with `sgsus_in_play`/`on_map_facility_planes`/
+`sgsu_cap_exceeded` helpers. It is exposed for the driver to honour rather than gating `DeploySgsu`,
+because deploy-then-assign and pool-first reinforcements legitimately place empty SGSUs and the Axis
+formula has no `+2` cushion (a per-action gate would deadlock the first Axis base). **Still open:** the
+**German SGSU plane-type identities** (§35.29, needed only from GT26+) and the §34.82C/D counter-shortage
+creation rule (not modeled). **Squadron
 withdrawals (`WD`, §34.84) are now loaded:** the schedule's Commonwealth periods carry a `withdrawals` list (capability class F/B/R +
 count, fired once at the month's `gt_start`, queryable via `AirReinforcementSchedule::withdrawals_for`;
 the Axis chart lists none, and the chart's `*`/`**`/`‡` qualifiers are not yet modeled). Enforcing a

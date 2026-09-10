@@ -3871,6 +3871,42 @@ impl GameState {
         Some(id)
     }
 
+    /// Planes of `nationality` based at *on-map* air facilities — the planes in its SGSUs that have
+    /// a map location and are not in an off-map Mediterranean box (§36.5). This is the quantity the
+    /// §34.82 in-play SGSU cap is measured against.
+    pub fn on_map_facility_planes(&self, nationality: Nationality) -> u32 {
+        self.sgsus
+            .values()
+            .filter(|s| s.nationality == nationality && s.location.is_some() && s.med_base.is_none())
+            .map(|s| s.plane_count())
+            .sum()
+    }
+
+    /// SGSUs of `nationality` currently in play (deployed on the map or in a Mediterranean box).
+    pub fn sgsus_in_play(&self, nationality: Nationality) -> u32 {
+        self.sgsus.values().filter(|s| s.nationality == nationality).count() as u32
+    }
+
+    /// §34.82 in-play SGSU cap: the maximum number of SGSUs a nationality may have in play, from its
+    /// planes based at on-map facilities — Commonwealth = ⌈planes/12⌉ + 2 (§34.82B), Axis German and
+    /// Italian = ⌈planes/10⌉ (§34.82A). This is an *end-of-placement invariant* (see
+    /// [`Self::sgsu_cap_exceeded`]) exposed for the driver to honour, not a per-`DeploySgsu` gate:
+    /// the deploy-then-assign order and pool-first air reinforcements (§34.84) legitimately place
+    /// empty SGSUs, and the Axis formula has no `+2` cushion. §34.82C/D counter-shortage creation is
+    /// not modeled.
+    pub fn sgsu_plane_cap(&self, nationality: Nationality) -> u32 {
+        let planes = self.on_map_facility_planes(nationality);
+        match nationality {
+            Nationality::Commonwealth => planes.div_ceil(12) + 2,
+            Nationality::German | Nationality::Italian => planes.div_ceil(10),
+        }
+    }
+
+    /// §34.82: whether `nationality` currently has more SGSUs in play than its plane-based cap allows.
+    pub fn sgsu_cap_exceeded(&self, nationality: Nationality) -> bool {
+        self.sgsus_in_play(nationality) > self.sgsu_plane_cap(nationality)
+    }
+
     /// Squadron withdrawals due this Game-Turn (§34.84 `WD`) — the schedule's `withdrawals_for` at
     /// the current turn. Empty unless this turn is a period's `gt_start`, or if no schedule is loaded.
     pub fn due_squadron_withdrawals(

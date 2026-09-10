@@ -2665,6 +2665,58 @@ mod tests {
     }
 
     #[test]
+    fn sgsu_in_play_cap_34_82() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{AirFacility, AirFacilityKind};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        let field = HexCoord::new(4, 4);
+        g.add_air_facility(AirFacility::new(AirFacilityKind::Airfield, field));
+        g.available_sgsu.insert(Nationality::Commonwealth, 5);
+        g.available_sgsu.insert(Nationality::Italian, 5);
+        g.plane_pool.entry(Nationality::Commonwealth).or_default().insert("Gladiator Mk.II".into(), 12);
+        g.plane_pool.entry(Nationality::Italian).or_default().insert("C.R.42 Falco".into(), 10);
+        while g.phase != Phase::Organization {
+            g.advance_phase();
+        }
+
+        // Commonwealth: with 0 on-map planes the cap is 0/12 + 2 = 2.
+        assert_eq!(g.sgsu_plane_cap(Nationality::Commonwealth), 2);
+        let mut cw = vec![];
+        for _ in 0..3 {
+            if let Ok(CommandOutcome::SgsuDeployed(id)) =
+                g.apply(Command::DeploySgsu { nationality: Nationality::Commonwealth, class: SquadronClass::Fighter, at: field })
+            {
+                cw.push(id);
+            }
+        }
+        // Three empty SGSUs exceed the 2 cap (deploy itself is not gated).
+        assert_eq!(g.sgsus_in_play(Nationality::Commonwealth), 3);
+        assert!(g.sgsu_cap_exceeded(Nationality::Commonwealth));
+        // Base 12 planes: cap rises to ⌈12/12⌉ + 2 = 3, and the invariant is satisfied.
+        g.apply(Command::AssignSquadronPlanes { squadron: cw[0], aircraft_type: "Gladiator Mk.II".into(), class: AircraftClass::Fighter, count: 12 }).unwrap();
+        assert_eq!(g.on_map_facility_planes(Nationality::Commonwealth), 12);
+        assert_eq!(g.sgsu_plane_cap(Nationality::Commonwealth), 3);
+        assert!(!g.sgsu_cap_exceeded(Nationality::Commonwealth));
+
+        // Axis has no +2 cushion: ⌈planes/10⌉. One empty Italian SGSU exceeds the 0 cap…
+        let it = match g.apply(Command::DeploySgsu { nationality: Nationality::Italian, class: SquadronClass::Fighter, at: field }) {
+            Ok(CommandOutcome::SgsuDeployed(id)) => id,
+            other => panic!("expected SgsuDeployed, got {other:?}"),
+        };
+        assert_eq!(g.sgsu_plane_cap(Nationality::Italian), 0);
+        assert!(g.sgsu_cap_exceeded(Nationality::Italian));
+        // …basing 10 planes lifts the cap to ⌈10/10⌉ = 1, exactly matching the one SGSU.
+        g.apply(Command::AssignSquadronPlanes { squadron: it, aircraft_type: "C.R.42 Falco".into(), class: AircraftClass::Fighter, count: 10 }).unwrap();
+        assert_eq!(g.sgsu_plane_cap(Nationality::Italian), 1);
+        assert!(!g.sgsu_cap_exceeded(Nationality::Italian));
+    }
+
+    #[test]
     fn withdraw_squadron_satisfies_due_wd_34_84() {
         use crate::reference::aircraft::AircraftClass;
         use crate::reference::squadron::{SquadronClass, WdClass};
