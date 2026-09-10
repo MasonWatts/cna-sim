@@ -4,4 +4,9 @@ export type UnitView = { id: number, name: string, nationality: string, side: st
 /**
  * `[col, row]` of the unit's effective hex (attached units ride their parent), or `None`.
  */
-hex: [number, number] | null, org_size: string, toe: number, fuel: number, ammo: number, cohesion: number, };
+hex: [number, number] | null, org_size: string, toe: number, fuel: number, ammo: number, cohesion: number, 
+/**
+ * True if the unit has broken-down vehicles / weapons or lost TOE to breakdown (§21) — i.e. it
+ * is (partly) immobilized until repaired (§22). Drives the "broken" marker in the viewer.
+ */
+broken: boolean, };

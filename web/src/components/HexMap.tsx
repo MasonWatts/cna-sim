@@ -65,14 +65,29 @@ export function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
           const cy = c.y + offset.y;
           return (
             <g key={u.id} transform={`translate(${cx} ${cy})`}>
-              <rect x={-15} y={-11} width={30} height={22} rx={3} fill={fill} stroke="#0d0f14" strokeWidth={1} />
+              <rect
+                x={-15}
+                y={-11}
+                width={30}
+                height={22}
+                rx={3}
+                fill={fill}
+                stroke={u.broken ? "#e7b53a" : "#0d0f14"}
+                strokeWidth={u.broken ? 2 : 1}
+              />
               <text textAnchor="middle" y={-1} fontSize={9} fill="#fff" fontWeight={700}>
                 {u.name.slice(0, 7)}
               </text>
               <text textAnchor="middle" y={8} fontSize={8} fill="#eef">
                 {u.toe}
               </text>
-              <title>{`${u.name} — ${u.side}\nTOE ${u.toe}  fuel ${u.fuel}  ammo ${u.ammo}  cohesion ${u.cohesion}\n${u.org_size} @ (${col},${row})`}</title>
+              {/* §21 broken-down marker: amber wrench glyph in the corner. */}
+              {u.broken && (
+                <text x={11} y={-4} fontSize={11} textAnchor="middle" aria-label="broken down">
+                  🔧
+                </text>
+              )}
+              <title>{`${u.name} — ${u.side}${u.broken ? " ⚠ BROKEN DOWN (§21)" : ""}\nTOE ${u.toe}  fuel ${u.fuel}  ammo ${u.ammo}  cohesion ${u.cohesion}\n${u.org_size} @ (${col},${row})`}</title>
             </g>
           );
         });

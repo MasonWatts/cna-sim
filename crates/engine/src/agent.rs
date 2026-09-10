@@ -83,6 +83,17 @@ impl Agent for GreedyAgent {
         if let Some(c) = cmds.iter().find(|c| matches!(c, Command::AntiArmor { .. })) {
             return Some(c.clone());
         }
+        // Basic upkeep: when it can't attack, fix broken-down units and recover captured gear
+        // (§21/§22/§28.3) — otherwise a broken cruiser would sit immobilized forever. Cheap and
+        // strictly helpful, so it takes priority over maneuver.
+        if let Some(c) = cmds.iter().find(|c| {
+            matches!(
+                c,
+                Command::Repair { .. } | Command::RepairCapturedEquipment { .. } | Command::RepairShip { .. }
+            )
+        }) {
+            return Some(c.clone());
+        }
         // Otherwise advance: among the legal moves, pick one whose destination is closest to an
         // enemy unit (the agent presses toward contact). Random tie-break for variety.
         let enemy = side.opponent();

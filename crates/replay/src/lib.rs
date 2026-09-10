@@ -76,6 +76,9 @@ pub struct UnitView {
     pub fuel: u32,
     pub ammo: u32,
     pub cohesion: i32,
+    /// True if the unit has broken-down vehicles / weapons or lost TOE to breakdown (§21) — i.e. it
+    /// is (partly) immobilized until repaired (§22). Drives the "broken" marker in the viewer.
+    pub broken: bool,
 }
 
 /// The eight phases in which agents act (mirrors `agent::self_play`).
@@ -122,6 +125,9 @@ fn unit_views(g: &GameState) -> Vec<UnitView> {
             fuel: u.fuel,
             ammo: u.ammo,
             cohesion: u.cohesion,
+            broken: !u.weapons_broken.is_empty()
+                || u.toe_broken > 0
+                || u.trucks_broken.light + u.trucks_broken.medium + u.trucks_broken.heavy > 0,
         })
         .collect();
     v.sort_by_key(|u| u.id);
