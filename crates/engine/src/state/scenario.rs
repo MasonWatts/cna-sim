@@ -300,6 +300,10 @@ struct ScenarioData {
     /// `GameState.pilot_pool`.
     #[serde(default)]
     initial_pilots: Vec<PilotPoolSpec>,
+    /// Available SGSU counters per nationality (§60.32 Italian 39 / §60.42 Commonwealth 14): the
+    /// supply the player deploys with `DeploySgsu`. Seeds `GameState.available_sgsu`.
+    #[serde(default)]
+    available_sgsu: Vec<AvailSgsuSpec>,
 }
 
 /// A nationality's starting plane pool (§60.32 / §60.42): `(aircraft-type key, count)` pairs.
@@ -314,6 +318,13 @@ struct PlanePoolSpec {
 struct PilotPoolSpec {
     nationality: Nationality,
     pilots: Vec<(u32, u32)>,
+}
+
+/// A nationality's available (unplaced) SGSU counter supply (§60.32 / §60.42).
+#[derive(Deserialize)]
+struct AvailSgsuSpec {
+    nationality: Nationality,
+    count: u32,
 }
 
 /// A squadron (SGSU) placed at setup (§35). Based on the map (`at`) or in an off-map Med Box
@@ -645,6 +656,10 @@ impl GameState {
             for (rating, n) in &p.pilots {
                 *pool.entry(*rating).or_insert(0) += n;
             }
+        }
+        // §60.32/§60.42: seed each side's available SGSU counter supply.
+        for s in &data.available_sgsu {
+            *self.available_sgsu.entry(s.nationality).or_insert(0) += s.count;
         }
         // §19.3: record each formation's historical assignment capacity (its OA-sheet organization)
         // from the units assigned to it at start, for the §19.21 reassignment limit.

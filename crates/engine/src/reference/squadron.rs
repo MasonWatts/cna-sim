@@ -83,6 +83,18 @@ pub fn squadron_capacity(nationality: Nationality, game_turn: u32) -> SquadronCa
     }
 }
 
+/// The Capability Point Allowance printed on a nationality's SGSU counter (§35.12): Italian 20,
+/// German 25, Commonwealth 25. (USAAF-designation counters carry a CPA of 30 per §34.82A, but they
+/// are a distinct counter type available only from Aug 1942 and are not modeled here.) Values are
+/// read from the physical counters — they appear on no chart in the text rules.
+pub fn sgsu_cpa(nationality: Nationality) -> u32 {
+    match nationality {
+        Nationality::Italian => 20,
+        Nationality::German => 25,
+        Nationality::Commonwealth => 25,
+    }
+}
+
 /// The per-nationality maximum 2d6 total that still refits a single plane (§38.37 chart A / §38.39).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ByPlaneMax {

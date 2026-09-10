@@ -636,13 +636,18 @@ CW available) plus pilots. The **pilot pools are now seeded and drawn from**: th
 field loads `GameState.pilot_pool` (It 3×"3"/10×"2"/15×"1"; CW 1×"3"/5×"2"/8×"1"; no German at start),
 and `AssignPilot` consumes a rated pilot from that pool (rejecting with `InsufficientPilotPool` when a
 rating is exhausted) — rating-0 pilots stay an unlimited supply (§40.16). **Remaining air work:** a
-deploy step that spends an available-SGSU pool to place counters (blocked on the printed **SGSU CPA**,
-§35.12 — a physical-counter value not in the text rules, pending a counter scan); and the **German SGSU
-plane-type identities** (§35.29, needed only from GT26+). **Squadron withdrawals (`WD`, §34.84) are now
-loaded:** the schedule's Commonwealth periods carry a `withdrawals` list (capability class F/B/R +
+**SGSU deploy step is now built:** `DeploySgsu` spends a counter from `GameState.available_sgsu` (the
+scenario `available_sgsu` field — §60.32 Italian 39 / §60.42 Commonwealth 14) to place a squadron at an
+air-facility hex, stamping the §35.12 printed CPA (Italian 20, German 25, Commonwealth 25, from the
+physical counters; USAAF 30 per §34.82A is a distinct Aug-1942 counter type, unmodeled). Placement is
+left to the agent by design, so there is no baked-in default deployment. **Still open:** the **German
+SGSU plane-type identities** (§35.29, needed only from GT26+), and the §34.82B dynamic in-play SGSU cap
+(planes-on-map ÷12 +2 CW / ÷10 Axis) plus the §34.82C/D counter-shortage creation rule. **Squadron
+withdrawals (`WD`, §34.84) are now loaded:** the schedule's Commonwealth periods carry a `withdrawals` list (capability class F/B/R +
 count, fired once at the month's `gt_start`, queryable via `AirReinforcementSchedule::withdrawals_for`;
 the Axis chart lists none, and the chart's `*`/`**`/`‡` qualifiers are not yet modeled). Enforcing a
-withdrawal removes a deployed SGSU, so the enforcement command waits on the same SGSU-deploy step.
+withdrawal removes a deployed SGSU; now that `DeploySgsu` exists this can be wired (a `WithdrawSquadron`
+command choosing a squadron of the due capability class) — not yet built.
 Opening deployment is left to the agent by design (the rulebook leaves placement to the player), so no
 baked-in default. Note the separate **unit** withdrawal (§20.9/§64.75 voluntary Commonwealth) is fully
 built (`WithdrawUnit`/`ReturnUnit` + VP banking); the §20.8 *mandatory* unit schedule lives only as

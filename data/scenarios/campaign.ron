@@ -200,4 +200,11 @@
         (nationality: Italian,      pilots: [(3, 3), (2, 10), (1, 15)]),
         (nationality: Commonwealth, pilots: [(3, 1), (2, 5),  (1, 8)]),
     ],
+    // §60.32 Italian SGSU Available: 39; §60.42 Commonwealth SGSU Available: 14. The player deploys
+    // these counters to air facilities (§34.82) with DeploySgsu, then assigns pooled planes/pilots.
+    // German SGSUs arrive with the DAK (GT26+) and are governed by the §34.82 dynamic cap.
+    available_sgsu: [
+        (nationality: Italian,      count: 39),
+        (nationality: Commonwealth, count: 14),
+    ],
 )

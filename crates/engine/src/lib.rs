@@ -2658,6 +2658,53 @@ mod tests {
         assert_eq!(g.pool_pilots(Nationality::Commonwealth, 2), 5);
         assert_eq!(g.pool_pilots(Nationality::Commonwealth, 1), 8);
         assert!(g.pilot_pool.get(&Nationality::German).is_none_or(|m| m.values().sum::<u32>() == 0));
+        // §60.32/§60.42 available SGSU counters: 39 Italian, 14 Commonwealth, none German at start.
+        assert_eq!(g.available_sgsu.get(&Nationality::Italian).copied().unwrap_or(0), 39);
+        assert_eq!(g.available_sgsu.get(&Nationality::Commonwealth).copied().unwrap_or(0), 14);
+        assert_eq!(g.available_sgsu.get(&Nationality::German).copied().unwrap_or(0), 0);
+    }
+
+    #[test]
+    fn deploy_sgsu_spends_counter_and_sets_cpa_34_82() {
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{AirFacility, AirFacilityKind};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        let field = HexCoord::new(6, 6);
+        g.add_air_facility(AirFacility::new(AirFacilityKind::Airfield, field));
+        g.available_sgsu.insert(Nationality::Italian, 2);
+        while g.phase != Phase::Organization {
+            g.advance_phase();
+        }
+        // Deploy at the airfield: spends a counter, and the SGSU carries the §35.12 Italian CPA (20).
+        let out = g.apply(Command::DeploySgsu { nationality: Nationality::Italian, class: SquadronClass::Fighter, at: field });
+        let id = match out {
+            Ok(CommandOutcome::SgsuDeployed(id)) => id,
+            other => panic!("expected SgsuDeployed, got {other:?}"),
+        };
+        assert_eq!(g.available_sgsu[&Nationality::Italian], 1);
+        assert_eq!(g.sgsus[&id].cpa, 20);
+        assert_eq!(g.sgsus[&id].location, Some(field));
+        assert_eq!(g.sgsus[&id].nationality, Nationality::Italian);
+        // Deploying at a hex with no air facility fails (§34.82 — SGSUs base at facilities).
+        assert_eq!(
+            g.apply(Command::DeploySgsu { nationality: Nationality::Italian, class: SquadronClass::Bomber, at: HexCoord::new(9, 9) }),
+            Err(CommandError::SgsuDeployFailed)
+        );
+        assert_eq!(g.available_sgsu[&Nationality::Italian], 1);
+        // Spend the last counter, then the supply is exhausted.
+        assert!(matches!(
+            g.apply(Command::DeploySgsu { nationality: Nationality::Italian, class: SquadronClass::Fighter, at: field }),
+            Ok(CommandOutcome::SgsuDeployed(_))
+        ));
+        assert_eq!(g.available_sgsu[&Nationality::Italian], 0);
+        assert_eq!(
+            g.apply(Command::DeploySgsu { nationality: Nationality::Italian, class: SquadronClass::Fighter, at: field }),
+            Err(CommandError::SgsuDeployFailed)
+        );
     }
 
     #[test]

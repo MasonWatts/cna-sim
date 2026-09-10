@@ -741,6 +741,10 @@ pub struct GameState {
     /// (§40.16) and are not tracked here.
     #[serde(default)]
     pub pilot_pool: HashMap<Nationality, HashMap<u32, u32>>,
+    /// §60.32/§60.42: each nationality's supply of unplaced SGSU counters (Italian 39, Commonwealth
+    /// 14 at campaign start). `DeploySgsu` spends one to put a squadron on the map (§34.82).
+    #[serde(default)]
+    pub available_sgsu: HashMap<Nationality, u32>,
     /// Placed air facilities — airfields, landing strips, flying-boat basins/alighting areas (§36).
     #[serde(default)]
     pub air_facilities: Vec<AirFacility>,
@@ -1083,6 +1087,7 @@ impl GameState {
             sgsus: HashMap::new(),
             plane_pool: HashMap::new(),
             pilot_pool: HashMap::new(),
+            available_sgsu: HashMap::new(),
             air_facilities: Vec::new(),
             ports: HashMap::new(),
             convoys: Vec::new(),
@@ -3835,6 +3840,35 @@ impl GameState {
     /// unlimited (§40.16) and always reports 0 here — it is not drawn from the pool.
     pub fn pool_pilots(&self, nationality: Nationality, rating: u32) -> u32 {
         self.pilot_pool.get(&nationality).and_then(|m| m.get(&rating)).copied().unwrap_or(0)
+    }
+
+    /// §34.82/§60.32/§60.42: place an unplaced SGSU counter (of `nationality`, handling aircraft
+    /// `class`) at `hex`, which must host an air facility. Spends one counter from `available_sgsu`
+    /// and gives it the §35.12 printed CPA for its nationality. Returns the new `SquadronId`, or
+    /// `None` if no counter is available or no air facility sits in the hex.
+    pub fn deploy_sgsu(
+        &mut self,
+        nationality: Nationality,
+        class: crate::reference::squadron::SquadronClass,
+        hex: HexCoord,
+    ) -> Option<crate::state::air::SquadronId> {
+        if self.available_sgsu.get(&nationality).copied().unwrap_or(0) == 0 {
+            return None;
+        }
+        if !self.air_facilities.iter().any(|f| f.hex == hex) {
+            return None;
+        }
+        let id = crate::state::air::SquadronId(
+            self.sgsus.keys().map(|s| s.0).max().unwrap_or(0) + 1,
+        );
+        let cpa = crate::reference::squadron::sgsu_cpa(nationality);
+        let designation = format!("{nationality:?} SGSU {}", id.0);
+        self.sgsus.insert(
+            id,
+            crate::state::air::Sgsu::new(id, nationality, class, designation, cpa, Some(hex)),
+        );
+        *self.available_sgsu.entry(nationality).or_insert(0) -= 1;
+        Some(id)
     }
 
     /// §56.2/§56.21: the tonnage the Axis may ship in a convoy arriving on `arrival_gt`, given the

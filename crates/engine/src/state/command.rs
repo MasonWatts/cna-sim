@@ -269,6 +269,13 @@ pub enum Command {
     BlockHarbor { port: String, has_engineer: bool },
     /// §55.26: remove one level of harbour blocking with the required engineer units.
     UnblockHarbor { port: String, engineers: u32 },
+    /// §34.82/§60.32/§60.42: place an available SGSU counter at an air-facility hex (Organization
+    /// Phase), spending one from the nationality's counter supply.
+    DeploySgsu {
+        nationality: crate::reference::units::Nationality,
+        class: crate::reference::squadron::SquadronClass,
+        at: HexCoord,
+    },
     /// §35.2: assign `count` planes of a type/class to a squadron (Organization Phase).
     AssignSquadronPlanes {
         squadron: crate::state::air::SquadronId,
@@ -680,6 +687,8 @@ pub enum CommandOutcome {
     ConvoyDelivered(crate::state::game::Commodities),
     /// A harbour action succeeded (§55.2): the Ammunition/Stores cost to expend.
     HarborAction { ammo: u32, stores: u32 },
+    /// An SGSU counter was deployed to an air facility (§34.82); carries the new squadron's id.
+    SgsuDeployed(crate::state::air::SquadronId),
     /// Planes were assigned to a squadron (§35.2).
     SquadronPlanesAssigned,
     /// An air facility was bombed (§41.36).
@@ -957,6 +966,9 @@ pub enum CommandError {
     InsufficientPlanePool,
     /// §40.12: the nationality's pilot pool has no unassigned pilot of that rating to assign.
     InsufficientPilotPool,
+    /// §34.82: cannot deploy an SGSU — no counter available for that nationality, or no air facility
+    /// at the target hex.
+    SgsuDeployFailed,
     /// No matching air facility exists in the target hex.
     NoSuchFacility,
     /// The referenced port does not exist in play.
@@ -1128,6 +1140,13 @@ impl GameState {
             Command::ProduceAxisTrucks { kind, count } => self.cmd_produce_axis_trucks(kind, count),
             Command::BlockHarbor { port, has_engineer } => self.cmd_block_harbor(&port, has_engineer),
             Command::UnblockHarbor { port, engineers } => self.cmd_unblock_harbor(&port, engineers),
+            Command::DeploySgsu { nationality, class, at } => {
+                self.require_phase(Phase::Organization)?;
+                match self.deploy_sgsu(nationality, class, at) {
+                    Some(id) => Ok(CommandOutcome::SgsuDeployed(id)),
+                    None => Err(CommandError::SgsuDeployFailed),
+                }
+            }
             Command::AssignSquadronPlanes { squadron, aircraft_type, class, count } => {
                 self.cmd_assign_squadron_planes(squadron, &aircraft_type, class, count)
             }
