@@ -408,6 +408,46 @@ impl MaltaCommitmentChart {
     }
 }
 
+/// §34.84 / §34.85 Airplane Reinforcement schedule: the planes each nationality receives into its
+/// pool over the campaign. Each period is a monthly total (over its Game-Turn range); the total is
+/// divided as evenly as possible across the period's Game-Turns, remainder front-loaded.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AirReinforcementSchedule {
+    pub periods: Vec<AirReinforcementPeriod>,
+}
+
+/// One month of the reinforcement schedule for one nationality.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AirReinforcementPeriod {
+    pub gt_start: u32,
+    pub gt_end: u32,
+    pub nationality: Nationality,
+    /// `(aircraft-type key, monthly total)` — the key indexes the nationality's `AircraftChart`.
+    pub planes: Vec<(String, u32)>,
+}
+
+impl AirReinforcementSchedule {
+    /// Planes arriving in Game-Turn `gt` — each period's monthly total split evenly across its
+    /// Game-Turns (remainder front-loaded, §34.84 note). Returns `(nationality, aircraft-type, count)`.
+    pub fn arrivals_for(&self, gt: u32) -> Vec<(Nationality, String, u32)> {
+        let mut out = Vec::new();
+        for p in &self.periods {
+            if gt < p.gt_start || gt > p.gt_end {
+                continue;
+            }
+            let n = p.gt_end - p.gt_start + 1;
+            let k = gt - p.gt_start; // 0-based Game-Turn index within the month
+            for (ac, total) in &p.planes {
+                let cnt = total / n + if k < total % n { 1 } else { 0 };
+                if cnt > 0 {
+                    out.push((p.nationality, ac.clone(), cnt));
+                }
+            }
+        }
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

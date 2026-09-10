@@ -613,11 +613,17 @@ into scenario deployment. The CNA air model decouples planes from squadrons: air
 per-turn **plane pool** (§34.84 Commonwealth / §34.85 Axis reinforcement charts — now transcribed to
 `docs/source-materials/air-reinforcements-34.84-34.85.transcribed.md`, GT2→GT110, all three
 nationalities, names mapped to the `data/reference/aircraft/*.ron` keys) and the player assigns them
-to SGSU counters (§35.2). **Remaining air work:** (1) a **plane-pool + scheduled-reinforcement
-mechanism** to consume that schedule; (2) the **§60 initial air deployment** (which squadrons/planes/
-airfields at GT1) to feed the scenario `squadrons` field so `campaign.ron` starts with aircraft; and
-(3) the SGSU counter roster. Naval fleet deployment is the analogous still-missing dimension (a
-`fleet` scenario field + a ship OB).
+to SGSU counters (§35.2). The **plane-pool + reinforcement mechanism is now built**: the schedule is
+loaded into `ReferenceData::air_reinforcements` from `data/reference/air-reinforcements.ron`
+(generated from the transcription, 78 monthly periods), `GameState.plane_pool` holds each side's
+received-but-unassigned planes by aircraft type, and `accrue_air_reinforcements` (called on every
+Game-Turn rollover) adds that turn's arrivals — each month's total split evenly across its
+Game-Turns (`AirReinforcementSchedule::arrivals_for`). **Remaining air work:** the **§60 initial air
+deployment** (which squadrons/planes/airfields at GT1) to feed the scenario `squadrons` field so
+`campaign.ron` starts with aircraft, and the **SGSU counter roster** (how many squadrons per side +
+`AssignSquadronPlanes` drawing from the pool). Squadron **withdrawals** (the charts' `WD` entries)
+are noted in the transcription but not yet modeled. Naval fleet deployment is the analogous
+still-missing dimension (a `fleet` scenario field + a ship OB).
 **D14 verification pass (2026-09-08) — closed.** Every `Deployed`-default unit in the Commonwealth
 and Italian OB was cross-checked, formation-scoped, against the §4.44a/§4.44b OA-sheet "Arrives"
 columns transcribed in `docs/source-materials/*-ob-4.44*.transcribed.md`. All are faithful: the

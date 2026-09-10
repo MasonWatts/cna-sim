@@ -731,6 +731,11 @@ pub struct GameState {
     /// Squadron Ground Support Units — the Air Game's base counters (§35).
     #[serde(default)]
     pub sgsus: HashMap<SquadronId, Sgsu>,
+    /// §34.84/§34.85: each nationality's pool of received-but-unassigned planes, by aircraft type.
+    /// Grows each Game-Turn from the reinforcement schedule; drawn down when planes are assigned to
+    /// squadrons (§35.2).
+    #[serde(default)]
+    pub plane_pool: HashMap<Nationality, HashMap<String, u32>>,
     /// Placed air facilities — airfields, landing strips, flying-boat basins/alighting areas (§36).
     #[serde(default)]
     pub air_facilities: Vec<AirFacility>,
@@ -1071,6 +1076,7 @@ impl GameState {
             map: Map::new(),
             units: HashMap::new(),
             sgsus: HashMap::new(),
+            plane_pool: HashMap::new(),
             air_facilities: Vec::new(),
             ports: HashMap::new(),
             convoys: Vec::new(),
@@ -3797,6 +3803,26 @@ impl GameState {
     /// Place a new air facility (scenario setup §36.0 or completed construction §24.7).
     pub fn add_air_facility(&mut self, facility: AirFacility) {
         self.air_facilities.push(facility);
+    }
+
+    /// §34.84/§34.85: add the current Game-Turn's airplane reinforcements to each side's plane pool
+    /// (from the loaded schedule, monthly totals split across the month's Game-Turns). Called on each
+    /// Game-Turn rollover; a no-op if no schedule is loaded.
+    pub fn accrue_air_reinforcements(&mut self) {
+        let arrivals = self
+            .reference
+            .air_reinforcements
+            .as_ref()
+            .map(|s| s.arrivals_for(self.game_turn))
+            .unwrap_or_default();
+        for (nat, aircraft, count) in arrivals {
+            *self.plane_pool.entry(nat).or_default().entry(aircraft).or_insert(0) += count;
+        }
+    }
+
+    /// Total planes of `aircraft` currently in `nationality`'s reinforcement pool (unassigned).
+    pub fn pool_planes(&self, nationality: Nationality, aircraft: &str) -> u32 {
+        self.plane_pool.get(&nationality).and_then(|m| m.get(aircraft)).copied().unwrap_or(0)
     }
 
     /// §56.2/§56.21: the tonnage the Axis may ship in a convoy arriving on `arrival_gt`, given the
@@ -7170,6 +7196,8 @@ impl GameState {
                 for base in self.malta_bases.iter_mut() {
                     base.begin_turn();
                 }
+                // §34.84/§34.85: this Game-Turn's airplane reinforcements arrive into the pool.
+                self.accrue_air_reinforcements();
             }
             return;
         }

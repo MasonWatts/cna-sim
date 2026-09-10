@@ -2399,6 +2399,35 @@ mod tests {
     }
 
     #[test]
+    fn air_reinforcements_split_and_accrue_into_pool() {
+        use crate::reference::units::Nationality;
+        use crate::state::game::GameState;
+
+        let refs = ReferenceData::load_campaign();
+        let sched = refs.air_reinforcements.as_ref().expect("air reinforcement schedule loads");
+
+        // GT2 is a single-turn period: the CW gets its full 2× Hurricane I + 3× Fulmar.
+        let a2 = sched.arrivals_for(2);
+        assert!(a2.iter().any(|(n, ac, c)| *n == Nationality::Commonwealth && ac == "Hurricane Mk.I" && *c == 2));
+        // A four-Game-Turn period splits evenly: 1941 Jan (GT15–18), 44× Hurricane I → 11/turn.
+        assert!(sched.arrivals_for(15).iter().any(|(_, ac, c)| ac == "Hurricane Mk.I" && *c == 11));
+        // …and the per-turn splits sum back to the monthly total.
+        let total: u32 = (15..=18)
+            .flat_map(|gt| sched.arrivals_for(gt))
+            .filter(|(_, ac, _)| ac == "Hurricane Mk.I")
+            .map(|(_, _, c)| c)
+            .sum();
+        assert_eq!(total, 44);
+
+        // The game accrues the current Game-Turn's planes into the side's pool.
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        g.game_turn = 2;
+        g.accrue_air_reinforcements();
+        assert_eq!(g.pool_planes(Nationality::Commonwealth, "Hurricane Mk.I"), 2);
+        assert_eq!(g.pool_planes(Nationality::Italian, "Ba 65"), 12);
+    }
+
+    #[test]
     fn load_scenario_deploys_air_forces() {
         use crate::state::air::{AirFacilityKind, MedBase};
         use crate::state::game::GameState;

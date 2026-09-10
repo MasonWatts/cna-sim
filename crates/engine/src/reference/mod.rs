@@ -143,6 +143,9 @@ pub struct ReferenceData {
     /// Campaign Victory Conditions (§64.7).
     #[serde(default)]
     pub campaign_victory: Option<CampaignVictory>,
+    /// §34.84 / §34.85 Airplane Reinforcement schedule (planes per Game-Turn into each side's pool).
+    #[serde(default)]
+    pub air_reinforcements: Option<squadron::AirReinforcementSchedule>,
     /// Ammunition Consumption Rates (§50.2).
     #[serde(default)]
     pub ammo_rates: Option<logistics::AmmoConsumptionRates>,
@@ -205,6 +208,7 @@ impl ReferenceData {
         load!(load_terrain, "../../../../data/reference/terrain.ron");
         load!(load_off_map_nodes, "../../../../data/reference/off-map-nodes.ron");
         load!(load_weather_table, "../../../../data/reference/weather-table.ron");
+        load!(load_air_reinforcements, "../../../../data/reference/air-reinforcements.ron");
         load!(load_initiative_ratings, "../../../../data/reference/initiative-ratings.ron");
         load!(load_reinforcement_entry, "../../../../data/reference/reinforcement-entry.ron");
         load!(load_campaign_victory, "../../../../data/reference/campaign-victory.ron");
@@ -492,6 +496,12 @@ impl ReferenceData {
     /// Load the Weather Table (§29.61) + Foul Weather Location Table (§29.7).
     pub fn load_weather_table(&mut self, ron_str: &str) -> Result<(), ron::error::SpannedError> {
         self.weather_table = Some(ron::from_str(ron_str)?);
+        Ok(())
+    }
+
+    /// Load the §34.84/§34.85 Airplane Reinforcement schedule.
+    pub fn load_air_reinforcements(&mut self, ron_str: &str) -> Result<(), ron::error::SpannedError> {
+        self.air_reinforcements = Some(ron::from_str(ron_str)?);
         Ok(())
     }
 
