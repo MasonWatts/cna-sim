@@ -2399,6 +2399,43 @@ mod tests {
     }
 
     #[test]
+    fn load_scenario_deploys_air_forces() {
+        use crate::state::air::{AirFacilityKind, MedBase};
+        use crate::state::game::GameState;
+        // On-map fighter squadron + off-map (Med Box) bomber squadron + two air facilities.
+        let scenario = r#"(
+            name: "Air Test",
+            game_turn: 1,
+            squadrons: [
+                ( nationality: Commonwealth, class: Fighter, designation: "33 Sqn", cpa: 5,
+                  at: Some("C4131"), planes: [ ( aircraft_type: "Hurricane Mk.I", count: 12 ) ] ),
+                ( nationality: German, class: Bomber, designation: "KG 26", cpa: 5,
+                  med_base: Some(ItalySicily), planes: [ ( aircraft_type: "He.111", count: 9 ) ] ),
+            ],
+            air_facilities: [
+                ( at: "C4131", kind: Airfield ),
+                ( at: "C4807", kind: AirLandingStrip, capacity: Some(1) ),
+            ],
+        )"#;
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        g.load_scenario(scenario).unwrap();
+
+        assert_eq!(g.sgsus.len(), 2);
+        // On-map fighter: located, planes start ready + armed (flyable).
+        let cw = g.sgsus.values().find(|s| s.designation == "33 Sqn").unwrap();
+        assert!(cw.location.is_some() && cw.med_base.is_none());
+        assert_eq!((cw.planes[0].count, cw.planes[0].ready, cw.planes[0].armed), (12, 12, 12));
+        // Off-map bomber: in the Italy/Sicily Box, no on-map hex.
+        let de = g.sgsus.values().find(|s| s.designation == "KG 26").unwrap();
+        assert_eq!(de.med_base, Some(MedBase::ItalySicily));
+        assert!(de.location.is_none());
+        // Facilities: airfield defaults to its max capacity; strip is explicit 1.
+        assert_eq!(g.air_facilities.len(), 2);
+        let airfield = g.air_facilities.iter().find(|f| matches!(f.kind, AirFacilityKind::Airfield)).unwrap();
+        assert!(airfield.capacity_level >= 1);
+    }
+
+    #[test]
     fn scenario_1_loads_on_section_c() {
         use crate::reference::units::Side;
         use crate::state::game::GameState;

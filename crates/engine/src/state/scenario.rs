@@ -284,6 +284,47 @@ struct ScenarioData {
     /// Fortifications placed at setup (§61.6 / §63.7x): hex label + level (1 or 2).
     #[serde(default)]
     fortifications: Vec<FortSpec>,
+    /// Air Ground Support Units on the map (or in a Med Box) at start (§35 / §60 air setup).
+    #[serde(default)]
+    squadrons: Vec<SquadronSpec>,
+    /// Air facilities (airfields / landing strips / flying-boat basins) present at start (§36).
+    #[serde(default)]
+    air_facilities: Vec<AirFieldSpec>,
+}
+
+/// A squadron (SGSU) placed at setup (§35). Based on the map (`at`) or in an off-map Med Box
+/// (`med_base`, for Axis strategic bombers, §43.0). Its planes start ready + armed (flyable).
+#[derive(Deserialize)]
+struct SquadronSpec {
+    nationality: Nationality,
+    class: crate::reference::squadron::SquadronClass,
+    designation: String,
+    cpa: u32,
+    #[serde(default)]
+    at: Option<String>,
+    #[serde(default)]
+    med_base: Option<crate::state::air::MedBase>,
+    #[serde(default)]
+    planes: Vec<PlaneSpec>,
+}
+
+/// A plane group in a squadron's composition: an aircraft-type key (§4.44A chart) and a count.
+#[derive(Deserialize)]
+struct PlaneSpec {
+    aircraft_type: String,
+    count: u32,
+}
+
+/// An air facility placed at setup (§36).
+#[derive(Deserialize)]
+struct AirFieldSpec {
+    at: String,
+    kind: crate::state::air::AirFacilityKind,
+    /// Capacity level in squadrons; defaults to the field's nominal max.
+    #[serde(default)]
+    capacity: Option<u32>,
+    #[serde(default)]
+    off_map: bool,
 }
 
 /// A fortification placed at setup: hex label + level.
@@ -530,6 +571,42 @@ impl GameState {
             // Keep the strongest if a hex is listed more than once.
             let e = self.fortifications.entry(coord).or_insert(0);
             *e = (*e).max(f.level);
+        }
+        // Air: starting SGSUs (§35) with their planes ready + armed, and air facilities (§36).
+        let base_sqid = self.sgsus.keys().map(|k| k.0).max().unwrap_or(0) + 1;
+        for (i, s) in data.squadrons.iter().enumerate() {
+            let loc = match &s.at {
+                Some(id) => Some(
+                    HexId::parse(id).ok_or_else(|| ScenarioError::BadHex(id.clone()))?.to_hex_coord(),
+                ),
+                None => None,
+            };
+            let id = crate::state::air::SquadronId(base_sqid + i as u32);
+            let mut sg = crate::state::air::Sgsu::new(id, s.nationality, s.class, s.designation.clone(), s.cpa, loc);
+            sg.med_base = s.med_base;
+            sg.planes = s
+                .planes
+                .iter()
+                .map(|p| crate::state::air::PlaneGroup {
+                    aircraft_type: p.aircraft_type.clone(),
+                    count: p.count,
+                    refitted: 0,
+                    ready: p.count,
+                    armed: p.count,
+                })
+                .collect();
+            self.sgsus.insert(id, sg);
+        }
+        for a in &data.air_facilities {
+            let hex = HexId::parse(&a.at)
+                .ok_or_else(|| ScenarioError::BadHex(a.at.clone()))?
+                .to_hex_coord();
+            let mut f = crate::state::air::AirFacility::new(a.kind, hex);
+            if let Some(c) = a.capacity {
+                f.capacity_level = c;
+            }
+            f.off_map = a.off_map;
+            self.add_air_facility(f);
         }
         // §19.3: record each formation's historical assignment capacity (its OA-sheet organization)
         // from the units assigned to it at start, for the §19.21 reassignment limit.

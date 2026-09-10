@@ -605,6 +605,14 @@ on schedule. The German roster is now complete: two stray `Deployed` units — R
 the II/155 reassignment counter — were dated from the §4.44c OA sheet (1/91 and the Nov-1941 2/58
 reassignment), so **Ramcke and the Non-Divisional Artillery pool now enter on schedule** rather than
 wrongly at Sept-1940; the **Kampfgruppen HQ's** stay omitted as a dynamic form-at-will pool.
+**Scenario setup now covers the air dimension too:** the scenario RON accepts `squadrons` (SGSUs
+with their plane groups, based on-map or in an off-map Med Box, planes deployed ready+armed) and
+`air_facilities` (§36 airfields/strips/basins) — the loader builds `sgsus` + `air_facilities`
+(`load_scenario_deploys_air_forces` test). The air *engine* was already complete; this wires air
+into scenario deployment. **Remaining:** the historical air order of battle itself (which squadrons,
+aircraft, bases, arrival turns) is not yet transcribed, so `campaign.ron` deploys no aircraft yet —
+that OB transcription is the next data task. Naval fleet deployment is the analogous still-missing
+piece (a `fleet` scenario field + a ship OB).
 **D14 verification pass (2026-09-08) — closed.** Every `Deployed`-default unit in the Commonwealth
 and Italian OB was cross-checked, formation-scoped, against the §4.44a/§4.44b OA-sheet "Arrives"
 columns transcribed in `docs/source-materials/*-ob-4.44*.transcribed.md`. All are faithful: the
