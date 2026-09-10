@@ -174,9 +174,12 @@ pub fn record_game(
                 match agent.choose(&game, side) {
                     Some(cmd) => {
                         let action = format!("{cmd:?}");
+                        let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         if let Ok(outcome) = game.apply(cmd) {
                             step += 1;
-                            events.push(frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}")));
+                            let mut ev = frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"));
+                            ev.rules = rules;
+                            events.push(ev);
                         }
                         acted += 1;
                     }

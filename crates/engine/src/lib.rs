@@ -3487,6 +3487,21 @@ mod tests {
     }
 
     #[test]
+    fn command_rule_refs_map_the_enumerated_commands() {
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::Command;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::UnitId;
+        let mv = Command::MoveStep { unit: UnitId(0), to: HexCoord::new(0, 0), mode: MoveMode::NonMotorized };
+        assert_eq!(mv.rule_refs(), &["§8.13", "§8.14"]);
+        let ca = Command::CloseAssault { attackers: vec![UnitId(0)], target: HexCoord::new(0, 0) };
+        assert_eq!(ca.rule_refs(), &["§15"]);
+        // A variant not in the map returns empty (the map is extensible, not exhaustive).
+        let well = Command::PoisonWell { hex: HexCoord::new(0, 0), die: 1 };
+        assert!(well.rule_refs().is_empty());
+    }
+
+    #[test]
     fn standing_win_rate_ci_is_sane() {
         use crate::agent::Standing;
         let s = Standing { name: "x".into(), games: 24, wins: 16, draws: 0, losses: 8, margin_sum: 0 };

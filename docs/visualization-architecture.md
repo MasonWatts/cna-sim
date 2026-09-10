@@ -96,9 +96,12 @@ ever bites — the schema can carry either.
    counters; hex geometry (`web/src/hex.ts`) mirrors the engine's pointy-top / even-r layout so
    adjacency matches. Consumes the ts-rs bindings via a `@bindings/*` alias. `npm run dev` after
    recording to `web/public/game.json`.
-4. ✅ **Mostly done** — `Scrubber` (play/pause, step, slider) + `ActionLog` (click-to-jump, current
-   highlighted) + a side panel showing the current action/outcome. **Rules panel is stubbed** —
-   `event.rules` is empty until the `Command → §` map (needs the recorder to populate citations).
+4. ✅ **Done** — `Scrubber` (play/pause, step, slider) + `ActionLog` (click-to-jump, current
+   highlighted) + a side panel showing the current action/outcome **and its governing rule
+   sections**. The recorder populates `event.rules` from `Command::rule_refs()` (engine method,
+   co-located with the `Command` variants; covers every enumerated command, `&[]` for the rest).
+   These are static per-command citations; per-*outcome* refs (which CRT/shift a resolution used)
+   would live on `CommandOutcome` — a later enhancement.
 5. WASM-compile the engine; swap the dumb client's "state at N" for `engine.replay_to(N)`.
 6. *(Optional)* WebSocket service for live games.
 

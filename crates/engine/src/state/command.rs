@@ -565,6 +565,47 @@ pub enum Command {
     },
 }
 
+impl Command {
+    /// The primary rulebook section(s) that govern this command — for surfacing "the rule behind
+    /// this action" in tools (e.g. the spectator viewer's rules panel). Covers the commands the
+    /// action enumerator (`legal_commands`) emits, plus the prominent combat/reorg ones; other
+    /// variants return `&[]` for now (extend as needed). These are *static* per-command citations;
+    /// richer per-*outcome* refs (which CRT/shift a resolution used) would live on `CommandOutcome`.
+    pub fn rule_refs(&self) -> &'static [&'static str] {
+        match self {
+            // Movement & Combat.
+            Command::MoveStep { .. } | Command::FormationMove { .. } => &["§8.13", "§8.14"],
+            Command::CloseAssault { .. } => &["§15"],
+            Command::AntiArmor { .. } => &["§14"],
+            Command::Barrage { .. } => &["§12.6", "§12.23"],
+            Command::OffShoreBombard { .. } => &["§30.2"],
+            Command::Strafe { .. } => &["§40.5"],
+            // Organization / reorganization & logistics.
+            Command::AttachUnit { .. } => &["§19.41", "§19.5"],
+            Command::DetachUnit { .. } => &["§19.43"],
+            Command::ReassignUnit { .. } => &["§19.21"],
+            Command::RefuelUnit { .. } => &["§49"],
+            Command::RearmUnit { .. } => &["§50"],
+            // Air.
+            Command::ReconHex { .. } => &["§42.27"],
+            Command::DesignateCap { .. } => &["§40.2"],
+            Command::FlyBombingMissionAt { .. } | Command::FlyBombingMission { .. } => &["§39", "§41.3"],
+            // Truck convoy & prisoners.
+            Command::MoveTruckConvoy { .. } => &["§8.98"],
+            Command::MovePrisoners { .. } => &["§28.13"],
+            // Repair.
+            Command::Repair { .. } => &["§22"],
+            Command::RepairCapturedEquipment { .. } => &["§28.3"],
+            // Commonwealth fleet & naval convoy.
+            Command::RepairShip { .. } => &["§30.37"],
+            Command::AssignShip { .. } => &["§30.15"],
+            Command::PlanConvoy { .. } => &["§56.15"],
+            Command::DeliverConvoy { .. } => &["§56.16"],
+            _ => &[],
+        }
+    }
+}
+
 /// §16.51: the information a Patrol garners about one enemy unit — its historical designation,
 /// type, whether it is motorized, and its reported TOE Strength (the defender's chosen value within
 /// ±2 of actual). A one-time snapshot; not stored in game state.
