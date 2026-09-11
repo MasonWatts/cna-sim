@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import type { MapView } from "@bindings/MapView";
 import type { UnitView } from "@bindings/UnitView";
 import { hexCenter, hexPolygon, mapBounds } from "../hex";
@@ -27,22 +28,18 @@ const ORG_RANK: Record<string, number> = {
 const orgRank = (o: string) => ORG_RANK[o] ?? 0;
 
 /** The board at one step: static terrain hexes + the units currently on them. Rendered at natural
- *  content size; the parent applies a CSS transform for pan/zoom (SVG scales crisply). */
-export function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
-  const { minX, minY, w, h } = mapBounds(map.hexes);
+ *  content size; the parent applies a CSS transform for pan/zoom (SVG scales crisply).
+ *
+ *  Perf: `memo`'d so pan/zoom (which only change the parent's transform, not these props) skip it
+ *  entirely, and the ~7k-polygon terrain layer is `useMemo`'d on `map` so scrubbing (units change)
+ *  never rebuilds it — only the small units layer re-renders. */
+export const HexMap = memo(function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
+  const { minX, minY, w, h } = useMemo(() => mapBounds(map.hexes), [map]);
 
-  // Group units by hex so we can fan out stacks.
-  const byHex = new Map<string, UnitView[]>();
-  for (const u of units) {
-    if (!u.hex) continue;
-    const key = `${u.hex[0]},${u.hex[1]}`;
-    (byHex.get(key) ?? byHex.set(key, []).get(key)!).push(u);
-  }
-
-  return (
-    <svg width={w} height={h} viewBox={`${minX} ${minY} ${w} ${h}`} style={{ display: "block" }} role="img" aria-label="game board">
-      {/* terrain */}
-      {map.hexes.map((hex) => {
+  // Static terrain layer — built once per map, reused across every step.
+  const terrain = useMemo(
+    () =>
+      map.hexes.map((hex) => {
         const c = hexCenter(hex.col, hex.row);
         return (
           <polygon
@@ -55,7 +52,21 @@ export function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
             <title>{`${hex.terrain} (${hex.col},${hex.row})`}</title>
           </polygon>
         );
-      })}
+      }),
+    [map],
+  );
+
+  // Group units by hex so we can fan out stacks.
+  const byHex = new Map<string, UnitView[]>();
+  for (const u of units) {
+    if (!u.hex) continue;
+    const key = `${u.hex[0]},${u.hex[1]}`;
+    (byHex.get(key) ?? byHex.set(key, []).get(key)!).push(u);
+  }
+
+  return (
+    <svg width={w} height={h} viewBox={`${minX} ${minY} ${w} ${h}`} style={{ display: "block" }} role="img" aria-label="game board">
+      {terrain}
       {/* units: one "top" counter per hex with a +N badge for the rest of the stack */}
       {[...byHex.entries()].map(([key, stack]) => {
         const [col, row] = key.split(",").map(Number);
@@ -120,4 +131,4 @@ export function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
       })}
     </svg>
   );
-}
+});
