@@ -15,6 +15,17 @@ const TERRAIN_FILL: Record<string, string> = {
 };
 const terrainFill = (t: string) => TERRAIN_FILL[t] ?? "#242a1e";
 
+// Rank org sizes so the largest formation in a stack is shown as the "top" counter.
+const ORG_RANK: Record<string, number> = {
+  Division: 6,
+  SuperBrigade: 5,
+  StandardBrigade: 4,
+  BattleGroup: 3,
+  Battalion: 2,
+  Company: 1,
+};
+const orgRank = (o: string) => ORG_RANK[o] ?? 0;
+
 /** The board at one step: static terrain hexes + the units currently on them. Rendered at natural
  *  content size; the parent applies a CSS transform for pan/zoom (SVG scales crisply). */
 export function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
@@ -45,45 +56,64 @@ export function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
           </polygon>
         );
       })}
-      {/* units */}
+      {/* units: one "top" counter per hex with a +N badge for the rest of the stack */}
       {[...byHex.entries()].map(([key, stack]) => {
         const [col, row] = key.split(",").map(Number);
         const c = hexCenter(col, row);
-        return stack.map((u, i) => {
-          // fan a stack around the hex center
-          const n = stack.length;
-          const offset = n === 1 ? { x: 0, y: 0 } : { x: (i - (n - 1) / 2) * 12, y: (i - (n - 1) / 2) * 6 };
-          const fill = u.side === "Commonwealth" ? "var(--cw)" : "var(--axis)";
-          const cx = c.x + offset.x;
-          const cy = c.y + offset.y;
-          return (
-            <g key={u.id} transform={`translate(${cx} ${cy})`}>
-              <rect
-                x={-15}
-                y={-11}
-                width={30}
-                height={22}
-                rx={3}
-                fill={fill}
-                stroke={u.broken ? "#e7b53a" : "#0d0f14"}
-                strokeWidth={u.broken ? 2 : 1}
-              />
-              <text textAnchor="middle" y={-1} fontSize={9} fill="#fff" fontWeight={700}>
-                {u.name.slice(0, 7)}
+        // Pick the representative: largest org size, then highest TOE, then id (stable).
+        const top = [...stack].sort(
+          (a, b) => orgRank(b.org_size) - orgRank(a.org_size) || b.toe - a.toe || a.id - b.id,
+        )[0];
+        const extra = stack.length - 1;
+        const anyBroken = stack.some((u) => u.broken);
+        const fill = top.side === "Commonwealth" ? "var(--cw)" : "var(--axis)";
+        const tip =
+          stack.length === 1
+            ? `${top.name} — ${top.side}${top.broken ? " ⚠ BROKEN DOWN (§21)" : ""}\nTOE ${top.toe}  fuel ${top.fuel}  ammo ${top.ammo}  cohesion ${top.cohesion}\n${top.org_size} @ (${col},${row})`
+            : `${stack.length} units @ (${col},${row}) — ${top.side}\n` +
+              [...stack]
+                .sort((a, b) => orgRank(b.org_size) - orgRank(a.org_size) || b.toe - a.toe)
+                .map((u) => `• ${u.name} (${u.org_size}, TOE ${u.toe})${u.broken ? " 🔧" : ""}`)
+                .join("\n");
+        return (
+          <g key={key} transform={`translate(${c.x} ${c.y})`}>
+            {/* a hint of the stack underneath the top counter */}
+            {extra > 0 && (
+              <rect x={-13} y={-13} width={30} height={22} rx={3} fill={fill} opacity={0.5} stroke="#0d0f14" strokeWidth={1} />
+            )}
+            <rect
+              x={-15}
+              y={-11}
+              width={30}
+              height={22}
+              rx={3}
+              fill={fill}
+              stroke={anyBroken ? "#e7b53a" : "#0d0f14"}
+              strokeWidth={anyBroken ? 2 : 1}
+            />
+            <text textAnchor="middle" y={-1} fontSize={9} fill="#fff" fontWeight={700}>
+              {top.name.slice(0, 7)}
+            </text>
+            <text textAnchor="middle" y={8} fontSize={8} fill="#eef">
+              {top.toe}
+            </text>
+            {anyBroken && (
+              <text x={-11} y={-4} fontSize={11} textAnchor="middle" aria-label="broken down">
+                🔧
               </text>
-              <text textAnchor="middle" y={8} fontSize={8} fill="#eef">
-                {u.toe}
-              </text>
-              {/* §21 broken-down marker: amber wrench glyph in the corner. */}
-              {u.broken && (
-                <text x={11} y={-4} fontSize={11} textAnchor="middle" aria-label="broken down">
-                  🔧
+            )}
+            {/* +N badge for the rest of the stack */}
+            {extra > 0 && (
+              <g transform="translate(15 -11)">
+                <circle r={8} fill="#11151c" stroke="#eef" strokeWidth={1} />
+                <text textAnchor="middle" y={3} fontSize={9} fill="#eef" fontWeight={700}>
+                  +{extra}
                 </text>
-              )}
-              <title>{`${u.name} — ${u.side}${u.broken ? " ⚠ BROKEN DOWN (§21)" : ""}\nTOE ${u.toe}  fuel ${u.fuel}  ammo ${u.ammo}  cohesion ${u.cohesion}\n${u.org_size} @ (${col},${row})`}</title>
-            </g>
-          );
-        });
+              </g>
+            )}
+            <title>{tip}</title>
+          </g>
+        );
       })}
     </svg>
   );
