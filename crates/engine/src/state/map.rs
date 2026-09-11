@@ -626,10 +626,10 @@ mod tests {
         ] {
             total += m.load_section(ron).unwrap();
         }
-        assert_eq!(total, 7102);
+        assert_eq!(total, 7116);
         // 91 hexes are shared seam-overlap columns (right sheet's copy wins), so the merged map
         // has fewer unique hexes than the raw section total.
-        assert_eq!(m.len(), 7011);
+        assert_eq!(m.len(), 7025);
     }
 
     #[test]
@@ -663,9 +663,9 @@ mod tests {
         let ron = include_str!("../../../../data/maps/section-a.ron");
         let mut m = Map::new();
         let n = m.load_section(ron).unwrap();
-        // 2108 total - 1086 Invalid (charts / Malta box / off-map) = 1022 real hexes.
-        assert_eq!(n, 1022);
-        assert_eq!(m.len(), 1022);
+        // 2108 total - 1082 Invalid (charts / Malta box / off-map) = 1026 real hexes.
+        assert_eq!(n, 1026);
+        assert_eq!(m.len(), 1026);
 
         let hc = |s: &str| HexId::parse(s).unwrap().to_hex_coord();
         // A0101: SandGravel at the western desert edge.
@@ -687,9 +687,9 @@ mod tests {
         let ron = include_str!("../../../../data/maps/section-b.ron");
         let mut m = Map::new();
         let n = m.load_section(ron).unwrap();
-        // 2139 total - 154 Invalid = 1985 real hexes.
-        assert_eq!(n, 1985);
-        assert_eq!(m.len(), 1985);
+        // 2139 total - 145 Invalid = 1994 real hexes.
+        assert_eq!(n, 1994);
+        assert_eq!(m.len(), 1994);
 
         let hc = |s: &str| HexId::parse(s).unwrap().to_hex_coord();
         // B0101: Desert at the Libyan Sand Desert edge.
@@ -731,9 +731,9 @@ mod tests {
         let ron = include_str!("../../../../data/maps/section-e.ron");
         let mut m = Map::new();
         let n = m.load_section(ron).unwrap();
-        // 2170 total - 873 Invalid (Commonwealth record-track chart) = 1297 real hexes.
-        assert_eq!(n, 1297);
-        assert_eq!(m.len(), 1297);
+        // 2170 total - 872 Invalid (Commonwealth record-track chart) = 1298 real hexes.
+        assert_eq!(n, 1298);
+        assert_eq!(m.len(), 1298);
 
         let hc = |s: &str| HexId::parse(s).unwrap().to_hex_coord();
         // E0126: Delta (the Nile Delta).

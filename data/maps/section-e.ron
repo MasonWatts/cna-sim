@@ -1088,7 +1088,7 @@
     "3134": (terrain: Delta, features: []),
     "3135": (terrain: Invalid, features: []),
     "3201": (terrain: Sea, features: []),
-    "3202": (terrain: Invalid, features: []),
+    "3202": (terrain: Sea, features: []),
     "3203": (terrain: Invalid, features: []),
     "3204": (terrain: Invalid, features: []),
     "3205": (terrain: Sea, features: []),
