@@ -852,13 +852,12 @@ impl GameState {
                             candidates.push(Command::FlyBombingMissionAt {
                                 squadron, target, mission, planes, bombload_per_plane,
                                 night: false, escort, abort_planes: 0,
-                                flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
                             });
                         }
                     }
                 }
                 for strafe_target in STRAFE_TARGETS {
-                    candidates.push(Command::Strafe { squadron, target, strafe_target, planes, roll: 33 });
+                    candidates.push(Command::Strafe { squadron, target, strafe_target, planes });
                 }
                 for cmd in candidates {
                     if self.dry_run(&cmd).is_ok() {

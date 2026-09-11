@@ -7633,9 +7633,6 @@ mod tests {
             night: false,
             escort: None,
             abort_planes: 0,
-            flak_destroy_roll: 66,
-            flak_abort_roll: 66,
-            bomb_roll: 66,
         };
         let near = HexCoord::new(3, 1); // distance 2 ≤ 118
         let far = HexCoord::new(200, 1); // well beyond range 118
@@ -7713,7 +7710,7 @@ mod tests {
         let bomb = |target: HexCoord| Command::FlyBombingMissionAt {
             squadron: SquadronId(2), target, mission: BombingMission::Personnel,
             planes: 6, bombload_per_plane: 20, night: false,
-            escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort_planes: 0,
         };
         // A target OUTSIDE the 7-hex air ZOC is not intercepted (§40.23).
         let outside = HexCoord::new(14, 10); // 4 hexes from center
@@ -7765,7 +7762,7 @@ mod tests {
         ready(&mut g);
         let strafe_dump = Command::Strafe {
             squadron: SquadronId(1), target, strafe_target: StrafeTarget::SupplyDump,
-            planes: 6, roll: 66,
+            planes: 6,
         };
         // Wrong phase first.
         assert_eq!(g.apply(strafe_dump.clone()), Err(CommandError::WrongPhase));
@@ -7794,7 +7791,7 @@ mod tests {
         g.pipelines.insert(target);
         match g.apply(Command::Strafe {
             squadron: SquadronId(1), target, strafe_target: StrafeTarget::WaterPipeline,
-            planes: 6, roll: 66,
+            planes: 6,
         }) {
             Ok(CommandOutcome::Strafed { result, effect }) => {
                 if result >= 2 {
@@ -7819,7 +7816,7 @@ mod tests {
         });
         match g.apply(Command::Strafe {
             squadron: SquadronId(1), target, strafe_target: StrafeTarget::TrucksInConvoy,
-            planes: 6, roll: 66,
+            planes: 6,
         }) {
             Ok(CommandOutcome::Strafed { result, effect }) => {
                 let removed = result.min(20);
@@ -7839,7 +7836,7 @@ mod tests {
         assert_eq!(
             g.apply(Command::Strafe {
                 squadron: SquadronId(1), target, strafe_target: StrafeTarget::Port,
-                planes: 6, roll: 66,
+                planes: 6,
             }),
             Err(CommandError::MissionNotPermitted)
         );
@@ -7883,7 +7880,7 @@ mod tests {
         let inf = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 5 });
         g.unit_mut(inf).unwrap().location = Some(UnitLocation::OnMap(target));
         match g.apply(Command::Strafe {
-            squadron: SquadronId(1), target, strafe_target: StrafeTarget::Infantry, planes: 6, roll: 66,
+            squadron: SquadronId(1), target, strafe_target: StrafeTarget::Infantry, planes: 6,
         }) {
             Ok(CommandOutcome::Strafed { result, effect }) => {
                 let removed = result.min(5);
@@ -7902,7 +7899,7 @@ mod tests {
         g.sgsus.insert(SquadronId(2), cw);
         let before = g.sgsus[&SquadronId(2)].plane_count();
         match g.apply(Command::Strafe {
-            squadron: SquadronId(1), target, strafe_target: StrafeTarget::GroundedAircraft, planes: 6, roll: 66,
+            squadron: SquadronId(1), target, strafe_target: StrafeTarget::GroundedAircraft, planes: 6,
         }) {
             Ok(CommandOutcome::Strafed { effect, .. }) => {
                 let lost = before - g.sgsus[&SquadronId(2)].plane_count();
@@ -7925,7 +7922,7 @@ mod tests {
             u.truck_cargo.fuel = 100;
         }
         match g.apply(Command::Strafe {
-            squadron: SquadronId(1), target, strafe_target: StrafeTarget::FirstLineTrucks, planes: 6, roll: 66,
+            squadron: SquadronId(1), target, strafe_target: StrafeTarget::FirstLineTrucks, planes: 6,
         }) {
             Ok(CommandOutcome::Strafed { result, effect }) => {
                 let removed = result.min(10);
@@ -8046,12 +8043,12 @@ mod tests {
 
         // A non-armour-capable strafer is rejected for the Tanks target.
         assert_eq!(
-            g.apply(Command::Strafe { squadron: SquadronId(2), target, strafe_target: StrafeTarget::Tanks, planes: 6, roll: 66 }),
+            g.apply(Command::Strafe { squadron: SquadronId(2), target, strafe_target: StrafeTarget::Tanks, planes: 6 }),
             Err(CommandError::MissionNotPermitted)
         );
         // The Hurricane IID strafes the tanks, removing TOE points to meet the armour-points roll.
         let before = g.unit(tank).unwrap().total_toe();
-        match g.apply(Command::Strafe { squadron: SquadronId(1), target, strafe_target: StrafeTarget::Tanks, planes: 4, roll: 66 }) {
+        match g.apply(Command::Strafe { squadron: SquadronId(1), target, strafe_target: StrafeTarget::Tanks, planes: 4 }) {
             Ok(CommandOutcome::Strafed { effect, .. }) => {
                 let removed = before - g.unit(tank).unwrap().total_toe();
                 if removed > 0 {
@@ -8197,7 +8194,7 @@ mod tests {
         let bomb = |mission| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission,
             planes: 12, bombload_per_plane: 20, night: false,
-            escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort_planes: 0,
         };
         match g.apply(bomb(BombingMission::Personnel)) {
             Ok(CommandOutcome::BombingMission(o)) => {
@@ -8339,7 +8336,7 @@ mod tests {
         }
         let bomb = |target, mission| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission, planes: 12, bombload_per_plane: 20,
-            night: false, escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            night: false, escort: None, abort_planes: 0,
         };
 
         // §41.37: bombing a placed Level-2 fortification knocks it down at most one level per stage.
@@ -8551,7 +8548,6 @@ mod tests {
         let bomb = |escort| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 12, bombload_per_plane: 20, night: false, escort, abort_planes: 0,
-            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // A non-fighter escort (a bomber squadron) is not permitted (§45: fighters escort).
         assert_eq!(g.apply(bomb(Some(SquadronId(1)))), Err(CommandError::EscortNotPermitted));
@@ -8579,7 +8575,6 @@ mod tests {
                 squadron: SquadronId(3), target: HexId::parse("B5925").unwrap().to_hex_coord(),
                 mission: BombingMission::Personnel, planes: 6, bombload_per_plane: 20, night: false,
                 escort: Some(SquadronId(2)), abort_planes: 0,
-                flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
             }),
             Err(CommandError::EscortNotPermitted)
         );
@@ -8628,7 +8623,6 @@ mod tests {
         let abort = |escort| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 12, bombload_per_plane: 20, night: false, escort, abort_planes: 12,
-            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         };
         // §39.36: with no escort screen and inferior Maneuver, the bombers may not abort.
         assert_eq!(g.apply(abort(None)), Err(CommandError::AbortNotPermitted));
@@ -8683,7 +8677,6 @@ mod tests {
         match g.apply(Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 12, bombload_per_plane: 20, night: false, escort: Some(SquadronId(2)), abort_planes: 4,
-            flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
         }) {
             Ok(CommandOutcome::BombingMission(o)) => assert_eq!(o.flown, 8, "8 bombers pressed on"),
             other => panic!("unexpected: {other:?}"),
@@ -8723,7 +8716,7 @@ mod tests {
         let bomb = Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target: derna, mission: BombingMission::Personnel,
             planes: 12, bombload_per_plane: 20, night: false,
-            escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort_planes: 0,
         };
         // §43.23: in the first 4 Operations Stages of the month, Crete is committed to Suez.
         g.game_turn = 1;
@@ -8772,7 +8765,7 @@ mod tests {
         let bomb = |target| Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 12, bombload_per_plane: 20, night: false,
-            escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort_planes: 0,
         };
         // With no §37.4 chart loaded, a Box squadron has no computable flight distance.
         assert_eq!(g.apply(bomb(derna)), Err(CommandError::TargetOutOfRange));
@@ -8920,7 +8913,7 @@ mod tests {
         let bomb = Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 6, bombload_per_plane: 20, night: false,
-            escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort_planes: 0,
         };
 
         // CW fighters based AT the target (distance 0 → Scramble Table success on any d6, §40.4).
@@ -8989,7 +8982,7 @@ mod tests {
         let bomb = |g: &mut GameState| g.apply(Command::FlyBombingMissionAt {
             squadron: SquadronId(1), target, mission: BombingMission::Personnel,
             planes: 6, bombload_per_plane: 20, night: false,
-            escort: None, abort_planes: 0, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66,
+            escort: None, abort_planes: 0,
         });
 
         // §40.33: enemy fighters blocking the only path prevent the scramble.

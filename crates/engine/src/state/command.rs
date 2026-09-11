@@ -502,7 +502,6 @@ pub enum Command {
         target: HexCoord,
         strafe_target: crate::rules::air::StrafeTarget,
         planes: u32,
-        roll: u32,
     },
     /// §40.12: assign a pilot of `rating` (0 or one of 1/2/3/4/6, §40.15) to a squadron's roster
     /// (Organization Phase). The best flyable assigned pilot's Rating adds to the squadron's TacAir
@@ -570,9 +569,6 @@ pub enum Command {
         /// (the aborting planes turn back, the rest press on). Any abort is allowed only if the
         /// escort screen (§39.36/§39.37) or bomber Maneuver (§39.35) qualifies.
         abort_planes: u32,
-        flak_destroy_roll: u32,
-        flak_abort_roll: u32,
-        bomb_roll: u32,
     },
 }
 
@@ -1532,7 +1528,8 @@ impl GameState {
             Command::DesignateCap { squadron, center, cap_type, planes } => {
                 self.cmd_designate_cap(squadron, center, cap_type, planes)
             }
-            Command::Strafe { squadron, target, strafe_target, planes, roll } => {
+            Command::Strafe { squadron, target, strafe_target, planes } => {
+                let roll = self.rng.sequential_read() as u32; // §40.8 2d6, rolled inside the boundary
                 self.cmd_strafe(squadron, target, strafe_target, planes, roll)
             }
             Command::AssignPilot { rating, squadron } => self.cmd_assign_pilot(rating, squadron),
@@ -1548,11 +1545,17 @@ impl GameState {
             }
             Command::FlyBombingMissionAt {
                 squadron, target, mission, planes, bombload_per_plane, night, escort, abort_planes,
-                flak_destroy_roll, flak_abort_roll, bomb_roll,
-            } => self.cmd_fly_bombing_mission_at(
-                squadron, target, mission, planes, bombload_per_plane, night, escort, abort_planes,
-                flak_destroy_roll, flak_abort_roll, bomb_roll,
-            ),
+            } => {
+                // §39.3x/§41.3: the flak (two rolls) and Air-Bombardment dice are rolled inside the
+                // boundary so an agent cannot supply favourable values.
+                let flak_destroy_roll = self.rng.sequential_read() as u32;
+                let flak_abort_roll = self.rng.sequential_read() as u32;
+                let bomb_roll = self.rng.sequential_read() as u32;
+                self.cmd_fly_bombing_mission_at(
+                    squadron, target, mission, planes, bombload_per_plane, night, escort, abort_planes,
+                    flak_destroy_roll, flak_abort_roll, bomb_roll,
+                )
+            }
         }
     }
 
