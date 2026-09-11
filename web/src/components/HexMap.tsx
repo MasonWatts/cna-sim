@@ -66,6 +66,7 @@ export function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
         )[0];
         const extra = stack.length - 1;
         const anyBroken = stack.some((u) => u.broken);
+        const isCadre = top.toe === 0; // a 0-TOE HQ shown as its formation's cadre (§19.62/§19.67)
         const fill = top.side === "Commonwealth" ? "var(--cw)" : "var(--axis)";
         const tip =
           stack.length === 1
@@ -88,14 +89,16 @@ export function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
               height={22}
               rx={3}
               fill={fill}
+              fillOpacity={isCadre ? 0.45 : 1}
               stroke={anyBroken ? "#e7b53a" : "#0d0f14"}
               strokeWidth={anyBroken ? 2 : 1}
+              strokeDasharray={isCadre ? "3 2" : undefined}
             />
             <text textAnchor="middle" y={-1} fontSize={9} fill="#fff" fontWeight={700}>
               {top.name.slice(0, 7)}
             </text>
-            <text textAnchor="middle" y={8} fontSize={8} fill="#eef">
-              {top.toe}
+            <text textAnchor="middle" y={8} fontSize={isCadre ? 7 : 8} fill="#eef" fontStyle={isCadre ? "italic" : "normal"}>
+              {isCadre ? "cadre" : top.toe}
             </text>
             {anyBroken && (
               <text x={-11} y={-4} fontSize={11} textAnchor="middle" aria-label="broken down">

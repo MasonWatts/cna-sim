@@ -9,4 +9,10 @@ hex: [number, number] | null, org_size: string, toe: number, fuel: number, ammo:
  * True if the unit has broken-down vehicles / weapons or lost TOE to breakdown (§21) — i.e. it
  * is (partly) immobilized until repaired (§22). Drives the "broken" marker in the viewer.
  */
-broken: boolean, };
+broken: boolean, 
+/**
+ * True if this is an HQ counter. A 0-TOE HQ persists as its formation's **cadre** (§19.62/§19.67
+ * — new battalions can be assigned to it), so the viewer keeps and marks it; a 0-TOE *non-HQ*
+ * unit is combat-eliminated and gone for good (§19.62), so the recorder omits it entirely.
+ */
+is_hq: boolean, };
