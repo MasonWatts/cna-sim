@@ -8,8 +8,8 @@ import { hexCenter, hexPolygon, mapBounds } from "../hex";
 const CREAM = "#efe8c6";
 const TERRAIN_FILL: Record<string, string> = {
   Clear: CREAM,
-  Sea: "#7ec2e8",
-  Desert: "#cc9a1f",
+  Sea: "url(#patSea)",
+  Desert: "url(#patDesert)",
   Rough: "#8f7f42",
   Delta: "#a7ad4e",
   Mountain: "url(#patMountain)",
@@ -34,6 +34,17 @@ const PATTERNS = (
         <circle cx={11.5} cy={2.5} r={1.1} />
         <circle cx={5} cy={11.5} r={1.2} />
       </g>
+      {/* scattered fine grit between the pebbles */}
+      <g fill="#b8912f">
+        <circle cx={6.5} cy={2} r={0.5} />
+        <circle cx={1.5} cy={8} r={0.45} />
+        <circle cx={12.5} cy={6.5} r={0.5} />
+        <circle cx={7.5} cy={6} r={0.4} />
+        <circle cx={10} cy={12.5} r={0.5} />
+        <circle cx={2.5} cy={13} r={0.45} />
+        <circle cx={13} cy={11} r={0.4} />
+        <circle cx={5} cy={7.5} r={0.4} />
+      </g>
     </pattern>
     <pattern id="patSaltMarsh" width={18} height={18} patternUnits="userSpaceOnUse">
       <rect width={18} height={18} fill={CREAM} />
@@ -54,20 +65,58 @@ const PATTERNS = (
       <rect width={12} height={12} fill="#e9edcf" />
       <path d="M2,3 v4 M6,6 v4 M9,2 v4 M4,9.5 v2.5 M10.5,8 v3" stroke="#4f8f63" strokeWidth={0.7} />
     </pattern>
-    <pattern id="patCity" width={14} height={14} patternUnits="userSpaceOnUse">
-      <rect width={14} height={14} fill={CREAM} />
+    {/* Major City: a little skyscraper skyline sitting on a baseline. */}
+    <pattern id="patCity" width={20} height={16} patternUnits="userSpaceOnUse">
+      <rect width={20} height={16} fill={CREAM} />
       <g fill="#6f9ec6">
-        <rect x={2} y={2} width={3} height={2} />
-        <rect x={7} y={3} width={2} height={3} />
-        <rect x={10} y={6} width={3} height={2} />
-        <rect x={3} y={8.5} width={2} height={3} />
-        <rect x={8} y={10} width={3} height={2} />
+        <rect x={1} y={9} width={3} height={7} />
+        <rect x={4.5} y={5} width={3} height={11} />
+        <rect x={8} y={7.5} width={2.5} height={8.5} />
+        <rect x={11} y={3} width={3} height={13} />
+        <rect x={14.5} y={8} width={2.5} height={8} />
+        <rect x={17.5} y={6} width={2.5} height={10} />
+      </g>
+      {/* windows */}
+      <g fill={CREAM} opacity={0.8}>
+        <rect x={5.3} y={7} width={0.8} height={0.8} />
+        <rect x={6.4} y={7} width={0.8} height={0.8} />
+        <rect x={5.3} y={9} width={0.8} height={0.8} />
+        <rect x={11.8} y={5} width={0.8} height={0.8} />
+        <rect x={12.9} y={5} width={0.8} height={0.8} />
+        <rect x={11.8} y={7.5} width={0.8} height={0.8} />
+        <rect x={12.9} y={7.5} width={0.8} height={0.8} />
       </g>
     </pattern>
-    <pattern id="patMountain" width={18} height={18} patternUnits="userSpaceOnUse">
-      <rect width={18} height={18} fill="#8a7c3e" />
-      <ellipse cx={6} cy={5} rx={5} ry={3} fill="#6f6330" opacity={0.6} />
-      <path d="M0,12 Q5,8 9,12 T18,11 L18,18 L0,18 Z" fill="#6f6330" opacity={0.55} />
+    {/* Classic pictorial peaks (deviates from the paper, but reads as flowing ranges). */}
+    <pattern id="patMountain" width={20} height={16} patternUnits="userSpaceOnUse">
+      <rect width={20} height={16} fill="#9c8a45" />
+      <g fill="#6f6330">
+        <path d="M0,16 L5,6 L10,16 Z" />
+        <path d="M8,16 L14,4.5 L20,16 Z" />
+        <path d="M-3,16 L1,9 L5,16 Z" />
+      </g>
+      {/* snow-cap highlights on the peaks */}
+      <g fill="#e4dcb2">
+        <path d="M5,6 L6.8,9.5 L3.2,9.5 Z" />
+        <path d="M14,4.5 L16.2,8.5 L11.8,8.5 Z" />
+      </g>
+    </pattern>
+    {/* Desert: ochre with drifting sand-dune ridges. */}
+    <pattern id="patDesert" width={24} height={14} patternUnits="userSpaceOnUse">
+      <rect width={24} height={14} fill="#cc9a1f" />
+      <g fill="none" strokeWidth={1}>
+        <path d="M-2,9 Q6,3 12,9 T26,9" stroke="#b8871a" />
+        <path d="M-2,9 Q6,4.5 12,9 T26,9" stroke="#e0b64e" opacity={0.7} />
+        <path d="M-6,14 Q2,9 10,14 M12,14 Q20,9 28,14" stroke="#b8871a" />
+      </g>
+    </pattern>
+    {/* Sea: light blue with little wave crests. */}
+    <pattern id="patSea" width={16} height={12} patternUnits="userSpaceOnUse">
+      <rect width={16} height={12} fill="#7ec2e8" />
+      <g fill="none" strokeWidth={0.8} strokeLinecap="round">
+        <path d="M1,4 q2.5,-2 5,0 t5,0" stroke="#aedcf5" />
+        <path d="M3,9 q2.5,-2 5,0 t5,0" stroke="#5aa8d8" />
+      </g>
     </pattern>
   </defs>
 );
