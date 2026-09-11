@@ -455,6 +455,31 @@ impl GameState {
             }
         }
 
+        // §6.15 formation move: a parent counter (HQ + its attached units) advances one hex as a
+        // body. Without this the agent can only move independent counters, so whole divisions —
+        // and units riding a parent — sit dormant. `dry_run` enforces the formation CPA (slowest
+        // member) and stacking.
+        {
+            use crate::rules::movement::MoveMode;
+            let mut formations: Vec<(UnitId, HexCoord)> = self
+                .units
+                .values()
+                .filter(|u| u.nationality.side() == side && self.has_attached_units(u.id))
+                .filter_map(|u| Some((u.id, u.hex()?)))
+                .collect();
+            formations.sort_by_key(|(id, _)| id.0);
+            for (formation, from) in formations {
+                for to in self.map.neighbors(from) {
+                    for mode in [MoveMode::NonMotorized, MoveMode::Motorized] {
+                        let cmd = Command::FormationMove { formation, to, mode };
+                        if self.dry_run(&cmd).is_ok() {
+                            out.push(cmd);
+                        }
+                    }
+                }
+            }
+        }
+
         // §30.21/§30.35 off-shore bombardment: a heavy Commonwealth ship at sea shells an adjacent
         // enemy-held coastal hex, per target class present. (The Fleet is Commonwealth-only.)
         if side == Side::Commonwealth {
@@ -535,6 +560,90 @@ impl GameState {
             }
         }
         out.extend(self.legal_air_setup_commands(side));
+        out.extend(self.legal_reorg_commands(side));
+        out
+    }
+
+    /// Organization-phase reorganisation, replacement, and construction actions (§17/§19/§20/§24/
+    /// §64.75). Each candidate is `dry_run`-validated so only legal ones survive. Deterministic
+    /// (units/hexes visited in sorted order). This gives agents the non-combat agency they otherwise
+    /// lack: reassigning and reserving units, training, voluntary withdrawal, rebuilding from
+    /// replacement pools, and building forts / minefields / pipelines.
+    fn legal_reorg_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
+        use crate::state::command::Command;
+        use crate::state::unit::ReserveStatus;
+
+        let mut own: Vec<(UnitId, HexCoord)> = self
+            .units
+            .values()
+            .filter(|u| u.nationality.side() == side)
+            .filter_map(|u| Some((u.id, u.hex()?)))
+            .collect();
+        own.sort_by_key(|(id, _)| id.0);
+        let mut out = Vec::new();
+
+        for &(unit, _) in &own {
+            // §19.21 reassign to a co-located friendly parent; §Reserve status; §17.3 training;
+            // §64.75 voluntary withdrawal.
+            for &(parent, _) in &own {
+                if unit != parent {
+                    let cmd = Command::ReassignUnit { unit, parent };
+                    if self.dry_run(&cmd).is_ok() {
+                        out.push(cmd);
+                    }
+                }
+            }
+            for status in [ReserveStatus::ReserveI, ReserveStatus::ReserveII, ReserveStatus::None] {
+                let cmd = Command::DesignateReserve { unit, status };
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            }
+            for cmd in [Command::TrainUnit { unit }, Command::WithdrawUnit { unit }] {
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            }
+            // §24.3/§24.4/§52.2: build a minefield (real or dummy), or begin a pipeline, at the
+            // builder's own hex.
+            if let Some(h) = self.unit(unit).and_then(|u| u.hex()) {
+                for cmd in [
+                    Command::LayMinefield { builder: unit, hex: h, dummy: false },
+                    Command::LayMinefield { builder: unit, hex: h, dummy: true },
+                    Command::BuildPipeline { builder: unit, hex: h },
+                ] {
+                    if self.dry_run(&cmd).is_ok() {
+                        out.push(cmd);
+                    }
+                }
+            }
+        }
+
+        // §20.4 absorb a co-located, trained, assigned replacement pool into a unit.
+        for (index, rp) in self.replacement_points.iter().enumerate() {
+            let Some(rhex) = rp.location.as_ref().and_then(|l| l.hex()) else { continue };
+            for &(unit, uhex) in &own {
+                if uhex == rhex {
+                    let cmd = Command::AbsorbReplacement { index, unit };
+                    if self.dry_run(&cmd).is_ok() {
+                        out.push(cmd);
+                    }
+                }
+            }
+        }
+
+        // §24.4 build a Level-1 fortification: the co-located friendly units at a hex are the
+        // builder set (dry_run enforces the §24.42 engineer + infantry requirement).
+        let mut hexes: Vec<HexCoord> = own.iter().map(|(_, h)| *h).collect();
+        hexes.sort_by_key(|h| (h.col, h.row));
+        hexes.dedup();
+        for h in hexes {
+            let builders: Vec<UnitId> = own.iter().filter(|(_, uh)| *uh == h).map(|(id, _)| *id).collect();
+            let cmd = Command::BuildFortification { builders, hex: h, level: 1 };
+            if self.dry_run(&cmd).is_ok() {
+                out.push(cmd);
+            }
+        }
         out
     }
 
