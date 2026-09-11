@@ -4,10 +4,9 @@
 
 import type { Event } from "@bindings/Event";
 
-export type Level = "month" | "week" | "stage" | "phase" | "step";
-export const LEVELS: Level[] = ["month", "week", "stage", "phase", "step"];
+export type Level = "week" | "stage" | "phase" | "step";
+export const LEVELS: Level[] = ["week", "stage", "phase", "step"];
 export const LEVEL_LABEL: Record<Level, string> = {
-  month: "Month",
   week: "Week",
   stage: "Op-Stage",
   phase: "Phase",
@@ -43,10 +42,7 @@ export function weekLabel(gt: number): string {
 
 /** The grouping key for one event at a given level (empty for "step" — every step is its own node). */
 export function levelKey(ev: Event, level: Level): string {
-  const d = dateOf(ev.game_turn);
   switch (level) {
-    case "month":
-      return `${d.year}-${d.month}`;
     case "week":
       return `${ev.game_turn}`;
     case "stage":
@@ -61,8 +57,6 @@ export function levelKey(ev: Event, level: Level): string {
 /** A short label for the node a step belongs to, at a given level. */
 export function nodeLabel(ev: Event, level: Level): string {
   switch (level) {
-    case "month":
-      return monthLabel(ev.game_turn);
     case "week":
       return weekLabel(ev.game_turn);
     case "stage":

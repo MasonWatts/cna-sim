@@ -16,7 +16,7 @@ export function Scrubber({
   onLevel,
   onPrev,
   onNext,
-  onStep,
+  onSlider,
   onRestart,
   onTogglePlay,
 }: {
@@ -30,11 +30,17 @@ export function Scrubber({
   onLevel: (l: Level) => void;
   onPrev: () => void;
   onNext: () => void;
-  onStep: (s: number) => void;
+  onSlider: (v: number) => void;
   onRestart: () => void;
   onTogglePlay: () => void;
 }) {
   const levelIdx = LEVELS.indexOf(level);
+  // The slider and counter track the selected granularity: over steps at Step level, over nodes
+  // (weeks / op-stages / phases) otherwise.
+  const isStep = level === "step";
+  const sliderValue = isStep ? step : nodeIndex;
+  const sliderMax = isStep ? last : Math.max(0, nodeTotal - 1);
+  const counter = isStep ? `step ${step} / ${last}` : `${LEVEL_LABEL[level]} ${nodeIndex + 1} / ${nodeTotal}`;
   return (
     <div className="scrubber">
       <span className="level-select" title="Playback granularity — how far Prev/Next/Play jump">
@@ -57,18 +63,18 @@ export function Scrubber({
       </span>
 
       <span className="meta node-pos" title={`${LEVEL_LABEL[level]} position`}>
-        {level === "step" ? `step ${step}` : `${nodeLabel}  (${nodeIndex + 1}/${nodeTotal})`}
+        {isStep ? `step ${step}` : nodeLabel}
       </span>
 
       <input
         type="range"
         min={0}
-        max={last}
-        value={step}
-        onChange={(e) => onStep(Number(e.target.value))}
+        max={sliderMax}
+        value={sliderValue}
+        onChange={(e) => onSlider(Number(e.target.value))}
       />
-      <span className="meta" style={{ minWidth: 90, textAlign: "right" }}>
-        step {step} / {last}
+      <span className="meta" style={{ minWidth: 110, textAlign: "right" }}>
+        {counter}
       </span>
     </div>
   );

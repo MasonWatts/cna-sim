@@ -148,7 +148,6 @@ export function App() {
   // Node structures for each grouping level (Month/Week/Op-Stage/Phase), for level-aware navigation.
   const nodesByLevel = useMemo<Record<Exclude<Level, "step">, Node[]>>(
     () => ({
-      month: buildNodes(record?.events ?? [], "month"),
       week: buildNodes(record?.events ?? [], "week"),
       stage: buildNodes(record?.events ?? [], "stage"),
       phase: buildNodes(record?.events ?? [], "phase"),
@@ -276,7 +275,7 @@ export function App() {
         onLevel={setLevel}
         onPrev={() => setStep(prevAt(level, step))}
         onNext={() => setStep(nextAt(level, step))}
-        onStep={setStep}
+        onSlider={(v) => setStep(level === "step" ? v : (curNodes[v]?.start ?? 0))}
         onRestart={() => setStep(0)}
         onTogglePlay={() => setPlaying((p) => !p)}
       />
