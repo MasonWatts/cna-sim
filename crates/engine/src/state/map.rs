@@ -626,19 +626,19 @@ mod tests {
         ] {
             total += m.load_section(ron).unwrap();
         }
-        assert_eq!(total, 7116);
+        assert_eq!(total, 7117);
         // 91 hexes are shared seam-overlap columns (right sheet's copy wins), so the merged map
         // has fewer unique hexes than the raw section total.
-        assert_eq!(m.len(), 7025);
+        assert_eq!(m.len(), 7026);
     }
 
     #[test]
     fn load_section_c_map() {        let ron = include_str!("../../../../data/maps/section-c.ron");
         let mut m = Map::new();
         let n = m.load_section(ron).unwrap();
-        // 2170 total - 629 Invalid = 1541 real hexes.
-        assert_eq!(n, 1541);
-        assert_eq!(m.len(), 1541);
+        // 2170 total - 628 Invalid = 1542 real hexes.
+        assert_eq!(n, 1542);
+        assert_eq!(m.len(), 1542);
 
         let hc = |s: &str| HexId::parse(s).unwrap().to_hex_coord();
         // Sollum (C4021): Clear + Village + Port, and coastal.

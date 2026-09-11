@@ -1723,7 +1723,7 @@
     "5004": (terrain: Sea, features: []),
     "5005": (terrain: Sea, features: []),
     "5006": (terrain: Sea, features: []),
-    "5007": (terrain: Invalid, features: []),
+    "5007": (terrain: Sea, features: []),
     "5008": (terrain: Invalid, features: []),
     "5009": (terrain: Invalid, features: []),
     "5010": (terrain: Invalid, features: []),
