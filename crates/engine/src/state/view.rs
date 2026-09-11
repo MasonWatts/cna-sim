@@ -455,6 +455,32 @@ impl GameState {
             }
         }
 
+        // §31.4 Rommel: the Axis may step his counter to an adjacent hex (or retreat), and designate
+        // a co-located Axis unit to receive his +5 CPA this stage. Agents otherwise never move him.
+        if side == Side::Axis {
+            if let Some(rhex) = self.rommel_hex() {
+                for to in self.map.neighbors(rhex) {
+                    for cmd in [Command::MoveRommel { to }, Command::RetreatRommel { to }] {
+                        if self.dry_run(&cmd).is_ok() {
+                            out.push(cmd);
+                        }
+                    }
+                }
+                let mut here: Vec<UnitId> = self
+                    .units_in_hex(rhex)
+                    .into_iter()
+                    .filter(|&id| self.unit(id).is_some_and(|u| u.nationality.side() == Side::Axis))
+                    .collect();
+                here.sort_by_key(|id| id.0);
+                for unit in here {
+                    let cmd = Command::DesignateRommelUnit { unit };
+                    if self.dry_run(&cmd).is_ok() {
+                        out.push(cmd);
+                    }
+                }
+            }
+        }
+
         // §6.15 formation move: a parent counter (HQ + its attached units) advances one hex as a
         // body. Without this the agent can only move independent counters, so whole divisions —
         // and units riding a parent — sit dormant. `dry_run` enforces the formation CPA (slowest
