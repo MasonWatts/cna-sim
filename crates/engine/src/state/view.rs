@@ -509,13 +509,27 @@ impl GameState {
                 }
             }
         }
-        // Attach a unit to a co-located friendly unit (bounded: same-hex ordered pairs).
-        for &(unit, uh) in &own {
-            for &(parent, ph) in &own {
-                if unit != parent && uh == ph {
-                    let cmd = Command::AttachUnit { unit, parent };
-                    if self.dry_run(&cmd).is_ok() {
-                        out.push(cmd);
+        // Attach a unit to a co-located friendly unit. Only same-hex ordered pairs are candidates,
+        // so group by hex first — O(Σ group²) — instead of scanning all own-unit pairs (O(units²),
+        // which recomputed every action becomes an O(units³)/phase cliff once the army is large).
+        let mut by_hex: std::collections::HashMap<HexCoord, Vec<UnitId>> = std::collections::HashMap::new();
+        for &(unit, h) in &own {
+            by_hex.entry(h).or_default().push(unit);
+        }
+        // Deterministic order: sort each co-located group by id (hex-group order does not affect the
+        // candidate set, only its listing; sorting the units keeps pairing reproducible).
+        for group in by_hex.values_mut() {
+            if group.len() < 2 {
+                continue;
+            }
+            group.sort_by_key(|u| u.0);
+            for &unit in group.iter() {
+                for &parent in group.iter() {
+                    if unit != parent {
+                        let cmd = Command::AttachUnit { unit, parent };
+                        if self.dry_run(&cmd).is_ok() {
+                            out.push(cmd);
+                        }
                     }
                 }
             }
