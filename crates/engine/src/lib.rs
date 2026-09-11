@@ -7050,8 +7050,9 @@ mod tests {
         g.add_supply_dump(crate::state::unit::UnitLocation::OnMap(HexCoord::new(1, 1)), crate::reference::units::Side::Axis, 5, 20);
         g.supply_dumps.last_mut().unwrap().supply.stores = 5;
         // Refit first: German +1 (§38.35), roll 1+1=2 -> 80% -> ceil(16*0.8) = 13 refitted.
+        g.rng.force([1u8]); // §38.34 base die (rolled inside the boundary now)
         assert_eq!(
-            g.apply(Command::RefitSquadron { squadron: SquadronId(1), base_die: 1, wrong_squadron: false }),
+            g.apply(Command::RefitSquadron { squadron: SquadronId(1), wrong_squadron: false }),
             Ok(CommandOutcome::SquadronRefitted(13))
         );
         // Ready (capped at 12, §37.24), arm 8, fly 10.
@@ -7387,7 +7388,7 @@ mod tests {
             g.advance_phase();
         }
         assert_eq!(
-            g.apply(Command::RefitSquadron { squadron: SquadronId(1), base_die: 1, wrong_squadron: false }),
+            g.apply(Command::RefitSquadron { squadron: SquadronId(1), wrong_squadron: false }),
             Err(CommandError::InsufficientStores)
         );
     }
@@ -9108,7 +9109,7 @@ mod tests {
             g.advance_phase();
         }
         assert_eq!(
-            g.apply(Command::RefitSquadron { squadron: SquadronId(2), base_die: 1, wrong_squadron: false }),
+            g.apply(Command::RefitSquadron { squadron: SquadronId(2), wrong_squadron: false }),
             Err(CommandError::SgsuUnsupplied)
         );
     }
@@ -9134,13 +9135,13 @@ mod tests {
         }
         // No Stores at the base -> refit rejected (§38.36).
         assert_eq!(
-            g.apply(Command::RefitSquadron { squadron: SquadronId(1), base_die: 1, wrong_squadron: false }),
+            g.apply(Command::RefitSquadron { squadron: SquadronId(1), wrong_squadron: false }),
             Err(CommandError::InsufficientStores)
         );
         // Provide a Stores Point; the refit now runs and consumes it.
         g.add_supply_dump(crate::state::unit::UnitLocation::OnMap(HexCoord::new(2, 2)), crate::reference::units::Side::Axis, 0, 0);
         g.supply_dumps.last_mut().unwrap().supply.stores = 1;
-        assert!(g.apply(Command::RefitSquadron { squadron: SquadronId(1), base_die: 1, wrong_squadron: false }).is_ok());
+        assert!(g.apply(Command::RefitSquadron { squadron: SquadronId(1), wrong_squadron: false }).is_ok());
         assert_eq!(g.supply_dumps.last().unwrap().supply.stores, 0);
     }
 
@@ -9322,8 +9323,9 @@ mod tests {
         while g.phase != Phase::LandSupportAir {
             g.advance_phase();
         }
+        g.rng.force([1u8]); // §38.34 base die 1 -> 100% refit
         assert_eq!(
-            g.apply(Command::RefitSquadron { squadron: SquadronId(1), base_die: 1, wrong_squadron: false }),
+            g.apply(Command::RefitSquadron { squadron: SquadronId(1), wrong_squadron: false }),
             Ok(CommandOutcome::SquadronRefitted(10))
         );
     }

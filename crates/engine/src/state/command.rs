@@ -309,7 +309,6 @@ pub enum Command {
     /// number refitted.
     RefitSquadron {
         squadron: crate::state::air::SquadronId,
-        base_die: u32,
         wrong_squadron: bool,
     },
     /// §53.24: load supply onto a unit's first-line trucks (Organization Phase). Returns the amount
@@ -1192,8 +1191,8 @@ impl GameState {
             Command::DetermineMaltaAvailability { level, roll } => {
                 self.cmd_determine_malta_availability(level, roll)
             }
-            Command::RefitSquadron { squadron, base_die, wrong_squadron } => {
-                self.cmd_refit_squadron(squadron, base_die, wrong_squadron)
+            Command::RefitSquadron { squadron, wrong_squadron } => {
+                self.cmd_refit_squadron(squadron, wrong_squadron)
             }
             Command::LoadTrucks { unit, commodity, amount } => {
                 self.require_phase(Phase::Organization)?;
@@ -3751,7 +3750,6 @@ impl GameState {
     fn cmd_refit_squadron(
         &mut self,
         squadron: crate::state::air::SquadronId,
-        base_die: u32,
         wrong_squadron: bool,
     ) -> Result<CommandOutcome, CommandError> {
         self.require_maintenance_phase()?;
@@ -3769,6 +3767,8 @@ impl GameState {
             return Err(CommandError::InsufficientStores);
         }
         let modifier = crate::rules::air::refit_die_modifier(nationality, wrong_squadron);
+        // §38.34: roll the refit die inside the boundary (agents cannot supply it).
+        let base_die = self.rng.d6() as u32;
         let table = self.reference.aircraft_refit.as_ref().ok_or(CommandError::NoTable)?;
         let sgsu = self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?;
         Ok(CommandOutcome::SquadronRefitted(sgsu.refit(table, base_die, modifier)))

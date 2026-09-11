@@ -9,11 +9,23 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rng {
     state: u64,
+    /// Test/replay-only queue of forced die results consumed before generated ones. Empty in normal
+    /// play (and never serialized), so `(seed, commands)` still reproduces a game. It lets tests pin
+    /// exact dice now that dice are rolled *inside* the command boundary (agents can't supply their
+    /// own rolls — see design.md §3.7 / the anti-cheat rationale).
+    #[serde(skip)]
+    forced: std::collections::VecDeque<u8>,
 }
 
 impl Rng {
     pub fn new(seed: u64) -> Self {
-        Self { state: seed }
+        Self { state: seed, forced: std::collections::VecDeque::new() }
+    }
+
+    /// Queue die results (1..=6) to be returned by the next `d6` calls, in order. For tests that need
+    /// a specific outcome from an engine-rolled command.
+    pub fn force<I: IntoIterator<Item = u8>>(&mut self, dice: I) {
+        self.forced.extend(dice);
     }
 
     fn next_u64(&mut self) -> u64 {
@@ -24,8 +36,11 @@ impl Rng {
         z ^ (z >> 31)
     }
 
-    /// Roll a single six-sided die (1..=6).
+    /// Roll a single six-sided die (1..=6) — a forced value first, else generated.
     pub fn d6(&mut self) -> u8 {
+        if let Some(v) = self.forced.pop_front() {
+            return v;
+        }
         (self.next_u64() % 6) as u8 + 1
     }
 

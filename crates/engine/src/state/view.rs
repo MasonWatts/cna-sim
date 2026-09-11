@@ -890,7 +890,7 @@ impl GameState {
                 candidates.push(Command::ArmSquadron { squadron, count: n - s.armed_planes() });
             }
             if s.refitted_planes() < n {
-                candidates.push(Command::RefitSquadron { squadron, base_die: 3, wrong_squadron: false });
+                candidates.push(Command::RefitSquadron { squadron, wrong_squadron: false });
             }
             for cmd in candidates {
                 if self.dry_run(&cmd).is_ok() {
