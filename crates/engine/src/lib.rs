@@ -7380,7 +7380,8 @@ mod tests {
         while g.phase != Phase::Repair {
             g.advance_phase();
         }
-        assert_eq!(g.apply(Command::Repair { unit: u, kind: RepairKind::Trucks, roll: 1 }), Ok(CommandOutcome::Repaired(0)));
+        g.rng.force([1u8]); // §22 field-repair die (now rolled inside apply)
+        assert_eq!(g.apply(Command::Repair { unit: u, kind: RepairKind::Trucks }), Ok(CommandOutcome::Repaired(0)));
 
         // RefitSquadron is now also allowed in the Strategic Air Recovery / Aircraft Maintenance
         // phase (§33.0 VII.B). No dump at the base -> lenient supply -> §38.36 InsufficientStores.
@@ -8412,7 +8413,8 @@ mod tests {
         assert!(hidden(&g, inf).is_none() && hidden(&g, tank).is_none());
 
         // die 5 with 2 planes (no bonus) → the §42.27 table reveals 2 battalion-equivalents.
-        match g.apply(Command::ReconHex { squadron: SquadronId(1), target, planes: 2, die: 5 }) {
+        g.rng.force([5u8]); // recon die (now rolled inside apply)
+        match g.apply(Command::ReconHex { squadron: SquadronId(1), target, planes: 2 }) {
             Ok(CommandOutcome::ReconRevealed { revealed }) => assert_eq!(revealed.len(), 2),
             other => panic!("unexpected: {other:?}"),
         }

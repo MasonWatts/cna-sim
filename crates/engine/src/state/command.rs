@@ -371,7 +371,7 @@ pub enum Command {
     /// §49.17: siphon Fuel from one unit to another (Organization Phase). Returns the amount moved.
     SiphonFuel { donor: UnitId, receiver: UnitId, amount: u32 },
     /// §22: attempt to repair a broken-down unit's vehicles (Repair Phase). Returns points repaired.
-    Repair { unit: UnitId, kind: RepairKind, roll: u8 },
+    Repair { unit: UnitId, kind: RepairKind },
     /// §18: place a unit in (or out of) Reserve status (Reserve Designation Phase).
     DesignateReserve { unit: UnitId, status: crate::state::unit::ReserveStatus },
     /// §30.15/§30.18: assign a Commonwealth warship to a location for the Operations Stage
@@ -492,7 +492,6 @@ pub enum Command {
         squadron: crate::state::air::SquadronId,
         target: HexCoord,
         planes: u32,
-        die: u32,
     },
     /// §40.5–40.8: fly `planes` on a strafing mission from the squadron's base to `target`,
     /// validating strafing capability (§40.51), flight range (§37.12) and weather (§37.22), then
@@ -1343,9 +1342,10 @@ impl GameState {
                 self.require_units_exist(&[donor, receiver])?;
                 Ok(CommandOutcome::FuelSiphoned(self.siphon_fuel(donor, receiver, amount)))
             }
-            Command::Repair { unit, kind, roll } => {
+            Command::Repair { unit, kind } => {
                 self.require_phase(Phase::Repair)?;
                 self.require_units_exist(&[unit])?;
+                let roll = self.rng.d6(); // §22 field-repair die, rolled inside the boundary
                 let repaired = match kind {
                     RepairKind::Trucks => self.field_repair_trucks(unit, roll),
                     RepairKind::Tanks => self.field_repair_tanks(unit, roll as u32),
@@ -1525,7 +1525,8 @@ impl GameState {
                 }
                 Ok(CommandOutcome::BombingMission(outcome))
             }
-            Command::ReconHex { squadron, target, planes, die } => {
+            Command::ReconHex { squadron, target, planes } => {
+                let die = self.rng.d6() as u32; // §42.27 recon die, rolled inside the boundary
                 self.cmd_recon_hex(squadron, target, planes, die)
             }
             Command::DesignateCap { squadron, center, cap_type, planes } => {

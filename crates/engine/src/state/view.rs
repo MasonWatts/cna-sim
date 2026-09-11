@@ -839,7 +839,7 @@ impl GameState {
                 }
             }
             for &target in &enemy_hexes {
-                let mut candidates = vec![Command::ReconHex { squadron, target, planes, die: 4 }];
+                let mut candidates = vec![Command::ReconHex { squadron, target, planes }];
                 for mission in BOMB_MISSIONS {
                     // Parameter breadth: fly the mission unescorted or with each available fighter
                     // escort (§45), at a light or heavy per-plane bombload; dry_run rejects
@@ -958,7 +958,7 @@ impl GameState {
             .collect();
         for unit in own {
             for kind in [RepairKind::Trucks, RepairKind::Tanks, RepairKind::Recce] {
-                let cmd = Command::Repair { unit, kind, roll: 4 };
+                let cmd = Command::Repair { unit, kind };
                 if self.dry_run(&cmd).is_ok() {
                     out.push(cmd);
                 }
