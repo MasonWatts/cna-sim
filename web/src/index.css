@@ -82,7 +82,32 @@ body {
 }
 
 .scrubber input[type="range"] {
+  width: 100%;
+}
+
+.slider-wrap {
   flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.slider-wrap .ticks {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 8px; /* approx. the range thumb inset */
+  margin-top: 2px;
+}
+
+.slider-wrap .tick {
+  width: 1px;
+  height: 6px;
+  background: #3a4150;
+}
+
+.slider-wrap .tick.on {
+  background: var(--accent, #4a7);
+  height: 8px;
 }
 
 .level-select,

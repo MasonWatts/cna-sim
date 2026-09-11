@@ -66,13 +66,22 @@ export function Scrubber({
         {isStep ? `step ${step}` : nodeLabel}
       </span>
 
-      <input
-        type="range"
-        min={0}
-        max={sliderMax}
-        value={sliderValue}
-        onChange={(e) => onSlider(Number(e.target.value))}
-      />
+      <span className="slider-wrap">
+        <input
+          type="range"
+          min={0}
+          max={sliderMax}
+          value={sliderValue}
+          onChange={(e) => onSlider(Number(e.target.value))}
+        />
+        {!isStep && sliderMax > 0 && sliderMax <= 200 && (
+          <span className="ticks" aria-hidden>
+            {Array.from({ length: sliderMax + 1 }, (_, i) => (
+              <span key={i} className={i === sliderValue ? "tick on" : "tick"} />
+            ))}
+          </span>
+        )}
+      </span>
       <span className="meta" style={{ minWidth: 110, textAlign: "right" }}>
         {counter}
       </span>
