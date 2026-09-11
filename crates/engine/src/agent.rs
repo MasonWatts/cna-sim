@@ -14,10 +14,36 @@ use crate::state::command::Command;
 use crate::state::game::{GameState, Phase};
 use crate::state::view::EvalWeights;
 
+/// The eight phases in which agents may act (the Sequence-of-Play decision points).
+pub fn is_decision_phase(phase: Phase) -> bool {
+    matches!(
+        phase,
+        Phase::MovementAndCombat
+            | Phase::Organization
+            | Phase::LandSupportAir
+            | Phase::TruckConvoy
+            | Phase::Repair
+            | Phase::CommonwealthFleet
+            | Phase::NavalConvoyArrival
+            | Phase::NavalConvoySchedule
+    )
+}
+
 /// A programmatic player. `choose` returns the next command the agent wants to issue for `side` in
 /// the current state, or `None` to yield (take no further action in this phase occurrence).
 pub trait Agent {
     fn choose(&mut self, game: &GameState, side: Side) -> Option<Command>;
+
+    /// Pick the *index* of the command to issue from a precomputed `legal` snapshot. This lets the
+    /// driver compute `legal_commands` once per phase-occurrence (and drain it) instead of once per
+    /// action — the O(cap × enumeration) cost that dominates large-army turns. The default recomputes
+    /// via [`Agent::choose`] and locates the result in `legal`, so agents that don't override it
+    /// (Lookahead, MCTS) keep their exact behaviour; [`RandomAgent`]/[`GreedyAgent`] override it to
+    /// score `legal` directly. `None` = yield.
+    fn choose_index(&mut self, game: &GameState, side: Side, legal: &[Command]) -> Option<usize> {
+        let cmd = self.choose(game, side)?;
+        legal.iter().position(|c| *c == cmd)
+    }
 }
 
 /// A small deterministic PRNG so agents are reproducible from a seed, independent of the game RNG.
@@ -44,16 +70,24 @@ impl RandomAgent {
         RandomAgent { rng: Lcg::new(seed) }
     }
 }
+impl RandomAgent {
+    fn pick(&mut self, cmds: &[Command]) -> Option<usize> {
+        if cmds.is_empty() { None } else { Some(self.rng.below(cmds.len())) }
+    }
+}
 impl Agent for RandomAgent {
     fn choose(&mut self, game: &GameState, side: Side) -> Option<Command> {
-        if !matches!(game.phase, Phase::MovementAndCombat | Phase::Organization | Phase::LandSupportAir | Phase::TruckConvoy | Phase::Repair | Phase::CommonwealthFleet | Phase::NavalConvoyArrival | Phase::NavalConvoySchedule) {
+        if !is_decision_phase(game.phase) {
             return None;
         }
         let cmds = game.legal_commands(side);
-        if cmds.is_empty() {
+        self.pick(&cmds).map(|i| cmds[i].clone())
+    }
+    fn choose_index(&mut self, game: &GameState, _side: Side, legal: &[Command]) -> Option<usize> {
+        if !is_decision_phase(game.phase) {
             return None;
         }
-        Some(cmds[self.rng.below(cmds.len())].clone())
+        self.pick(legal)
     }
 }
 
@@ -67,48 +101,39 @@ impl GreedyAgent {
         GreedyAgent { rng: Lcg::new(seed) }
     }
 }
-impl Agent for GreedyAgent {
-    fn choose(&mut self, game: &GameState, side: Side) -> Option<Command> {
-        if !matches!(game.phase, Phase::MovementAndCombat | Phase::Organization | Phase::LandSupportAir | Phase::TruckConvoy | Phase::Repair | Phase::CommonwealthFleet | Phase::NavalConvoyArrival | Phase::NavalConvoySchedule) {
-            return None;
-        }
-        let cmds = game.legal_commands(side);
+impl GreedyAgent {
+    /// The index into `cmds` of the command the greedy agent wants: close assault, then anti-armor,
+    /// then upkeep repairs, then the highest-priority build-up/logistics command, then the move whose
+    /// destination is closest to an enemy (random tie-break), else a random legal command.
+    fn pick(&mut self, game: &GameState, side: Side, cmds: &[Command]) -> Option<usize> {
         if cmds.is_empty() {
             return None;
         }
-        // Prefer a close assault, then anti-armor fire.
-        if let Some(c) = cmds.iter().find(|c| matches!(c, Command::CloseAssault { .. })) {
-            return Some(c.clone());
+        if let Some(i) = cmds.iter().position(|c| matches!(c, Command::CloseAssault { .. })) {
+            return Some(i);
         }
-        if let Some(c) = cmds.iter().find(|c| matches!(c, Command::AntiArmor { .. })) {
-            return Some(c.clone());
+        if let Some(i) = cmds.iter().position(|c| matches!(c, Command::AntiArmor { .. })) {
+            return Some(i);
         }
-        // Basic upkeep: when it can't attack, fix broken-down units and recover captured gear
-        // (§21/§22/§28.3) — otherwise a broken cruiser would sit immobilized forever. Cheap and
-        // strictly helpful, so it takes priority over maneuver.
-        if let Some(c) = cmds.iter().find(|c| {
+        // Basic upkeep: fix broken-down units and recover captured gear (§21/§22/§28.3).
+        if let Some(i) = cmds.iter().position(|c| {
             matches!(
                 c,
                 Command::Repair { .. } | Command::RepairCapturedEquipment { .. } | Command::RepairShip { .. }
             )
         }) {
-            return Some(c.clone());
+            return Some(i);
         }
-        // In the non-combat phases (Organization / air / convoy / production / repair) there is no
-        // enemy to advance on, so instead of picking a random legal command the agent takes the
-        // highest-priority *constructive* one: satisfy a mandatory squadron withdrawal, build up and
-        // maintain the air force, and keep supply and production flowing. This makes those phases
-        // look purposeful rather than random; the per-phase action cap still bounds the loop.
-        if let Some(c) = cmds
+        // Constructive build-up / logistics (see `buildup_priority`): highest priority wins.
+        if let Some((i, _)) = cmds
             .iter()
-            .filter_map(|c| buildup_priority(c).map(|p| (p, c)))
-            .max_by_key(|(p, _)| *p)
-            .map(|(_, c)| c)
+            .enumerate()
+            .filter_map(|(i, c)| buildup_priority(c).map(|p| (i, p)))
+            .max_by_key(|(_, p)| *p)
         {
-            return Some(c.clone());
+            return Some(i);
         }
-        // Otherwise advance: among the legal moves, pick one whose destination is closest to an
-        // enemy unit (the agent presses toward contact). Random tie-break for variety.
+        // Otherwise advance: the legal move whose destination is closest to an enemy unit.
         let enemy = side.opponent();
         let enemy_hexes: Vec<_> = game
             .units
@@ -116,9 +141,9 @@ impl Agent for GreedyAgent {
             .filter(|u| u.nationality.side() == enemy && u.total_toe() > 0)
             .filter_map(|u| u.hex())
             .collect();
-        let mut best: Option<(u32, Command)> = None;
+        let mut best: Option<(u32, usize)> = None;
         let mut ties = 0usize;
-        for c in &cmds {
+        for (i, c) in cmds.iter().enumerate() {
             let Command::MoveStep { to, .. } = c else { continue };
             let d = enemy_hexes.iter().map(|e| e.distance(*to)).min().unwrap_or(u32::MAX);
             match &best {
@@ -126,16 +151,31 @@ impl Agent for GreedyAgent {
                 Some((bd, _)) if d == *bd => {
                     ties += 1;
                     if self.rng.below(ties + 1) == 0 {
-                        best = Some((d, c.clone()));
+                        best = Some((d, i));
                     }
                 }
                 _ => {
-                    best = Some((d, c.clone()));
+                    best = Some((d, i));
                     ties = 0;
                 }
             }
         }
-        best.map(|(_, c)| c).or_else(|| Some(cmds[self.rng.below(cmds.len())].clone()))
+        best.map(|(_, i)| i).or_else(|| Some(self.rng.below(cmds.len())))
+    }
+}
+impl Agent for GreedyAgent {
+    fn choose(&mut self, game: &GameState, side: Side) -> Option<Command> {
+        if !is_decision_phase(game.phase) {
+            return None;
+        }
+        let cmds = game.legal_commands(side);
+        self.pick(game, side, &cmds).map(|i| cmds[i].clone())
+    }
+    fn choose_index(&mut self, game: &GameState, side: Side, legal: &[Command]) -> Option<usize> {
+        if !is_decision_phase(game.phase) {
+            return None;
+        }
+        self.pick(game, side, legal)
     }
 }
 
@@ -670,6 +710,36 @@ impl Agent for CrossPhaseMctsAgent {
 /// issues commands (each validated by `apply`) until it yields or a per-phase action cap is hit
 /// (`3 × its on-map units + 8`, so a random agent cannot act forever); every other phase is driven
 /// by `advance_phase`. Returns the number of commands the agents successfully applied.
+/// Drive one decision-phase occurrence: compute the legal set once, let the agent drain it (each
+/// chosen command is removed so it is not re-picked; a command that has become illegal is skipped by
+/// `apply`), and recompute only when the agent yields *after* making progress. A large-army phase
+/// therefore costs O(waves × enumeration) rather than O(actions × enumeration) — the recompute-per-
+/// action cost that dominates post-DAK turns. Bounded by `cap` attempted actions.
+pub fn drain_phase(game: &mut GameState, agent: &mut dyn Agent, side: Side, cap: u32, applied: &mut u32) {
+    let mut legal = game.legal_commands(side);
+    let mut acted = 0u32;
+    let mut progress = true;
+    while acted < cap {
+        match agent.choose_index(game, side, &legal) {
+            Some(i) if i < legal.len() => {
+                let cmd = legal.swap_remove(i);
+                if game.apply(cmd).is_ok() {
+                    *applied += 1;
+                    progress = true;
+                }
+                acted += 1;
+            }
+            _ => {
+                if !progress {
+                    break;
+                }
+                legal = game.legal_commands(side);
+                progress = false;
+            }
+        }
+    }
+}
+
 pub fn self_play(
     game: &mut GameState,
     commonwealth: &mut dyn Agent,
@@ -684,23 +754,11 @@ pub fn self_play(
         if game.campaign_auto_winner().is_some() {
             break;
         }
-        if matches!(game.phase, Phase::MovementAndCombat | Phase::Organization | Phase::LandSupportAir | Phase::TruckConvoy | Phase::Repair | Phase::CommonwealthFleet | Phase::NavalConvoyArrival | Phase::NavalConvoySchedule) {
+        if is_decision_phase(game.phase) {
             let side = game.active_player;
             let on_map = game.units.values().filter(|u| u.nationality.side() == side && u.hex().is_some()).count();
             let cap = 3 * on_map as u32 + 8;
-            let mut acted = 0u32;
-            while acted < cap {
-                let agent: &mut dyn Agent = if side == Side::Commonwealth { commonwealth } else { axis };
-                match agent.choose(game, side) {
-                    Some(cmd) => {
-                        if game.apply(cmd).is_ok() {
-                            applied += 1;
-                        }
-                        acted += 1;
-                    }
-                    None => break,
-                }
-            }
+            drain_phase(game, if side == Side::Commonwealth { commonwealth } else { axis }, side, cap, &mut applied);
         }
         game.advance_phase();
         guard += 1;

@@ -200,20 +200,32 @@ pub fn record_game(
                 .filter(|u| u.nationality.side() == side && u.hex().is_some())
                 .count();
             let cap = 3 * on_map as u32 + 8;
+            // Snapshot the legal set once and drain it (see agent::drain_phase); recompute only when
+            // the agent yields after progress. Records a frame per successfully applied command.
+            let mut legal = game.legal_commands(side);
             let mut acted = 0u32;
+            let mut progress = true;
             while acted < cap {
                 let agent: &mut dyn Agent = if side == Side::Commonwealth { commonwealth } else { axis };
-                match agent.choose(&game, side) {
-                    Some(cmd) => {
+                match agent.choose_index(&game, side, &legal) {
+                    Some(i) if i < legal.len() => {
+                        let cmd = legal.swap_remove(i);
                         let action = format!("{cmd:?}");
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         if let Ok(outcome) = game.apply(cmd) {
                             step += 1;
                             events.push(delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev));
+                            progress = true;
                         }
                         acted += 1;
                     }
-                    None => break,
+                    _ => {
+                        if !progress {
+                            break;
+                        }
+                        legal = game.legal_commands(side);
+                        progress = false;
+                    }
                 }
             }
         }
@@ -279,21 +291,33 @@ pub fn record_game_streaming(
                 .filter(|u| u.nationality.side() == side && u.hex().is_some())
                 .count();
             let cap = 3 * on_map as u32 + 8;
+            // Snapshot-and-drain (see agent::drain_phase): compute the legal set once per phase and
+            // recompute only after the agent yields with progress, instead of per action.
+            let mut legal = game.legal_commands(side);
             let mut acted = 0u32;
+            let mut progress = true;
             while acted < cap {
                 let agent: &mut dyn Agent = if side == Side::Commonwealth { commonwealth } else { axis };
-                match agent.choose(&game, side) {
-                    Some(cmd) => {
+                match agent.choose_index(&game, side, &legal) {
+                    Some(i) if i < legal.len() => {
+                        let cmd = legal.swap_remove(i);
                         let action = format!("{cmd:?}");
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         if let Ok(outcome) = game.apply(cmd) {
                             step += 1;
                             let ev = delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev);
                             writeln!(out, "{}", serde_json::to_string(&ev)?)?;
+                            progress = true;
                         }
                         acted += 1;
                     }
-                    None => break,
+                    _ => {
+                        if !progress {
+                            break;
+                        }
+                        legal = game.legal_commands(side);
+                        progress = false;
+                    }
                 }
             }
         }
