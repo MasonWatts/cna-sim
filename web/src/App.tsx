@@ -79,10 +79,22 @@ export function App() {
     dragLast.current = null;
   };
 
-  // Load the recorded game.
+  // Load the recorded game. Prefer the streamed JSONL log (game.jsonl: a header line then one event
+  // per line); fall back to the single-document game.json.
   useEffect(() => {
-    fetch("/game.json")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    const parseJsonl = (text: string): GameRecord => {
+      const lines = text.split("\n").filter((l) => l.trim().length > 0);
+      const header = JSON.parse(lines[0]);
+      const events = lines.slice(1).map((l) => JSON.parse(l));
+      return { ...header, events } as GameRecord;
+    };
+    fetch("/game.jsonl")
+      .then((r) => (r.ok ? r.text().then(parseJsonl) : Promise.reject(new Error("no jsonl"))))
+      .catch(() =>
+        fetch("/game.json").then((r) =>
+          r.ok ? (r.json() as Promise<GameRecord>) : Promise.reject(new Error(`HTTP ${r.status}`)),
+        ),
+      )
       .then((r: GameRecord) => setRecord(r))
       .catch((e) => setError(String(e)));
   }, []);

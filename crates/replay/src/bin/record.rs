@@ -14,7 +14,7 @@ use cna_engine::reference::ReferenceData;
 use cna_engine::state::game::GameState;
 use cna_engine::state::map::HexCoord;
 use cna_engine::state::unit::{Composition, UnitLocation, WeaponGroup};
-use cna_replay::record_game;
+use cna_replay::{record_game, record_game_streaming};
 
 /// A compact skirmish: cruisers + infantry per side on a small clear board, stocked to move/fight.
 fn build_skirmish(seed: u64) -> GameState {
@@ -79,9 +79,25 @@ fn main() {
     };
     let mut cw = GreedyAgent::new(1);
     let mut axis = RandomAgent::new(2);
-    let record = record_game(game, label, seed, "Greedy", &mut cw, "Random", &mut axis, turns);
 
-    let json = serde_json::to_string_pretty(&record).expect("record serializes");
-    std::fs::write(&out, &json).unwrap_or_else(|e| panic!("write {out}: {e}"));
-    eprintln!("wrote {out}: {} events, {} bytes", record.events.len(), json.len());
+    // A `.jsonl` output streams to disk with per-turn progress (crash-safe, bounded memory, live
+    // progress for long runs); any other extension buffers a single pretty-printed GameRecord JSON.
+    if out.ends_with(".jsonl") {
+        use std::io::Write;
+        let file = std::fs::File::create(&out).unwrap_or_else(|e| panic!("create {out}: {e}"));
+        let mut w = std::io::BufWriter::new(file);
+        let start = std::time::Instant::now();
+        let mut on_turn = |turn: u32, events: u32| {
+            eprintln!("[{:>6.1}s] turn {turn}/{turns}: {events} events", start.elapsed().as_secs_f64());
+        };
+        let count = record_game_streaming(game, label, seed, "Greedy", &mut cw, "Random", &mut axis, turns, &mut w, &mut on_turn)
+            .unwrap_or_else(|e| panic!("stream {out}: {e}"));
+        w.flush().ok();
+        eprintln!("wrote {out}: {count} events in {:.1}s", start.elapsed().as_secs_f64());
+    } else {
+        let record = record_game(game, label, seed, "Greedy", &mut cw, "Random", &mut axis, turns);
+        let json = serde_json::to_string_pretty(&record).expect("record serializes");
+        std::fs::write(&out, &json).unwrap_or_else(|e| panic!("write {out}: {e}"));
+        eprintln!("wrote {out}: {} events, {} bytes", record.events.len(), json.len());
+    }
 }

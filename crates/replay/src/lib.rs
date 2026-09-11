@@ -231,6 +231,85 @@ pub fn record_game(
     }
 }
 
+/// Like [`record_game`] but streams the log as **JSONL** to `out` instead of buffering the whole
+/// `GameRecord` in memory: the first line is a header object (scenario/seed/agents/map), then one
+/// [`Event`] per line, flushed at each Game-Turn boundary. This gives live progress (via `on_turn`,
+/// called with `(game_turn, events_so_far)` whenever the turn advances) and crash/kill-safety, and
+/// keeps memory bounded for a full-campaign run. Returns the number of event lines written (excluding
+/// the header). The viewer reconstructs a `GameRecord` from `{...header, events: <rest of lines>}`.
+#[allow(clippy::too_many_arguments)]
+pub fn record_game_streaming(
+    mut game: GameState,
+    scenario: &str,
+    seed: u64,
+    commonwealth_name: &str,
+    commonwealth: &mut dyn Agent,
+    axis_name: &str,
+    axis: &mut dyn Agent,
+    max_turns: u32,
+    out: &mut dyn std::io::Write,
+    on_turn: &mut dyn FnMut(u32, u32),
+) -> std::io::Result<u32> {
+    let header = serde_json::json!({
+        "scenario": scenario,
+        "seed": seed,
+        "commonwealth_agent": commonwealth_name,
+        "axis_agent": axis_name,
+        "map": map_view(&game),
+    });
+    writeln!(out, "{}", serde_json::to_string(&header)?)?;
+
+    let mut prev: std::collections::HashMap<u32, UnitView> = std::collections::HashMap::new();
+    let start = delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev);
+    writeln!(out, "{}", serde_json::to_string(&start)?)?;
+
+    let mut step = 0u32;
+    let mut guard = 0u64;
+    let mut last_turn = game.game_turn;
+    on_turn(game.game_turn, step);
+    while game.game_turn <= max_turns {
+        if game.campaign_auto_winner().is_some() {
+            break;
+        }
+        if is_decision_phase(game.phase) {
+            let side = game.active_player;
+            let on_map = game
+                .units
+                .values()
+                .filter(|u| u.nationality.side() == side && u.hex().is_some())
+                .count();
+            let cap = 3 * on_map as u32 + 8;
+            let mut acted = 0u32;
+            while acted < cap {
+                let agent: &mut dyn Agent = if side == Side::Commonwealth { commonwealth } else { axis };
+                match agent.choose(&game, side) {
+                    Some(cmd) => {
+                        let action = format!("{cmd:?}");
+                        let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
+                        if let Ok(outcome) = game.apply(cmd) {
+                            step += 1;
+                            let ev = delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev);
+                            writeln!(out, "{}", serde_json::to_string(&ev)?)?;
+                        }
+                        acted += 1;
+                    }
+                    None => break,
+                }
+            }
+        }
+        game.advance_phase();
+        if game.game_turn != last_turn {
+            last_turn = game.game_turn;
+            out.flush()?;
+            on_turn(game.game_turn, step);
+        }
+        guard += 1;
+        assert!(guard < 5_000_000, "record loop failed to progress");
+    }
+    out.flush()?;
+    Ok(step)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

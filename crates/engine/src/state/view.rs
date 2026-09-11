@@ -719,21 +719,31 @@ impl GameState {
             }
         }
         // Air maintenance (§38): ready (refuel), arm, and refit each own squadron so its assigned
-        // planes become flyable. Counts default to the squadron's plane count; `dry_run` gates
-        // supply/eligibility. Visited in id order for determinism.
-        let mut own_sgsus: Vec<(crate::state::air::SquadronId, u32)> = self
+        // planes become flyable. Only offered when there is actually work left to do — otherwise the
+        // command stays legal and an agent re-issues it every call, burning the per-phase action cap
+        // (the maintenance spam). Counts are the shortfall; `dry_run` gates supply/eligibility.
+        // Visited in id order for determinism.
+        let mut own_sgsus: Vec<crate::state::air::SquadronId> = self
             .sgsus
             .iter()
             .filter(|(_, s)| s.nationality.side() == side && s.plane_count() > 0)
-            .map(|(&id, s)| (id, s.plane_count()))
+            .map(|(&id, _)| id)
             .collect();
-        own_sgsus.sort_by_key(|(id, _)| id.0);
-        for (squadron, n) in own_sgsus {
-            for cmd in [
-                Command::ReadySquadron { squadron, count: n },
-                Command::ArmSquadron { squadron, count: n },
-                Command::RefitSquadron { squadron, base_die: 3, wrong_squadron: false },
-            ] {
+        own_sgsus.sort_by_key(|s| s.0);
+        for squadron in own_sgsus {
+            let s = &self.sgsus[&squadron];
+            let n = s.plane_count();
+            let mut candidates = Vec::new();
+            if s.ready_planes() < n {
+                candidates.push(Command::ReadySquadron { squadron, count: n - s.ready_planes() });
+            }
+            if s.armed_planes() < n {
+                candidates.push(Command::ArmSquadron { squadron, count: n - s.armed_planes() });
+            }
+            if s.refitted_planes() < n {
+                candidates.push(Command::RefitSquadron { squadron, base_die: 3, wrong_squadron: false });
+            }
+            for cmd in candidates {
                 if self.dry_run(&cmd).is_ok() {
                     out.push(cmd);
                 }
