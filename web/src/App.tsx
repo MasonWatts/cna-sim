@@ -5,12 +5,14 @@ import { mapBounds } from "./hex";
 import { HexMap } from "./components/HexMap";
 import { Scrubber } from "./components/Scrubber";
 import { ActionLog } from "./components/ActionLog";
+import { LEVELS, buildNodes, nodeIndexOf, type Level, type Node } from "./hierarchy";
 
 export function App() {
   const [record, setRecord] = useState<GameRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [level, setLevel] = useState<Level>("week");
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
@@ -101,22 +103,28 @@ export function App() {
 
   const lastStep = record ? record.events.length - 1 : 0;
 
-  // Auto-advance while playing; stop at the end.
+  // Auto-advance while playing, one node at the current granularity per tick; stop at the end.
+  // Coarser levels tick slower so each month/week is legible.
   useEffect(() => {
     if (!playing) return;
-    timer.current = window.setInterval(() => {
-      setStep((s) => {
-        if (s >= lastStep) {
-          setPlaying(false);
-          return s;
-        }
-        return s + 1;
-      });
-    }, 250);
+    timer.current = window.setInterval(
+      () => {
+        setStep((s) => {
+          const n = nextAt(level, s);
+          if (n <= s) {
+            setPlaying(false);
+            return s;
+          }
+          return n;
+        });
+      },
+      level === "step" ? 200 : 700,
+    );
     return () => {
       if (timer.current) window.clearInterval(timer.current);
     };
-  }, [playing, lastStep]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, lastStep, level]);
 
   // Fit the map to the pane once it loads (a 7k-hex map would otherwise render at full pixel size).
   useEffect(() => {
@@ -137,8 +145,39 @@ export function App() {
     return out;
   }, [record]);
 
+  // Node structures for each grouping level (Month/Week/Op-Stage/Phase), for level-aware navigation.
+  const nodesByLevel = useMemo<Record<Exclude<Level, "step">, Node[]>>(
+    () => ({
+      month: buildNodes(record?.events ?? [], "month"),
+      week: buildNodes(record?.events ?? [], "week"),
+      stage: buildNodes(record?.events ?? [], "stage"),
+      phase: buildNodes(record?.events ?? [], "phase"),
+    }),
+    [record],
+  );
+
+  // Next/previous event index at a given granularity: step → ±1; else the next/previous node start.
+  const nextAt = (lvl: Level, s: number): number => {
+    if (lvl === "step") return Math.min(s + 1, lastStep);
+    const nodes = nodesByLevel[lvl];
+    if (!nodes.length) return lastStep;
+    const ni = nodeIndexOf(nodes, s);
+    return ni + 1 < nodes.length ? nodes[ni + 1].start : lastStep;
+  };
+  const prevAt = (lvl: Level, s: number): number => {
+    if (lvl === "step") return Math.max(s - 1, 0);
+    const nodes = nodesByLevel[lvl];
+    if (!nodes.length) return 0;
+    const ni = nodeIndexOf(nodes, s);
+    return s > nodes[ni].start ? nodes[ni].start : nodes[Math.max(ni - 1, 0)].start;
+  };
+
   const idx = Math.min(step, lastStep);
   const event = record?.events[idx];
+  const curNodes = level === "step" ? [] : nodesByLevel[level];
+  const nodeIndex = level === "step" ? idx : nodeIndexOf(curNodes, idx);
+  const nodeTotal = level === "step" ? lastStep + 1 : curNodes.length;
+  const curNodeLabel = level === "step" ? `step ${idx}` : (curNodes[nodeIndex]?.label ?? "");
 
   if (error) return <div style={{ padding: 24 }}>Failed to load <code>game.json</code>: {error}</div>;
   if (!record || !event) return <div style={{ padding: 24 }}>Loading…</div>;
@@ -151,8 +190,23 @@ export function App() {
           <span className="chip cw">CW: {record.commonwealth_agent}</span>{" "}
           <span className="chip axis">Axis: {record.axis_agent}</span>
         </span>
-        <span className="meta">
-          Turn {event.game_turn} · Stage {event.operations_stage} · {event.phase}
+        <span className="meta breadcrumb" title="Click a level to set playback granularity">
+          {LEVELS.filter((l) => l !== "step").map((l, i) => {
+            const nodes = nodesByLevel[l as Exclude<Level, "step">];
+            const lbl = nodes[nodeIndexOf(nodes, idx)]?.label ?? "";
+            return (
+              <span key={l}>
+                {i > 0 && " › "}
+                <button className={`crumb ${l === level ? "active" : ""}`} onClick={() => setLevel(l)}>
+                  {lbl}
+                </button>
+              </span>
+            );
+          })}
+          {" › "}
+          <button className={`crumb ${level === "step" ? "active" : ""}`} onClick={() => setLevel("step")}>
+            step {event.step}
+          </button>
         </span>
         <span className="meta zoom">
           <button onClick={() => zoomAtCenter(zoom / 1.25)} title="Zoom out">−</button>
@@ -215,7 +269,15 @@ export function App() {
         step={step}
         last={lastStep}
         playing={playing}
+        level={level}
+        nodeIndex={nodeIndex}
+        nodeTotal={nodeTotal}
+        nodeLabel={curNodeLabel}
+        onLevel={setLevel}
+        onPrev={() => setStep(prevAt(level, step))}
+        onNext={() => setStep(nextAt(level, step))}
         onStep={setStep}
+        onRestart={() => setStep(0)}
         onTogglePlay={() => setPlaying((p) => !p)}
       />
     </div>

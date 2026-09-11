@@ -85,6 +85,48 @@ body {
   flex: 1;
 }
 
+.level-select,
+.transport {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.level-select button,
+.transport button {
+  padding: 4px 7px;
+  font-size: 12px;
+}
+
+.level-select button.active {
+  background: var(--accent, #4a7);
+  border-color: var(--accent, #4a7);
+  color: #06210f;
+  font-weight: 600;
+}
+
+.node-pos {
+  min-width: 190px;
+}
+
+.breadcrumb .crumb {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.breadcrumb .crumb:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.breadcrumb .crumb.active {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 button {
   background: var(--line);
   color: var(--ink);
