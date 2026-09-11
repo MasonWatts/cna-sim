@@ -745,6 +745,13 @@ pub struct GameState {
     /// 14 at campaign start). `DeploySgsu` spends one to put a squadron on the map (§34.82).
     #[serde(default)]
     pub available_sgsu: HashMap<Nationality, u32>,
+    /// §34.84: squadron withdrawals already performed this Game-Turn, as `(nationality, class,
+    /// count)`, so a mandatory `WD` is satisfied exactly (a `WD: 1F` withdraws one fighter squadron,
+    /// not every eligible one). Reset when the Game-Turn changes.
+    #[serde(default)]
+    pub squadron_wd_done: Vec<(Nationality, crate::reference::squadron::WdClass, u32)>,
+    #[serde(default)]
+    pub squadron_wd_done_gt: u32,
     /// Placed air facilities — airfields, landing strips, flying-boat basins/alighting areas (§36).
     #[serde(default)]
     pub air_facilities: Vec<AirFacility>,
@@ -1088,6 +1095,8 @@ impl GameState {
             plane_pool: HashMap::new(),
             pilot_pool: HashMap::new(),
             available_sgsu: HashMap::new(),
+            squadron_wd_done: Vec::new(),
+            squadron_wd_done_gt: 0,
             air_facilities: Vec::new(),
             ports: HashMap::new(),
             convoys: Vec::new(),
@@ -4054,15 +4063,27 @@ impl GameState {
         let nat = sgsu.nationality;
         let sc = sgsu.class;
         let due = self.due_squadron_withdrawals();
-        let matches = |wd: WdClass| due.iter().any(|&(n, c, k)| n == nat && c == wd && k > 0);
-        let satisfies = match sc {
-            SquadronClass::Fighter => matches(WdClass::Fighter),
-            SquadronClass::Bomber => matches(WdClass::Bomber),
-            SquadronClass::Transport => false,
-        } || matches(WdClass::Recon);
-        if !satisfies {
-            return false;
+        // Reset the per-turn tally when the Game-Turn changes.
+        if self.squadron_wd_done_gt != self.game_turn {
+            self.squadron_wd_done.clear();
+            self.squadron_wd_done_gt = self.game_turn;
         }
+        let owed = |c: WdClass| due.iter().find(|&&(n, cc, _)| n == nat && cc == c).map(|&(_, _, k)| k).unwrap_or(0);
+        let done = |c: WdClass| {
+            self.squadron_wd_done.iter().find(|&&(n, cc, _)| n == nat && cc == c).map(|&(_, _, k)| k).unwrap_or(0)
+        };
+        // The class this withdrawal is charged against: the squadron's own class while that class
+        // still owes a withdrawal, else any still-owed Recon (recon isn't a squadron class, §35.21).
+        // Capping to the owed count stops an agent over-withdrawing (a `WD: 1F` removes one squadron).
+        let charge = match sc {
+            SquadronClass::Fighter if owed(WdClass::Fighter) > done(WdClass::Fighter) => Some(WdClass::Fighter),
+            SquadronClass::Bomber if owed(WdClass::Bomber) > done(WdClass::Bomber) => Some(WdClass::Bomber),
+            _ => None,
+        }
+        .or_else(|| (owed(WdClass::Recon) > done(WdClass::Recon)).then_some(WdClass::Recon));
+        let Some(charge) = charge else {
+            return false;
+        };
         // Remove the squadron: planes → pool, counter → supply, pilots unassigned.
         let sgsu = self.sgsus.remove(&id).expect("checked above");
         let pool = self.plane_pool.entry(nat).or_default();
@@ -4074,6 +4095,12 @@ impl GameState {
             if p.squadron == Some(id) {
                 p.squadron = None;
             }
+        }
+        // Record it against the charged class so further withdrawals this turn respect the WD count.
+        if let Some(e) = self.squadron_wd_done.iter_mut().find(|(n, cc, _)| *n == nat && *cc == charge) {
+            e.2 += 1;
+        } else {
+            self.squadron_wd_done.push((nat, charge, 1));
         }
         true
     }

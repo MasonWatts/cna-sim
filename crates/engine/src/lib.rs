@@ -2893,6 +2893,32 @@ mod tests {
     }
 
     #[test]
+    fn withdraw_squadron_capped_to_owed_count_34_84() {
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        // GT8 owes the Commonwealth 2 fighter squadrons (§34.84 WD: 2F, 2B). Deploy three fighter
+        // squadrons; only two may be withdrawn.
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        let hex = HexCoord::new(5, 5);
+        for i in 1..=3 {
+            g.sgsus.insert(
+                SquadronId(i),
+                Sgsu::new(SquadronId(i), Nationality::Commonwealth, SquadronClass::Fighter, format!("sq{i}"), 25, Some(hex)),
+            );
+        }
+        g.game_turn = 8;
+        g.phase = Phase::Organization;
+        assert_eq!(g.apply(Command::WithdrawSquadron { squadron: SquadronId(1) }), Ok(CommandOutcome::SquadronWithdrawn));
+        assert_eq!(g.apply(Command::WithdrawSquadron { squadron: SquadronId(2) }), Ok(CommandOutcome::SquadronWithdrawn));
+        // The 2F quota is now met — a third fighter withdrawal is refused (no over-withdrawal).
+        assert_eq!(g.apply(Command::WithdrawSquadron { squadron: SquadronId(3) }), Err(CommandError::WithdrawalNotDue));
+    }
+
+    #[test]
     fn deploy_sgsu_spends_counter_and_sets_cpa_34_82() {
         use crate::reference::squadron::SquadronClass;
         use crate::state::air::{AirFacility, AirFacilityKind};
