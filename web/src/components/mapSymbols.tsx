@@ -55,7 +55,8 @@ export function edgeGlyph(kind: string, A: { x: number; y: number }, B: { x: num
       );
     }
     case "MinorRiver":
-      return edge("#7bbfe6", 1.5);
+      // Same channel blue as MajorRiver but no darker bank — the bank is what distinguishes them.
+      return edge("#4a9ed6", 1.8);
     case "Wadi":
       return edge("#6fae5a", 2.8, 0.75);
     case "Ridge":
