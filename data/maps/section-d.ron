@@ -582,7 +582,7 @@
     "1718": (terrain: SaltMarsh, features: []),
     "1719": (terrain: SaltMarsh, features: []),
     "1720": (terrain: SaltMarsh, features: []),
-    "1721": (terrain: SaltMarsh, features: []),
+    "1721": (terrain: SaltMarsh, features: [], label: "Qatara Depression"),
     "1722": (terrain: Desert, features: []),
     "1723": (terrain: Desert, features: []),
     "1724": (terrain: Desert, features: []),

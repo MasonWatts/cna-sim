@@ -346,7 +346,7 @@
     "1027": (terrain: Clear, features: []),
     "1028": (terrain: Clear, features: []),
     "1029": (terrain: Delta, features: []),
-    "1030": (terrain: Delta, features: []),
+    "1030": (terrain: Delta, features: [], label: "Nile River"),
     "1031": (terrain: Clear, features: []),
     "1032": (terrain: Rough, features: []),
     "1033": (terrain: Rough, features: []),
