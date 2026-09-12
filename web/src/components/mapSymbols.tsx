@@ -163,7 +163,10 @@ export function featureGlyph(feature: string): JSX.Element | null {
         </>
       );
       return (
-        <g transform="translate(0 2)">
+        // Offset to the bottom of the hex, mirroring the Port anchor's top placement. The anchor's
+        // visual center sits ~14 above the hex center; the soldier's body sits above its own origin,
+        // so +20 puts its center ~14 below center — the symmetric bottom position.
+        <g transform="translate(0 20)">
           {/* rifle: vertical, butt on the ground to the soldier's left */}
           <line x1={-5.8} y1={-8.6} x2={-5.8} y2={2.2} stroke="#f4eecb" strokeWidth={2.4} strokeLinecap="round" />
           <g fill={color} stroke="#f4eecb" strokeWidth={1.5} paintOrder="stroke" strokeLinejoin="round">
