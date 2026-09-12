@@ -2112,6 +2112,9 @@
     "6234": (terrain: Invalid, features: []),
   },
   hexsides: [
+    // Manually added cross-section (A↔B seam) edges.
+    (a: "3033", b: "B3001", kind: Track),  // (33,30)-(34,30)
+    (a: "5033", b: "B5001", kind: Track),  // (33,50)-(34,50)
     (a: "0106", b: "0107", kind: Wadi),
     (a: "0106", b: "0206", kind: Wadi),
     (a: "0211", b: "0112", kind: Track),
