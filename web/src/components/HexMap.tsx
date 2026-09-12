@@ -31,17 +31,25 @@ function featureGlyph(feature: string): JSX.Element | null {
     case "Bir":
     case "Village":
       return <circle r={3.5} fill={FEATURE_BLUE} />;
-    case "Port":
+    case "Port": {
       // Offset toward the top of the hex (the sea side) so the anchor clears a center Village dot.
-      return (
-        <g transform="translate(0 -14)" stroke={FEATURE_BLUE} strokeWidth={1.2} fill="none" strokeLinecap="round">
-          <circle r={8} strokeWidth={1.3} />
+      // Drawn twice: a thicker white halo under the blue so it reads on the MajorCity block pattern.
+      const anchor = (
+        <>
+          <circle r={8} />
           <circle cx={0} cy={-5} r={1.3} />
           <line x1={0} y1={-3.6} x2={0} y2={4.6} />
           <line x1={-3} y1={-1.6} x2={3} y2={-1.6} />
           <path d="M-4,2 Q0,6.6 4,2" />
+        </>
+      );
+      return (
+        <g transform="translate(0 -14)" fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <g stroke="#ffffff" strokeWidth={3} opacity={0.9}>{anchor}</g>
+          <g stroke={FEATURE_BLUE} strokeWidth={1.3}>{anchor}</g>
         </g>
       );
+    }
     case "Oasis":
       return (
         <>
