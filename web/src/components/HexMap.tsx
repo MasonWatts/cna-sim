@@ -87,18 +87,20 @@ const PATTERNS = (
         <rect x={12.9} y={7.5} width={0.8} height={0.8} />
       </g>
     </pattern>
-    {/* Classic pictorial peaks (deviates from the paper, but reads as flowing ranges). */}
-    <pattern id="patMountain" width={20} height={16} patternUnits="userSpaceOnUse">
-      <rect width={20} height={16} fill="#9c8a45" />
+    {/* Classic pictorial peaks (deviates from the paper, but reads as flowing ranges) —
+        ~3 larger mountains per tile. */}
+    <pattern id="patMountain" width={30} height={22} patternUnits="userSpaceOnUse">
+      <rect width={30} height={22} fill="#9c8a45" />
       <g fill="#6f6330">
-        <path d="M0,16 L5,6 L10,16 Z" />
-        <path d="M8,16 L14,4.5 L20,16 Z" />
-        <path d="M-3,16 L1,9 L5,16 Z" />
+        <path d="M-2,22 L6,3 L14,22 Z" />
+        <path d="M10,22 L18,1 L26,22 Z" />
+        <path d="M22,22 L30,5 L38,22 Z" />
       </g>
       {/* snow-cap highlights on the peaks */}
       <g fill="#e4dcb2">
-        <path d="M5,6 L6.8,9.5 L3.2,9.5 Z" />
-        <path d="M14,4.5 L16.2,8.5 L11.8,8.5 Z" />
+        <path d="M6,3 L9,9 L3,9 Z" />
+        <path d="M18,1 L21.5,8 L14.5,8 Z" />
+        <path d="M30,5 L33,11 L27,11 Z" />
       </g>
     </pattern>
     {/* Desert: ochre with drifting sand-dune ridges. */}
