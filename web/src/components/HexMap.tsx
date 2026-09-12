@@ -93,15 +93,15 @@ const PATTERNS = (
       <rect width={30} height={22} fill="#9c8a45" />
       {/* three peaks fully contained in the tile (bases on the baseline so tiles seam cleanly) */}
       <g fill="#6f6330">
-        <path d="M0,22 L6,4 L12,22 Z" />
-        <path d="M10,22 L16,2 L22,22 Z" />
-        <path d="M18,22 L24,5 L30,22 Z" />
+        <path d="M0,22 L6,8 L13,22 Z" />
+        <path d="M9,22 L16,6 L23,22 Z" />
+        <path d="M17,22 L24,9 L30,22 Z" />
       </g>
       {/* snow caps sized to sit on each peak's own slopes */}
       <g fill="#e4dcb2">
-        <path d="M6,4 L8,10 L4,10 Z" />
-        <path d="M16,2 L18,9 L14,9 Z" />
-        <path d="M24,5 L26,11 L22,11 Z" />
+        <path d="M6,8 L8,13 L4,13 Z" />
+        <path d="M16,6 L18,12 L14,12 Z" />
+        <path d="M24,9 L26,14 L22,14 Z" />
       </g>
     </pattern>
     {/* Desert: ochre with drifting sand-dune ridges. */}
