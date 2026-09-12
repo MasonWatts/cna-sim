@@ -2174,6 +2174,9 @@
     "6235": (terrain: Invalid, features: []),
   },
   hexsides: [
+    // Manually added edges.
+    (a: "1930", b: "1830", kind: MinorRiver),
+    (a: "1829", b: "1930", kind: MajorRiver),
     (a: "0106", b: "0107", kind: Track),
     (a: "0107", b: "0207", kind: Track),
     (a: "0108", b: "0208", kind: Track),
