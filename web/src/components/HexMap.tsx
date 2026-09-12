@@ -21,6 +21,7 @@ const orgRank = (o: string) => ORG_RANK[o] ?? 0;
 // E=133–165), the same `(col-1)/33` split the weather engine uses.
 const SECTION_BOUNDS = [33, 66, 99, 132]; // last col of A, B, C, D
 const SECTION_CENTERS = [17, 50, 83, 116, 149]; // representative mid-column of A…E
+const LABEL_HEADROOM = 52; // extra viewBox space above the map so Region labels clear all coastlines
 
 /** A small pictorial weather icon (~radius 6) centered at (0,0), for the weather panel. */
 function weatherGlyph(kind: string): JSX.Element {
@@ -215,7 +216,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, legend }: { ma
       return <line key={i} x1={x} y1={minY} x2={x} y2={minY + h} stroke="#8f8663" strokeWidth={1.2} strokeDasharray="6 6" opacity={0.5} />;
     });
     const letters = SECTION_CENTERS.map((c, i) => (
-      <text key={i} x={hexCenter(c, 0).x} y={minY + 34} textAnchor="middle" fontFamily="Georgia, serif" fontSize={44} fontWeight={700} fill="#8f8663" opacity={0.4} style={{ pointerEvents: "none" }}>
+      <text key={i} x={hexCenter(c, 0).x} y={minY - LABEL_HEADROOM + 40} textAnchor="middle" fontFamily="Georgia, serif" fontSize={44} fontWeight={700} fill="#8f8663" opacity={0.4} style={{ pointerEvents: "none" }}>
         {`Region ${String.fromCharCode(65 + i)}`}
       </text>
     ));
@@ -231,7 +232,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, legend }: { ma
   }
 
   return (
-    <svg width={w} height={h} viewBox={`${minX} ${minY} ${w} ${h}`} style={{ display: "block" }} role="img" aria-label="game board">
+    <svg width={w} height={h + LABEL_HEADROOM} viewBox={`${minX} ${minY - LABEL_HEADROOM} ${w} ${h + LABEL_HEADROOM}`} style={{ display: "block" }} role="img" aria-label="game board">
       {PATTERNS}
       {terrain}
       {sections}
