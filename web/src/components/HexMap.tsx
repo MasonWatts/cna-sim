@@ -46,12 +46,20 @@ const PATTERNS = (
         <circle cx={5} cy={7.5} r={0.4} />
       </g>
     </pattern>
-    <pattern id="patSaltMarsh" width={18} height={18} patternUnits="userSpaceOnUse">
-      <rect width={18} height={18} fill={CREAM} />
-      <ellipse cx={7} cy={9} rx={5} ry={3.5} fill="#cdd69a" opacity={0.55} />
-      <g fill="none" stroke="#d6c23f" strokeWidth={1}>
-        <path d="M0,5 Q5,2 9,6 T18,5" />
-        <path d="M0,13 Q5,16 10,11 T18,13" />
+    {/* Salt pan: cream ground webbed by a network of golden cracks into irregular cells. Edge
+        endpoints match across the tile (x0↔x36 at y=7/20/31; y0↔y36 at x=9/22/31) so it seams. */}
+    <pattern id="patSaltMarsh" width={36} height={36} patternUnits="userSpaceOnUse">
+      <rect width={36} height={36} fill="#e4dcac" />
+      <g fill="none" stroke="#e6b81e" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round">
+        <path d="M0,7 L10,11 L22,8 L36,7" />
+        <path d="M0,20 L9,18 L15,24 L26,21 L36,20" />
+        <path d="M0,31 L8,29 L18,33 L30,30 L36,31" />
+        <path d="M9,0 L10,11 L9,18 L8,29 L9,36" />
+        <path d="M22,0 L22,8 L15,24 L18,33 L22,36" />
+        <path d="M31,0 L26,21 L30,30 L31,36" />
+      </g>
+      <g fill="none" stroke="#f2cc22" strokeWidth={1} strokeLinejoin="round" strokeLinecap="round">
+        <path d="M10,11 L15,24 M26,21 L18,33 M22,8 L26,21" />
       </g>
     </pattern>
     <pattern id="patVeg" width={12} height={12} patternUnits="userSpaceOnUse">
