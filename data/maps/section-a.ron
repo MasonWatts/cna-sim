@@ -2115,6 +2115,8 @@
     // Manually added cross-section (A↔B seam) edges.
     (a: "3033", b: "B3001", kind: Track),  // (33,30)-(34,30)
     (a: "5033", b: "B5001", kind: Track),  // (33,50)-(34,50)
+    (a: "2633", b: "B2601", kind: Track),  // (33,26)-(34,26)
+    (a: "0433", b: "B0401", kind: Track),  // (33,4)-(34,4)
     (a: "0106", b: "0107", kind: Wadi),
     (a: "0106", b: "0206", kind: Wadi),
     (a: "0211", b: "0112", kind: Track),

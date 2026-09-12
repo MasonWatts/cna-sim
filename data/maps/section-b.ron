@@ -2143,6 +2143,9 @@
     "6234": (terrain: Invalid, features: []),
   },
   hexsides: [
+    // Manually added edges.
+    (a: "5110", b: "5111", kind: Track),   // (43,51)-(44,51)
+    (a: "1233", b: "C1201", kind: Track),  // (66,12)-(67,12)  [B↔C seam]
     (a: "0111", b: "0211", kind: Track),
     (a: "0114", b: "0214", kind: Track),
     (a: "0117", b: "0217", kind: Track),

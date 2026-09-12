@@ -2174,7 +2174,8 @@
     "6235": (terrain: Invalid, features: []),
   },
   hexsides: [
-    // Manually added cross-section (C↔D seam) edges.
+    // Manually added edges.
+    (a: "3330", b: "3430", kind: Track),               // (96,33)-(96,34)
     (a: "4033", b: "D4001", kind: Road),               // (99,40)-(100,40)
     (a: "3633", b: "D3601", kind: UnfinishedRailroad),  // (99,36)-(100,36)
     (a: "3633", b: "D3601", kind: Track),               // (99,36)-(100,36)
