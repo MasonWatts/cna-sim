@@ -238,12 +238,8 @@ export function App() {
         <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0", width: "max-content" }}>
           {/* Variant C is drawn inside HexMap in map coordinates (see `legend`), so it pans/zooms
               with the board and sits off-shore at the map's horizontal center. */}
-          <HexMap map={record.map} units={frames[idx] ?? []} legend={<TerrainKey label="Terrain Key (C · map inset)" />} />
+          <HexMap map={record.map} units={frames[idx] ?? []} legend={<TerrainKey />} />
         </div>
-      </div>
-      {/* Variant B: floating overlay to the left of the turn panel, collapsible */}
-      <div className="legend-float" onMouseDown={(e) => e.stopPropagation()}>
-        <TerrainKey label="Terrain Key (B · floating)" />
       </div>
 
       <div className="sidebar">
@@ -268,9 +264,6 @@ export function App() {
         <div className="panel-section">
           <h3>Action log</h3>
           <ActionLog events={record.events} current={step} onSelect={setStep} />
-        </div>
-        <div className="panel-section">
-          <TerrainKey label="Terrain Key (A · sidebar)" />
         </div>
       </div>
 

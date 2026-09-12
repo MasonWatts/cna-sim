@@ -68,8 +68,8 @@ const Row = ({ children }: { children: React.ReactNode }) => (
 
 export function TerrainKey({ label = "Terrain Key" }: { label?: string }) {
   return (
-    <details open className="terrain-key">
-      <summary className="tk-summary">{label}</summary>
+    <div className="terrain-key">
+      <div className="tk-title">{label}</div>
       {/* pattern defs (self-contained so the key renders even if the map isn't mounted) */}
       <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden>
         {PATTERNS}
@@ -104,6 +104,6 @@ export function TerrainKey({ label = "Terrain Key" }: { label?: string }) {
           ))}
         </Row>
       </div>
-    </details>
+    </div>
   );
 }
