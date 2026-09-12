@@ -75,12 +75,17 @@ function weatherGlyph(kind: string): JSX.Element {
  *  never rebuilds it — only the small units layer re-renders. */
 export const HexMap = memo(function HexMap({ map, units, weather, legend }: { map: MapView; units: UnitView[]; weather?: string[]; legend?: React.ReactNode }) {
   const { minX, minY, w, h } = useMemo(() => mapBounds(map.hexes), [map]);
-  // Legend inset in map coordinates: centered horizontally, up in the sea (high rows are north →
-  // top of the content) so it floats a bit off-shore. Sized in content units; scales with the map.
+  // Off-shore info boxes (in map coordinates, so they pan/zoom with the board): the Weather panel
+  // and, just to its right, the Terrain Key — both shifted right of centre so they clear the
+  // Section C region label at the top-centre.
+  const WPW = 250; // weather panel width
+  const WPH = 104; // weather panel height (glyph + condition name)
+  const panelX = minX + w / 2 - 40;
+  const panelY = minY + 58;
   const LW = 400;
   const LH = 360;
-  const legendX = minX + w / 2 - LW / 2;
-  const legendY = minY + 24;
+  const legendX = panelX + WPW + 24;
+  const legendY = panelY;
 
   // Static terrain layer — built once per map, reused across every step.
   const terrain = useMemo(
@@ -210,8 +215,8 @@ export const HexMap = memo(function HexMap({ map, units, weather, legend }: { ma
       return <line key={i} x1={x} y1={minY} x2={x} y2={minY + h} stroke="#8f8663" strokeWidth={1.2} strokeDasharray="6 6" opacity={0.5} />;
     });
     const letters = SECTION_CENTERS.map((c, i) => (
-      <text key={i} x={hexCenter(c, 0).x} y={minY + 26} textAnchor="middle" fontFamily="Georgia, serif" fontSize={30} fontWeight={700} fill="#8f8663" opacity={0.4} style={{ pointerEvents: "none" }}>
-        {String.fromCharCode(65 + i)}
+      <text key={i} x={hexCenter(c, 0).x} y={minY + 34} textAnchor="middle" fontFamily="Georgia, serif" fontSize={44} fontWeight={700} fill="#8f8663" opacity={0.4} style={{ pointerEvents: "none" }}>
+        {`Region ${String.fromCharCode(65 + i)}`}
       </text>
     ));
     return [...lines, ...letters];
@@ -310,15 +315,13 @@ export const HexMap = memo(function HexMap({ map, units, weather, legend }: { ma
       {/* Weather panel: one cell per section (A–E), pictorial condition. Floats in the off-map
           zone (top-left), pans/zooms with the board; the on-map A–E dividers tie cells to regions. */}
       {(() => {
-        const PW = 250;
-        const PH = 84;
-        const px = minX + 20;
-        const py = minY + 8;
-        const cellW = (PW - 16) / 5;
+        const px = panelX;
+        const py = panelY;
+        const cellW = (WPW - 16) / 5;
         return (
           <g>
-            <rect x={px} y={py} width={PW} height={PH} rx={6} fill="#efe8c6" stroke="#b7a97a" strokeWidth={1} opacity={0.96} />
-            <text x={px + PW / 2} y={py + 17} textAnchor="middle" fontFamily="Georgia, serif" fontSize={13} fontWeight={700} fill="#2f2b22">
+            <rect x={px} y={py} width={WPW} height={WPH} rx={6} fill="#efe8c6" stroke="#b7a97a" strokeWidth={1} opacity={0.96} />
+            <text x={px + WPW / 2} y={py + 17} textAnchor="middle" fontFamily="Georgia, serif" fontSize={13} fontWeight={700} fill="#2f2b22">
               Weather
             </text>
             {SECTION_CENTERS.map((_, i) => {
@@ -330,6 +333,9 @@ export const HexMap = memo(function HexMap({ map, units, weather, legend }: { ma
                     {String.fromCharCode(65 + i)}
                   </text>
                   <g transform={`translate(${cx} ${py + 58})`}>{weatherGlyph(cond)}</g>
+                  <text x={cx} y={py + 92} textAnchor="middle" fontFamily="Georgia, serif" fontSize={8.5} fill="#5b5340">
+                    {cond}
+                  </text>
                   <title>{`Section ${String.fromCharCode(65 + i)}: ${cond}`}</title>
                 </g>
               );
