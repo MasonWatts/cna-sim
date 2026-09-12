@@ -348,7 +348,11 @@ impl Map {
     /// Load a digitized map section (RON from `tools/map_editor.html`): `RRCC -> (terrain,
     /// features)`. `Invalid` cells are skipped. Returns the number of real hexes loaded.
     pub fn load_section(&mut self, ron_str: &str) -> Result<usize, MapLoadError> {
-        let data: SectionData = ron::from_str(ron_str).map_err(MapLoadError::Ron)?;
+        // IMPLICIT_SOME lets a hex write `label: "Cairo"` instead of `label: Some("Cairo")`.
+        let data: SectionData = ron::Options::default()
+            .with_default_extension(ron::extensions::Extensions::IMPLICIT_SOME)
+            .from_str(ron_str)
+            .map_err(MapLoadError::Ron)?;
         let section = data.section.chars().next().unwrap_or('A');
         let mut n = 0;
         for (id, entry) in &data.hexes {
@@ -357,7 +361,11 @@ impl Map {
             };
             let full = format!("{section}{id}");
             let hid = HexId::parse(&full).ok_or(MapLoadError::BadId(full))?;
-            self.set_hex_with_features(hid.to_hex_coord(), terrain, entry.features.clone());
+            let coord = hid.to_hex_coord();
+            self.set_hex_with_features(coord, terrain, entry.features.clone());
+            if let (Some(h), Some(label)) = (Rc::make_mut(&mut self.hexes).get_mut(&coord), &entry.label) {
+                h.label = Some(label.clone());
+            }
             n += 1;
         }
         // Edge features (§8.37 hexside terrain). An id is a bare 4-digit RRCC (this section) or a
@@ -498,6 +506,9 @@ struct HexEntry {
     terrain: LoadTerrain,
     #[serde(default)]
     features: Vec<Feature>,
+    /// Cosmetic paper-map place name (Village / Major City), for the viewer's labels.
+    #[serde(default)]
+    label: Option<String>,
 }
 
 /// Terrain tokens as exported by the editor, including `Invalid` (which is skipped when
