@@ -220,7 +220,7 @@ export const HexMap = memo(function HexMap({ map, units, legend }: { map: MapVie
       {/* Legend inset drawn in map coordinates (foreignObject) so it pans/zooms with the board. */}
       {legend && (
         <foreignObject x={legendX} y={legendY} width={LW} height={LH} style={{ overflow: "visible" }}>
-          <div className="legend-map" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="legend-map">
             {legend}
           </div>
         </foreignObject>
