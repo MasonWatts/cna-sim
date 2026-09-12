@@ -97,11 +97,11 @@ const PATTERNS = (
         <path d="M9,22 L16,6 L23,22 Z" />
         <path d="M17,22 L24,9 L30,22 Z" />
       </g>
-      {/* snow caps sized to sit on each peak's own slopes */}
+      {/* snow caps — base corners computed on each peak's (asymmetric) slopes */}
       <g fill="#e4dcb2">
-        <path d="M6,8 L8,13 L4,13 Z" />
-        <path d="M16,6 L18,12 L14,12 Z" />
-        <path d="M24,9 L26,14 L22,14 Z" />
+        <path d="M6,8 L8,12 L4.3,12 Z" />
+        <path d="M16,6 L18.2,11 L13.8,11 Z" />
+        <path d="M24,9 L26.3,14 L21.3,14 Z" />
       </g>
     </pattern>
     {/* Desert: ochre with drifting sand-dune ridges. */}
