@@ -56,13 +56,14 @@ function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y
   // segment endpoints too (i = 0..n): adjacent segments meet at a hex center, so their end ties
   // coincide there — keeping the spacing uniform across joins instead of a double gap.
   const dashed = kind === "UnfinishedRailroad";
-  const n = Math.max(2, Math.round(len / 6));
+  const TIE = 2.0; // half-length of each cross-tie (short, so it reads as a "+" on the line)
+  const n = Math.max(2, Math.round(len / 8)); // spacing > tie length → distinct plus marks
   const ties = [];
   for (let i = 0; i <= n; i++) {
     const t = i / n;
     const px = A.x + dx * t;
     const py = A.y + dy * t;
-    ties.push(<line key={i} x1={px + nx * 2.6} y1={py + ny * 2.6} x2={px - nx * 2.6} y2={py - ny * 2.6} />);
+    ties.push(<line key={i} x1={px + nx * TIE} y1={py + ny * TIE} x2={px - nx * TIE} y2={py - ny * TIE} />);
   }
   return (
     <g stroke={RAIL_BLUE} strokeWidth={1.1} strokeLinecap="round">
