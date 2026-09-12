@@ -68,9 +68,20 @@ function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y
     const py = A.y + dy * t;
     ties.push(<line key={i} x1={px + nx * TIE} y1={py + ny * TIE} x2={px - nx * TIE} y2={py - ny * TIE} strokeWidth={1.2} />);
   }
+  // Unfinished rail: identical ties, but the spine is gapped — dash sized to the tie interval
+  // (len/N) so a gap falls between each pair of ties.
+  const seg = len / N;
   return (
     <g stroke={RAIL_BLUE} strokeLinecap="round">
-      <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} strokeWidth={1.3} strokeDasharray={dashed ? "4 3" : undefined} />
+      <line
+        x1={A.x}
+        y1={A.y}
+        x2={B.x}
+        y2={B.y}
+        strokeWidth={1.3}
+        strokeLinecap={dashed ? "butt" : "round"}
+        strokeDasharray={dashed ? `${seg * 0.5} ${seg * 0.5}` : undefined}
+      />
       {ties}
     </g>
   );
