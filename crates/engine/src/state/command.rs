@@ -4863,8 +4863,8 @@ impl GameState {
         {
             return Err(CommandError::TrainingIllegal);
         }
-        // §17.32 training area.
-        if !self.is_training_area(hex) {
+        // §17.32 training area (the Commonwealth's own list — Axis areas don't qualify, §20.43).
+        if !self.is_training_area(hex, Side::Commonwealth) {
             return Err(CommandError::TrainingIllegal);
         }
         // §17.35 qualifying instruction battalion co-located.

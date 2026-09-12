@@ -178,9 +178,13 @@ pub enum Feature {
     Bir,
     /// A logistics embark/disembark facility on a coastal hex.
     Port,
-    /// §17.32/§20.43 Training Area: where green units may raise their Basic Morale (and Replacement
-    /// Points integrate). Printed on the paper map; placed on hexes in the section RON.
-    TrainingArea,
+    /// §17.32 Commonwealth Training Area: the fixed list where green CW units raise their Basic
+    /// Morale (Cairo/Helwan/Alexandria/Amiriya/Aboukir/Dekheila). Not transferable — the CW never
+    /// gains one by capturing an Axis city.
+    CwTrainingArea,
+    /// §20.43 Axis Training Area (Tripoli or any major city). Distinct from the CW list; the two are
+    /// side-locked and not interchangeable.
+    AxisTrainingArea,
 }
 
 impl Feature {

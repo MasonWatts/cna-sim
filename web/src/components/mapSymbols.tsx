@@ -146,9 +146,12 @@ export function featureGlyph(feature: string): JSX.Element | null {
     case "Bir":
     case "Village":
       return <circle r={3.5} fill={FEATURE_BLUE} />;
-    case "TrainingArea":
-      // §17.32 training-ground marker: a small target/bullseye, offset low so it clears a center
-      // Village dot on shared hexes (Cairo/Alexandria/Amiriya are also cities/villages).
+    case "CwTrainingArea":
+    case "AxisTrainingArea": {
+      // §17.32/§20.43 training-ground marker: a small target/bullseye, offset low so it clears a
+      // center Village dot on shared hexes (Cairo/Alexandria/Amiriya are also cities/villages).
+      // Side-colored: CW blue, Axis red — the two areas are not interchangeable.
+      const color = feature === "AxisTrainingArea" ? "#b5533f" : FEATURE_BLUE;
       return (
         <g transform="translate(0 9)">
           <g stroke="#ffffff" strokeWidth={2.6} fill="none" opacity={0.9}>
@@ -156,14 +159,15 @@ export function featureGlyph(feature: string): JSX.Element | null {
             <line x1={-6} y1={0} x2={6} y2={0} />
             <line x1={0} y1={-6} x2={0} y2={6} />
           </g>
-          <g stroke={FEATURE_BLUE} strokeWidth={1.1} fill="none">
+          <g stroke={color} strokeWidth={1.1} fill="none">
             <circle r={4} />
             <line x1={-6} y1={0} x2={6} y2={0} />
             <line x1={0} y1={-6} x2={0} y2={6} />
           </g>
-          <circle r={1.2} fill={FEATURE_BLUE} />
+          <circle r={1.2} fill={color} />
         </g>
       );
+    }
     case "Port": {
       // Offset toward the top of the hex (the sea side) so the anchor clears a center Village dot.
       // Drawn twice: a thicker white halo under the blue so it reads on the MajorCity block pattern.

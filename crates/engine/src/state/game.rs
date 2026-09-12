@@ -3067,12 +3067,16 @@ impl GameState {
         -(self.fort_level(hex) as i32)
     }
 
-    /// §17.32 Training area — a hex flagged `Feature::TrainingArea` on the map. Per §17.32 the
-    /// Commonwealth trains at Cairo (any city hex), Helwan, Alexandria (any city hex), Amiriya,
-    /// Aboukir, or Dekheila; §20.43 the Axis at Tripoli or any major city. These are printed on the
-    /// paper map and placed on hexes in the section RON, so the set is data-driven here.
-    pub(crate) fn is_training_area(&self, hex: HexCoord) -> bool {
-        self.map.hex(hex).is_some_and(|h| h.has_feature(Feature::TrainingArea))
+    /// §17.32/§20.43 Training area for `side` — a hex flagged with that side's training-area feature
+    /// on the map. The two lists are side-locked and not interchangeable (§20.43): the CW list
+    /// (§17.32: Cairo/Helwan/Alexandria/Amiriya/Aboukir/Dekheila) never transfers to the Axis or
+    /// vice-versa by capture. Data-driven from the section RON.
+    pub(crate) fn is_training_area(&self, hex: HexCoord, side: Side) -> bool {
+        let feat = match side {
+            Side::Commonwealth => Feature::CwTrainingArea,
+            Side::Axis => Feature::AxisTrainingArea,
+        };
+        self.map.hex(hex).is_some_and(|h| h.has_feature(feat))
     }
 
     /// Whether a unit holds at least a quarter of its assigned Max-TOE (§17.35 instruction-battalion

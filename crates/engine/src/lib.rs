@@ -903,7 +903,7 @@ mod tests {
         use crate::state::map::Feature;
         let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
         let elsewhere = HexCoord::new(0, 0);
-        g.map.set_hex_with_features(cairo, HexTerrain::Clear, vec![Feature::TrainingArea]);
+        g.map.set_hex_with_features(cairo, HexTerrain::Clear, vec![Feature::CwTrainingArea]);
         g.map.set_hex(elsewhere, HexTerrain::Clear);
 
         // A green Commonwealth recce unit at Cairo: current Basic Morale 0, trained reference +1.
@@ -958,9 +958,11 @@ mod tests {
         assert_eq!(g.unit(recce).unwrap().training_progress, 0, "§17.33 interrupted by CP expenditure");
         assert_eq!(g.unit(recce).unwrap().basic_morale, 0, "no step gained when interrupted");
 
-        // §17.32: a training area is any hex flagged Feature::TrainingArea (data-driven from the map).
-        assert!(g.is_training_area(cairo), "a TrainingArea-flagged hex is a §17.32 training area");
-        assert!(!g.is_training_area(elsewhere), "an unflagged hex is not a training area");
+        // §17.32/§20.43: training areas are side-locked. A CwTrainingArea hex is a CW training area
+        // but NOT an Axis one, and an unflagged hex is neither.
+        assert!(g.is_training_area(cairo, Side::Commonwealth), "CwTrainingArea is a §17.32 CW training area");
+        assert!(!g.is_training_area(cairo, Side::Axis), "§20.43: the CW area is not an Axis training area");
+        assert!(!g.is_training_area(elsewhere, Side::Commonwealth), "an unflagged hex is not a training area");
     }
 
     #[test]
