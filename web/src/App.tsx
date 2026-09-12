@@ -5,6 +5,7 @@ import { mapBounds } from "./hex";
 import { HexMap } from "./components/HexMap";
 import { Scrubber } from "./components/Scrubber";
 import { ActionLog } from "./components/ActionLog";
+import { TerrainKey } from "./components/TerrainKey";
 import { LEVELS, buildNodes, nodeIndexOf, type Level, type Node } from "./hierarchy";
 
 export function App() {
@@ -261,6 +262,9 @@ export function App() {
         <div className="panel-section">
           <h3>Action log</h3>
           <ActionLog events={record.events} current={step} onSelect={setStep} />
+        </div>
+        <div className="panel-section">
+          <TerrainKey />
         </div>
       </div>
 

@@ -5,7 +5,7 @@ import { hexCenter, hexPolygon, mapBounds } from "../hex";
 
 // Paper-map palette (parchment base). Solid fills for flat terrains; the rest reference an SVG
 // <pattern> (see PATTERNS) so textured terrains match the printed key.
-const CREAM = "#efe8c6";
+export const CREAM = "#efe8c6";
 const TERRAIN_FILL: Record<string, string> = {
   Clear: CREAM,
   Sea: "url(#patSea)",
@@ -19,8 +19,8 @@ const TERRAIN_FILL: Record<string, string> = {
   Swamp: "url(#patSwamp)",
   MajorCity: "url(#patCity)",
 };
-const terrainFill = (t: string) => TERRAIN_FILL[t] ?? CREAM;
-const HEX_STROKE = "#b7ad82"; // faint parchment-gray hexside, like the paper map
+export const terrainFill = (t: string) => TERRAIN_FILL[t] ?? CREAM;
+export const HEX_STROKE = "#9c9066"; // parchment-gray hexside, like the paper map
 const FEATURE_BLUE = "#3f8fc4"; // the paper legend's feature blue (Oasis palms, Port anchor, dots)
 
 const ROUTE_DARK = "#4a4644";
@@ -31,7 +31,7 @@ const EDGE_HALF = 13; // half a hex side (circumradius/2) — the shared edge's 
 
 /** An edge-terrain feature drawn ON the shared edge between adjacent hexes A and B (the segment
  *  between their two shared vertices). Escarpment/Slope hachure toward the high side (`highIsB`). */
-function edgeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y: number }, highIsB: boolean | null): JSX.Element {
+export function edgeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y: number }, highIsB: boolean | null): JSX.Element {
   const dx = B.x - A.x;
   const dy = B.y - A.y;
   const len = Math.hypot(dx, dy) || 1;
@@ -85,7 +85,7 @@ function edgeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y:
 /** A linear route (road/track/rail) drawn center-to-center across the shared edge of two adjacent
  *  hexes A and B. Roads are double lines, tracks a single dashed line, rails a line with cross-ties;
  *  the "Unfinished" variants dash the line. */
-function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y: number }): JSX.Element {
+export function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y: number }): JSX.Element {
   const dx = B.x - A.x;
   const dy = B.y - A.y;
   const len = Math.hypot(dx, dy) || 1;
@@ -146,7 +146,7 @@ function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y
 /** Point-feature glyph centered at (0,0) — the caller translates it to the hex center.
  *  Oasis (palms on a pool) and Port (anchor in a ring) mimic the paper legend; Bir and Village are
  *  a small filled dot for now (text labels to differentiate/identify come later). */
-function featureGlyph(feature: string): JSX.Element | null {
+export function featureGlyph(feature: string): JSX.Element | null {
   switch (feature) {
     case "Bir":
     case "Village":
@@ -189,7 +189,7 @@ function featureGlyph(feature: string): JSX.Element | null {
 
 // Terrain <pattern> definitions, tiled in user (map) space so they zoom with the board. Rendered
 // once in the SVG <defs>.
-const PATTERNS = (
+export const PATTERNS = (
   <defs>
     <pattern id="patGravel" width={14} height={14} patternUnits="userSpaceOnUse">
       <rect width={14} height={14} fill={CREAM} />
@@ -402,7 +402,7 @@ export const HexMap = memo(function HexMap({ map, units }: { map: MapView; units
             fontSize={11}
             fill={ROUTE_DARK}
             stroke="#efe8c6"
-            strokeWidth={2.4}
+            strokeWidth={1.4}
             paintOrder="stroke"
             style={{ pointerEvents: "none" }}
           >
