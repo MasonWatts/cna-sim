@@ -56,18 +56,19 @@ function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y
   // segment endpoints too (i = 0..n): adjacent segments meet at a hex center, so their end ties
   // coincide there — keeping the spacing uniform across joins instead of a double gap.
   const dashed = kind === "UnfinishedRailroad";
-  const TIE = 2.0; // half-length of each cross-tie (short, so it reads as a "+" on the line)
-  const n = Math.max(2, Math.round(len / 8)); // spacing > tie length → distinct plus marks
+  const TIE = 2.1; // half-length of each cross-tie (short, so it reads as a "+" on the line)
+  const n = Math.max(2, Math.round(len / 7)); // ties per segment; endpoints included → even at joins
   const ties = [];
   for (let i = 0; i <= n; i++) {
     const t = i / n;
     const px = A.x + dx * t;
     const py = A.y + dy * t;
-    ties.push(<line key={i} x1={px + nx * TIE} y1={py + ny * TIE} x2={px - nx * TIE} y2={py - ny * TIE} />);
+    ties.push(<line key={i} x1={px + nx * TIE} y1={py + ny * TIE} x2={px - nx * TIE} y2={py - ny * TIE} strokeWidth={1} />);
   }
   return (
-    <g stroke={RAIL_BLUE} strokeWidth={1.1} strokeLinecap="round">
-      <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} strokeDasharray={dashed ? "4 3" : undefined} />
+    <g stroke={RAIL_BLUE} strokeLinecap="round">
+      {/* continuous spine, a touch heavier than the ticks so the line reads through the pluses */}
+      <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} strokeWidth={1.5} strokeDasharray={dashed ? "4 3" : undefined} />
       {ties}
     </g>
   );
