@@ -242,15 +242,8 @@ code {
   box-shadow: 0 6px 20px rgba(0,0,0,0.45);
 }
 
-/* Variant C: paper-style inset pinned in the map's off-map corner */
-.legend-inset {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 10;
-  max-width: 380px;
-  max-height: 70%;
-  overflow: auto;
+/* Variant C: paper-style inset drawn in map coordinates (off-shore, horizontally centered) */
+.legend-map {
   background: #efe8c6;
   color: #3a352b;
   border: 1px solid #b7a97a;
@@ -258,5 +251,5 @@ code {
   padding: 10px 12px;
   box-shadow: 0 3px 12px rgba(0,0,0,0.35);
 }
-.legend-inset .tk-summary { color: #2f2b22; }
-.legend-inset .tk-label { color: #5b5340; }
+.legend-map .tk-summary { color: #2f2b22; }
+.legend-map .tk-label { color: #5b5340; }

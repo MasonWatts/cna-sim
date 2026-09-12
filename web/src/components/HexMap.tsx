@@ -23,8 +23,14 @@ const orgRank = (o: string) => ORG_RANK[o] ?? 0;
  *  Perf: `memo`'d so pan/zoom (which only change the parent's transform, not these props) skip it
  *  entirely, and the ~7k-polygon terrain layer is `useMemo`'d on `map` so scrubbing (units change)
  *  never rebuilds it — only the small units layer re-renders. */
-export const HexMap = memo(function HexMap({ map, units }: { map: MapView; units: UnitView[] }) {
+export const HexMap = memo(function HexMap({ map, units, legend }: { map: MapView; units: UnitView[]; legend?: React.ReactNode }) {
   const { minX, minY, w, h } = useMemo(() => mapBounds(map.hexes), [map]);
+  // Legend inset in map coordinates: centered horizontally, up in the sea (high rows are north →
+  // top of the content) so it floats a bit off-shore. Sized in content units; scales with the map.
+  const LW = 400;
+  const LH = 360;
+  const legendX = minX + w / 2 - LW / 2;
+  const legendY = minY + 24;
 
   // Static terrain layer — built once per map, reused across every step.
   const terrain = useMemo(
@@ -200,6 +206,14 @@ export const HexMap = memo(function HexMap({ map, units }: { map: MapView; units
           </g>
         );
       })}
+      {/* Legend inset drawn in map coordinates (foreignObject) so it pans/zooms with the board. */}
+      {legend && (
+        <foreignObject x={legendX} y={legendY} width={LW} height={LH} style={{ overflow: "visible" }}>
+          <div className="legend-map" onMouseDown={(e) => e.stopPropagation()}>
+            {legend}
+          </div>
+        </foreignObject>
+      )}
     </svg>
   );
 });

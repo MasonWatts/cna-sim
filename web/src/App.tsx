@@ -236,11 +236,9 @@ export function App() {
         title="Scroll to zoom · drag to pan"
       >
         <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0", width: "max-content" }}>
-          <HexMap map={record.map} units={frames[idx] ?? []} />
-        </div>
-        {/* Variant C: fixed paper-style inset pinned in the map's off-map corner (does not pan/zoom) */}
-        <div className="legend-inset" onMouseDown={(e) => e.stopPropagation()}>
-          <TerrainKey label="Terrain Key (C · map inset)" />
+          {/* Variant C is drawn inside HexMap in map coordinates (see `legend`), so it pans/zooms
+              with the board and sits off-shore at the map's horizontal center. */}
+          <HexMap map={record.map} units={frames[idx] ?? []} legend={<TerrainKey label="Terrain Key (C · map inset)" />} />
         </div>
       </div>
       {/* Variant B: floating overlay to the left of the turn panel, collapsible */}
