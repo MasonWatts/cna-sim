@@ -30,4 +30,10 @@ units: Array<UnitView>,
 /**
  * Unit ids removed (eliminated / left the map) since the previous event.
  */
-removed: Array<number>, };
+removed: Array<number>, 
+/**
+ * Per-section weather (§29.1) `[A, B, C, D, E]` — each `"Normal"`/`"Hot"`/`"Sandstorm"`/
+ * `"Rainstorm"`. **Delta**: `Some` only when it changed since the previous event (step 0
+ * carries the initial state); fold forward to render the weather at step N.
+ */
+weather: Array<string> | null, };

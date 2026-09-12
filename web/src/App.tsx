@@ -146,6 +146,18 @@ export function App() {
     return out;
   }, [record]);
 
+  // Per-section weather is a delta too; fold it forward into a full [A,B,C,D,E] array per step.
+  const weatherFrames = useMemo<string[][]>(() => {
+    if (!record) return [];
+    const out: string[][] = [];
+    let cur: string[] = ["Normal", "Normal", "Normal", "Normal", "Normal"];
+    for (const e of record.events) {
+      if (e.weather) cur = e.weather;
+      out.push(cur);
+    }
+    return out;
+  }, [record]);
+
   // Node structures for each grouping level (Month/Week/Op-Stage/Phase), for level-aware navigation.
   const nodesByLevel = useMemo<Record<Exclude<Level, "step">, Node[]>>(
     () => ({
@@ -238,7 +250,7 @@ export function App() {
         <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0", width: "max-content" }}>
           {/* Variant C is drawn inside HexMap in map coordinates (see `legend`), so it pans/zooms
               with the board and sits off-shore at the map's horizontal center. */}
-          <HexMap map={record.map} units={frames[idx] ?? []} legend={<TerrainKey />} />
+          <HexMap map={record.map} units={frames[idx] ?? []} weather={weatherFrames[idx]} legend={<TerrainKey />} />
         </div>
       </div>
 

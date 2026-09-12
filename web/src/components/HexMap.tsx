@@ -17,13 +17,63 @@ const ORG_RANK: Record<string, number> = {
 };
 const orgRank = (o: string) => ORG_RANK[o] ?? 0;
 
+// The 5 map sections span contiguous global-column bands (A=1–33, B=34–66, C=67–99, D=100–132,
+// E=133–165), the same `(col-1)/33` split the weather engine uses.
+const SECTION_BOUNDS = [33, 66, 99, 132]; // last col of A, B, C, D
+const SECTION_CENTERS = [17, 50, 83, 116, 149]; // representative mid-column of A…E
+
+/** A small pictorial weather icon (~radius 6) centered at (0,0), for the weather panel. */
+function weatherGlyph(kind: string): JSX.Element {
+  const rays = [0, 45, 90, 135, 180, 225, 270, 315].map((d, i) => {
+    const a = (d * Math.PI) / 180;
+    return (
+      <line key={i} x1={Math.cos(a) * 6} y1={Math.sin(a) * 6} x2={Math.cos(a) * 8.5} y2={Math.sin(a) * 8.5} />
+    );
+  });
+  switch (kind) {
+    case "Hot":
+      return (
+        <g>
+          <g stroke="#d9782d" strokeWidth={1.5} strokeLinecap="round">{rays}</g>
+          <circle r={5} fill="#eb9d34" stroke="#d9782d" strokeWidth={1} />
+        </g>
+      );
+    case "Sandstorm":
+      return (
+        <g stroke="#b8863a" strokeWidth={1.7} fill="none" strokeLinecap="round">
+          <path d="M-8,-4 q6,-3.5 13,0" />
+          <path d="M-9,0 q7,-3.5 15,0" />
+          <path d="M-8,4 q6,-3.5 13,0" />
+        </g>
+      );
+    case "Rainstorm":
+      return (
+        <g>
+          <path d="M-7,2 a4,4 0 0 1 3.5,-5.2 a5,5 0 0 1 9.3,1 a3.4,3.4 0 0 1 -1.2,6.8 h-10.4 a3,3 0 0 1 -1.2,-3.6 z" fill="#8b97a4" stroke="#65707c" strokeWidth={0.8} />
+          <g stroke="#4f86c6" strokeWidth={1.4} strokeLinecap="round">
+            <line x1={-4} y1={5} x2={-5.5} y2={8.5} />
+            <line x1={0} y1={5} x2={-1.5} y2={8.5} />
+            <line x1={4} y1={5} x2={2.5} y2={8.5} />
+          </g>
+        </g>
+      );
+    default: // Normal / clear
+      return (
+        <g>
+          <g stroke="#c9a227" strokeWidth={1.3} strokeLinecap="round">{rays}</g>
+          <circle r={4.5} fill="#e8c750" stroke="#c9a227" strokeWidth={0.8} />
+        </g>
+      );
+  }
+}
+
 /** The board at one step: static terrain hexes + the units currently on them. Rendered at natural
  *  content size; the parent applies a CSS transform for pan/zoom (SVG scales crisply).
  *
  *  Perf: `memo`'d so pan/zoom (which only change the parent's transform, not these props) skip it
  *  entirely, and the ~7k-polygon terrain layer is `useMemo`'d on `map` so scrubbing (units change)
  *  never rebuilds it — only the small units layer re-renders. */
-export const HexMap = memo(function HexMap({ map, units, legend }: { map: MapView; units: UnitView[]; legend?: React.ReactNode }) {
+export const HexMap = memo(function HexMap({ map, units, weather, legend }: { map: MapView; units: UnitView[]; weather?: string[]; legend?: React.ReactNode }) {
   const { minX, minY, w, h } = useMemo(() => mapBounds(map.hexes), [map]);
   // Legend inset in map coordinates: centered horizontally, up in the sea (high rows are north →
   // top of the content) so it floats a bit off-shore. Sized in content units; scales with the map.
@@ -152,6 +202,21 @@ export const HexMap = memo(function HexMap({ map, units, legend }: { map: MapVie
     [map],
   );
 
+  // Faint section boundaries + A–E letters, so the weather panel's per-section cells can be tied
+  // back to map regions (the stitched map otherwise shows no section nomenclature). Static per map.
+  const sections = useMemo(() => {
+    const lines = SECTION_BOUNDS.map((b, i) => {
+      const x = (hexCenter(b, 0).x + hexCenter(b + 1, 0).x) / 2;
+      return <line key={i} x1={x} y1={minY} x2={x} y2={minY + h} stroke="#8f8663" strokeWidth={1.2} strokeDasharray="6 6" opacity={0.5} />;
+    });
+    const letters = SECTION_CENTERS.map((c, i) => (
+      <text key={i} x={hexCenter(c, 0).x} y={minY + 26} textAnchor="middle" fontFamily="Georgia, serif" fontSize={30} fontWeight={700} fill="#8f8663" opacity={0.4} style={{ pointerEvents: "none" }}>
+        {String.fromCharCode(65 + i)}
+      </text>
+    ));
+    return [...lines, ...letters];
+  }, [minX, minY, w, h]);
+
   // Group units by hex so we can fan out stacks.
   const byHex = new Map<string, UnitView[]>();
   for (const u of units) {
@@ -164,6 +229,7 @@ export const HexMap = memo(function HexMap({ map, units, legend }: { map: MapVie
     <svg width={w} height={h} viewBox={`${minX} ${minY} ${w} ${h}`} style={{ display: "block" }} role="img" aria-label="game board">
       {PATTERNS}
       {terrain}
+      {sections}
       {edges}
       {routes}
       {featureGlyphs}
@@ -241,6 +307,36 @@ export const HexMap = memo(function HexMap({ map, units, legend }: { map: MapVie
           </g>
         );
       })}
+      {/* Weather panel: one cell per section (A–E), pictorial condition. Floats in the off-map
+          zone (top-left), pans/zooms with the board; the on-map A–E dividers tie cells to regions. */}
+      {(() => {
+        const PW = 250;
+        const PH = 84;
+        const px = minX + 20;
+        const py = minY + 8;
+        const cellW = (PW - 16) / 5;
+        return (
+          <g>
+            <rect x={px} y={py} width={PW} height={PH} rx={6} fill="#efe8c6" stroke="#b7a97a" strokeWidth={1} opacity={0.96} />
+            <text x={px + PW / 2} y={py + 17} textAnchor="middle" fontFamily="Georgia, serif" fontSize={13} fontWeight={700} fill="#2f2b22">
+              Weather
+            </text>
+            {SECTION_CENTERS.map((_, i) => {
+              const cx = px + 8 + cellW * (i + 0.5);
+              const cond = weather?.[i] ?? "Normal";
+              return (
+                <g key={i}>
+                  <text x={cx} y={py + 36} textAnchor="middle" fontFamily="Georgia, serif" fontSize={12} fontWeight={700} fill="#5b5340">
+                    {String.fromCharCode(65 + i)}
+                  </text>
+                  <g transform={`translate(${cx} ${py + 58})`}>{weatherGlyph(cond)}</g>
+                  <title>{`Section ${String.fromCharCode(65 + i)}: ${cond}`}</title>
+                </g>
+              );
+            })}
+          </g>
+        );
+      })()}
       {/* Legend inset drawn in map coordinates (foreignObject) so it pans/zooms with the board. */}
       {legend && (
         <foreignObject x={legendX} y={legendY} width={LW} height={LH} style={{ overflow: "visible" }}>

@@ -84,6 +84,11 @@ pub struct Event {
     pub units: Vec<UnitView>,
     /// Unit ids removed (eliminated / left the map) since the previous event.
     pub removed: Vec<u32>,
+    /// Per-section weather (§29.1) `[A, B, C, D, E]` — each `"Normal"`/`"Hot"`/`"Sandstorm"`/
+    /// `"Rainstorm"`. **Delta**: `Some` only when it changed since the previous event (step 0
+    /// carries the initial state); fold forward to render the weather at step N.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weather: Option<Vec<String>>,
 }
 
 #[derive(Serialize, TS, Clone, PartialEq)]
@@ -193,8 +198,17 @@ fn unit_views(g: &GameState) -> Vec<UnitView> {
     v
 }
 
+/// Per-section weather `[A, B, C, D, E]` (§29.1), read via the public `weather_at` on one column
+/// of each section.
+fn weather_vec(game: &GameState) -> Vec<String> {
+    (0..5)
+        .map(|i| format!("{:?}", game.weather_at(cna_engine::state::map::HexCoord::new(i * 33 + 1, 1))))
+        .collect()
+}
+
 /// Build an event as a **delta** vs `prev` (the units as of the last event): only changed units go
-/// in `units`, removed ids in `removed`. `prev` is updated to the current full set.
+/// in `units`, removed ids in `removed`. `prev` is updated to the current full set. Weather is a
+/// delta too — emitted only when it differs from `prev_weather` (which is then updated).
 fn delta_frame(
     game: &GameState,
     step: u32,
@@ -203,6 +217,7 @@ fn delta_frame(
     outcome: String,
     rules: Vec<String>,
     prev: &mut std::collections::HashMap<u32, UnitView>,
+    prev_weather: &mut Vec<String>,
 ) -> Event {
     let cur = unit_views(game);
     let cur_ids: std::collections::HashSet<u32> = cur.iter().map(|u| u.id).collect();
@@ -210,6 +225,13 @@ fn delta_frame(
     let mut removed: Vec<u32> = prev.keys().copied().filter(|id| !cur_ids.contains(id)).collect();
     removed.sort_unstable();
     *prev = cur.into_iter().map(|u| (u.id, u)).collect();
+    let w = weather_vec(game);
+    let weather = if w != *prev_weather {
+        *prev_weather = w.clone();
+        Some(w)
+    } else {
+        None
+    };
     Event {
         step,
         game_turn: game.game_turn,
@@ -221,6 +243,7 @@ fn delta_frame(
         rules,
         units,
         removed,
+        weather,
     }
 }
 
@@ -239,7 +262,8 @@ pub fn record_game(
 ) -> GameRecord {
     let map = map_view(&game);
     let mut prev: std::collections::HashMap<u32, UnitView> = std::collections::HashMap::new();
-    let mut events = vec![delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev)];
+    let mut prev_weather: Vec<String> = Vec::new();
+    let mut events = vec![delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev, &mut prev_weather)];
     let mut step = 0u32;
     let mut guard = 0u64;
     while game.game_turn <= max_turns {
@@ -269,7 +293,7 @@ pub fn record_game(
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         if let Ok(outcome) = game.apply(cmd) {
                             step += 1;
-                            events.push(delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev));
+                            events.push(delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather));
                             progress = true;
                         }
                         acted += 1;
@@ -327,7 +351,8 @@ pub fn record_game_streaming(
     writeln!(out, "{}", serde_json::to_string(&header)?)?;
 
     let mut prev: std::collections::HashMap<u32, UnitView> = std::collections::HashMap::new();
-    let start = delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev);
+    let mut prev_weather: Vec<String> = Vec::new();
+    let start = delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev, &mut prev_weather);
     writeln!(out, "{}", serde_json::to_string(&start)?)?;
 
     let mut step = 0u32;
@@ -360,7 +385,7 @@ pub fn record_game_streaming(
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         if let Ok(outcome) = game.apply(cmd) {
                             step += 1;
-                            let ev = delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev);
+                            let ev = delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather);
                             writeln!(out, "{}", serde_json::to_string(&ev)?)?;
                             progress = true;
                         }
