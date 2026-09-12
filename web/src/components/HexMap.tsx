@@ -133,7 +133,7 @@ export const HexMap = memo(function HexMap({ map, units, legend }: { map: MapVie
             <text
               key={`lbl-${hex.col},${hex.row}`}
               x={c.x}
-              y={c.y + 4}
+              y={c.y - 18}
               textAnchor="middle"
               fontFamily="Georgia, 'Times New Roman', serif"
               fontSize={10.5}
