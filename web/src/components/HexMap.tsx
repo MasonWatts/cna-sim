@@ -21,6 +21,42 @@ const TERRAIN_FILL: Record<string, string> = {
 };
 const terrainFill = (t: string) => TERRAIN_FILL[t] ?? CREAM;
 const HEX_STROKE = "#b7ad82"; // faint parchment-gray hexside, like the paper map
+const FEATURE_BLUE = "#3f8fc4"; // the paper legend's feature blue (Oasis palms, Port anchor, dots)
+
+/** Point-feature glyph centered at (0,0) — the caller translates it to the hex center.
+ *  Oasis (palms on a pool) and Port (anchor in a ring) mimic the paper legend; Bir and Village are
+ *  a small filled dot for now (text labels to differentiate/identify come later). */
+function featureGlyph(feature: string): JSX.Element | null {
+  switch (feature) {
+    case "Bir":
+    case "Village":
+      return <circle r={3.5} fill={FEATURE_BLUE} />;
+    case "Port":
+      return (
+        <g stroke={FEATURE_BLUE} strokeWidth={1.2} fill="none" strokeLinecap="round">
+          <circle r={8} strokeWidth={1.3} />
+          <circle cx={0} cy={-5} r={1.3} />
+          <line x1={0} y1={-3.6} x2={0} y2={4.6} />
+          <line x1={-3} y1={-1.6} x2={3} y2={-1.6} />
+          <path d="M-4,2 Q0,6.6 4,2" />
+        </g>
+      );
+    case "Oasis":
+      return (
+        <>
+          <ellipse cx={0} cy={6} rx={8} ry={2.2} fill={FEATURE_BLUE} opacity={0.5} />
+          <g stroke={FEATURE_BLUE} strokeWidth={1.2} fill="none" strokeLinecap="round">
+            <path d="M-3,6 Q-4,0 -3,-5" />
+            <path d="M-3,-5 L-7,-7 M-3,-5 L-6,-3 M-3,-5 L1,-7 M-3,-5 L0,-3" />
+            <path d="M4,6 Q3,-1 4,-7" />
+            <path d="M4,-7 L0,-9 M4,-7 L1,-5 M4,-7 L8,-9 M4,-7 L7,-5" />
+          </g>
+        </>
+      );
+    default:
+      return null;
+  }
+}
 
 // Terrain <pattern> definitions, tiled in user (map) space so they zoom with the board. Rendered
 // once in the SVG <defs>.
@@ -172,6 +208,24 @@ export const HexMap = memo(function HexMap({ map, units }: { map: MapView; units
     [map],
   );
 
+  // Static point-feature glyphs (Oasis/Village/Bir/Port) — built once per map like the terrain.
+  const featureGlyphs = useMemo(
+    () =>
+      map.hexes.flatMap((hex) =>
+        (hex.features ?? []).map((f) => {
+          const g = featureGlyph(f);
+          if (!g) return null;
+          const c = hexCenter(hex.col, hex.row);
+          return (
+            <g key={`${hex.col},${hex.row},${f}`} transform={`translate(${c.x} ${c.y})`}>
+              {g}
+            </g>
+          );
+        }),
+      ),
+    [map],
+  );
+
   // Group units by hex so we can fan out stacks.
   const byHex = new Map<string, UnitView[]>();
   for (const u of units) {
@@ -184,6 +238,7 @@ export const HexMap = memo(function HexMap({ map, units }: { map: MapView; units
     <svg width={w} height={h} viewBox={`${minX} ${minY} ${w} ${h}`} style={{ display: "block" }} role="img" aria-label="game board">
       {PATTERNS}
       {terrain}
+      {featureGlyphs}
       {/* units: one "top" counter per hex with a +N badge for the rest of the stack */}
       {[...byHex.entries()].map(([key, stack]) => {
         const [col, row] = key.split(",").map(Number);

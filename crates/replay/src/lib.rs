@@ -40,6 +40,9 @@ pub struct HexView {
     pub col: i16,
     pub row: i16,
     pub terrain: String,
+    /// Static point features on the hex (Oasis / Village / Bir / Port), for the viewer to glyph.
+    #[serde(default)]
+    pub features: Vec<String>,
 }
 
 /// One recorded step: the state *after* an accepted command (or the initial frame).
@@ -112,6 +115,11 @@ fn map_view(g: &GameState) -> MapView {
             col: c.col,
             row: c.row,
             terrain: g.map.terrain(c).map(|t| format!("{t:?}")).unwrap_or_default(),
+            features: g
+                .map
+                .hex(c)
+                .map(|h| h.features.iter().map(|f| format!("{f:?}")).collect())
+                .unwrap_or_default(),
         })
         .collect();
     hexes.sort_by_key(|h| (h.col, h.row));
