@@ -32,8 +32,9 @@ function featureGlyph(feature: string): JSX.Element | null {
     case "Village":
       return <circle r={3.5} fill={FEATURE_BLUE} />;
     case "Port":
+      // Offset toward the top of the hex (the sea side) so the anchor clears a center Village dot.
       return (
-        <g stroke={FEATURE_BLUE} strokeWidth={1.2} fill="none" strokeLinecap="round">
+        <g transform="translate(0 -14)" stroke={FEATURE_BLUE} strokeWidth={1.2} fill="none" strokeLinecap="round">
           <circle r={8} strokeWidth={1.3} />
           <circle cx={0} cy={-5} r={1.3} />
           <line x1={0} y1={-3.6} x2={0} y2={4.6} />
