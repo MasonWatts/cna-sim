@@ -83,12 +83,18 @@ export function TerrainKey({ label = "Terrain Key" }: { label?: string }) {
               {hexSwatch(terrainFill(k))}
             </Cell>
           ))}
-          {FEATURES.map(([k, lbl]) => (
-            <Cell key={k} label={lbl}>
-              {hexSwatch(CREAM)}
-              <g transform={`translate(${CX} ${CY})`}>{featureGlyph(k)}</g>
-            </Cell>
-          ))}
+          {FEATURES.map(([k, lbl]) => {
+            // Port/training glyphs carry a large map-hex offset (anchor −14, soldier +20) tuned for
+            // the full board hex; in the smaller legend swatch that overshoots, so pull them back
+            // toward center here (port down, training up a hair).
+            const nudge = k === "Port" ? 6 : k.endsWith("TrainingArea") ? -5 : 0;
+            return (
+              <Cell key={k} label={lbl}>
+                {hexSwatch(CREAM)}
+                <g transform={`translate(${CX} ${CY + nudge})`}>{featureGlyph(k)}</g>
+              </Cell>
+            );
+          })}
         </Row>
         <Row>
           {ROUTES.map(([k, lbl]) => (
