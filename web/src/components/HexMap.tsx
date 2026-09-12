@@ -194,6 +194,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, legend }: { ma
               textAnchor="middle"
               fontFamily="Courier New, monospace"
               fontSize={10.5}
+              fontWeight={700}
               fontStyle="italic"
               fill="#7a6a45"
               stroke="#efe8c6"
