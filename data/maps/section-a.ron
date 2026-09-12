@@ -1626,7 +1626,7 @@
     "4824": (terrain: Invalid, features: []),
     "4825": (terrain: Invalid, features: []),
     "4826": (terrain: Sea, features: []),
-    "4827": (terrain: MajorCity, features: [Port], label: "Benghazi"),
+    "4827": (terrain: MajorCity, features: [Port, AxisTrainingArea], label: "Benghazi"),
     "4828": (terrain: Clear, features: []),
     "4829": (terrain: Clear, features: [Village], label: "Benina"),
     "4830": (terrain: Rough, features: [Village], label: "Er Regina"),
