@@ -91,16 +91,17 @@ const PATTERNS = (
         ~3 larger mountains per tile. */}
     <pattern id="patMountain" width={30} height={22} patternUnits="userSpaceOnUse">
       <rect width={30} height={22} fill="#9c8a45" />
+      {/* three peaks fully contained in the tile (bases on the baseline so tiles seam cleanly) */}
       <g fill="#6f6330">
-        <path d="M-2,22 L6,3 L14,22 Z" />
-        <path d="M10,22 L18,1 L26,22 Z" />
-        <path d="M22,22 L30,5 L38,22 Z" />
+        <path d="M0,22 L6,4 L12,22 Z" />
+        <path d="M10,22 L16,2 L22,22 Z" />
+        <path d="M18,22 L24,5 L30,22 Z" />
       </g>
-      {/* snow-cap highlights on the peaks */}
+      {/* snow caps sized to sit on each peak's own slopes */}
       <g fill="#e4dcb2">
-        <path d="M6,3 L9,9 L3,9 Z" />
-        <path d="M18,1 L21.5,8 L14.5,8 Z" />
-        <path d="M30,5 L33,11 L27,11 Z" />
+        <path d="M6,4 L8,10 L4,10 Z" />
+        <path d="M16,2 L18,9 L14,9 Z" />
+        <path d="M24,5 L26,11 L22,11 Z" />
       </g>
     </pattern>
     {/* Desert: ochre with drifting sand-dune ridges. */}
