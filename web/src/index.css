@@ -221,3 +221,42 @@ code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
 }
+
+/* ---- Terrain Key (comparison variants) ---- */
+.terrain-key .tk-summary { cursor: pointer; font-weight: 600; }
+.terrain-key .tk-label { font-size: 10px; line-height: 1.1; color: var(--muted); text-align: center; margin-top: 1px; }
+
+/* Variant B: floating overlay near the turn panel (bottom-left), dark card */
+.legend-float {
+  position: fixed;
+  left: 12px;
+  bottom: 72px;
+  z-index: 30;
+  max-width: 380px;
+  max-height: 60vh;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+}
+
+/* Variant C: paper-style inset pinned in the map's off-map corner */
+.legend-inset {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  max-width: 380px;
+  max-height: 70%;
+  overflow: auto;
+  background: #efe8c6;
+  color: #3a352b;
+  border: 1px solid #b7a97a;
+  border-radius: 6px;
+  padding: 10px 12px;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.35);
+}
+.legend-inset .tk-summary { color: #2f2b22; }
+.legend-inset .tk-label { color: #5b5340; }

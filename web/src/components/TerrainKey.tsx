@@ -1,4 +1,4 @@
-import { CREAM, HEX_STROKE, PATTERNS, edgeGlyph, featureGlyph, routeGlyph, terrainFill } from "./HexMap";
+import { CREAM, HEX_STROKE, PATTERNS, edgeGlyph, featureGlyph, routeGlyph, terrainFill } from "./mapSymbols";
 import { hexPolygon } from "../hex";
 
 // A cosmetic legend mirroring the paper map's TERRAIN KEY, but drawn with our own patterns/glyphs.
@@ -16,7 +16,7 @@ function Cell({ label, children }: { label: string; children: React.ReactNode })
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
         {children}
       </svg>
-      <span style={{ fontSize: 10, lineHeight: 1.1, color: "var(--muted)", textAlign: "center", marginTop: 1 }}>{label}</span>
+      <span className="tk-label">{label}</span>
     </div>
   );
 }
@@ -66,10 +66,10 @@ const Row = ({ children }: { children: React.ReactNode }) => (
   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{children}</div>
 );
 
-export function TerrainKey() {
+export function TerrainKey({ label = "Terrain Key" }: { label?: string }) {
   return (
-    <details open>
-      <summary style={{ cursor: "pointer", fontWeight: 600 }}>Terrain Key</summary>
+    <details open className="terrain-key">
+      <summary className="tk-summary">{label}</summary>
       {/* pattern defs (self-contained so the key renders even if the map isn't mounted) */}
       <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden>
         {PATTERNS}
