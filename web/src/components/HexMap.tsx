@@ -81,6 +81,7 @@ function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y
         strokeWidth={1.3}
         strokeLinecap={dashed ? "butt" : "round"}
         strokeDasharray={dashed ? `${seg * 0.5} ${seg * 0.5}` : undefined}
+        strokeDashoffset={dashed ? seg * 0.25 : undefined}
       />
       {ties}
     </g>
