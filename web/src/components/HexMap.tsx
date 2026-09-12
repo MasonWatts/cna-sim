@@ -177,9 +177,10 @@ export const HexMap = memo(function HexMap({ map, units, weather, legend }: { ma
               textAnchor="middle"
               fontFamily="Courier New, monospace"
               fontSize={11}
+              fontWeight={700}
               fill={ROUTE_DARK}
               stroke="#efe8c6"
-              strokeWidth={1.4}
+              strokeWidth={1.8}
               paintOrder="stroke"
               style={{ pointerEvents: "none" }}
             >
