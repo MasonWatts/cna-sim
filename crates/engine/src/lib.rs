@@ -5884,6 +5884,17 @@ mod tests {
         g.expend_water(&none);
         assert_eq!(g.unit(c).unwrap().stages_without_water, 2);
         assert_eq!(g.unit(c).unwrap().total_toe(), 3);
+
+        // §52.41 charges the 1-Water requirement to *infantry battalions/companies* only. An HQ is
+        // `Organic` but not infantry (like the §51.13 Stores special-case), so on a dry hex it is
+        // never deprived and never takes §52.53 attrition — it keeps its TOE indefinitely.
+        let hq = g.spawn_unit(Nationality::Commonwealth, "a", "hq", Composition::Organic { current_toe: 1 });
+        g.unit_mut(hq).unwrap().location = Some(UnitLocation::OnMap(dry));
+        assert_eq!(g.unit_water_requirement(hq, false), 0, "HQ owes no water (§52.41)");
+        g.expend_water(&none);
+        g.expend_water(&none);
+        assert_eq!(g.unit(hq).unwrap().stages_without_water, 0, "HQ never goes deprived");
+        assert_eq!(g.unit(hq).unwrap().total_toe(), 1, "HQ keeps its TOE (no §52.53 attrition)");
     }
 
     #[test]

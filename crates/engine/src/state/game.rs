@@ -1559,11 +1559,29 @@ impl GameState {
     /// but only if it used any CPA this stage (`acted`). Hot-weather surcharge (§52.43/§29.3)
     /// is deferred.
     pub fn unit_water_requirement(&self, id: UnitId, acted: bool) -> u32 {
-        match self.units.get(&id).map(|u| &u.composition) {
-            Some(Composition::Organic { .. }) => 1,
-            Some(Composition::Weapons { .. }) if acted => {
-                self.units.get(&id).map_or(0, |u| u.total_toe())
+        let Some(u) = self.units.get(&id) else {
+            return 0;
+        };
+        match &u.composition {
+            // §52.41: the flat 1 Water Point applies to an *infantry battalion or company*.
+            // HQs and Engineers are also `Organic` but are neither, so they owe no water (they
+            // are likewise special-cased for Stores in `unit_stores_requirement`, §51.13). A
+            // non-infantry Organic unit is thus never "deprived" and never takes §52.53 attrition.
+            Composition::Organic { .. } => {
+                let ut = self
+                    .reference
+                    .unit_characteristics
+                    .get(&u.nationality)
+                    .and_then(|m| m.get(&u.id_code))
+                    .map(|uc| uc.unit_type.as_str())
+                    .unwrap_or("");
+                if ut.contains("Headquarters") || ut.contains("Engineer") {
+                    0
+                } else {
+                    1
+                }
             }
+            Composition::Weapons { .. } if acted => u.total_toe(),
             _ => 0,
         }
     }

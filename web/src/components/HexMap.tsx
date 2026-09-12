@@ -26,6 +26,61 @@ const FEATURE_BLUE = "#3f8fc4"; // the paper legend's feature blue (Oasis palms,
 const ROUTE_DARK = "#4a4644";
 const RAIL_BLUE = "#4a9ad0";
 const ROUTE_KINDS = new Set(["Road", "UnfinishedRoad", "Track", "Railroad", "UnfinishedRailroad"]);
+const EDGE_KINDS = new Set(["MajorRiver", "MinorRiver", "Wadi", "Ridge", "Escarpment", "Slope"]);
+const EDGE_HALF = 13; // half a hex side (circumradius/2) — the shared edge's half-length
+
+/** An edge-terrain feature drawn ON the shared edge between adjacent hexes A and B (the segment
+ *  between their two shared vertices). Escarpment/Slope hachure toward the high side (`highIsB`). */
+function edgeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y: number }, highIsB: boolean | null): JSX.Element {
+  const dx = B.x - A.x;
+  const dy = B.y - A.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len; // along the center line (toward B)
+  const uy = dy / len;
+  const ex = -uy; // along the edge (perpendicular to center line)
+  const ey = ux;
+  const mx = (A.x + B.x) / 2;
+  const my = (A.y + B.y) / 2;
+  const p1 = { x: mx + ex * EDGE_HALF, y: my + ey * EDGE_HALF };
+  const p2 = { x: mx - ex * EDGE_HALF, y: my - ey * EDGE_HALF };
+  const edge = (stroke: string, w: number, opacity = 1) => (
+    <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={stroke} strokeWidth={w} strokeLinecap="round" opacity={opacity} />
+  );
+
+  switch (kind) {
+    case "MajorRiver":
+      return edge("#4a9ed6", 2.6);
+    case "MinorRiver":
+      return edge("#7bbfe6", 1.5);
+    case "Wadi":
+      return edge("#6fae5a", 2.8, 0.75);
+    case "Ridge":
+      return edge("#8a6f3a", 2.2);
+    case "Escarpment":
+    case "Slope": {
+      const esc = kind === "Escarpment";
+      const color = esc ? "#6a6a6a" : "#9a8a5a";
+      // Hachures point from the edge toward the low hex (down-slope, away from the high side).
+      const sign = highIsB === false ? 1 : -1; // toward the low hex (opposite the high side)
+      const L = esc ? 5 : 3.5;
+      const hx = ux * sign * L;
+      const hy = uy * sign * L;
+      const ticks = [0.16, 0.38, 0.62, 0.84].map((t, i) => {
+        const bx = p1.x + (p2.x - p1.x) * t;
+        const by = p1.y + (p2.y - p1.y) * t;
+        return <line key={i} x1={bx} y1={by} x2={bx + hx} y2={by + hy} stroke={color} strokeWidth={esc ? 1 : 0.8} strokeLinecap="round" />;
+      });
+      return (
+        <g>
+          {edge(color, esc ? 1.6 : 1.3)}
+          {ticks}
+        </g>
+      );
+    }
+    default:
+      return edge("#888", 1);
+  }
+}
 
 /** A linear route (road/track/rail) drawn center-to-center across the shared edge of two adjacent
  *  hexes A and B. Roads are double lines, tracks a single dashed line, rails a line with cross-ties;
@@ -282,6 +337,21 @@ export const HexMap = memo(function HexMap({ map, units }: { map: MapView; units
     [map],
   );
 
+  // Edge-terrain features (rivers/wadi/ridge/escarpment/slope) drawn on the shared edge — built
+  // once per map, under the routes so a road/rail crossing draws on top.
+  const edges = useMemo(
+    () =>
+      (map.hexsides ?? [])
+        .filter((hs) => EDGE_KINDS.has(hs.kind))
+        .map((hs, i) => {
+          const A = hexCenter(hs.a[0], hs.a[1]);
+          const B = hexCenter(hs.b[0], hs.b[1]);
+          const highIsB = hs.high ? hs.high[0] === hs.b[0] && hs.high[1] === hs.b[1] : null;
+          return <g key={i}>{edgeGlyph(hs.kind, A, B, highIsB)}</g>;
+        }),
+    [map],
+  );
+
   // Linear routes (road/track/rail) — built once per map.
   const routes = useMemo(
     () =>
@@ -325,6 +395,7 @@ export const HexMap = memo(function HexMap({ map, units }: { map: MapView; units
     <svg width={w} height={h} viewBox={`${minX} ${minY} ${w} ${h}`} style={{ display: "block" }} role="img" aria-label="game board">
       {PATTERNS}
       {terrain}
+      {edges}
       {routes}
       {featureGlyphs}
       {/* units: one "top" counter per hex with a +N badge for the rest of the stack */}
