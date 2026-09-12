@@ -98,31 +98,55 @@ export const HexMap = memo(function HexMap({ map, units, legend }: { map: MapVie
     [map],
   );
 
-  // Cosmetic place-name labels (paper-map style): a serif name above the hex. Birs show a generic
-  // "Bir"; Villages/Major Cities show their transcribed `label` when present. Built once per map.
+  // Cosmetic map labels. Two styles:
+  //  • Settlement (Major City / Village / Bir): upright serif place-name above the hex.
+  //  • POI (a labelled hex that is none of those — regions, oases, tracks, the Nile): italic,
+  //    muted brown, centered on the hex, letter-spaced so it reads as an area/feature annotation.
+  // Built once per map.
   const labels = useMemo(
     () =>
       map.hexes.flatMap((hex) => {
-        const isBir = (hex.features ?? []).includes("Bir");
+        const feats = hex.features ?? [];
+        const isBir = feats.includes("Bir");
         const text = isBir ? "Bir" : hex.label;
         if (!text) return [];
         const c = hexCenter(hex.col, hex.row);
+        const settlement = hex.terrain === "MajorCity" || feats.includes("Village") || isBir;
         return [
-          <text
-            key={`lbl-${hex.col},${hex.row}`}
-            x={c.x}
-            y={c.y - 18}
-            textAnchor="middle"
-            fontFamily="Georgia, 'Times New Roman', serif"
-            fontSize={11}
-            fill={ROUTE_DARK}
-            stroke="#efe8c6"
-            strokeWidth={1.4}
-            paintOrder="stroke"
-            style={{ pointerEvents: "none" }}
-          >
-            {text}
-          </text>,
+          settlement ? (
+            <text
+              key={`lbl-${hex.col},${hex.row}`}
+              x={c.x}
+              y={c.y - 18}
+              textAnchor="middle"
+              fontFamily="Georgia, 'Times New Roman', serif"
+              fontSize={11}
+              fill={ROUTE_DARK}
+              stroke="#efe8c6"
+              strokeWidth={1.4}
+              paintOrder="stroke"
+              style={{ pointerEvents: "none" }}
+            >
+              {text}
+            </text>
+          ) : (
+            <text
+              key={`lbl-${hex.col},${hex.row}`}
+              x={c.x}
+              y={c.y + 4}
+              textAnchor="middle"
+              fontFamily="Georgia, 'Times New Roman', serif"
+              fontSize={10.5}
+              fontStyle="italic"
+              fill="#7a6a45"
+              stroke="#efe8c6"
+              strokeWidth={2.2}
+              paintOrder="stroke"
+              style={{ pointerEvents: "none", letterSpacing: "0.5px" }}
+            >
+              {text}
+            </text>
+          ),
         ];
       }),
     [map],
