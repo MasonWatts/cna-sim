@@ -23,6 +23,53 @@ const terrainFill = (t: string) => TERRAIN_FILL[t] ?? CREAM;
 const HEX_STROKE = "#b7ad82"; // faint parchment-gray hexside, like the paper map
 const FEATURE_BLUE = "#3f8fc4"; // the paper legend's feature blue (Oasis palms, Port anchor, dots)
 
+const ROUTE_DARK = "#4a4644";
+const RAIL_BLUE = "#4a9ad0";
+const ROUTE_KINDS = new Set(["Road", "UnfinishedRoad", "Track", "Railroad", "UnfinishedRailroad"]);
+
+/** A linear route (road/track/rail) drawn center-to-center across the shared edge of two adjacent
+ *  hexes A and B. Roads are double lines, tracks a single dashed line, rails a line with cross-ties;
+ *  the "Unfinished" variants dash the line. */
+function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y: number }): JSX.Element {
+  const dx = B.x - A.x;
+  const dy = B.y - A.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len; // unit perpendicular
+  const ny = dx / len;
+
+  if (kind === "Track") {
+    return (
+      <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke={ROUTE_DARK} strokeWidth={1.1} strokeLinecap="round" strokeDasharray="3 2.5" />
+    );
+  }
+  if (kind === "Road" || kind === "UnfinishedRoad") {
+    const o = 1.4;
+    const dash = kind === "UnfinishedRoad" ? "3 2" : undefined;
+    return (
+      <g stroke={ROUTE_DARK} strokeWidth={1.1} strokeDasharray={dash}>
+        <line x1={A.x + nx * o} y1={A.y + ny * o} x2={B.x + nx * o} y2={B.y + ny * o} />
+        <line x1={A.x - nx * o} y1={A.y - ny * o} x2={B.x - nx * o} y2={B.y - ny * o} />
+      </g>
+    );
+  }
+  // Railroad / UnfinishedRailroad: a line with perpendicular cross-ties.
+  const dashed = kind === "UnfinishedRailroad";
+  const n = Math.max(2, Math.round(len / 6));
+  const ties = [];
+  for (let i = 1; i < n; i++) {
+    const t = i / n;
+    const px = A.x + dx * t;
+    const py = A.y + dy * t;
+    ties.push(<line key={i} x1={px + nx * 2.6} y1={py + ny * 2.6} x2={px - nx * 2.6} y2={py - ny * 2.6} />);
+  }
+  return (
+    <g stroke={RAIL_BLUE} strokeWidth={1.1} strokeLinecap="round">
+      <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} strokeDasharray={dashed ? "4 3" : undefined} />
+      {ties}
+    </g>
+  );
+}
+
 /** Point-feature glyph centered at (0,0) — the caller translates it to the hex center.
  *  Oasis (palms on a pool) and Port (anchor in a ring) mimic the paper legend; Bir and Village are
  *  a small filled dot for now (text labels to differentiate/identify come later). */
@@ -217,6 +264,19 @@ export const HexMap = memo(function HexMap({ map, units }: { map: MapView; units
     [map],
   );
 
+  // Linear routes (road/track/rail) — built once per map.
+  const routes = useMemo(
+    () =>
+      (map.hexsides ?? [])
+        .filter((hs) => ROUTE_KINDS.has(hs.kind))
+        .map((hs, i) => {
+          const A = hexCenter(hs.a[0], hs.a[1]);
+          const B = hexCenter(hs.b[0], hs.b[1]);
+          return <g key={i}>{routeGlyph(hs.kind, A, B)}</g>;
+        }),
+    [map],
+  );
+
   // Static point-feature glyphs (Oasis/Village/Bir/Port) — built once per map like the terrain.
   const featureGlyphs = useMemo(
     () =>
@@ -247,6 +307,7 @@ export const HexMap = memo(function HexMap({ map, units }: { map: MapView; units
     <svg width={w} height={h} viewBox={`${minX} ${minY} ${w} ${h}`} style={{ display: "block" }} role="img" aria-label="game board">
       {PATTERNS}
       {terrain}
+      {routes}
       {featureGlyphs}
       {/* units: one "top" counter per hex with a +N badge for the rest of the stack */}
       {[...byHex.entries()].map(([key, stack]) => {

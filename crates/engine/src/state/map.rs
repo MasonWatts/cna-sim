@@ -425,6 +425,12 @@ impl Map {
     }
 
     /// All hexside features on the edge between two hexes (empty if none).
+    /// Every hexside in the map as `(a, b, &Hexside)` (edge endpoints normalized). For the viewer /
+    /// tools that render or scan all edge features.
+    pub fn all_hexsides(&self) -> impl Iterator<Item = (HexCoord, HexCoord, &Hexside)> {
+        self.hexsides.iter().flat_map(|(&(a, b), v)| v.iter().map(move |h| (a, b, h)))
+    }
+
     pub fn hexsides_on(&self, a: HexCoord, b: HexCoord) -> &[Hexside] {
         self.hexsides.get(&edge_key(a, b)).map(|v| v.as_slice()).unwrap_or(&[])
     }

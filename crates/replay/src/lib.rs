@@ -32,6 +32,20 @@ pub struct GameRecord {
 #[ts(export)]
 pub struct MapView {
     pub hexes: Vec<HexView>,
+    /// Edge features (Road/Track/Railroad/River/Wadi/Ridge/Escarpment/Slope, …) as endpoint pairs.
+    #[serde(default)]
+    pub hexsides: Vec<HexsideView>,
+}
+
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct HexsideView {
+    pub a: [i16; 2],
+    pub b: [i16; 2],
+    pub kind: String,
+    /// The "up" hex for directional kinds (Slope/Escarpment); `None` otherwise.
+    #[serde(default)]
+    pub high: Option<[i16; 2]>,
 }
 
 #[derive(Serialize, TS)]
@@ -123,7 +137,18 @@ fn map_view(g: &GameState) -> MapView {
         })
         .collect();
     hexes.sort_by_key(|h| (h.col, h.row));
-    MapView { hexes }
+    let mut hexsides: Vec<HexsideView> = g
+        .map
+        .all_hexsides()
+        .map(|(a, b, hs)| HexsideView {
+            a: [a.col, a.row],
+            b: [b.col, b.row],
+            kind: format!("{:?}", hs.kind),
+            high: hs.high_side.map(|h| [h.col, h.row]),
+        })
+        .collect();
+    hexsides.sort_by_key(|h| (h.a, h.b, h.kind.clone()));
+    MapView { hexes, hexsides }
 }
 
 fn unit_views(g: &GameState) -> Vec<UnitView> {
