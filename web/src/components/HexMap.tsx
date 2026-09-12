@@ -383,6 +383,36 @@ export const HexMap = memo(function HexMap({ map, units }: { map: MapView; units
     [map],
   );
 
+  // Cosmetic place-name labels (paper-map style): a serif name above the hex. Birs show a generic
+  // "Bir"; Villages/Major Cities show their transcribed `label` when present. Built once per map.
+  const labels = useMemo(
+    () =>
+      map.hexes.flatMap((hex) => {
+        const isBir = (hex.features ?? []).includes("Bir");
+        const text = isBir ? "Bir" : hex.label;
+        if (!text) return [];
+        const c = hexCenter(hex.col, hex.row);
+        return [
+          <text
+            key={`lbl-${hex.col},${hex.row}`}
+            x={c.x}
+            y={c.y - 18}
+            textAnchor="middle"
+            fontFamily="Georgia, 'Times New Roman', serif"
+            fontSize={11}
+            fill={ROUTE_DARK}
+            stroke="#efe8c6"
+            strokeWidth={2.4}
+            paintOrder="stroke"
+            style={{ pointerEvents: "none" }}
+          >
+            {text}
+          </text>,
+        ];
+      }),
+    [map],
+  );
+
   // Group units by hex so we can fan out stacks.
   const byHex = new Map<string, UnitView[]>();
   for (const u of units) {
@@ -398,6 +428,7 @@ export const HexMap = memo(function HexMap({ map, units }: { map: MapView; units
       {edges}
       {routes}
       {featureGlyphs}
+      {labels}
       {/* units: one "top" counter per hex with a +N badge for the rest of the stack */}
       {[...byHex.entries()].map(([key, stack]) => {
         const [col, row] = key.split(",").map(Number);

@@ -57,6 +57,9 @@ pub struct HexView {
     /// Static point features on the hex (Oasis / Village / Bir / Port), for the viewer to glyph.
     #[serde(default)]
     pub features: Vec<String>,
+    /// The paper-map place name (Village / Major City), for a cosmetic label; `None` if unnamed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 /// One recorded step: the state *after* an accepted command (or the initial frame).
@@ -134,6 +137,7 @@ fn map_view(g: &GameState) -> MapView {
                 .hex(c)
                 .map(|h| h.features.iter().map(|f| format!("{f:?}")).collect())
                 .unwrap_or_default(),
+            label: g.map.hex(c).and_then(|h| h.label.clone()),
         })
         .collect();
     hexes.sort_by_key(|h| (h.col, h.row));

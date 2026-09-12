@@ -4,4 +4,8 @@ export type HexView = { col: number, row: number, terrain: string,
 /**
  * Static point features on the hex (Oasis / Village / Bir / Port), for the viewer to glyph.
  */
-features: Array<string>, };
+features: Array<string>, 
+/**
+ * The paper-map place name (Village / Major City), for a cosmetic label; `None` if unnamed.
+ */
+label: string | null, };

@@ -193,6 +193,11 @@ pub struct Hex {
     pub terrain: HexTerrain,
     #[serde(default)]
     pub features: Vec<Feature>,
+    /// The place name printed on the paper map (a Village/Major-City name). Cosmetic — used only
+    /// for the viewer's map labels. `None` when unnamed or not yet transcribed. Birs are labeled a
+    /// generic "Bir" by the viewer and don't need a stored name.
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 impl Hex {
@@ -306,7 +311,7 @@ impl Map {
 
     /// Place (or overwrite) a hex with the given base terrain (no features).
     pub fn set_hex(&mut self, coord: HexCoord, terrain: HexTerrain) {
-        Rc::make_mut(&mut self.hexes).insert(coord, Hex { terrain, features: Vec::new() });
+        Rc::make_mut(&mut self.hexes).insert(coord, Hex { terrain, features: Vec::new(), label: None });
     }
 
     /// Place (or overwrite) a hex with base terrain and point features.
@@ -316,7 +321,7 @@ impl Map {
         terrain: HexTerrain,
         features: Vec<Feature>,
     ) {
-        Rc::make_mut(&mut self.hexes).insert(coord, Hex { terrain, features });
+        Rc::make_mut(&mut self.hexes).insert(coord, Hex { terrain, features, label: None });
     }
 
     pub fn hex(&self, coord: HexCoord) -> Option<&Hex> {
