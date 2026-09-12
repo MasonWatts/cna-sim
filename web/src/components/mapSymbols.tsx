@@ -19,7 +19,7 @@ export const HEX_STROKE = "#9c9066"; // parchment-gray hexside, like the paper m
 const FEATURE_BLUE = "#3f8fc4"; // the paper legend's feature blue (Oasis palms, Port anchor, dots)
 
 export const ROUTE_DARK = "#4a4644";
-const RAIL_BLUE = "#4a9ad0";
+const RAIL_BLUE = "#2f9e86"; // teal-green, per the paper map — distinct from the river blue
 export const ROUTE_KINDS = new Set(["Road", "UnfinishedRoad", "Track", "Railroad", "UnfinishedRailroad"]);
 export const EDGE_KINDS = new Set(["MajorRiver", "MinorRiver", "Wadi", "Ridge", "Escarpment", "Slope"]);
 const EDGE_HALF = 13; // half a hex side (circumradius/2) — the shared edge's half-length
