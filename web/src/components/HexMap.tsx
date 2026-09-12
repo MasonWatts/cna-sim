@@ -56,16 +56,22 @@ function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y
   // segment endpoints too (i = 0..n): adjacent segments meet at a hex center, so their end ties
   // coincide there — keeping the spacing uniform across joins instead of a double gap.
   const dashed = kind === "UnfinishedRailroad";
-  // One cross-tie per edge, at the segment midpoint (the actual edge crossing). This is uniform by
-  // construction — one tick per hex boundary — with no clustering at the hex-center joins.
-  const TIE = 3; // half-length of the tie
-  const mx = A.x + dx * 0.5;
-  const my = A.y + dy * 0.5;
+  // Fixed n=6 subdivision so ties fall at t = 0, 1/6 … 3/6 (the edge) … 6/6 (the next center).
+  // Ties at both centers coincide with the neighbour segment's, so runs dovetail; two ties sit
+  // evenly between each center and the edge. Uniform spacing, independent of segment length.
+  const TIE = 2.5; // half-length of each cross-tie (the vertical arm of the plus)
+  const N = 6;
+  const ties = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const px = A.x + dx * t;
+    const py = A.y + dy * t;
+    ties.push(<line key={i} x1={px + nx * TIE} y1={py + ny * TIE} x2={px - nx * TIE} y2={py - ny * TIE} strokeWidth={1.2} />);
+  }
   return (
-    <g stroke={RAIL_BLUE} strokeLinecap="butt">
-      {/* continuous spine, a touch heavier than the tie so the line reads as one rail */}
-      <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} strokeWidth={1.5} strokeLinecap="round" strokeDasharray={dashed ? "4 3" : undefined} />
-      <line x1={mx + nx * TIE} y1={my + ny * TIE} x2={mx - nx * TIE} y2={my - ny * TIE} strokeWidth={1.2} />
+    <g stroke={RAIL_BLUE} strokeLinecap="round">
+      <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} strokeWidth={1.3} strokeDasharray={dashed ? "4 3" : undefined} />
+      {ties}
     </g>
   );
 }
