@@ -6913,8 +6913,10 @@ mod tests {
 
     #[test]
     fn replacement_points_train_and_absorb() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
         use crate::state::game::{GameState, ReplacementClass};
-        use crate::state::map::HexCoord;
+        use crate::state::map::{Feature, HexCoord};
         use crate::state::unit::{Composition, UnitLocation};
 
         let mut refs = ReferenceData::new();
@@ -6925,6 +6927,8 @@ mod tests {
         .unwrap();
         let mut g = GameState::new(refs, 1);
         let a = HexCoord::new(0, 0);
+        // §20.43: the pool must sit at a training area for its clock to run.
+        g.map.set_hex_with_features(a, HexTerrain::Clear, vec![Feature::CwTrainingArea]);
         // "h" infantry, max TOE 5, depleted to 2.
         let unit = g.spawn_unit(
             Nationality::Commonwealth,
@@ -6938,13 +6942,19 @@ mod tests {
         let rp = g.add_replacement_points(
             ReplacementClass::Infantry,
             2,
+            Side::Commonwealth,
             Some(UnitLocation::OnMap(a)),
             Some(unit),
         );
         assert_eq!(g.replacement_points[rp].training_remaining, 3);
         // Untrained → cannot be absorbed.
         assert_eq!(g.absorb_replacement(rp, unit), None);
-        // Advance three Operations Stages of training (begin_operations_stage ticks it).
+        // §20.43: away from a training area the clock is frozen — no progress.
+        g.replacement_points[rp].location = Some(UnitLocation::OnMap(HexCoord::new(9, 9)));
+        g.begin_operations_stage();
+        assert_eq!(g.replacement_points[rp].training_remaining, 3, "§20.43 clock frozen off a training area");
+        g.replacement_points[rp].location = Some(UnitLocation::OnMap(a));
+        // Advance three Operations Stages of training at the training area (begin_operations_stage ticks it).
         for _ in 0..3 {
             g.begin_operations_stage();
         }
@@ -6964,7 +6974,7 @@ mod tests {
         let mut g = GameState::new(ReferenceData::new(), 1);
         let a = HexCoord::new(0, 0);
         // §20.21: plan Infantry Replacement Points to arrive at Game-Turn 3, OpStage 1.
-        g.plan_replacement(ReplacementClass::Infantry, 5, 3, 1, Some(UnitLocation::OnMap(a)), None);
+        g.plan_replacement(ReplacementClass::Infantry, 5, crate::reference::units::Side::Commonwealth, 3, 1, Some(UnitLocation::OnMap(a)), None);
 
         // Not yet due (GT1) — stays pending.
         g.game_turn = 1;
@@ -7026,7 +7036,7 @@ mod tests {
             Composition::Organic { current_toe: 1 },
         );
         g.unit_mut(unit).unwrap().location = Some(UnitLocation::OnMap(a));
-        let rp = g.add_replacement_points(ReplacementClass::Infantry, 5, Some(UnitLocation::OnMap(a)), None);
+        let rp = g.add_replacement_points(ReplacementClass::Infantry, 5, Side::Axis, Some(UnitLocation::OnMap(a)), None);
         g.replacement_points[rp].training_remaining = 0;
         assert!(g.absorb_replacement(rp, unit).is_some());
         assert_eq!(g.replacement_vp(Side::Axis), allotted - 5);
@@ -8297,7 +8307,7 @@ mod tests {
 
         // §20.3: a Commando costs 3 Infantry Replacement Points per TOE Strength Point rebuilt.
         g.unit_mut(commando).unwrap().location = Some(UnitLocation::OnMap(a));
-        let rp = g.add_replacement_points(ReplacementClass::Infantry, 6, Some(UnitLocation::OnMap(a)), Some(commando));
+        let rp = g.add_replacement_points(ReplacementClass::Infantry, 6, Side::Axis, Some(UnitLocation::OnMap(a)), Some(commando));
         g.replacement_points[rp].training_remaining = 0;
         // "p" Max-TOE is 4; from TOE 1 there is room for 3 → 6 points / 3-per-SP = 2 SPs rebuilt.
         assert_eq!(g.absorb_replacement(rp, commando), Some(2));

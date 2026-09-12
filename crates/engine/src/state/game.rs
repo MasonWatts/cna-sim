@@ -440,9 +440,13 @@ pub enum ReplacementClass {
 pub struct ReplacementPoints {
     pub class: ReplacementClass,
     pub count: u32,
+    /// Owning side — selects which §20.43 training areas count (CW §17.32 list vs Axis Tripoli / any
+    /// major city).
+    pub side: Side,
     #[serde(default)]
     pub location: Option<UnitLocation>,
-    /// Operations Stages of Training remaining (§20.43); 0 = trained and absorbable.
+    /// Operations Stages of Training remaining (§20.43); 0 = trained and absorbable. Counts down only
+    /// while the pool sits at a training area for its side (`is_replacement_training_area`).
     #[serde(default)]
     pub training_remaining: u32,
     /// The unit these points are assigned to for delivery (§20.41).
@@ -456,6 +460,8 @@ pub struct ReplacementPoints {
 pub struct PendingReplacement {
     pub class: ReplacementClass,
     pub count: u32,
+    /// Owning side (carried onto the pool when it arrives — see `ReplacementPoints::side`).
+    pub side: Side,
     pub game_turn: u32,
     #[serde(default)]
     pub stage: u32,
@@ -2135,6 +2141,7 @@ impl GameState {
         &mut self,
         class: ReplacementClass,
         count: u32,
+        side: Side,
         location: Option<UnitLocation>,
         assigned_to: Option<UnitId>,
     ) -> usize {
@@ -2142,6 +2149,7 @@ impl GameState {
         self.replacement_points.push(ReplacementPoints {
             class,
             count,
+            side,
             location,
             training_remaining,
             assigned_to,
@@ -2152,10 +2160,12 @@ impl GameState {
     /// Plan a Replacement Point pool to arrive at a future Operations Stage (§20.21). It enters
     /// the pool (starting Training) when that Naval Convoy Arrival Phase is reached. Returns the
     /// index of the queued pending replacement (so a caller may set its §20.62 `tonnage`).
+    #[allow(clippy::too_many_arguments)]
     pub fn plan_replacement(
         &mut self,
         class: ReplacementClass,
         count: u32,
+        side: Side,
         game_turn: u32,
         stage: u32,
         location: Option<UnitLocation>,
@@ -2164,6 +2174,7 @@ impl GameState {
         self.pending_replacements.push(PendingReplacement {
             class,
             count,
+            side,
             game_turn,
             stage,
             location,
@@ -2188,7 +2199,7 @@ impl GameState {
             }
         }
         for p in due {
-            self.add_replacement_points(p.class, p.count, p.location, p.assigned_to);
+            self.add_replacement_points(p.class, p.count, p.side, p.location, p.assigned_to);
         }
     }
 
@@ -3077,6 +3088,18 @@ impl GameState {
             Side::Axis => Feature::AxisTrainingArea,
         };
         self.map.hex(hex).is_some_and(|h| h.has_feature(feat))
+    }
+
+    /// §20.43: whether a Replacement Point pool at `loc` is at a valid Training location for `side`.
+    /// On-map: a hex flagged with the side's training-area feature (`is_training_area`). Off-map: the
+    /// Axis may train in the Tripoli box (§20.43); the Commonwealth has no off-map training box (its
+    /// §17.32 areas are all on-map). A pool with no location, or in transit elsewhere, does not train.
+    pub(crate) fn is_replacement_training_area(&self, loc: Option<&UnitLocation>, side: Side) -> bool {
+        match loc {
+            Some(UnitLocation::OnMap(hex)) => self.is_training_area(*hex, side),
+            Some(UnitLocation::OffMap { node, .. }) => side == Side::Axis && node == "Tripoli",
+            None => false,
+        }
     }
 
     /// Whether a unit holds at least a quarter of its assigned Max-TOE (§17.35 instruction-battalion
@@ -5260,10 +5283,10 @@ impl GameState {
         // "One month" ≈ POW_ESCAPE_REPLACEMENT_DELAY_GT Game-Turns (documented; the calendar uses
         // ~4 sub-turns per month).
         const POW_ESCAPE_REPLACEMENT_DELAY_GT: u32 = 4;
-        let _ = side;
         self.plan_replacement(
             ReplacementClass::Infantry,
             points,
+            side,
             self.game_turn + POW_ESCAPE_REPLACEMENT_DELAY_GT,
             0,
             Some(UnitLocation::OnMap(hex)),
@@ -7675,9 +7698,18 @@ impl GameState {
             u.breakdown_points = 0;
             u.breakdown_checked_col = -1;
         }
-        // §20.43: Replacement Points progress through Training one Operations Stage at a time.
-        for rp in self.replacement_points.iter_mut() {
-            rp.training_remaining = rp.training_remaining.saturating_sub(1);
+        // §20.43: Replacement Points progress through Training one Operations Stage at a time — but
+        // only while the pool sits at a training area for its side (CW §17.32 list, or Axis Tripoli /
+        // a flagged major city). A pool elsewhere (or in transit) has its clock paused.
+        let ticks: Vec<bool> = self
+            .replacement_points
+            .iter()
+            .map(|rp| self.is_replacement_training_area(rp.location.as_ref(), rp.side))
+            .collect();
+        for (rp, tick) in self.replacement_points.iter_mut().zip(ticks) {
+            if tick {
+                rp.training_remaining = rp.training_remaining.saturating_sub(1);
+            }
         }
         self.player_a = self.initiative;
         self.enter_stage_step(0);

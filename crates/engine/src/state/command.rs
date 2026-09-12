@@ -1900,7 +1900,7 @@ impl GameState {
             .reinforcement_entry_hex(nationality)
             .map(str::to_string)
             .and_then(|s| self.resolve_entry(&s));
-        let idx = self.plan_replacement(class, count, arrival_game_turn, self.operations_stage as u32, location, None);
+        let idx = self.plan_replacement(class, count, nationality.side(), arrival_game_turn, self.operations_stage as u32, location, None);
         // §20.62: record the Axis convoy tonnage on the pending pool so an over-committed arrival
         // can be deferred against the turn's actual rolled allowance (§20.64).
         self.pending_replacements[idx].tonnage = tonnage;
@@ -1970,7 +1970,7 @@ impl GameState {
                 let stage_share = points / 3 + u32::from(s - 1 < points % 3);
                 if stage_share > 0 {
                     self.plan_replacement(
-                        ReplacementClass::Infantry, stage_share, arrival_game_turn, s, location.clone(), None,
+                        ReplacementClass::Infantry, stage_share, Side::Commonwealth, arrival_game_turn, s, location.clone(), None,
                     );
                 }
             }
@@ -4837,7 +4837,7 @@ impl GameState {
         let (owner, count) = (e.nationality, e.count);
         // §22.5: enter the Replacement Point pool already trained (no Training clock).
         let class = self.replacement_class_for_system(owner, &system);
-        let idx = self.add_replacement_points(class, count, Some(crate::state::unit::UnitLocation::OnMap(hex)), None);
+        let idx = self.add_replacement_points(class, count, side, Some(crate::state::unit::UnitLocation::OnMap(hex)), None);
         self.replacement_points[idx].training_remaining = 0;
         Ok(CommandOutcome::CapturedEquipmentRepaired)
     }
