@@ -52,11 +52,13 @@ function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: number; y
       </g>
     );
   }
-  // Railroad / UnfinishedRailroad: a line with perpendicular cross-ties.
+  // Railroad / UnfinishedRailroad: a line with perpendicular cross-ties. Ties are placed at the
+  // segment endpoints too (i = 0..n): adjacent segments meet at a hex center, so their end ties
+  // coincide there — keeping the spacing uniform across joins instead of a double gap.
   const dashed = kind === "UnfinishedRailroad";
   const n = Math.max(2, Math.round(len / 6));
   const ties = [];
-  for (let i = 1; i < n; i++) {
+  for (let i = 0; i <= n; i++) {
     const t = i / n;
     const px = A.x + dx * t;
     const py = A.y + dy * t;
