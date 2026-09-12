@@ -175,7 +175,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, legend }: { ma
               x={c.x}
               y={c.y - 18}
               textAnchor="middle"
-              fontFamily="Georgia, 'Times New Roman', serif"
+              fontFamily="Courier New, monospace"
               fontSize={11}
               fill={ROUTE_DARK}
               stroke="#efe8c6"
@@ -191,7 +191,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, legend }: { ma
               x={c.x}
               y={c.y - 18}
               textAnchor="middle"
-              fontFamily="Georgia, 'Times New Roman', serif"
+              fontFamily="Courier New, monospace"
               fontSize={10.5}
               fontStyle="italic"
               fill="#7a6a45"
@@ -216,7 +216,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, legend }: { ma
       return <line key={i} x1={x} y1={minY} x2={x} y2={minY + h} stroke="#8f8663" strokeWidth={1.2} strokeDasharray="6 6" opacity={0.5} />;
     });
     const letters = SECTION_CENTERS.map((c, i) => (
-      <text key={i} x={hexCenter(c, 0).x} y={minY - LABEL_HEADROOM + 40} textAnchor="middle" fontFamily="Georgia, serif" fontSize={44} fontWeight={700} fill="#8f8663" opacity={0.4} style={{ pointerEvents: "none" }}>
+      <text key={i} x={hexCenter(c, 0).x} y={minY - LABEL_HEADROOM + 40} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={44} fontWeight={700} fill="#8f8663" opacity={0.4} style={{ pointerEvents: "none" }}>
         {`Region ${String.fromCharCode(65 + i)}`}
       </text>
     ));
@@ -322,7 +322,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, legend }: { ma
         return (
           <g>
             <rect x={px} y={py} width={WPW} height={WPH} rx={6} fill="#efe8c6" stroke="#b7a97a" strokeWidth={1} opacity={0.96} />
-            <text x={px + WPW / 2} y={py + 17} textAnchor="middle" fontFamily="Georgia, serif" fontSize={13} fontWeight={700} fill="#2f2b22">
+            <text x={px + WPW / 2} y={py + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#2f2b22">
               Weather
             </text>
             {SECTION_CENTERS.map((_, i) => {
@@ -330,11 +330,11 @@ export const HexMap = memo(function HexMap({ map, units, weather, legend }: { ma
               const cond = weather?.[i] ?? "Normal";
               return (
                 <g key={i}>
-                  <text x={cx} y={py + 36} textAnchor="middle" fontFamily="Georgia, serif" fontSize={12} fontWeight={700} fill="#5b5340">
+                  <text x={cx} y={py + 36} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={12} fontWeight={700} fill="#5b5340">
                     {String.fromCharCode(65 + i)}
                   </text>
                   <g transform={`translate(${cx} ${py + 58})`}>{weatherGlyph(cond)}</g>
-                  <text x={cx} y={py + 92} textAnchor="middle" fontFamily="Georgia, serif" fontSize={8.5} fill="#5b5340">
+                  <text x={cx} y={py + 92} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8.5} fill="#5b5340">
                     {cond}
                   </text>
                   <title>{`Section ${String.fromCharCode(65 + i)}: ${cond}`}</title>
