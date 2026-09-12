@@ -20,6 +20,9 @@ body {
   color: var(--ink);
   font: 14px/1.4 "Courier New", Courier, monospace;
 }
+button, input, select, textarea {
+  font: inherit; /* form controls don't inherit the page font by default */
+}
 
 .app {
   display: grid;
