@@ -98,7 +98,7 @@ const PATTERNS = (
     {/* Classic pictorial peaks (deviates from the paper, but reads as flowing ranges) —
         ~3 larger mountains per tile. */}
     <pattern id="patMountain" width={30} height={22} patternUnits="userSpaceOnUse">
-      <rect width={30} height={22} fill="#9c8a45" />
+      <rect width={30} height={22} fill="#8f7f42" />
       {/* three peaks fully contained in the tile (bases on the baseline so tiles seam cleanly) */}
       <g fill="#6f6330">
         <path d="M0,22 L6,8 L13,22 Z" />
