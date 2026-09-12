@@ -900,9 +900,10 @@ mod tests {
         let mut g = GameState::new(refs, 1);
         g.phase = Phase::Organization;
         g.active_player = Side::Commonwealth;
+        use crate::state::map::Feature;
         let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
         let elsewhere = HexCoord::new(0, 0);
-        g.map.set_hex(cairo, HexTerrain::Clear);
+        g.map.set_hex_with_features(cairo, HexTerrain::Clear, vec![Feature::TrainingArea]);
         g.map.set_hex(elsewhere, HexTerrain::Clear);
 
         // A green Commonwealth recce unit at Cairo: current Basic Morale 0, trained reference +1.
@@ -957,13 +958,9 @@ mod tests {
         assert_eq!(g.unit(recce).unwrap().training_progress, 0, "§17.33 interrupted by CP expenditure");
         assert_eq!(g.unit(recce).unwrap().basic_morale, 0, "no step gained when interrupted");
 
-        // §17.32: all six training areas are recognized — Cairo/Helwan, both Alexandria hexes,
-        // and the three minor areas (Amiriya, Abougir, Deghelia).
-        for id in ["E1430", "E3613", "E3714", "E2212", "E3815", "E3512"] {
-            let h = HexId::parse(id).unwrap().to_hex_coord();
-            assert!(g.is_cw_training_area(h), "{id} should be a §17.32 training area");
-        }
-        assert!(!g.is_cw_training_area(HexCoord::new(0, 0)), "arbitrary hex is not a training area");
+        // §17.32: a training area is any hex flagged Feature::TrainingArea (data-driven from the map).
+        assert!(g.is_training_area(cairo), "a TrainingArea-flagged hex is a §17.32 training area");
+        assert!(!g.is_training_area(elsewhere), "an unflagged hex is not a training area");
     }
 
     #[test]

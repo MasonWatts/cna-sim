@@ -43,6 +43,7 @@ const FEATURES: [string, string][] = [
   ["Port", "Port"],
   ["Village", "Village/Bir"],
   ["Oasis", "Oasis"],
+  ["TrainingArea", "Training Area"],
 ];
 
 const ROUTES: [string, string][] = [

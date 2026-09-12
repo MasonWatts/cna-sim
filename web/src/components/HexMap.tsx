@@ -154,15 +154,21 @@ export const HexMap = memo(function HexMap({ map, units, legend }: { map: MapVie
         )[0];
         const extra = stack.length - 1;
         const anyBroken = stack.some((u) => u.broken);
+        const anyTraining = stack.some((u) => u.in_training);
         const isCadre = top.toe === 0; // a 0-TOE HQ shown as its formation's cadre (§19.62/§19.67)
         const fill = top.side === "Commonwealth" ? "var(--cw)" : "var(--axis)";
+        // Morale: show "current" and, for a green unit training up (§17.31), "current→trained".
+        const moraleStr = (u: UnitView) =>
+          `${u.basic_morale >= 0 ? "+" : ""}${u.basic_morale}` +
+          (u.basic_morale < u.morale_reference ? `→${u.morale_reference >= 0 ? "+" : ""}${u.morale_reference}` : "") +
+          (u.in_training ? " 🎓" : "");
         const tip =
           stack.length === 1
-            ? `${top.name} — ${top.side}${top.broken ? " ⚠ BROKEN DOWN (§21)" : ""}\nTOE ${top.toe}  fuel ${top.fuel}  ammo ${top.ammo}  cohesion ${top.cohesion}\n${top.org_size} @ (${col},${row})`
+            ? `${top.name} — ${top.side}${top.broken ? " ⚠ BROKEN DOWN (§21)" : ""}${top.in_training ? " 🎓 TRAINING (§17.3)" : ""}\nTOE ${top.toe}  fuel ${top.fuel}  ammo ${top.ammo}  cohesion ${top.cohesion}  morale ${moraleStr(top)}\n${top.org_size} @ (${col},${row})`
             : `${stack.length} units @ (${col},${row}) — ${top.side}\n` +
               [...stack]
                 .sort((a, b) => orgRank(b.org_size) - orgRank(a.org_size) || b.toe - a.toe)
-                .map((u) => `• ${u.name} (${u.org_size}, TOE ${u.toe})${u.broken ? " 🔧" : ""}`)
+                .map((u) => `• ${u.name} (${u.org_size}, TOE ${u.toe}, morale ${moraleStr(u)})${u.broken ? " 🔧" : ""}`)
                 .join("\n");
         return (
           <g key={key} transform={`translate(${c.x} ${c.y})`}>
@@ -191,6 +197,11 @@ export const HexMap = memo(function HexMap({ map, units, legend }: { map: MapVie
             {anyBroken && (
               <text x={-11} y={-4} fontSize={11} textAnchor="middle" aria-label="broken down">
                 🔧
+              </text>
+            )}
+            {anyTraining && (
+              <text x={-11} y={7} fontSize={9} textAnchor="middle" aria-label="in training">
+                🎓
               </text>
             )}
             {/* +N badge for the rest of the stack */}

@@ -6,6 +6,19 @@ export type UnitView = { id: number, name: string, nationality: string, side: st
  */
 hex: [number, number] | null, org_size: string, toe: number, fuel: number, ammo: number, cohesion: number, 
 /**
+ * §4.44/§17 current Basic Morale. Green Commonwealth units arrive below `morale_reference` and
+ * train up toward it (§17.34); for non-green units the two are equal.
+ */
+basic_morale: number, 
+/**
+ * The unit's trained/target Basic Morale (§17.31).
+ */
+morale_reference: number, 
+/**
+ * §17.3 whether the unit is designated to Train this Operations Stage.
+ */
+in_training: boolean, 
+/**
  * True if the unit has broken-down vehicles / weapons or lost TOE to breakdown (§21) — i.e. it
  * is (partly) immobilized until repaired (§22). Drives the "broken" marker in the viewer.
  */

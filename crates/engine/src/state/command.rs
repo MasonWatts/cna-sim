@@ -600,6 +600,8 @@ impl Command {
             // Truck convoy & prisoners.
             Command::MoveTruckConvoy { .. } => &["§8.98"],
             Command::MovePrisoners { .. } => &["§28.13"],
+            // Organization / training.
+            Command::TrainUnit { .. } => &["§17.3"],
             // Repair.
             Command::Repair { .. } => &["§22"],
             Command::RepairCapturedEquipment { .. } => &["§28.3"],
@@ -4842,8 +4844,8 @@ impl GameState {
 
     /// §17.3 designate a Commonwealth unit to Train this Operations Stage (raising its Basic Morale
     /// toward its trained reference, §17.31). Validates: a green Commonwealth unit (current Basic
-    /// Morale below its reference); in a §17.32 training area (Cairo/Helwan, either Alexandria hex,
-    /// or the minor Amiriya/Abougir/Deghelia areas — see `is_cw_training_area`); no Capability
+    /// Morale below its reference); in a §17.32 training area (a `Feature::TrainingArea` hex — see
+    /// `is_training_area`); no Capability
     /// Points expended this stage (§17.33); and a co-located §17.35 instruction
     /// battalion — a fully-trained Commonwealth combat battalion of ≥¼ its assigned TOE and matching
     /// arm (a Tank battalion for an armored trainee, else an Infantry battalion). Sets `in_training`;
@@ -4862,7 +4864,7 @@ impl GameState {
             return Err(CommandError::TrainingIllegal);
         }
         // §17.32 training area.
-        if !self.is_cw_training_area(hex) {
+        if !self.is_training_area(hex) {
             return Err(CommandError::TrainingIllegal);
         }
         // §17.35 qualifying instruction battalion co-located.

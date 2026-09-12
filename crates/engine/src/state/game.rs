@@ -3067,14 +3067,12 @@ impl GameState {
         -(self.fort_level(hex) as i32)
     }
 
-    /// §17.32 Commonwealth Training area. A unit trains in any one of: Cairo (E1430, the engine's
-    /// single Cairo/Helwan hex), Alexandria (both city hexes, E3613/E3714), or the three minor
-    /// named areas near Alexandria — Amiriya (E2212), Abougir/Aboukir (E3815), and
-    /// Deghelia/Dekheila (E3512). (Hexes per the §4.44 city index; PDF p28.)
-    pub(crate) fn is_cw_training_area(&self, hex: HexCoord) -> bool {
-        ["E1430", "E3613", "E3714", "E2212", "E3815", "E3512"]
-            .iter()
-            .any(|s| HexId::parse(s).map(|h| h.to_hex_coord()) == Some(hex))
+    /// §17.32 Training area — a hex flagged `Feature::TrainingArea` on the map. Per §17.32 the
+    /// Commonwealth trains at Cairo (any city hex), Helwan, Alexandria (any city hex), Amiriya,
+    /// Aboukir, or Dekheila; §20.43 the Axis at Tripoli or any major city. These are printed on the
+    /// paper map and placed on hexes in the section RON, so the set is data-driven here.
+    pub(crate) fn is_training_area(&self, hex: HexCoord) -> bool {
+        self.map.hex(hex).is_some_and(|h| h.has_feature(Feature::TrainingArea))
     }
 
     /// Whether a unit holds at least a quarter of its assigned Max-TOE (§17.35 instruction-battalion

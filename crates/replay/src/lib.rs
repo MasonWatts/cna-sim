@@ -100,6 +100,13 @@ pub struct UnitView {
     pub fuel: u32,
     pub ammo: u32,
     pub cohesion: i32,
+    /// §4.44/§17 current Basic Morale. Green Commonwealth units arrive below `morale_reference` and
+    /// train up toward it (§17.34); for non-green units the two are equal.
+    pub basic_morale: i32,
+    /// The unit's trained/target Basic Morale (§17.31).
+    pub morale_reference: i32,
+    /// §17.3 whether the unit is designated to Train this Operations Stage.
+    pub in_training: bool,
     /// True if the unit has broken-down vehicles / weapons or lost TOE to breakdown (§21) — i.e. it
     /// is (partly) immobilized until repaired (§22). Drives the "broken" marker in the viewer.
     pub broken: bool,
@@ -173,6 +180,9 @@ fn unit_views(g: &GameState) -> Vec<UnitView> {
             fuel: u.fuel,
             ammo: u.ammo,
             cohesion: u.cohesion,
+            basic_morale: u.basic_morale,
+            morale_reference: u.basic_morale_reference,
+            in_training: u.status.in_training,
             broken: !u.weapons_broken.is_empty()
                 || u.toe_broken > 0
                 || u.trucks_broken.light + u.trucks_broken.medium + u.trucks_broken.heavy > 0,

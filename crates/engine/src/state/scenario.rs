@@ -446,8 +446,13 @@ struct ScenarioUnit {
     #[serde(default)]
     hex: String,
     composition: Composition,
+    /// The unit's trained/target Basic Morale (§17.31) — the reference it trains up to.
     #[serde(default)]
     basic_morale: i32,
+    /// Green units (§17.31): the lower morale they start at and train up from. `None` = arrives at
+    /// `basic_morale` (not green). Mirrors the OB `arrival_morale`.
+    #[serde(default)]
+    arrival_morale: Option<i32>,
     #[serde(default)]
     cohesion: i32,
     /// Name of the parent this unit is *attached* to (co-located, §19.1). Empty = none.
@@ -503,7 +508,10 @@ impl GameState {
             let unit = self.unit_mut(id).expect("just spawned");
             unit.org_size = u.org_size;
             unit.is_hq = u.is_hq;
-            unit.basic_morale = u.basic_morale;
+            // §17.31: `basic_morale` in the scenario is the trained reference; a green unit may start
+            // lower via `arrival_morale`. Non-green units have current == reference.
+            unit.basic_morale_reference = u.basic_morale;
+            unit.basic_morale = u.arrival_morale.unwrap_or(u.basic_morale);
             unit.cohesion = u.cohesion;
             unit.trucks = u.trucks;
             // A unit with its own hex gets a location; attached units (no hex) stay

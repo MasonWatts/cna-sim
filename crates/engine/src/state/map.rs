@@ -178,6 +178,9 @@ pub enum Feature {
     Bir,
     /// A logistics embark/disembark facility on a coastal hex.
     Port,
+    /// §17.32/§20.43 Training Area: where green units may raise their Basic Morale (and Replacement
+    /// Points integrate). Printed on the paper map; placed on hexes in the section RON.
+    TrainingArea,
 }
 
 impl Feature {
