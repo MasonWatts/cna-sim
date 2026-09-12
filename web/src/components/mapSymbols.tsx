@@ -44,7 +44,13 @@ export function edgeGlyph(kind: string, A: { x: number; y: number }, B: { x: num
 
   switch (kind) {
     case "MajorRiver":
-      return edge("#4a9ed6", 2.6);
+      // A darker-blue bank showing as a thin border, with the lighter channel on top.
+      return (
+        <g>
+          {edge("#2f6f9e", 3.4)}
+          {edge("#4a9ed6", 2.2)}
+        </g>
+      );
     case "MinorRiver":
       return edge("#7bbfe6", 1.5);
     case "Wadi":
