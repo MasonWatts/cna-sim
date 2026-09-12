@@ -43,14 +43,17 @@ export function edgeGlyph(kind: string, A: { x: number; y: number }, B: { x: num
   );
 
   switch (kind) {
-    case "MajorRiver":
-      // A darker-blue bank showing as a thin border, with the lighter channel on top.
+    case "MajorRiver": {
+      // A darker-blue bank showing as a thin border along the sides, with the lighter channel on
+      // top. The bank uses a butt cap (no rounded end) so it doesn't blob past the segment ends
+      // where consecutive river segments join.
       return (
         <g>
-          {edge("#2f6f9e", 3.4)}
+          <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#2f6f9e" strokeWidth={3.4} strokeLinecap="butt" />
           {edge("#4a9ed6", 2.2)}
         </g>
       );
+    }
     case "MinorRiver":
       return edge("#7bbfe6", 1.5);
     case "Wadi":
