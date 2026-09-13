@@ -329,11 +329,17 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [ ] **AU47 — §30.5/§30.51–59 CW port-to-port naval troop transport** (Port Personnel Capacity; one
   transfer/stage/port).
 - [ ] **AU48 — §30.4/§30.41–46 Italian 10th Light Flotilla frogman/Chariot raid** on the fleet at Alexandria.
-- [ ] **AU49 — §35.22 in-play plane transfer between squadrons** on SGSU loss / <50% ready capacity (low
-  impact while AU41 unmodeled).
+- [-] **AU49 — §35.22 in-play plane transfer between squadrons.** Deferred: a faithful transfer needs
+  the §35.21 same-class rule, the §35.23 capacity cap, and the §35.22 "transfer mission" (fly to the
+  new base unless co-located) with its in-transit grounding — a real air-management subsystem for a
+  niche action the operational abstraction never issues. Better as a dedicated effort.
 - [-] **AU50 — §35.28 Italian squadrons all-German planes.** Deferred: plane groups key by aircraft-type string, not per-plane nationality, so enforcing it needs a cross-chart nationality lookup for a minor historical edge.
-- [ ] **AU51 — §53.31/§53.32 trucks/guns off-track in salt-marsh auto-abandoned** (Qattara corner case).
-- [ ] **AU52 — §53.25 leapfrogging prohibition** (cargo inherits first truck's expended CP).
+- [-] **AU51 — §53.31/§53.32 trucks/guns off-track in salt-marsh auto-abandoned.** Deferred: hinges on
+  the Salt Marsh terrain subtype + "on a road/track" per-unit state that AU33 (§8.44/§8.45, INPUT
+  NEEDED) has to establish first; a Qattara corner case with nothing to trigger it until then.
+- [-] **AU52 — §53.25 leapfrogging prohibition.** Deferred: requires per-cargo CP *provenance* (the
+  supplies/men remember the CP their first truck expended and cap at that truck's CPA), which the
+  abstracted truck-convoy movement doesn't track; needs a cargo-provenance model.
 - [-] **AU53 — §28.18 prisoners by truck.** Deferred: the rule is underspecified ("if you are feeling profligate with your transport" — no capacity/CP mechanics), and the foot path (§28.13) is modeled; low value.
 
 ### Scope — won't-do / out of scope (excluded from "address them all")
