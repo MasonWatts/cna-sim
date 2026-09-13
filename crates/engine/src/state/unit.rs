@@ -249,6 +249,12 @@ pub struct Unit {
     /// then stop (no further movement until the next stage). Reset each stage.
     #[serde(default)]
     pub moved_into_zoc: bool,
+    /// §13.28: set when the unit Retreated Before Assault this Operations Stage. In a hex then
+    /// attacked, it takes/is susceptible to anti-armor fire but may not *direct* it, and its
+    /// Close Assault ratings are excluded from the defense (though its TOE still takes % losses).
+    /// Reset each stage.
+    #[serde(default)]
+    pub retreated_before_assault: bool,
     /// Current onboard Fuel Points in the unit's "gas tanks" (§49.14–15). Bounded by the fuel
     /// capacity of its type; units whose type has no fuel rate ignore this.
     #[serde(default)]
@@ -352,6 +358,7 @@ impl Unit {
             cp_expended: Fixed(0),
             combat_cp: Fixed(0),
             moved_into_zoc: false,
+            retreated_before_assault: false,
             fuel: 0,
             ammo: 0,
             turns_without_stores: 0,

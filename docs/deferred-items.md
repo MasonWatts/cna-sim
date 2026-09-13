@@ -233,7 +233,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   §15.96 defender spends no CP at diff < −3).
 - [ ] **AU9 — §15.29 defender allocates no units → auto-retreat 3 hexes + 3 DP** (decline-to-defend).
 - [x] **AU10 — §15.23/§14.22 once-per-Combat-Segment per-hex guard.** close_assaulted_hexes_this_stage / anti_armor_hexes_this_stage (reset per stage) refuse a repeat close assault / anti-armor on the same hex. Test hex_once_per_combat_segment_15_23.
-- [ ] **AU11 — §13.28 a Retreat-Before-Assault unit still eats anti-armor fire (can't return it) and
+- [x] **AU11 — §13.28 a Retreat-Before-Assault unit still eats anti-armor fire (can't return it) and
   its TOE counts for % losses.**
 - [x] **AU12 — §15.88/§15.15 assaulted out-of-ammo / ≤−17-cohesion defenders auto-surrender.** cmd_close_assault surrenders such defenders before resolution (en masse if all); the rest defend. Test assaulted_defender_auto_surrenders_15_88.
 - [x] **AU13 — §12.1/§12.11–16 Gun Forward/Back declaration** command + its barrage/coordination

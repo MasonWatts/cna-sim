@@ -961,6 +961,9 @@ pub enum CommandError {
     HexAlreadyInCombat,
     /// §12.11: only an artillery/gun unit has a Forward/Back gun position.
     NotArtillery,
+    /// §13.28: a unit that Retreated Before Assault may not *direct* anti-armor fire (though it
+    /// remains susceptible to it).
+    CannotDirectAntiArmor,
     /// An off-map movement step failed (§8.8).
     OffMap(crate::state::game::OffMapError),
     /// §56.2: the convoy could not be planned (lane unavailable, over the allowable tonnage, or a
@@ -3973,6 +3976,10 @@ impl GameState {
         self.require_no_noncombat_hq(attackers)?;
         // §12.44 Pinned / §6.26 Disorganized (≤ −26): may not fire anti-armor.
         self.require_can_attack(attackers)?;
+        // §13.28: a unit that Retreated Before Assault this stage may not direct anti-armor fire.
+        if attackers.iter().any(|&a| self.unit(a).is_some_and(|u| u.retreated_before_assault)) {
+            return Err(CommandError::CannotDirectAntiArmor);
+        }
         if self.map.terrain(target_hex).is_none() {
             return Err(CommandError::DestinationOffMap);
         }
@@ -4553,6 +4560,9 @@ impl GameState {
         if self.hex_in_zoc_of(dest, enemy) {
             self.unit_mut(unit).expect("checked").moved_into_zoc = true;
         }
+        // §13.28: flag the unit so an ensuing assault in its hex excludes its Close Assault
+        // ratings / bars it from directing anti-armor fire (its TOE still takes % losses).
+        self.unit_mut(unit).expect("checked").retreated_before_assault = true;
         // §8.62/§8.67: recompute Contact from ZOC and clear any engagement this retreat broke off.
         self.refresh_contact_status();
         Ok(CommandOutcome::RetreatedBeforeAssault { cp: total.0 })

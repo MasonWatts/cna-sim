@@ -1490,6 +1490,53 @@ mod tests {
     }
 
     #[test]
+    fn retreat_before_assault_combat_effects_13_28() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::Composition;
+
+        let mut g = GameState::new(close_assault_refs(), 3);
+
+        // Baseline: a normal defender contributes a Defensive Close Assault Rating.
+        let atk = g.spawn_unit(Nationality::Commonwealth, "h", "atk", Composition::Organic { current_toe: 40 });
+        g.unit_mut(atk).unwrap().basic_morale = 8;
+        let d0 = g.spawn_unit(Nationality::Commonwealth, "h", "d0", Composition::Organic { current_toe: 20 });
+        g.unit_mut(d0).unwrap().basic_morale = 8;
+        let base = g.resolve_close_assault_with_rolls(&[atk], &[d0], 11, 11, 33, 33);
+        assert!(base.defender_strength > 0);
+
+        // §13.28: a defender that Retreated Before Assault adds NO Close Assault Rating (strength 0),
+        // but its TOE is still included when taking % losses.
+        let atk2 = g.spawn_unit(Nationality::Commonwealth, "h", "atk2", Composition::Organic { current_toe: 40 });
+        g.unit_mut(atk2).unwrap().basic_morale = 8;
+        let d1 = g.spawn_unit(Nationality::Commonwealth, "h", "d1", Composition::Organic { current_toe: 20 });
+        g.unit_mut(d1).unwrap().basic_morale = 8;
+        g.unit_mut(d1).unwrap().retreated_before_assault = true;
+        let before = g.unit(d1).unwrap().total_toe();
+        let rba = g.resolve_close_assault_with_rolls(&[atk2], &[d1], 11, 11, 33, 33);
+        assert_eq!(rba.defender_strength, 0, "§13.28 excludes the RBA defender's rating");
+        assert!(
+            rba.defender_toe_removed > 0 && g.unit(d1).unwrap().total_toe() < before,
+            "§13.28 the RBA defender's TOE still takes % losses",
+        );
+
+        // §13.28: an RBA unit may not *direct* anti-armor fire.
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let firer = g.spawn_unit(Nationality::Commonwealth, "h", "firer", Composition::Organic { current_toe: 8 });
+        g.unit_mut(firer).unwrap().location = Some(crate::state::unit::UnitLocation::OnMap(HexCoord::new(0, 0)));
+        g.map.set_hex(HexCoord::new(0, 0), HexTerrain::Clear);
+        g.map.set_hex(HexCoord::new(1, 0), HexTerrain::Clear);
+        g.unit_mut(firer).unwrap().retreated_before_assault = true;
+        assert_eq!(
+            g.apply(Command::AntiArmor { attackers: vec![firer], target_hex: HexCoord::new(1, 0), withheld: vec![] }),
+            Err(CommandError::CannotDirectAntiArmor),
+        );
+    }
+
+    #[test]
     fn stacking_limit_enforced() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;

@@ -856,9 +856,17 @@ impl GameState {
         // to the loss total (see the loss section below).
         let def_gun_ids: Vec<UnitId> = defenders.iter().copied().filter(|&id| self.is_gun_unit(id)).collect();
         let def_troop_ids: Vec<UnitId> = defenders.iter().copied().filter(|&id| !self.is_gun_unit(id)).collect();
-        let d_raw_troops = self.close_assault_raw(&def_troop_ids, false);
+        // §13.28: a defender that Retreated Before Assault into this hex may not add its Close
+        // Assault Ratings to the defense — but its TOE is still included when taking % losses
+        // (so it stays in `def_troop_ids`/`participating`, only out of the strength calc).
+        let def_strength_ids: Vec<UnitId> = def_troop_ids
+            .iter()
+            .copied()
+            .filter(|&id| !self.units.get(&id).map(|u| u.retreated_before_assault).unwrap_or(false))
+            .collect();
+        let d_raw_troops = self.close_assault_raw(&def_strength_ids, false);
         // §52.51/52: units deprived of water defend at half their raw strength.
-        let d_deprived_raw: i32 = def_troop_ids
+        let d_deprived_raw: i32 = def_strength_ids
             .iter()
             .filter(|&&id| self.unit_water_deprived(id))
             .filter_map(|id| self.units.get(id))

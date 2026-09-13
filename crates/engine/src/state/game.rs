@@ -7853,6 +7853,7 @@ impl GameState {
             u.cp_expended = Fixed(0);
             u.combat_cp = Fixed(0);
             u.moved_into_zoc = false;
+            u.retreated_before_assault = false;
             u.breakdown_points = 0;
             u.breakdown_checked_col = -1;
         }
