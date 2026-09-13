@@ -906,7 +906,8 @@ impl GameState {
             self.close_assault_size_shift(attackers, defenders)
         };
         let terrain_shift = self.close_assault_terrain_shift(attackers, defenders);
-        let total_shift = morale_shift + size_shift + terrain_shift;
+        let env_shift = self.close_assault_env_shift(attackers, defenders);
+        let total_shift = morale_shift + size_shift + terrain_shift + env_shift;
         let adjusted_column = (base_column as i32 + total_shift).clamp(0, 17) as usize;
         out.morale_shift = morale_shift;
         out.size_shift = size_shift;
@@ -1120,6 +1121,50 @@ impl GameState {
     /// Signs follow the chart (right = attacker favor). Uses each unit's effective hex; if the
     /// defender has no location, the shift is 0. (Close Assault always targets one hex — the whole
     /// enemy stack there, §15.23 — so there are no multi-hex defenders to reconcile.)
+    /// §23.24 engineer-vs-fortification and §26.26 enemy-minefield close-assault column shifts, added
+    /// to the §15.27 total (positive = attacker's favor). §23.24: an unpinned Engineer (or engineer
+    /// battalion / Pioneer) among the assaulting units, against a fortified *non-major-city* hex,
+    /// shifts +1 to the attacker. §26.26: if the assaulting units stand in — or the assaulted hex is —
+    /// an enemy (real) minefield, the defender adjusts one column in his favor (−1 here).
+    pub(crate) fn close_assault_env_shift(&self, attackers: &[UnitId], defenders: &[UnitId]) -> i32 {
+        use crate::reference::terrain::HexTerrain;
+        let Some(def_hex) = defenders.iter().find_map(|&id| self.effective_hex(id)) else {
+            return 0;
+        };
+        let atk_side = attackers.iter().find_map(|&a| self.units.get(&a)).map(|u| u.nationality.side());
+        let mut shift = 0;
+        // §23.24: engineer attached to the assault vs a fortified (non-major-city) hex.
+        if self.fort_level(def_hex) > 0 && self.map.terrain(def_hex) != Some(HexTerrain::MajorCity) {
+            let has_engineer = attackers.iter().any(|&a| {
+                self.units.get(&a).is_some_and(|u| {
+                    let ut = self
+                        .reference
+                        .unit_characteristics
+                        .get(&u.nationality)
+                        .and_then(|m| m.get(&u.id_code))
+                        .map(|c| c.unit_type.as_str())
+                        .unwrap_or("");
+                    // Engineer-capable per the construction check (§24.24): an Engineer unit, an
+                    // engineer-capable HQ, or the Australian Pioneer battalion (§20.3 footnote e).
+                    (ut.contains("Engineer") || ut.contains("Headquarters") || u.name.contains("Pioneer"))
+                        && !u.status.pinned
+                })
+            });
+            if has_engineer {
+                shift += 1;
+            }
+        }
+        // §26.26: enemy minefield under the attackers or the defenders.
+        if let Some(side) = atk_side {
+            let enemy_mine = |h: HexCoord| self.minefields.get(&h).is_some_and(|m| !m.dummy && m.side != side);
+            let atk_in_mine = attackers.iter().filter_map(|&a| self.effective_hex(a)).any(enemy_mine);
+            if atk_in_mine || enemy_mine(def_hex) {
+                shift -= 1;
+            }
+        }
+        shift
+    }
+
     fn close_assault_terrain_shift(&self, attackers: &[UnitId], defenders: &[UnitId]) -> i32 {
         let Some(def_hex) = defenders.iter().find_map(|&id| self.effective_hex(id)) else {
             return 0;

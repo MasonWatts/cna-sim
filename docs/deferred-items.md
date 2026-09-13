@@ -243,11 +243,10 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   transporting trucks).
 - [ ] **AU15 — §12.5/§12.52–55 artillery barrage vs Facilities** (cities/forts/roads/rails/dumps/
   airfields) — land barrage targets a UnitId only.
-- [ ] **AU16 — §23.24 engineer/HQ in a close assault vs a fortified (non-major-city) hex → +1 Assault
+- [x] **AU16 — §23.24 engineer/HQ in a close assault vs a fortified (non-major-city) hex → +1 Assault
   Differential for the attacker.**
-- [ ] **AU17 — §26.26 minefield combat shift** — defender shifts all AT/close-assault columns +1 when
-  attacker or defender is in an enemy minefield.
-- [ ] **AU18 — §23.21 reduced enemy-minefield entry cost extends to units stacked with an engineer.**
+- [~] **AU17 — §26.26 minefield combat shift.** Close-assault +1 defender shift done (close_assault_env_shift); the anti-armor-fire column shift is still pending (the AA CRT is points-bracket, not a shiftable column).
+- [x] **AU18 — §23.21 reduced enemy-minefield entry cost extends to units stacked with an engineer.** move_step_plan now grants the engineer reduction to a mover co-located with an unpinned engineer-capable unit.
 
 ### Morale / organization / reinforcements (§17–§22)
 - [ ] **AU19 — §17.5/§17.51–56 voluntary surrender of a stack** (enemy pays 2 CP; optional pre-capture

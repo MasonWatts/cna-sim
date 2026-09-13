@@ -5098,16 +5098,21 @@ impl GameState {
         if let Some(mf) = self.minefields.get(&to).copied() {
             let mover_side = self.unit(unit).map(|u| u.nationality.side());
             if Some(mf.side) != mover_side {
-                let eng = self
-                    .unit(unit)
-                    .and_then(|u| {
-                        self.reference
-                            .unit_characteristics
-                            .get(&u.nationality)
-                            .and_then(|m| m.get(&u.id_code))
-                    })
-                    .is_some_and(|c| {
-                        c.unit_type.contains("Engineer") || c.unit_type.contains("Headquarters")
+                let is_engineer = |g: &Self, id: UnitId| {
+                    g.unit(id)
+                        .and_then(|u| {
+                            g.reference
+                                .unit_characteristics
+                                .get(&u.nationality)
+                                .and_then(|m| m.get(&u.id_code))
+                        })
+                        .is_some_and(|c| c.unit_type.contains("Engineer") || c.unit_type.contains("Headquarters"))
+                };
+                // §23.21: the reduced cost extends to any unit stacked (at its origin) with an
+                // unpinned engineer / engineer-capable HQ, not just the engineer itself.
+                let eng = is_engineer(self, unit)
+                    || self.units_in_hex(from).iter().any(|&o| {
+                        o != unit && is_engineer(self, o) && self.unit(o).is_some_and(|u| !u.status.pinned)
                     });
                 cp = Fixed(cp.0 + if eng { 40 } else { cpa * 10 });
                 entered_enemy_dummy = mf.dummy;

@@ -8410,6 +8410,38 @@ mod tests {
     }
 
     #[test]
+    fn engineer_and_minefield_combat_shifts_23_26() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::game::{GameState, Minefield};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let (a, d) = (HexCoord::new(0, 0), HexCoord::new(1, 0));
+        g.map.set_hex(a, HexTerrain::Clear);
+        g.map.set_hex(d, HexTerrain::Clear);
+        let atk = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 4 });
+        let eng = g.spawn_unit(Nationality::Commonwealth, "q", "2/1 Australian Pioneer", Composition::Organic { current_toe: 4 });
+        let def = g.spawn_unit(Nationality::Italian, "p", "def", Composition::Organic { current_toe: 4 });
+        for (u, h) in [(atk, a), (eng, a), (def, d)] {
+            g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(h));
+        }
+        // Baseline: no fort, no minefield → no env shift.
+        assert_eq!(g.close_assault_env_shift(&[atk], &[def]), 0);
+        // §23.24: an engineer among the attackers vs a fortified non-major-city hex → +1 (attacker).
+        g.fortifications.insert(d, 1);
+        assert_eq!(g.close_assault_env_shift(&[atk, eng], &[def]), 1, "§23.24 engineer +1 vs fort");
+        assert_eq!(g.close_assault_env_shift(&[atk], &[def]), 0, "no engineer → no §23.24 shift");
+        // §26.26: an enemy minefield on the defended hex → −1 (defender's favor).
+        g.minefields.insert(d, Minefield { side: Side::Axis, dummy: false });
+        assert_eq!(g.close_assault_env_shift(&[atk], &[def]), -1, "§26.26 enemy minefield −1");
+    }
+
+    #[test]
     fn rainstorm_terrain_and_construction_29_5() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;
