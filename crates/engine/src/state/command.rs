@@ -378,6 +378,10 @@ pub enum Command {
     Repair { unit: UnitId, kind: RepairKind },
     /// §18: place a unit in (or out of) Reserve status (Reserve Designation Phase).
     DesignateReserve { unit: UnitId, status: crate::state::unit::ReserveStatus },
+    /// §19.8: form an ad-hoc Axis anti-tank battery by augmenting a Brigade-level infantry-type HQ
+    /// with `count` TOE points of `gun_system` (a single AT gun type), drawn from co-located trained
+    /// Gun-class Replacement Points (Organization Phase).
+    AugmentAntiTank { hq: UnitId, gun_system: String, count: u32 },
     /// §17.5: voluntarily surrender the entire stack in `hex` to an adjacent enemy combat unit
     /// (`captor`, which pays 2 CP to accept, §17.54). If `destroy_material`, the owner first
     /// attempts §17.55/§17.56 pre-capture destruction of tanks/guns ((die−1)×10%) and
@@ -613,6 +617,7 @@ impl Command {
             Command::TrainUnit { .. } => &["§17.3"],
             Command::SetGunPosition { .. } => &["§12.11", "§12.12"],
             Command::VoluntarySurrender { .. } => &["§17.5", "§17.54", "§17.56"],
+            Command::AugmentAntiTank { .. } => &["§19.8", "§19.82", "§19.83"],
             // Repair.
             Command::Repair { .. } => &["§22"],
             Command::RepairCapturedEquipment { .. } => &["§28.3"],
@@ -786,6 +791,8 @@ pub enum CommandOutcome {
     UnitReturned,
     /// §20: Replacement Points absorbed into a unit.
     ReplacementAbsorbed(u32),
+    /// §19.8: AT TOE points added to a Brigade-level HQ (ad-hoc anti-tank battery).
+    AntiTankAugmented(u32),
     /// §49.17: Fuel Points siphoned between units.
     FuelSiphoned(u32),
     /// §49.14: a land unit refuelled to capacity (new Fuel level).
@@ -907,6 +914,12 @@ pub enum CommandError {
     NonCombatHq,
     /// The target hex holds no eligible enemy units (of the required class, for barrage).
     NoTargets,
+    /// §19.8: the anti-tank augmentation is structurally illegal (not an Axis Brigade-level
+    /// infantry HQ, wrong/mixed gun type, below the 3-point initial / above the 6-point cap, or
+    /// insufficient co-located trained Gun Replacement Points).
+    AntiTankAugmentIllegal,
+    /// §19.82: augmentation is barred because some Axis anti-tank unit is below 67% of its max TOE.
+    AntiTankReadinessGate,
     /// §17.5: the designated captor is not an enemy combat unit adjacent to the surrendering hex.
     InvalidCaptor,
     /// §17.54: the captor cannot expend the 2 CP required to accept a voluntary surrender.
@@ -1411,6 +1424,11 @@ impl GameState {
             }
             Command::VoluntarySurrender { hex, captor, destroy_material } => {
                 self.cmd_voluntary_surrender(hex, captor, destroy_material)
+            }
+            Command::AugmentAntiTank { hq, gun_system, count } => {
+                self.require_phase(Phase::Organization)?;
+                self.augment_anti_tank(hq, &gun_system, count)
+                    .map(CommandOutcome::AntiTankAugmented)
             }
             Command::AssignShip { ship_index, location } => {
                 self.require_phase(Phase::CommonwealthFleet)?;

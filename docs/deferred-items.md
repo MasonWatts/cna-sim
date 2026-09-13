@@ -267,8 +267,11 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   unit that pays 2 CP (§17.54; CaptorCannotAccept if it can't); optional §17.55/§17.56 pre-capture
   destruction of tanks/guns ((die−1)×10%) and trucks ((die−1)×20%), then surrender_units (§17.51).
   Test voluntary_surrender_17_5.
-- [ ] **AU20 — §19.8/§19.81–87 ad-hoc Axis AT batteries** (augment a Brigade HQ with AT Replacement
-  Points; 67% gate, single gun type).
+- [x] **AU20 — §19.8/§19.81–87 ad-hoc Axis AT batteries.** New Command::AugmentAntiTank{hq,gun_system,
+  count}: augments a Brigade-level infantry-type Axis HQ with a single AT gun type drawn from
+  co-located trained Gun Replacement pools — §19.83 initial ≥3, §19.81 ≤6, §19.86 one type,
+  §19.82 all-other-AT-units-≥67% gate (AntiTankReadinessGate); §19.85 the HQ derives the gun's CPA
+  in unit_cpa. Fully rules-specified (no OB data needed). Test ad_hoc_axis_anti_tank_battery_19_8.
 - [ ] **AU21 — §19.9/§19.91–98 CW battalion AT augmentation** from GT-75 / Apr 1942.
 - [x] **AU22 — §19.72/§19.73 battle-group forming composition caps** (German ≤4 bn/≤1 tank/≤2 inf;
   Italian ≤3 bn/≤2 inf/≤1 armor, ≤2 in play) — pool exists, limits unenforced.

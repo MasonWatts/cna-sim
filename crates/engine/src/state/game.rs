@@ -1275,6 +1275,21 @@ impl GameState {
     /// is modeled; this returns the unit's own printed CPA.)
     pub fn unit_cpa(&self, id: UnitId) -> Option<i32> {
         let u = self.units.get(&id)?;
+        // §19.85: an HQ augmented with anti-tank TOE possesses the CPA of those AT points (a bare
+        // HQ has empty groups and falls through to its printed characteristics).
+        if u.is_hq {
+            if let Composition::Weapons { groups } = &u.composition {
+                if !groups.is_empty() {
+                    if let Some(table) = self.reference.weapons_systems.get(&u.nationality) {
+                        if let Some(cpa) =
+                            groups.iter().filter_map(|g| table.get(&g.system).and_then(|ws| ws.cpa)).min()
+                        {
+                            return Some(cpa);
+                        }
+                    }
+                }
+            }
+        }
         self.reference
             .unit_characteristics
             .get(&u.nationality)?
@@ -2446,6 +2461,112 @@ impl GameState {
         *self.replacements_used.entry(side).or_insert(0) += consumed;
         self.replacement_points.retain(|p| p.count > 0);
         Some(added)
+    }
+
+    /// §19.8/§19.85: a dedicated anti-tank unit — a Weapons unit whose every group is an AntiTank
+    /// weapon system (an augmented HQ also qualifies, per §19.85).
+    pub(crate) fn unit_is_anti_tank(&self, id: UnitId) -> bool {
+        let Some(u) = self.units.get(&id) else { return false };
+        match &u.composition {
+            Composition::Weapons { groups } => {
+                let table = self.reference.weapons_systems.get(&u.nationality);
+                !groups.is_empty()
+                    && groups.iter().all(|g| {
+                        table
+                            .and_then(|m| m.get(&g.system))
+                            .map(|ws| ws.kind == WeaponKind::AntiTank)
+                            .unwrap_or(false)
+                    })
+            }
+            Composition::Organic { .. } => false,
+        }
+    }
+
+    /// §19.8/§19.81–87: form an ad-hoc Axis anti-tank battery by augmenting a Brigade-level
+    /// infantry-type HQ (incl. Kampfgruppe) with `count` TOE points of a single AT gun, drawn from
+    /// co-located trained Gun-class Replacement pools. Returns the points added.
+    pub(crate) fn augment_anti_tank(
+        &mut self,
+        hq: UnitId,
+        gun_system: &str,
+        count: u32,
+    ) -> Result<u32, crate::state::command::CommandError> {
+        use crate::state::command::CommandError;
+        use crate::state::unit::WeaponGroup;
+        let u = self.units.get(&hq).ok_or(CommandError::UnitNotFound)?;
+        // §19.8: Axis only.
+        if u.nationality.side() != Side::Axis {
+            return Err(CommandError::AntiTankAugmentIllegal);
+        }
+        // §19.81: a Brigade-level, infantry-type (non-armor) HQ.
+        let brigade = matches!(
+            u.org_size,
+            OrgSize::SuperBrigade | OrgSize::StandardBrigade | OrgSize::BattleGroup
+        );
+        if !u.is_hq || !brigade || u.is_armor {
+            return Err(CommandError::AntiTankAugmentIllegal);
+        }
+        // The gun must be an Axis AntiTank weapon system (captured guns can't augment, §19.86 —
+        // Replacement pools are native, so drawing from them satisfies that).
+        let is_at = self
+            .reference
+            .weapons_systems
+            .get(&u.nationality)
+            .and_then(|m| m.get(gun_system))
+            .map(|ws| ws.kind == WeaponKind::AntiTank)
+            .unwrap_or(false);
+        if !is_at || count == 0 {
+            return Err(CommandError::AntiTankAugmentIllegal);
+        }
+        // Current AT points on the HQ and its existing gun type (§19.86: one type per HQ).
+        let (current_at, existing_system) = match &u.composition {
+            Composition::Weapons { groups } => (
+                groups.iter().map(|g| g.count).sum::<u32>(),
+                groups.first().map(|g| g.system.clone()),
+            ),
+            Composition::Organic { .. } => return Err(CommandError::AntiTankAugmentIllegal),
+        };
+        if current_at > 0 && existing_system.as_deref() != Some(gun_system) {
+            return Err(CommandError::AntiTankAugmentIllegal); // §19.86 mixed gun types
+        }
+        // §19.83: initial assignment ≥ 3 TOE points. §19.81: ≤ 6 total.
+        if (current_at == 0 && count < 3) || current_at + count > 6 {
+            return Err(CommandError::AntiTankAugmentIllegal);
+        }
+        // §19.82: all *other* Axis anti-tank units must be at ≥ 67% of their max permitted TOE.
+        let ids: Vec<UnitId> = self.units.keys().copied().collect();
+        for id in ids {
+            if id == hq || !self.unit_is_anti_tank(id) {
+                continue;
+            }
+            let Some(uu) = self.units.get(&id) else { continue };
+            if uu.nationality.side() != Side::Axis {
+                continue;
+            }
+            let max = if uu.is_hq { 6 } else { self.unit_max_toe(id).unwrap_or(0) };
+            if max > 0 && uu.total_toe() * 100 < max * 67 {
+                return Err(CommandError::AntiTankReadinessGate);
+            }
+        }
+        // Draw the AT points from co-located, trained Gun-class Replacement pools (§19.83).
+        let hex = self.units.get(&hq).and_then(|u| u.hex()).ok_or(CommandError::UnitNotOnMap)?;
+        if self.available_replacement_class(ReplacementClass::Gun, hq, hex) < count {
+            return Err(CommandError::AntiTankAugmentIllegal);
+        }
+        self.draw_replacement_class(ReplacementClass::Gun, hq, hex, count);
+        *self.replacements_used.entry(Side::Axis).or_insert(0) += count;
+        self.replacement_points.retain(|p| p.count > 0);
+        // §19.83: add the AT gun TOE to the HQ.
+        if let Some(u) = self.units.get_mut(&hq) {
+            if let Composition::Weapons { groups } = &mut u.composition {
+                if let Some(g) = groups.iter_mut().find(|g| g.system == gun_system) {
+                    g.count += count;
+                } else {
+                    groups.push(WeaponGroup { system: gun_system.to_string(), count });
+                }
+            }
+        }
+        Ok(count)
     }
 
     /// TOE Strength Points a unit may still gain before hitting its §4.44 Max-TOE (`u32::MAX` if the

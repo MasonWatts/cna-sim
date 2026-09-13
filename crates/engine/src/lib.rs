@@ -1614,6 +1614,71 @@ mod tests {
     }
 
     #[test]
+    fn ad_hoc_axis_anti_tank_battery_19_8() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, ReplacementClass};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, OrgSize, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::German, include_str!("../../../data/reference/weapons/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        g.active_player = Side::Axis;
+        let a = HexCoord::new(0, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+
+        let mk_hq = |g: &mut GameState| {
+            let h = g.spawn_unit(Nationality::German, "hq", "Kampfgruppe", Composition::Weapons { groups: vec![] });
+            let u = g.unit_mut(h).unwrap();
+            u.is_hq = true;
+            u.org_size = OrgSize::StandardBrigade;
+            u.location = Some(UnitLocation::OnMap(a));
+            h
+        };
+        let hq = mk_hq(&mut g);
+        // A generous, trained, co-located Gun Replacement pool to draw from.
+        let pool = g.add_replacement_points(ReplacementClass::Gun, 30, Side::Axis, Some(UnitLocation::OnMap(a)), None);
+        g.replacement_points[pool].training_remaining = 0;
+
+        let pak = "5cm Pak 38".to_string();
+        // §19.83: an initial assignment below 3 TOE points is illegal.
+        assert_eq!(
+            g.apply(Command::AugmentAntiTank { hq, gun_system: pak.clone(), count: 2 }),
+            Err(CommandError::AntiTankAugmentIllegal)
+        );
+        // 3 points is a legal initial battery; §19.85: the HQ takes the gun's CPA (5cm Pak 38 = 15).
+        assert_eq!(g.apply(Command::AugmentAntiTank { hq, gun_system: pak.clone(), count: 3 }), Ok(CommandOutcome::AntiTankAugmented(3)));
+        assert_eq!(g.unit(hq).unwrap().total_toe(), 3);
+        assert_eq!(g.unit_cpa(hq), Some(15));
+        // §19.86: a different gun type may not be mixed in.
+        assert_eq!(
+            g.apply(Command::AugmentAntiTank { hq, gun_system: "3.7cm Pak 35/36".into(), count: 1 }),
+            Err(CommandError::AntiTankAugmentIllegal)
+        );
+        // §19.81: total AT points may not exceed 6 (3 + 4 = 7 rejected; 3 + 3 = 6 ok).
+        assert_eq!(
+            g.apply(Command::AugmentAntiTank { hq, gun_system: pak.clone(), count: 4 }),
+            Err(CommandError::AntiTankAugmentIllegal)
+        );
+        assert_eq!(g.apply(Command::AugmentAntiTank { hq, gun_system: pak.clone(), count: 3 }), Ok(CommandOutcome::AntiTankAugmented(3)));
+        assert_eq!(g.unit(hq).unwrap().total_toe(), 6);
+
+        // §19.82: with an existing Axis AT unit below 67% of its max (the 6/6 HQ is fine, but a
+        // second HQ at 3/6 = 50% blocks further augmentation elsewhere).
+        let hq2 = mk_hq(&mut g);
+        assert_eq!(g.apply(Command::AugmentAntiTank { hq: hq2, gun_system: pak.clone(), count: 3 }), Ok(CommandOutcome::AntiTankAugmented(3)));
+        let hq3 = mk_hq(&mut g);
+        assert_eq!(
+            g.apply(Command::AugmentAntiTank { hq: hq3, gun_system: pak.clone(), count: 3 }),
+            Err(CommandError::AntiTankReadinessGate)
+        );
+    }
+
+    #[test]
     fn stacking_limit_enforced() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;
