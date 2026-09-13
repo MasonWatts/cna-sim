@@ -70,19 +70,23 @@ Keep this file in sync as items land. When an item is done, update the matching 
 - [x] **C1 — §20.3 absorb classifier residuals.** `conversion_row_for_unit`: recce row now derived
   from composition (`unit_has_armored_points`) — armored-recce vs light Motorcycle/Camel/Reconnaissance
   — instead of "assume armored". MG/HW rows already verified by §4.46 names.
-  - [~] **C1b — Armored-Car vs Armored-Reconnaissance split.** Resolved from the §4.46 counter
-    legends (PDF; German/Italian legends + CW counter sheets p184–185, read 2026-09-12):
-    - **German** armored recce → *Armored Reconnaissance* always (German legend has no armored-car
-      glyph). Already the engine default.
-    - **Italian** armored recce → *Armored Car* always (Italian legend has no armored-reconnaissance
-      glyph — Autoblinda `vv`/`ww`). Now applied by nationality in `conversion_row_for_unit`.
-    - **Commonwealth** is genuinely mixed and NOT derivable from id/composition (e.g. `1 CIH`
-      oval+slash = Armored Recce vs `13 DCO Lancers` oval+wheels = Armored Car, both id `ll`). Read
-      per-counter: confirmed Armored Car = Derbyshire Yeomanry, Royal Dragoons, 13th DCO Lancers,
-      the SA "Armored Car" regts; CIH = Armored Reconnaissance. These are keyed by name; the
-      remaining ~15 CW recce units default to Armored Reconnaissance pending their p184–185 counter
-      reads (11th Hussars, 10th QVOC Guides, 44/50/51 Recce, 6/7/9 Aus Div Cav, DoY Cav, 2 NZ Cav,
-      7 SA Recce, 1 Polish Cav, 1 Free Fr). Test `recce_armored_car_vs_recce_rows_20_3`.
+  - [x] **C1b — Armored-Car vs Armored-Reconnaissance split.** Resolved from the §4.46 counter
+    symbols (nationality legends + CW counter sheets PDF p184–185, read 2026-09-12). Key correction:
+    real recce units are **all `Organic`**, so `conversion_row_for_unit` now classifies by the
+    §4.44 **Armor-Protection rating** (armored vs light) + nationality/counter, not composition
+    (the old `unit_has_armored_points` gate and its "Organic recce = light" test premise were wrong
+    and were removed):
+    - **German** armored recce (Aufklärungs `ee`/`ff`) → Armored Reconnaissance (legend has no
+      armored-car glyph).
+    - **Italian** armored recce (Autoblinda `vv`/`ww`) → Armored Car (legend has no armored-recce
+      glyph); unarmored (camel/desert-patrol/Bersaglieri-MG `xx`/`yy`/`zz`/`aaa`) → light.
+    - **Commonwealth** (all recce armored, mixed car/recce — same id spans both, e.g. CIH vs 13 DCO
+      Lancers both `ll`): read per-counter. **Armored Car** = Derbyshire Yeomanry, Royal Dragoons,
+      13th DCO Lancers, 10th QVOC Guides, 1 Free Fr Flying Column, the SA "Armored Car" regts.
+      **Armored Reconnaissance** = CIH, 44/50/51 Recce Regt, 6/7/9 Aus Div Cav, 1 DoY Cav, 2 NZ Cav,
+      7 SA Recce, 1 Polish Cav. Only **11th Hussars** wasn't locatable on the sheets — it defaults
+      to Armored Reconnaissance (historically an armored-car regt; revisit if its counter surfaces).
+      Tests `recce_armored_car_vs_recce_rows_20_3` + updated `replacement_conversion_absorb_20_3`.
 
 ## D. Reorganization (§19, §8.12, `state/game.rs`)
 

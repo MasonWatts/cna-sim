@@ -8285,21 +8285,20 @@ mod tests {
         let a = HexCoord::new(0, 0);
 
         // §20.3 classifier: recce/HQ/infantry rows, incl. name-based specials.
-        // An Organic (unarmored) recce unit is the light Motorcycle/Camel/Reconnaissance row; a
-        // recce unit carrying armor-protected points is Armored Reconnaissance (composition-derived).
+        // A German recce unit (Aufklärungs, id "ee"/"ff" — Armor-Protection rated) is Armored
+        // Reconnaissance per the §4.46 German legend, regardless of composition (real recce are
+        // Organic; "armored" is the §4.44 rating, not the counter's TOE type).
         let recce = g.spawn_unit(Nationality::German, "ee", "recce", Composition::Organic { current_toe: 2 });
         let armored_recce = g.spawn_unit(Nationality::German, "ee", "armored recce", Composition::Weapons { groups: vec![crate::state::unit::WeaponGroup { system: "Pz II".into(), count: 2 }] });
         let hq = g.spawn_unit(Nationality::German, "e", "hq", Composition::Weapons { groups: vec![] });
         let commando = g.spawn_unit(Nationality::German, "p", "Layforce Commando", Composition::Organic { current_toe: 1 });
-        assert_eq!(g.conversion_row_for_unit(recce), "Motorcycle/Camel/Reconnaissance");
+        assert_eq!(g.conversion_row_for_unit(recce), "Armored Reconnaissance");
         assert_eq!(g.conversion_row_for_unit(armored_recce), "Armored Reconnaissance");
         assert_eq!(g.conversion_row_for_unit(hq), "Any Headquarters Unit");
         assert_eq!(g.conversion_row_for_unit(commando), "Commando");
         // §20.3 footnote-driven name detection.
         let mg = g.spawn_unit(Nationality::German, "p", "II/155 Machine Gun Bn", Composition::Organic { current_toe: 1 });
-        let mc = g.spawn_unit(Nationality::German, "ee", "Motorcycle Recon Bn", Composition::Organic { current_toe: 1 });
         assert_eq!(g.conversion_row_for_unit(mg), "Machinegun");
-        assert_eq!(g.conversion_row_for_unit(mc), "Motorcycle/Camel/Reconnaissance");
         // German MG battalions are named "Machinegewehr" (§4.46 MG glyph, verified on PDF p183) —
         // detected via the German-language token, not just the English "Machine Gun"/"MG".
         let mgw = g.spawn_unit(Nationality::German, "n", "2nd Machinegewehr Bn", Composition::Organic { current_toe: 4 });
@@ -8350,12 +8349,16 @@ mod tests {
         let dcl = g.spawn_unit(Nationality::Commonwealth, "ll", "13th DCO Lancers", Composition::Organic { current_toe: 4 });
         assert_eq!(g.conversion_row_for_unit(dy), "Armored Car");
         assert_eq!(g.conversion_row_for_unit(dcl), "Armored Car");
-        // Central India Horse = oval+slash = Armored Reconnaissance (armored, not a named car);
-        let cih = g.spawn_unit(Nationality::Commonwealth, "ll", "Central India Horse", arm("A10 Cruiser"));
+        // Central India Horse & 2nd NZ Cavalry = oval+slash = Armored Reconnaissance (CW recce are
+        // all Organic + Armor-Protection rated, so classified by nationality/counter, not composition).
+        let cih = g.spawn_unit(Nationality::Commonwealth, "ll", "Central India Horse", Composition::Organic { current_toe: 4 });
+        let nzcav = g.spawn_unit(Nationality::Commonwealth, "ll", "2nd New Zealand Cavalry", Composition::Organic { current_toe: 4 });
         assert_eq!(g.conversion_row_for_unit(cih), "Armored Reconnaissance");
-        // An unarmored recce unit (no armored points) is the light Motorcycle/Camel/Reconnaissance row.
-        let light = g.spawn_unit(Nationality::Commonwealth, "ll", "2nd New Zealand Cavalry", Composition::Organic { current_toe: 4 });
-        assert_eq!(g.conversion_row_for_unit(light), "Motorcycle/Camel/Reconnaissance");
+        assert_eq!(g.conversion_row_for_unit(nzcav), "Armored Reconnaissance");
+        // An unarmored Italian recce unit (camel — no Armor-Protection rating) is the light
+        // Motorcycle/Camel/Reconnaissance row.
+        let camel = g.spawn_unit(Nationality::Italian, "zz", "1 Sahariano Camel Bn", Composition::Organic { current_toe: 4 });
+        assert_eq!(g.conversion_row_for_unit(camel), "Motorcycle/Camel/Reconnaissance");
     }
 
     #[test]
