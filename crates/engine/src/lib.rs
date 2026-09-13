@@ -1836,8 +1836,10 @@ mod tests {
         assert_eq!(first[0].tpt, (10, 10));
 
         let mut g = GameState::new(refs, 1);
-        g.game_turn = 13;
-        g.operations_stage = 3;
+        // Units are flagged for withdrawal at GT13/3; §20.83 lets them arrive during that stage, so
+        // enforcement only bites once it has elapsed — here at GT14/1.
+        g.game_turn = 14;
+        g.operations_stage = 1;
         let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
         let elsewhere = HexId::parse("D3714").unwrap().to_hex_coord(); // Mersa Matruh (not a depot)
 

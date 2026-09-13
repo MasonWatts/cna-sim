@@ -2342,7 +2342,9 @@ impl GameState {
     /// flagged via `Unit.mandatory_withdrawal` (bound to the [4.43a] schedule at scenario setup).
     pub fn enforce_mandatory_withdrawals(&mut self) -> (u32, u32) {
         use crate::state::map::HexId;
-        let now = (self.game_turn, self.operations_stage as u32);
+        // §20.83: a unit may reach the depot on or before its deadline *stage*, so only enforce once
+        // that stage has fully elapsed (its global stage index is strictly behind "now").
+        let now_global = self.global_ops_stage();
         let depots: Vec<HexCoord> = ["E1430", "E3613"] // Cairo, Alexandria (§20.83)
             .iter()
             .filter_map(|s| HexId::parse(s).map(|h| h.to_hex_coord()))
@@ -2350,7 +2352,10 @@ impl GameState {
         let due: Vec<UnitId> = self
             .units
             .iter()
-            .filter(|(_, u)| u.mandatory_withdrawal == Some(now))
+            .filter(|(_, u)| {
+                u.mandatory_withdrawal
+                    .is_some_and(|(g, s)| g.saturating_sub(1) * 3 + s < now_global)
+            })
             .map(|(&id, _)| id)
             .collect();
         let (mut withdrawn, mut eliminated) = (0, 0);
@@ -8359,6 +8364,13 @@ impl GameState {
     /// per-Operations-Stage allowance, §6.2), default the §III.A declaration to
     /// "Initiative player moves first", then enter the first stage step.
     pub fn begin_operations_stage(&mut self) {
+        // §20.83: enforce any Commonwealth Mandatory Withdrawal due at this (Game-Turn, stage) —
+        // withdraw units that reached Cairo/Alexandria at ≥75% TOE, eliminate the rest. §22.63: at a
+        // Game-Turn's first stage, return any Tank Delivery Squadrons whose recovery has elapsed.
+        if self.operations_stage == 1 {
+            self.process_tds_returns();
+        }
+        self.enforce_mandatory_withdrawals();
         // §31: refresh Rommel's 60-CP Movement Allowance (600 tenths) for the new stage, record
         // where he begins it (§31.4 requires him to remain the whole stage), and clear the previous
         // stage's +5-CPA designation.
