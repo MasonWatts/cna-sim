@@ -1007,6 +1007,8 @@ pub enum CommandError {
     CannotDirectAntiArmor,
     /// §18.22: a Reserve II unit may never move (until released in a Reserve Release Segment).
     InReserve,
+    /// §8.44: a motorized unit or AFV may not Close Assault a defender in a Salt Marsh hex.
+    SaltMarshAssault,
     /// An off-map movement step failed (§8.8).
     OffMap(crate::state::game::OffMapError),
     /// §56.2: the convoy could not be planned (lane unavailable, over the allowable tonnage, or a
@@ -4106,6 +4108,12 @@ impl GameState {
             return Err(CommandError::NoWater);
         }
         let side = self.attackers_side(attackers)?;
+        // §8.44: no motorized unit or AFV may Assault a defender in a Salt Marsh hex.
+        if self.map.terrain(target) == Some(crate::reference::terrain::HexTerrain::SaltMarsh)
+            && attackers.iter().any(|&a| self.unit_is_motorized(a) || self.unit_is_afv(a))
+        {
+            return Err(CommandError::SaltMarshAssault);
+        }
         // Every attacker must be adjacent to the attacked hex (§15.23).
         self.require_all_adjacent(attackers, target)?;
         // §15.23: a hex may be close-assaulted only once per Combat Segment.

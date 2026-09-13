@@ -333,8 +333,13 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   free with a landing strip, 3 with an airfield) is a hex-level capacity exception, not yet applied;
   and the OB "G" garrison designations + locations (data, per counter) that would populate
   `garrison_location` — needs the OB garrison markers.
-- [ ] **AU33 — §8.44/§8.45 Salt Marsh / Desert unit-subtype entry restrictions** (light-vehicle-only
-  off-road; no AFV close-assault into Salt Marsh).
+- [~] **AU33 — §8.44/§8.45 Salt Marsh / Desert restrictions.** §8.44 assault ban done: no motorized
+  unit or AFV (`unit_is_afv`) may Close Assault a Salt Marsh defender (CommandError::SaltMarshAssault).
+  Test salt_marsh_no_vehicle_assault_8_44. **Remaining (data-blocked):** the §8.44 off-track movement
+  restriction and §8.45 Desert bans hinge on the §4.46 movement-*subtypes* — "Light Truck", "motorcycle
+  infantry", "motorcycle Recce", the one camel unit — which are NOT in the digitized characteristics
+  (no motorcycle/camel/light-truck labels), so classifying them (and thus the enter/leave gates)
+  needs those counter movement-subtype designations to avoid wrongly abandoning units.
 - [-] **AU34 — §8.19 no CW west of Marble Arch (A2109 = col 9).** Deferred: a blanket col-9 gate
   breaks the many synthetic tests that place CW units at low columns; it's a map-convenience
   boundary of little gameplay value on the real map.

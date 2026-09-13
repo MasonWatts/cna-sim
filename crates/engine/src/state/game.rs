@@ -6802,6 +6802,24 @@ impl GameState {
         })
     }
 
+    /// §8.44: whether a unit is an AFV — a tank unit, or an armored Recce / Armored-Car unit (one
+    /// whose §4.44 characteristics carry an Armor-Protection rating).
+    pub(crate) fn unit_is_afv(&self, id: UnitId) -> bool {
+        if self.unit_is_tank(id) {
+            return true;
+        }
+        let Some(u) = self.units.get(&id) else { return false };
+        let armored = self
+            .reference
+            .unit_characteristics
+            .get(&u.nationality)
+            .and_then(|m| m.get(&u.id_code))
+            .and_then(|c| c.armor_protection)
+            .map(|r| r.value > 0)
+            .unwrap_or(false);
+        self.is_recce_unit(id) && armored
+    }
+
     /// §19.5: whether a unit is an **infantry**-type unit (Organic personnel, or an Infantry
     /// characteristics type).
     pub fn unit_is_infantry(&self, id: UnitId) -> bool {

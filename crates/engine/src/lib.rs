@@ -1984,6 +1984,45 @@ mod tests {
     }
 
     #[test]
+    fn salt_marsh_no_vehicle_assault_8_44() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut g = GameState::new(close_assault_refs(), 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let atk = HexCoord::new(0, 0);
+        let marsh = HexCoord::new(1, 0);
+        g.map.set_hex(atk, HexTerrain::Clear);
+        g.map.set_hex(marsh, HexTerrain::SaltMarsh);
+
+        // A defender sits in the Salt Marsh.
+        let def = g.spawn_unit(Nationality::Commonwealth, "h", "def", Composition::Organic { current_toe: 4 });
+        g.unit_mut(def).unwrap().location = Some(UnitLocation::OnMap(marsh));
+
+        // §8.44: a tank (AFV) may not close-assault a Salt Marsh defender.
+        let tank = g.spawn_unit(Nationality::Commonwealth, "rtr", "tank", Composition::Weapons { groups: vec![WeaponGroup { system: "A9 Cruiser".into(), count: 4 }] });
+        g.unit_mut(tank).unwrap().location = Some(UnitLocation::OnMap(atk));
+        assert!(g.unit_is_afv(tank));
+        assert_eq!(
+            g.apply(Command::CloseAssault { attackers: vec![tank], target: marsh }),
+            Err(CommandError::SaltMarshAssault)
+        );
+
+        // Foot infantry is not barred by §8.44 (it may or may not succeed, but not for this reason).
+        let inf = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 4 });
+        g.unit_mut(inf).unwrap().location = Some(UnitLocation::OnMap(atk));
+        assert_ne!(
+            g.apply(Command::CloseAssault { attackers: vec![inf], target: marsh }),
+            Err(CommandError::SaltMarshAssault)
+        );
+    }
+
+    #[test]
     fn stacking_limit_enforced() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;
