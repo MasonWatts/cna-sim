@@ -909,6 +909,14 @@ pub struct GameState {
     /// be reconnoitred by a Patrol this stage. Reset each stage.
     #[serde(default)]
     pub barraged_hexes_this_stage: std::collections::HashSet<HexCoord>,
+    /// §15.23: hexes already Close-Assaulted this Combat Segment — a hex may not be close-assaulted
+    /// more than once per segment. Reset each stage.
+    #[serde(default)]
+    pub close_assaulted_hexes_this_stage: std::collections::HashSet<HexCoord>,
+    /// §14.22: hexes already targeted by Anti-Armor fire this Combat Segment (once-per-segment).
+    /// Reset each stage.
+    #[serde(default)]
+    pub anti_armor_hexes_this_stage: std::collections::HashSet<HexCoord>,
     /// §16.4: Dummy Tank Formations in play (≤3 per side, ≤1 per hex). No real counter — a bluff
     /// worth nothing in combat that may be disclosed as a real tank battalion during reconnaissance
     /// (§16.45) and is eliminated by close assault / armorless anti-armor (§16.46).
@@ -1150,6 +1158,8 @@ impl GameState {
             axis_shipping_rolled: std::collections::HashMap::new(),
             land_combat_this_stage: std::collections::HashSet::new(),
             barraged_hexes_this_stage: std::collections::HashSet::new(),
+            close_assaulted_hexes_this_stage: std::collections::HashSet::new(),
+            anti_armor_hexes_this_stage: std::collections::HashSet::new(),
             dummy_tanks: Vec::new(),
             prisoner_groups: Vec::new(),
             captured_equipment: Vec::new(),
@@ -7710,6 +7720,8 @@ impl GameState {
         // barraged/bombed hexes are per-stage.
         self.land_combat_this_stage.clear();
         self.barraged_hexes_this_stage.clear();
+        self.close_assaulted_hexes_this_stage.clear();
+        self.anti_armor_hexes_this_stage.clear();
         self.recon_revealed.clear(); // §42.27 recon reveals are a per-stage snapshot
         // §8.62: In-Contact status is derived from enemy ZOCs at the start of the Movement Segment;
         // §8.67 clears any Engagement no longer held by an adjacent opposing combat unit.

@@ -949,6 +949,9 @@ pub enum CommandError {
     Pinned,
     /// §6.26: a unit with a Cohesion Level of −26 or worse may not move, attack, or defend.
     Disorganized,
+    /// §15.23/§14.22: a hex may not be close-assaulted / anti-armor-fired more than once per Combat
+    /// Segment.
+    HexAlreadyInCombat,
     /// An off-map movement step failed (§8.8).
     OffMap(crate::state::game::OffMapError),
     /// §56.2: the convoy could not be planned (lane unavailable, over the allowable tonnage, or a
@@ -3958,6 +3961,10 @@ impl GameState {
         if !self.attackers_adjacent_to(attackers, target_hex) {
             return Err(CommandError::NotAdjacent);
         }
+        // §14.22: a hex may be anti-armor-fired only once per Combat Segment.
+        if self.anti_armor_hexes_this_stage.contains(&target_hex) {
+            return Err(CommandError::HexAlreadyInCombat);
+        }
         // §50.14: anti-armor fire expends Ammo (rate × TOE) from reserve / hex dumps.
         if !self.consume_combat_ammo(attackers, crate::state::game::CombatAction::AntiArmor) {
             return Err(CommandError::InsufficientAmmo);
@@ -3972,6 +3979,7 @@ impl GameState {
         let mut cp_hexes: Vec<HexCoord> = attackers.iter().filter_map(|&a| self.effective_hex(a)).collect();
         cp_hexes.push(target_hex);
         self.charge_combat_hexes(&cp_hexes, false);
+        self.anti_armor_hexes_this_stage.insert(target_hex); // §14.22
         let dice = self.rng.two_dice_raw();
         let outcome = self.resolve_anti_armor_core(attackers, target_hex, dice, withheld);
         // §16.46: anti-armor fire eliminates a Dummy Tank once the defender has no real armor left.
@@ -4014,6 +4022,10 @@ impl GameState {
         let side = self.attackers_side(attackers)?;
         // Every attacker must be adjacent to the attacked hex (§15.23).
         self.require_all_adjacent(attackers, target)?;
+        // §15.23: a hex may be close-assaulted only once per Combat Segment.
+        if self.close_assaulted_hexes_this_stage.contains(&target) {
+            return Err(CommandError::HexAlreadyInCombat);
+        }
         // The defenders are the entire enemy stack in the attacked hex.
         let defenders = self.enemy_units_in_hex(target, side);
         if defenders.is_empty() {
@@ -4066,6 +4078,8 @@ impl GameState {
         // close-assault Ammo (best-effort; the defender is already committed). (The broader §50.12
         // no-ammo → surrender / no-ZOC effect is a ZOC-wide rule left for the ZOC layer.)
         self.expend_defensive_assault_ammo(&defenders);
+        // §15.23: record the hex as close-assaulted this segment.
+        self.close_assaulted_hexes_this_stage.insert(target);
         // §16.21: engaging in Close Assault bars this side from Patrolling this stage.
         self.land_combat_this_stage.insert(side);
         // §16.46: a formation with a Dummy Tank that undergoes Close Assault loses the dummy.

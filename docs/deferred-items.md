@@ -232,7 +232,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [ ] **AU8 — §15.9 Probe combat mode** (Engaged ignored, not-In-Contact, §15.95 all-recce −10%,
   §15.96 defender spends no CP at diff < −3).
 - [ ] **AU9 — §15.29 defender allocates no units → auto-retreat 3 hexes + 3 DP** (decline-to-defend).
-- [ ] **AU10 — §15.23/§14.22 once-per-Combat-Segment per-hex guard** (only a per-side flag exists).
+- [x] **AU10 — §15.23/§14.22 once-per-Combat-Segment per-hex guard.** close_assaulted_hexes_this_stage / anti_armor_hexes_this_stage (reset per stage) refuse a repeat close assault / anti-armor on the same hex. Test hex_once_per_combat_segment_15_23.
 - [ ] **AU11 — §13.28 a Retreat-Before-Assault unit still eats anti-armor fire (can't return it) and
   its TOE counts for % losses.**
 - [ ] **AU12 — §15.15/§15.88 all non-phasing defenders out of ammo → en-masse surrender** (deferred in
@@ -307,7 +307,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [ ] **AU48 — §30.4/§30.41–46 Italian 10th Light Flotilla frogman/Chariot raid** on the fleet at Alexandria.
 - [ ] **AU49 — §35.22 in-play plane transfer between squadrons** on SGSU loss / <50% ready capacity (low
   impact while AU41 unmodeled).
-- [ ] **AU50 — §35.28 Italian squadrons may be all-German planes but not vice-versa** (asymmetric allowance).
+- [-] **AU50 — §35.28 Italian squadrons all-German planes.** Deferred: plane groups key by aircraft-type string, not per-plane nationality, so enforcing it needs a cross-chart nationality lookup for a minor historical edge.
 - [ ] **AU51 — §53.31/§53.32 trucks/guns off-track in salt-marsh auto-abandoned** (Qattara corner case).
 - [ ] **AU52 — §53.25 leapfrogging prohibition** (cargo inherits first truck's expended CP).
 - [ ] **AU53 — §28.18 prisoners optionally transported by trucks** (only foot path §28.13 modeled).

@@ -8410,6 +8410,46 @@ mod tests {
     }
 
     #[test]
+    fn hex_once_per_combat_segment_15_23() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let target = HexCoord::new(1, 0);
+        for c in 0..3 {
+            g.map.set_hex(HexCoord::new(c, 0), HexTerrain::Clear);
+        }
+        let a1 = g.spawn_unit(Nationality::Commonwealth, "h", "a1", Composition::Organic { current_toe: 4 });
+        let a2 = g.spawn_unit(Nationality::Commonwealth, "h", "a2", Composition::Organic { current_toe: 4 });
+        let def = g.spawn_unit(Nationality::Italian, "p", "def", Composition::Organic { current_toe: 4 });
+        g.unit_mut(a1).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(0, 0)));
+        g.unit_mut(a2).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(2, 0)));
+        g.unit_mut(def).unwrap().location = Some(UnitLocation::OnMap(target));
+
+        // First close assault on the hex succeeds.
+        assert!(g.apply(Command::CloseAssault { attackers: vec![a1], target }).is_ok());
+        // §15.23: a second close assault on the same hex this segment is refused.
+        assert_eq!(
+            g.apply(Command::CloseAssault { attackers: vec![a2], target }),
+            Err(CommandError::HexAlreadyInCombat)
+        );
+        // A new Operations Stage clears the once-per-segment record.
+        g.begin_operations_stage();
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        assert!(g.apply(Command::CloseAssault { attackers: vec![a2], target }).is_ok());
+    }
+
+    #[test]
     fn engineer_and_minefield_combat_shifts_23_26() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;
