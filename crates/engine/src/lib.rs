@@ -6128,6 +6128,64 @@ mod tests {
     }
 
     #[test]
+    fn withdrawal_by_type_player_choice_20_81() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, WithdrawalChoice, WithdrawalChoiceKind};
+        use crate::state::map::HexId;
+        use crate::state::unit::{Composition, OrgSize, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        g.active_player = Side::Commonwealth;
+        let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
+        let field = HexId::parse("D3714").unwrap().to_hex_coord();
+
+        // §20.81: "1st Armored Bde [2]" is a by-type choice (no OB unit) — withdraw 1 armor brigade.
+        g.withdrawal_choices.push(WithdrawalChoice { game_turn: 23, ops_stage: 3, kind: WithdrawalChoiceKind::ArmorBrigade, count: 1, satisfied: false, overdue: false });
+        let mk_bde = |g: &mut GameState, at| {
+            let b = g.spawn_unit(Nationality::Commonwealth, "arm", "armd bde", Composition::Weapons { groups: vec![WeaponGroup { system: "A9 Cruiser".into(), count: 4 }] });
+            let u = g.unit_mut(b).unwrap();
+            u.org_size = OrgSize::StandardBrigade;
+            u.is_armor = true;
+            u.location = Some(UnitLocation::OnMap(at));
+            b
+        };
+        // Not at a depot → illegal.
+        let away = mk_bde(&mut g, field);
+        assert_eq!(
+            g.apply(Command::SatisfyWithdrawalChoice { choice: 0, units: vec![away] }),
+            Err(CommandError::WithdrawalChoiceIllegal)
+        );
+        // A qualifying armor brigade at Cairo satisfies it and is withdrawn.
+        let bde = mk_bde(&mut g, cairo);
+        assert_eq!(
+            g.apply(Command::SatisfyWithdrawalChoice { choice: 0, units: vec![bde] }),
+            Ok(CommandOutcome::WithdrawalChoiceSatisfied(1))
+        );
+        assert!(g.withdrawal_choices[0].satisfied);
+        assert!(g.unit(bde).unwrap().status.withdrawn);
+        // Already satisfied → illegal to satisfy again.
+        assert_eq!(
+            g.apply(Command::SatisfyWithdrawalChoice { choice: 0, units: vec![bde] }),
+            Err(CommandError::WithdrawalChoiceIllegal)
+        );
+
+        // §20.83: an unsatisfied choice is flagged overdue once its deadline stage has elapsed.
+        g.withdrawal_choices.push(WithdrawalChoice { game_turn: 40, ops_stage: 1, kind: WithdrawalChoiceKind::InfantryBattalion, count: 3, satisfied: false, overdue: false });
+        g.game_turn = 40;
+        g.operations_stage = 1;
+        g.flag_overdue_withdrawal_choices();
+        assert!(!g.withdrawal_choices[1].overdue); // deadline stage not yet elapsed
+        g.game_turn = 40;
+        g.operations_stage = 2;
+        g.flag_overdue_withdrawal_choices();
+        assert!(g.withdrawal_choices[1].overdue);
+    }
+
+    #[test]
     fn mandatory_withdrawal_return_cycle_20_8() {
         use crate::state::game::GameState;
         use crate::state::map::HexId;
@@ -6161,6 +6219,36 @@ mod tests {
         assert_eq!(ru.location.as_ref().and_then(|l| l.hex()), Some(HexId::parse("E1430").unwrap().to_hex_coord()));
         assert_eq!(ru.mandatory_withdrawal, Some((75, 1)));
         assert_eq!(ru.return_at, None);
+
+        // §20.8 double cycle (2nd NZ Div 4th Bde pattern): WD → Rtn35/1 → WD-again72/2 → Rtn-again85/2.
+        let d = g.spawn_unit(Nationality::Commonwealth, "k", "double", Composition::Organic { current_toe: 4 });
+        {
+            let u = g.unit_mut(d).unwrap();
+            u.status.withdrawn = true;
+            u.location = None;
+            u.return_at = Some((35, 1));
+            u.withdrawal_after_return = Some((72, 2));
+            u.return_at_2 = Some((85, 2));
+        }
+        // First return (35/1) arms the re-withdrawal and the second return.
+        g.game_turn = 35;
+        g.operations_stage = 1;
+        assert_eq!(g.process_returns(), 1);
+        {
+            let u = g.unit(d).unwrap();
+            assert!(!u.status.withdrawn);
+            assert_eq!(u.mandatory_withdrawal, Some((72, 2)));
+            assert_eq!(u.return_at, Some((85, 2))); // second return armed from return_at_2
+            assert_eq!(u.return_at_2, None);
+        }
+        // Re-withdrawn at 72/2 (simulate), then returns again at 85/2.
+        g.unit_mut(d).unwrap().status.withdrawn = true;
+        g.unit_mut(d).unwrap().location = None;
+        g.game_turn = 85;
+        g.operations_stage = 2;
+        assert_eq!(g.process_returns(), 1);
+        assert!(!g.unit(d).unwrap().status.withdrawn);
+        assert_eq!(g.unit(d).unwrap().return_at, None);
     }
 
     #[test]

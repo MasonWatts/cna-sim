@@ -141,6 +141,13 @@
         (nationality: Commonwealth, formation: "Unassigned Allied Units"),
     ],
 
+    // ---- §20.8/§20.81 by-type Mandatory Withdrawal choices ([4.43a]) — units named by type, not
+    //      by a specific OB counter, so the Commonwealth Player chooses which units satisfy them. ----
+    withdrawal_choices: [
+        (game_turn: 23, ops_stage: 3, kind: ArmorBrigade, count: 1),      // "1st Armored Bde [2]" — the 2nd Armored Division is not in the OB
+        (game_turn: 97, ops_stage: 2, kind: InfantryBattalion, count: 3), // "22nd/200th Guards Bde [HQ] and any three infantry battalions"
+    ],
+
     // ---- Initial supply, dumps, and facilities (§60.34 Axis / §60.44 Commonwealth) ----
     supply_dumps: [
         (side: Axis, at: "C4807", ammo: 200, fuel: 2000, stores: 500),   // Tobruk

@@ -94,6 +94,9 @@ pub struct ObUnit {
     /// §20.8: a second withdrawal deadline applied on return (the "[again]" re-withdrawals).
     #[serde(default)]
     pub withdrawal_after_return: Option<(u32, u32)>,
+    /// §20.8: a second scheduled return (for units that cycle twice, e.g. the 2nd NZ Division 4th Bde).
+    #[serde(default)]
+    pub return_at_2: Option<(u32, u32)>,
     #[serde(default)]
     pub notes: String,
 }

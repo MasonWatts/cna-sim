@@ -184,6 +184,7 @@ impl GameState {
                 unit.return_at = u.return_at; // §20.8 [4.43a] scheduled return ("Rtn")
                 unit.return_toe = u.return_toe;
                 unit.withdrawal_after_return = u.withdrawal_after_return; // "[again]" re-withdrawal
+                unit.return_at_2 = u.return_at_2; // second return (double-cycle units)
                 // §9.16a: a garrison unit's assigned hex (per-unit override, else the formation's).
                 unit.garrison_location = u
                     .garrison
@@ -288,6 +289,10 @@ struct ScenarioData {
     /// against a constraint. Loaded into `GameState::pending_dump_choices`.
     #[serde(default)]
     supply_dump_choices: Vec<PendingDumpChoice>,
+    /// §20.81/§20.82: by-type Mandatory Withdrawal choices (e.g. the 1st Armored Bde, "any 3 bns")
+    /// the player must satisfy. Loaded into `GameState::withdrawal_choices`.
+    #[serde(default)]
+    withdrawal_choices: Vec<crate::state::game::WithdrawalChoice>,
     /// Repair Facilities present at start (§22.3 / §60.31 / §60.44).
     #[serde(default)]
     repair_facilities: Vec<FacilitySpec>,
@@ -610,6 +615,8 @@ impl GameState {
         // Player-choice Supply Units (§59.51 / §60.92): stored unplaced for a later decision.
         self.pending_dump_choices
             .extend(data.supply_dump_choices);
+        // §20.81/§20.82 by-type Mandatory Withdrawal choices.
+        self.withdrawal_choices.extend(data.withdrawal_choices);
         // Repair Facilities (§22.3).
         for f in &data.repair_facilities {
             let coord = HexId::parse(&f.at)

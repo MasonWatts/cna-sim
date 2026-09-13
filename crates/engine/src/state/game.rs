@@ -207,6 +207,32 @@ pub struct CapturedPlanes {
     pub available_game_turn: u32,
 }
 
+/// §20.81/§20.82: the kind of unit a by-type Mandatory Withdrawal choice demands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WithdrawalChoiceKind {
+    /// "Withdraw any N Armor Brigades" — an armor-formation brigade (e.g. GT23/3's 1st Armored Bde,
+    /// which has no unit in the OB, so the Commonwealth Player chooses which brigade satisfies it).
+    ArmorBrigade,
+    /// "any N infantry battalions" (e.g. GT97/2's 22nd Guards choice).
+    InfantryBattalion,
+}
+
+/// §20.81/§20.82: a by-type Mandatory Withdrawal the Commonwealth Player must satisfy *by choosing*
+/// which units to withdraw (the schedule names a type/count, not specific OB units). Enforced at the
+/// deadline: if unsatisfied it is flagged `overdue` (§20.83 procrastination penalty hook).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WithdrawalChoice {
+    pub game_turn: u32,
+    pub ops_stage: u32,
+    pub kind: WithdrawalChoiceKind,
+    pub count: u32,
+    #[serde(default)]
+    pub satisfied: bool,
+    /// Set at the deadline if the player never satisfied the choice (§20.83).
+    #[serde(default)]
+    pub overdue: bool,
+}
+
 /// §21.5/§21.6 a Broken Down Vehicle marker shed on the map (when its unit is eliminated with
 /// broken-down vehicles still aboard). It may be captured by an adjacent enemy battalion (§21.52)
 /// and towed to a Repair Facility (§21.6). Holds the broken vehicles' composition so a repair
@@ -858,6 +884,10 @@ pub struct GameState {
     /// eliminated). Capturable by an adjacent enemy battalion and towable to a Repair Facility.
     #[serde(default)]
     pub broken_vehicles: Vec<BrokenVehicle>,
+    /// §20.81/§20.82: pending by-type Mandatory Withdrawal choices the Commonwealth Player must
+    /// satisfy by choosing which units to withdraw (e.g. GT23/3's 1st Armored Bde, GT97/2's 3 bns).
+    #[serde(default)]
+    pub withdrawal_choices: Vec<WithdrawalChoice>,
     /// §30.42: the global Operations-Stage index on which the Axis planned its Chariot raid (the raid
     /// executes on the seventh stage after). `None` while none is planned.
     #[serde(default)]
@@ -1186,6 +1216,7 @@ impl GameState {
             raiders: Vec::new(),
             captured_planes: Vec::new(),
             broken_vehicles: Vec::new(),
+            withdrawal_choices: Vec::new(),
             chariot_raid_planned_stage: None,
             chariot_raid_used: false,
             layforce_alexandria_since: None,
@@ -2655,14 +2686,84 @@ impl GameState {
                 }
                 u.status.withdrawn = false;
                 u.location = cairo.map(UnitLocation::OnMap);
-                u.return_at = None;
                 u.return_toe = None;
                 // §20.8: apply the "[again]" re-withdrawal deadline, if any.
                 u.mandatory_withdrawal = u.withdrawal_after_return.take();
+                // §20.8: arm a second return for the double-cycle units (else clear).
+                u.return_at = u.return_at_2.take();
             }
             returned += 1;
         }
         returned
+    }
+
+    /// §20.81/§20.82: satisfy a by-type Mandatory Withdrawal choice by withdrawing the chosen
+    /// `units` — they must be `count` units of the matching type, at Cairo/Alexandria at ≥75% max
+    /// TOE (§20.82), of the Commonwealth side. On success they are removed from play (§20.84) and the
+    /// choice is marked satisfied. Returns the units withdrawn, or a CommandError.
+    pub(crate) fn satisfy_withdrawal_choice(
+        &mut self,
+        choice: usize,
+        units: &[UnitId],
+    ) -> Result<u32, crate::state::command::CommandError> {
+        use crate::reference::units::Side;
+        use crate::state::command::CommandError;
+        use crate::state::map::HexId;
+        let c = self.withdrawal_choices.get(choice).ok_or(CommandError::WithdrawalChoiceIllegal)?;
+        if c.satisfied || units.len() as u32 != c.count {
+            return Err(CommandError::WithdrawalChoiceIllegal);
+        }
+        let kind = c.kind;
+        let depots: Vec<HexCoord> = ["E1430", "E3613"]
+            .iter()
+            .filter_map(|s| HexId::parse(s).map(|h| h.to_hex_coord()))
+            .collect();
+        // Validate every chosen unit: Commonwealth, at a depot, ≥75% max TOE, and matching the type.
+        for &id in units {
+            let ok_place = self
+                .units
+                .get(&id)
+                .and_then(|u| u.hex())
+                .is_some_and(|h| depots.contains(&h));
+            let strong = match self.unit_max_toe(id) {
+                Some(m) if m > 0 => self.units.get(&id).map(|u| u.total_toe() * 4 >= m * 3).unwrap_or(false),
+                _ => true,
+            };
+            let cw = self.units.get(&id).map(|u| u.nationality.side() == Side::Commonwealth).unwrap_or(false);
+            let type_ok = match kind {
+                WithdrawalChoiceKind::ArmorBrigade => {
+                    let brigade = self.units.get(&id).map(|u| matches!(u.org_size, OrgSize::StandardBrigade | OrgSize::SuperBrigade | OrgSize::BattleGroup)).unwrap_or(false);
+                    brigade && (self.units.get(&id).map(|u| u.is_armor).unwrap_or(false) || self.unit_is_tank(id))
+                }
+                WithdrawalChoiceKind::InfantryBattalion => {
+                    self.units.get(&id).map(|u| u.org_size == OrgSize::Battalion).unwrap_or(false)
+                        && self.unit_is_infantry(id)
+                }
+            };
+            if !(ok_place && strong && cw && type_ok) {
+                return Err(CommandError::WithdrawalChoiceIllegal);
+            }
+        }
+        // Withdraw them (§20.84) and mark the choice satisfied.
+        for &id in units {
+            if let Some(u) = self.units.get_mut(&id) {
+                u.status.withdrawn = true;
+                u.location = None;
+            }
+        }
+        self.withdrawal_choices[choice].satisfied = true;
+        Ok(units.len() as u32)
+    }
+
+    /// §20.83: at the deadline, flag any unsatisfied by-type withdrawal choice as overdue (the
+    /// Commonwealth Player failed the mandatory withdrawal). Called each Operations Stage.
+    pub(crate) fn flag_overdue_withdrawal_choices(&mut self) {
+        let now = self.global_ops_stage();
+        for c in self.withdrawal_choices.iter_mut() {
+            if !c.satisfied && !c.overdue && c.game_turn.saturating_sub(1) * 3 + c.ops_stage < now {
+                c.overdue = true;
+            }
+        }
     }
 
     /// §20.83: eliminate a unit that failed its Mandatory Withdrawal deadline (zeroes its TOE and
@@ -8572,6 +8673,7 @@ impl GameState {
         }
         self.process_returns(); // §20.8 "Rtn": bring returning units back before the withdrawal sweep
         self.enforce_mandatory_withdrawals();
+        self.flag_overdue_withdrawal_choices(); // §20.83 by-type choices the player never satisfied
         // §31: refresh Rommel's 60-CP Movement Allowance (600 tenths) for the new stage, record
         // where he begins it (§31.4 requires him to remain the whole stage), and clear the previous
         // stage's +5-CPA designation.

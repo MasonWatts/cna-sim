@@ -297,7 +297,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   a TOE point if below max (§20.52), and gains per-TOE Anti-Armor 1 / Off Close Assault 3 (§20.54) via
   a new `Unit.recce_upgraded` flag folded into raw_strength. The §20.55 1/39 gate predates the
   campaign (always satisfied). Fully rules-specified. Test upgrade_armored_car_effectiveness_20_5.
-- [~] **AU24 — §20.8/§20.81–85 scheduled CW Mandatory Withdrawals.** Schedule transcribed verbatim
+- [x] **AU24 — §20.8/§20.81–85 scheduled CW Mandatory Withdrawals.** Schedule transcribed verbatim
   from [4.43a] (PDF p114–115, 2026-09-13) into `data/reference/cw-withdrawal-schedule.ron` (31 WD
   entries: GT/stage, units, Tpt) and loaded into `ReferenceData.cw_withdrawal_schedule`. Mechanics
   done: `Unit.mandatory_withdrawal` deadline + `enforce_mandatory_withdrawals` (§20.82–85 — at
@@ -318,12 +318,16 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   Rtn73/1; 70th Inf Div 16th Bde Rtn50/2→WD-again73/1 and 14th Bde WD40/1→Rtn54/1 and 23rd Bde's
   1 Essex+1 Durham LI WD38/2→Rtn51/3; 50th Inf Div 150th Bde Rtn58/3; 9th Aus Div all Rtn86/3→
   WD-again108/1; 1st Army Tank 42/44 RTR Rtn99/1). Also picked up two withdrawal entries first missed
-  in the dense columns (GT40/1 14th Bde, GT38/2 Essex/Durham). **Remaining (need a model extension or
-  source clarification, not routine data-entry):** the 2nd NZ Division cycles *twice*
-  (WD25/2→Rtn35/1→WD72/2→Rtn85/2) — the single return-slot can't hold it, and its internal timing is
-  ambiguous (6th NZ Bde Rtn31/1 vs the "remainder / seven infantry units" Rtn35/1 don't cleanly map),
-  so it's left unbound rather than guessed; the 1st Armored Bde returns re-designated as the 32nd Army
-  Tank Bde (76/2). GT23/3 (no 2nd Armored Div in OB) and GT97/2 (runtime "any 3 bns") stand.
+  in the dense columns (GT40/1 14th Bde, GT38/2 Essex/Durham). **Double-cycle done:** a `return_at_2`
+  slot (Unit/ObUnit) lets `process_returns` arm a second return, so the 2nd NZ Division's full cycle
+  is now bound — 4th NZ Bde WD25/1→Rtn35/1→WD72/2→Rtn85/2, 6th NZ Bde WD25/2→Rtn31/1 (bns at 2 TOE),
+  HQ+support WD25/2→Rtn35/1. **By-type player choices done:** GT23/3 "1st Armored Bde [2]" (the 2nd
+  Armored Division is absent from the OB) and GT97/2's "any three infantry battalions" are modeled as
+  `WithdrawalChoice`s (campaign.ron) satisfied by `Command::SatisfyWithdrawalChoice` (player picks
+  units of the right type at Cairo/Alexandria ≥75% TOE; else flagged overdue at the deadline, §20.83).
+  1st Armored is treated as leave-forever + a fresh 32nd Army Tank Bde would arrive (moot — neither is
+  in the OB, §20.8's "returns arrive at max, no state carryover" makes this faithful). Tests
+  mandatory_withdrawal_return_cycle_20_8, withdrawal_by_type_player_choice_20_81.
 - [x] **AU25 — §21.5 capture broken-down vehicles.** New `BrokenVehicle` map marker: a unit's broken
   vehicles (weapons_broken/toe_broken/trucks_broken) are shed as a marker when it is eliminated
   (`shed_broken_vehicles` in surrender_units). §21.52 `capture_broken_vehicles` — a moving

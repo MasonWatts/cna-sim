@@ -288,6 +288,10 @@ pub struct Unit {
     /// re-withdrawals). `None` = no re-withdrawal.
     #[serde(default)]
     pub withdrawal_after_return: Option<(u32, u32)>,
+    /// §20.8: a *second* scheduled return, armed when the unit first returns — for the units that
+    /// cycle twice (the 2nd NZ Division's 4th Bde: WD→Rtn→WD-again→Rtn-again). `None` = single cycle.
+    #[serde(default)]
+    pub return_at_2: Option<(u32, u32)>,
 
     // Dynamic state (path-dependent primitives).
     pub cohesion: i32,
@@ -429,6 +433,7 @@ impl Unit {
             return_at: None,
             return_toe: None,
             withdrawal_after_return: None,
+            return_at_2: None,
             cohesion: 0,
             cp_expended: Fixed(0),
             combat_cp: Fixed(0),

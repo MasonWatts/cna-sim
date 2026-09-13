@@ -412,6 +412,9 @@ pub enum Command {
     /// §21.6: tow the Broken Down Vehicle marker at index `marker` one hex to adjacent `to`
     /// (Repair Phase; 10 CP budget, 20 with a co-located Tank Delivery Squadron).
     TowBrokenVehicle { marker: usize, to: HexCoord },
+    /// §20.81/§20.82: satisfy a by-type Mandatory Withdrawal choice by designating the `units` to
+    /// withdraw (must match the choice's type/count, at Cairo/Alexandria at ≥75% TOE).
+    SatisfyWithdrawalChoice { choice: usize, units: Vec<UnitId> },
     /// §30.4: (Axis) plan the once-per-game Italian Chariot raid on Alexandria (from July 1941).
     PlanChariotRaid,
     /// §30.44: (Axis) execute the planned Chariot raid — resolves the §30.46 table and damages
@@ -635,6 +638,7 @@ impl Command {
             Command::Barrage { .. } => &["§12.6", "§12.23"],
             Command::BarrageFacility { .. } => &["§12.5", "§12.53", "§12.54"],
             Command::TowBrokenVehicle { .. } => &["§21.6", "§21.63", "§22.65"],
+            Command::SatisfyWithdrawalChoice { .. } => &["§20.81", "§20.82"],
             Command::PlanChariotRaid => &["§30.41", "§30.42"],
             Command::ExecuteChariotRaid => &["§30.44", "§30.46"],
             Command::OffShoreBombard { .. } => &["§30.2"],
@@ -838,6 +842,8 @@ pub enum CommandOutcome {
     FacilityBarrage { result: i32 },
     /// §21.6: a Broken Down Vehicle marker was towed one hex.
     BrokenVehicleTowed,
+    /// §20.81: a by-type Mandatory Withdrawal choice was satisfied (units withdrawn).
+    WithdrawalChoiceSatisfied(u32),
     /// §30.4: the Chariot raid was planned.
     ChariotRaidPlanned,
     /// §30.44: the Chariot raid was executed, inflicting `damage` Gun-Rating Damage Points.
@@ -1054,6 +1060,9 @@ pub enum CommandError {
     /// §14.54/§22.62: a Destroyed Tank could not be repaired here — no Repair Facility, and no
     /// co-located same-nationality Tank Delivery Squadron rolling a 1.
     RepairFailed,
+    /// §20.81/§20.82: the by-type Mandatory Withdrawal choice could not be satisfied (bad index,
+    /// already satisfied, wrong count, or a chosen unit isn't the right type / at a depot / ≥75% TOE).
+    WithdrawalChoiceIllegal,
     /// §30.4: the Chariot raid cannot be planned/executed now (already used, wrong window, not yet
     /// planned, or the seven-stage delay has not elapsed).
     ChariotRaidIllegal,
@@ -1503,6 +1512,10 @@ impl GameState {
                 } else {
                     Err(CommandError::TowFailed)
                 }
+            }
+            Command::SatisfyWithdrawalChoice { choice, units } => {
+                self.require_phase(Phase::Organization)?;
+                self.satisfy_withdrawal_choice(choice, &units).map(CommandOutcome::WithdrawalChoiceSatisfied)
             }
             Command::PlanChariotRaid => {
                 if self.active_player != Side::Axis {
