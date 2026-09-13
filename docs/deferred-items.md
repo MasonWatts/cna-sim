@@ -306,10 +306,16 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   `withdrawal: (GT, stage)` stamped onto `Unit.mandatory_withdrawal` at deploy; all 22 *first-time*
   schedule entries are bound across 13 formations in `data/ob/commonwealth.ron`, resolving the
   `[Less …]` division splits and brigade-only withdrawals by exact OB unit (tests
-  cw_withdrawal_schedule_bound_to_ob_20_8 + deploy_formation_builds_hierarchy). **Remaining (blocked
-  on other mechanics):** the 7 "[again]" re-withdrawals need the §20.8 return (Rtn) cycle; GT23/3
-  "1st Armored Bde [2]" has no 2nd Armored Division in the OB; GT97/2 "any three infantry battalions"
-  is a runtime §20.81 choice (the 22nd Guards Bde HQ is bound).
+  cw_withdrawal_schedule_bound_to_ob_20_8 + deploy_formation_builds_hierarchy). **Return ("Rtn")
+  subsystem done:** new `Unit`/`ObUnit` `return_at`, `return_toe`, `withdrawal_after_return`;
+  `process_returns` (wired into begin_operations_stage before the withdrawal sweep) brings a withdrawn
+  unit back at Cairo — restored to `return_toe` (else max), un-`withdrawn`, carrying its "[again]"
+  re-withdrawal deadline. The 7th Indian Brigade full cycle (WD 14/3 → Rtn 30/2 → WD-again 75/1) and
+  11th Indian Brigade (Rtn 30/1) are bound as proof; tests mandatory_withdrawal_return_cycle_20_8 +
+  cw_withdrawal_schedule_bound_to_ob_20_8. **Remaining is data-entry only:** binding the other ~12
+  "Rtn" entries (several partial / reduced-strength / cross-referenced) and their re-withdrawals to
+  the OB — same mechanical pattern, no new engine work; GT23/3 "1st Armored Bde [2]" still has no 2nd
+  Armored Division in the OB, and GT97/2's "any three infantry battalions" is a runtime §20.81 choice.
 - [x] **AU25 — §21.5 capture broken-down vehicles.** New `BrokenVehicle` map marker: a unit's broken
   vehicles (weapons_broken/toe_broken/trucks_broken) are shed as a marker when it is eliminated
   (`shed_broken_vehicles` in surrender_units). §21.52 `capture_broken_vehicles` — a moving

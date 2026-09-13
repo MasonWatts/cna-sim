@@ -276,6 +276,18 @@ pub struct Unit {
     /// the [4.43a] withdrawal schedule when bound to the scenario Order of Battle.
     #[serde(default)]
     pub mandatory_withdrawal: Option<(u32, u32)>,
+    /// §20.8 ("Rtn"): a withdrawn unit's scheduled return `(Game-Turn, Operations Stage)` — it
+    /// re-enters play at Cairo. `None` = does not return.
+    #[serde(default)]
+    pub return_at: Option<(u32, u32)>,
+    /// §20.8: the TOE Strength Points a returning unit arrives with (`None` = its maximum, the chart
+    /// default; `Some(n)` for the reduced-strength returns, e.g. "each with only 2 TOE").
+    #[serde(default)]
+    pub return_toe: Option<u32>,
+    /// §20.8: a *second* Mandatory Withdrawal deadline applied when the unit returns (the "[again]"
+    /// re-withdrawals). `None` = no re-withdrawal.
+    #[serde(default)]
+    pub withdrawal_after_return: Option<(u32, u32)>,
 
     // Dynamic state (path-dependent primitives).
     pub cohesion: i32,
@@ -414,6 +426,9 @@ impl Unit {
             recce_upgraded: false,
             garrison_location: None,
             mandatory_withdrawal: None,
+            return_at: None,
+            return_toe: None,
+            withdrawal_after_return: None,
             cohesion: 0,
             cp_expended: Fixed(0),
             combat_cp: Fixed(0),

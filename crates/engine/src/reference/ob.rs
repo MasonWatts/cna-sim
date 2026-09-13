@@ -85,6 +85,15 @@ pub struct ObUnit {
     /// formation's `garrison_hex`, for scattered minor garrisons). `None` = use the formation's.
     #[serde(default)]
     pub garrison: Option<String>,
+    /// §20.8 ("Rtn"): `(Game-Turn, Operations Stage)` a withdrawn unit returns to play at Cairo.
+    #[serde(default)]
+    pub return_at: Option<(u32, u32)>,
+    /// §20.8: TOE the unit returns with (`None` = maximum; `Some(n)` for reduced-strength returns).
+    #[serde(default)]
+    pub return_toe: Option<u32>,
+    /// §20.8: a second withdrawal deadline applied on return (the "[again]" re-withdrawals).
+    #[serde(default)]
+    pub withdrawal_after_return: Option<(u32, u32)>,
     #[serde(default)]
     pub notes: String,
 }

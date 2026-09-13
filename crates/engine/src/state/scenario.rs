@@ -181,6 +181,9 @@ impl GameState {
                 unit.is_hq = u.parent.is_empty() && u.name.contains("HQ");
                 unit.airdroppable = u.airdroppable; // §42.41 (from the OA sheet)
                 unit.mandatory_withdrawal = u.withdrawal; // §20.8 [4.43a] withdrawal deadline
+                unit.return_at = u.return_at; // §20.8 [4.43a] scheduled return ("Rtn")
+                unit.return_toe = u.return_toe;
+                unit.withdrawal_after_return = u.withdrawal_after_return; // "[again]" re-withdrawal
                 // §9.16a: a garrison unit's assigned hex (per-unit override, else the formation's).
                 unit.garrison_location = u
                     .garrison

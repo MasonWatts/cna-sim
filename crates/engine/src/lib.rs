@@ -6105,6 +6105,52 @@ mod tests {
         assert_eq!(wd("1st Army Tank Brigade", "42nd Royal Tank Regt"), Some((93, 2)));
         // A unit NOT scheduled (5th Indian Div 29th Bde, excluded from every first-time entry).
         assert_eq!(wd("5th Indian Division", "1st Worcestshires"), None);
+
+        // §20.8 "Rtn": the 7th Indian Brigade cycle — withdraw GT14/3, return GT30/2, re-withdraw
+        // GT75/1; the 11th Indian Brigade returns GT30/1 with no re-withdrawal.
+        let ret = |form: &str, unit: &str| ob.formation(form).and_then(|f| f.units.iter().find(|u| u.name == unit));
+        let sussex = ret("4th Indian Division", "1st Royal Sussex").unwrap();
+        assert_eq!(sussex.return_at, Some((30, 2)));
+        assert_eq!(sussex.withdrawal_after_return, Some((75, 1)));
+        let cameron = ret("4th Indian Division", "2nd Camerons").unwrap();
+        assert_eq!(cameron.return_at, Some((30, 1)));
+        assert_eq!(cameron.withdrawal_after_return, None);
+    }
+
+    #[test]
+    fn mandatory_withdrawal_return_cycle_20_8() {
+        use crate::state::game::GameState;
+        use crate::state::map::HexId;
+        use crate::state::unit::Composition;
+
+        let mut refs = ReferenceData::new();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+
+        // A withdrawn unit scheduled to return at GT30/2 (reduced to 3 TOE) and re-withdraw at GT75/1.
+        let u = g.spawn_unit(Nationality::Commonwealth, "k", "returner", Composition::Organic { current_toe: 0 });
+        {
+            let uu = g.unit_mut(u).unwrap();
+            uu.status.withdrawn = true;
+            uu.location = None;
+            uu.return_at = Some((30, 2));
+            uu.return_toe = Some(3);
+            uu.withdrawal_after_return = Some((75, 1));
+        }
+        // Before the return stage: nothing happens.
+        g.game_turn = 30;
+        g.operations_stage = 1;
+        assert_eq!(g.process_returns(), 0);
+        assert!(g.unit(u).unwrap().status.withdrawn);
+        // At GT30/2 it returns to Cairo at 3 TOE, no longer withdrawn, carrying its re-withdrawal.
+        g.operations_stage = 2;
+        assert_eq!(g.process_returns(), 1);
+        let ru = g.unit(u).unwrap();
+        assert!(!ru.status.withdrawn);
+        assert_eq!(ru.total_toe(), 3);
+        assert_eq!(ru.location.as_ref().and_then(|l| l.hex()), Some(HexId::parse("E1430").unwrap().to_hex_coord()));
+        assert_eq!(ru.mandatory_withdrawal, Some((75, 1)));
+        assert_eq!(ru.return_at, None);
     }
 
     #[test]

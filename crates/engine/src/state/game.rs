@@ -2624,6 +2624,45 @@ impl GameState {
         true
     }
 
+    /// §20.8 ("Rtn"): return to play any withdrawn unit whose scheduled return `(Game-Turn, stage)`
+    /// has been reached. It re-enters at Cairo, restored to `return_toe` (else its maximum, §20.8
+    /// legend), cleared of `withdrawn`, and carrying any "[again]" re-withdrawal deadline. Returns the
+    /// number of units returned. Called at each Operations Stage.
+    pub fn process_returns(&mut self) -> u32 {
+        use crate::state::map::HexId;
+        let now = self.global_ops_stage();
+        let cairo = HexId::parse("E1430").map(|h| h.to_hex_coord());
+        let due: Vec<UnitId> = self
+            .units
+            .iter()
+            .filter(|(_, u)| {
+                u.status.withdrawn
+                    && u.return_at.is_some_and(|(g, s)| g.saturating_sub(1) * 3 + s <= now)
+            })
+            .map(|(&id, _)| id)
+            .collect();
+        let mut returned = 0;
+        for id in due {
+            // Restore TOE (returning units arrive at max unless a reduced figure is given).
+            let max = self.unit_max_toe(id);
+            if let Some(u) = self.units.get_mut(&id) {
+                let toe = u.return_toe.or(max).unwrap_or_else(|| u.total_toe());
+                match &mut u.composition {
+                    Composition::Organic { current_toe } => *current_toe = toe,
+                    Composition::Weapons { .. } => {} // weapon-holders keep their (rebuilt) groups
+                }
+                u.status.withdrawn = false;
+                u.location = cairo.map(UnitLocation::OnMap);
+                u.return_at = None;
+                u.return_toe = None;
+                // §20.8: apply the "[again]" re-withdrawal deadline, if any.
+                u.mandatory_withdrawal = u.withdrawal_after_return.take();
+            }
+            returned += 1;
+        }
+        returned
+    }
+
     /// §20.83: eliminate a unit that failed its Mandatory Withdrawal deadline (zeroes its TOE and
     /// removes it from the map; it may not return).
     fn eliminate_unit_to_withdrawal(&mut self, id: UnitId) {
@@ -8529,6 +8568,7 @@ impl GameState {
         if self.operations_stage == 1 {
             self.process_tds_returns();
         }
+        self.process_returns(); // §20.8 "Rtn": bring returning units back before the withdrawal sweep
         self.enforce_mandatory_withdrawals();
         // §31: refresh Rommel's 60-CP Movement Allowance (600 tenths) for the new stage, record
         // where he begins it (§31.4 requires him to remain the whole stage), and clear the previous
