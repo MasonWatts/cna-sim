@@ -8410,6 +8410,27 @@ mod tests {
     }
 
     #[test]
+    fn set_gun_position_12_11() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::unit::{Composition, GunPosition, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        g.active_player = Side::Commonwealth;
+        let gun = g.spawn_unit(Nationality::Commonwealth, "gun", "AT bn", Composition::Weapons { groups: vec![WeaponGroup { system: "6-pounder".into(), count: 4 }] });
+        let inf = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 4 });
+        // §12.11: an artillery/gun unit's position may be set Forward.
+        assert_eq!(g.apply(Command::SetGunPosition { unit: gun, forward: true }), Ok(CommandOutcome::GunPositionSet));
+        assert_eq!(g.unit(gun).unwrap().gun_position, GunPosition::Forward);
+        // A non-gun unit has no gun position.
+        assert_eq!(g.apply(Command::SetGunPosition { unit: inf, forward: true }), Err(CommandError::NotArtillery));
+    }
+
+    #[test]
     fn zero_sp_company_stacking_cap_9_25() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;

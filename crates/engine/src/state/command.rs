@@ -198,6 +198,10 @@ pub enum Command {
     /// §19.21/§19.28: (re)assign `unit` — currently attached to `parent` and not assigned elsewhere
     /// — to that Parent Formation, recorded in the Reorganization (Organization) Phase (no CP cost).
     ReassignUnit { unit: UnitId, parent: UnitId },
+    /// §12.11/§12.12 declare an artillery unit's gun position Forward (`true`) or Back (`false`) for
+    /// the coming Combat Segment. Forward guns may coordinate barrage fire (§12.13) but are more
+    /// vulnerable in close assault (§15.84). Set in the Organization / Movement-and-Combat phase.
+    SetGunPosition { unit: UnitId, forward: bool },
     /// §28.22 form a Guard Point for the phasing side's Prisoner stack at `group_hex`, subtracting
     /// one TOE from a co-located infantry combat unit. Organization Phase.
     FormGuard { group_hex: HexCoord },
@@ -602,6 +606,7 @@ impl Command {
             Command::MovePrisoners { .. } => &["§28.13"],
             // Organization / training.
             Command::TrainUnit { .. } => &["§17.3"],
+            Command::SetGunPosition { .. } => &["§12.11", "§12.12"],
             // Repair.
             Command::Repair { .. } => &["§22"],
             Command::RepairCapturedEquipment { .. } => &["§28.3"],
@@ -676,6 +681,8 @@ pub enum CommandOutcome {
     /// §17.3 a Commonwealth unit is training this stage; `basic_morale` is its Basic Morale after
     /// this stage's progression (raised toward its trained reference every six stages).
     UnitTraining { basic_morale: i32 },
+    /// §12.11: an artillery unit's gun position was set (Forward/Back).
+    GunPositionSet,
     /// §28.3 a piece of captured equipment was repaired (now reusable).
     CapturedEquipmentRepaired,
     /// An off-map movement step was carried out (§8.8).
@@ -952,6 +959,8 @@ pub enum CommandError {
     /// §15.23/§14.22: a hex may not be close-assaulted / anti-armor-fired more than once per Combat
     /// Segment.
     HexAlreadyInCombat,
+    /// §12.11: only an artillery/gun unit has a Forward/Back gun position.
+    NotArtillery,
     /// An off-map movement step failed (§8.8).
     OffMap(crate::state::game::OffMapError),
     /// §56.2: the convoy could not be planned (lane unavailable, over the allowable tonnage, or a
@@ -1134,6 +1143,7 @@ impl GameState {
             Command::MovePrisoners { from, to } => self.cmd_move_prisoners(from, to),
             Command::RepairCapturedEquipment { hex, system } => self.cmd_repair_captured_equipment(hex, system),
             Command::TrainUnit { unit } => self.cmd_train_unit(unit),
+            Command::SetGunPosition { unit, forward } => self.cmd_set_gun_position(unit, forward),
             Command::MoveOffMap { unit, direction } => self.cmd_move_off_map(unit, direction),
             Command::PlanConvoy {
                 lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, die,
@@ -4982,6 +4992,24 @@ impl GameState {
     /// battalion — a fully-trained Commonwealth combat battalion of ≥¼ its assigned TOE and matching
     /// arm (a Tank battalion for an armored trainee, else an Infantry battalion). Sets `in_training`;
     /// the +1 Basic Morale after every six uninterrupted stages (§17.34) is applied at stage rollover.
+    /// §12.11/§12.12: set an artillery unit's gun position (Forward/Back) for the coming Combat
+    /// Segment. Only a gun/artillery unit has a meaningful position.
+    fn cmd_set_gun_position(&mut self, unit: UnitId, forward: bool) -> Result<CommandOutcome, CommandError> {
+        use crate::state::unit::GunPosition;
+        if !matches!(self.phase, Phase::Organization | Phase::MovementAndCombat) {
+            return Err(CommandError::WrongPhase);
+        }
+        if self.unit(unit).is_none() {
+            return Err(CommandError::UnitNotFound);
+        }
+        if !self.is_gun_unit(unit) {
+            return Err(CommandError::NotArtillery);
+        }
+        self.unit_mut(unit).expect("checked").gun_position =
+            if forward { GunPosition::Forward } else { GunPosition::Back };
+        Ok(CommandOutcome::GunPositionSet)
+    }
+
     fn cmd_train_unit(&mut self, unit: UnitId) -> Result<CommandOutcome, CommandError> {
         use crate::reference::units::Side;
         use crate::state::unit::OrgSize;

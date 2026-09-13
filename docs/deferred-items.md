@@ -236,7 +236,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [ ] **AU11 — §13.28 a Retreat-Before-Assault unit still eats anti-armor fire (can't return it) and
   its TOE counts for % losses.**
 - [x] **AU12 — §15.88/§15.15 assaulted out-of-ammo / ≤−17-cohesion defenders auto-surrender.** cmd_close_assault surrenders such defenders before resolution (en masse if all); the rest defend. Test assaulted_defender_auto_surrenders_15_88.
-- [ ] **AU13 — §12.1/§12.11–16 Gun Forward/Back declaration** command + its barrage/coordination
+- [x] **AU13 — §12.1/§12.11–16 Gun Forward/Back declaration** command + its barrage/coordination
   consequences (enum exists, feeds §15.84 vulnerability, but defaults Back with no setter).
 - [ ] **AU14 — §12.46 barrage rolls the Trucks column** (truck casualties; a hit motorized unit loses
   transporting trucks).
@@ -259,8 +259,8 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   not before 1/39).
 - [ ] **AU24 — §20.8/§20.81–85 scheduled CW Mandatory Withdrawals** (reach Cairo/Alexandria by a listed
   GT; §20.85 penalty) — distinct from the §64.75 voluntary path.
-- [ ] **AU25 — §21.5/§21.51–55 capture enemy broken-down (not destroyed) vehicles during movement.**
-- [ ] **AU26 — §21.6/§21.61–67 tow broken-down vehicles to a repair facility.**
+- [-] **AU25 — §21.5 capture broken-down vehicles.** Deferred: breakdown is unit-internal state (weapons_broken/toe_broken), not shed "Broken Down Vehicle markers" on the map, so there's nothing to capture; needs a marker model first.
+- [-] **AU26 — §21.6 tow broken-down vehicles.** Deferred: depends on the same broken-vehicle-marker model as AU25.
 - [ ] **AU27 — §22.6/§22.61–66 CW Tank Delivery Squadrons** (deliver tank Replacement Points).
 - [ ] **AU28 — §22.7 German Mobile Tank Repair unit.**
 
