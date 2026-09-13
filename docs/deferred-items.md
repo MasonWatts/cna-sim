@@ -299,9 +299,14 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   entries: GT/stage, units, Tpt) and loaded into `ReferenceData.cw_withdrawal_schedule`. Mechanics
   done: `Unit.mandatory_withdrawal` deadline + `enforce_mandatory_withdrawals` (§20.82–85 — at
   Cairo/Alexandria ≥75% max TOE → removed from play `status.withdrawn`, §20.84; else eliminated,
-  §20.83). Test mandatory_withdrawal_schedule_20_8. **Remaining:** binding each schedule entry to the
-  campaign OB units (resolving `[Less …]` exclusions and "any N …" §20.81 type-selectors) at scenario
-  setup — deferred to avoid fragile formation-name matching; needs per-formation OB verification.
+  §20.83). Test mandatory_withdrawal_schedule_20_8. **OB binding done:** each ObUnit carries an optional
+  `withdrawal: (GT, stage)` stamped onto `Unit.mandatory_withdrawal` at deploy; all 22 *first-time*
+  schedule entries are bound across 13 formations in `data/ob/commonwealth.ron`, resolving the
+  `[Less …]` division splits and brigade-only withdrawals by exact OB unit (tests
+  cw_withdrawal_schedule_bound_to_ob_20_8 + deploy_formation_builds_hierarchy). **Remaining (blocked
+  on other mechanics):** the 7 "[again]" re-withdrawals need the §20.8 return (Rtn) cycle; GT23/3
+  "1st Armored Bde [2]" has no 2nd Armored Division in the OB; GT97/2 "any three infantry battalions"
+  is a runtime §20.81 choice (the 22nd Guards Bde HQ is bound).
 - [-] **AU25 — §21.5 capture broken-down vehicles.** Deferred: breakdown is unit-internal state (weapons_broken/toe_broken), not shed "Broken Down Vehicle markers" on the map, so there's nothing to capture; needs a marker model first.
 - [-] **AU26 — §21.6 tow broken-down vehicles.** Deferred: depends on the same broken-vehicle-marker model as AU25.
 - [~] **AU27 — §22.6/§22.61–66 CW Tank Delivery Squadrons.** New `Unit.is_tds` unit type. Implemented:

@@ -5808,6 +5808,31 @@ mod tests {
     }
 
     #[test]
+    fn cw_withdrawal_schedule_bound_to_ob_20_8() {
+        let mut refs = ReferenceData::new();
+        refs.load_order_of_battle(Nationality::Commonwealth, include_str!("../../../data/ob/commonwealth.ron")).unwrap();
+        let ob = refs.orders_of_battle.get(&Nationality::Commonwealth).unwrap();
+        let wd = |form: &str, unit: &str| -> Option<(u32, u32)> {
+            ob.formation(form)
+                .and_then(|f| f.units.iter().find(|u| u.name == unit))
+                .and_then(|u| u.withdrawal)
+        };
+        // Sub-brigade vs. [Less …] division splits, and whole-formation withdrawals, from [4.43a].
+        assert_eq!(wd("4th Indian Division", "1st Royal Fusiliers"), Some((13, 3))); // 5th Bde
+        assert_eq!(wd("4th Indian Division", "4th Indian Div HQ"), Some((15, 2)));   // [Less 5/7]
+        assert_eq!(wd("6th Australian Division", "16th Aus Infantry Bde HQ"), Some((26, 1)));
+        assert_eq!(wd("6th Australian Division", "17th Aus Infantry Bde HQ"), Some((28, 2)));
+        assert_eq!(wd("6th Australian Division", "6th Australian Div HQ"), Some((27, 2))); // [Less 16/17]
+        assert_eq!(wd("2nd New Zealand Division", "4th New Zealand Bde HQ"), Some((25, 1)));
+        assert_eq!(wd("50th Infantry Division", "150th Infantry Bde HQ"), Some((44, 2)));
+        assert_eq!(wd("The Polish (Carpathian) Brigade", "Polish Brigade HQ"), Some((63, 1)));
+        assert_eq!(wd("10th Armored Division", "9th Armored Bde HQ"), Some((110, 3)));
+        assert_eq!(wd("1st Army Tank Brigade", "42nd Royal Tank Regt"), Some((93, 2)));
+        // A unit NOT scheduled (5th Indian Div 29th Bde, excluded from every first-time entry).
+        assert_eq!(wd("5th Indian Division", "1st Worcestshires"), None);
+    }
+
+    #[test]
     fn deploy_formation_builds_hierarchy() {
         use crate::state::game::GameState;
         use crate::state::map::HexCoord;
