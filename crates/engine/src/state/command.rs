@@ -4027,9 +4027,20 @@ impl GameState {
             return Err(CommandError::HexAlreadyInCombat);
         }
         // The defenders are the entire enemy stack in the attacked hex.
-        let defenders = self.enemy_units_in_hex(target, side);
+        let mut defenders = self.enemy_units_in_hex(target, side);
         if defenders.is_empty() {
             return Err(CommandError::NoTargets);
+        }
+        // §15.88/§15.15: assaulted defenders that are out of Close-Assault Ammunition or at cohesion
+        // ≤ −17 automatically surrender (en masse if all of them). The rest defend normally.
+        let auto_surrender: Vec<UnitId> = defenders
+            .iter()
+            .copied()
+            .filter(|&d| self.out_of_close_assault_ammo(d) || self.unit(d).is_some_and(|u| u.cohesion <= -17))
+            .collect();
+        if !auto_surrender.is_empty() {
+            self.surrender_units(&auto_surrender);
+            defenders.retain(|&d| self.unit(d).is_some_and(|u| u.total_toe() > 0));
         }
         // §50.14: the assaulting units expend Ammo (armor/gun-class only; rifle infantry pays
         // none). A shortfall forbids the assault (§50.12).

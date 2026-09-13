@@ -1415,6 +1415,19 @@ impl GameState {
         rate * toe
     }
 
+    /// §15.15/§15.88: whether a defender is "out of Ammunition for Close Assault" — a melee weapons
+    /// unit (not a gun; rifle infantry pays none) whose close-assault Ammo cost exceeds what it can
+    /// draw. Such a defender auto-surrenders when assaulted.
+    pub(crate) fn out_of_close_assault_ammo(&self, id: UnitId) -> bool {
+        if self.is_gun_unit(id)
+            || !matches!(self.units.get(&id).map(|u| &u.composition), Some(Composition::Weapons { .. }))
+        {
+            return false;
+        }
+        let cost = self.unit_combat_ammo_cost(id, CombatAction::CloseAssault);
+        cost > 0 && self.unit_ammo_available(id) < cost
+    }
+
     /// Ammo available to a firing unit: its onboard reserve plus friendly non-dummy Supply
     /// Dumps in its hex (§50.15).
     fn unit_ammo_available(&self, id: UnitId) -> u32 {

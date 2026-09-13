@@ -8410,6 +8410,34 @@ mod tests {
     }
 
     #[test]
+    fn assaulted_defender_auto_surrenders_15_88() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::Command;
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        g.map.set_hex(HexCoord::new(0, 0), HexTerrain::Clear);
+        g.map.set_hex(HexCoord::new(1, 0), HexTerrain::Clear);
+        let atk = g.spawn_unit(Nationality::Commonwealth, "h", "atk", Composition::Organic { current_toe: 4 });
+        let def = g.spawn_unit(Nationality::Italian, "p", "def", Composition::Organic { current_toe: 5 });
+        g.unit_mut(atk).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(0, 0)));
+        g.unit_mut(def).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(1, 0)));
+        // §15.88: a defender at cohesion ≤ −17 that is assaulted automatically surrenders.
+        g.unit_mut(def).unwrap().cohesion = -17;
+        assert!(g.apply(Command::CloseAssault { attackers: vec![atk], target: HexCoord::new(1, 0) }).is_ok());
+        assert!(g.unit(def).unwrap().status.surrendered, "§15.88 low-cohesion defender surrenders");
+        assert_eq!(g.unit(def).unwrap().total_toe(), 0);
+    }
+
+    #[test]
     fn sgsu_overrun_by_land_35_12() {
         use crate::reference::aircraft::AircraftClass;
         use crate::reference::squadron::SquadronClass;
