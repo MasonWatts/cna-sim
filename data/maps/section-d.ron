@@ -2174,6 +2174,7 @@
     "6235": (terrain: Invalid, features: []),
   },
   hexsides: [
+    (a: "2033", b: "2034", kind: Track),
     (a: "0101", b: "0102", kind: Track),
     (a: "0102", b: "0103", kind: Track),
     (a: "0103", b: "0104", kind: Track),
@@ -2430,7 +2431,6 @@
     (a: "2028", b: "1929", kind: Track),
     (a: "1930", b: "1931", kind: Track),
     (a: "1931", b: "1932", kind: Track),
-    (a: "1932", b: "1933", kind: Track),
     (a: "1932", b: "2032", kind: Track),
     (a: "2001", b: "2002", kind: UnfinishedRoad),
     (a: "2002", b: "2103", kind: UnfinishedRoad),
