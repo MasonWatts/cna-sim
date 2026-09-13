@@ -1275,6 +1275,10 @@ impl GameState {
     /// is modeled; this returns the unit's own printed CPA.)
     pub fn unit_cpa(&self, id: UnitId) -> Option<i32> {
         let u = self.units.get(&id)?;
+        // §22.63: a Tank Delivery Squadron has a CPA of 25 (as a vehicle).
+        if u.is_tds {
+            return Some(25);
+        }
         // §19.85: an HQ augmented with anti-tank TOE possesses the CPA of those AT points (a bare
         // HQ has empty groups and falls through to its printed characteristics).
         if u.is_hq {
@@ -1942,6 +1946,37 @@ impl GameState {
     /// is treated as 0%), moving them from `weapons_broken` back into the composition. Returns
     /// the TOE repaired. §22.26 Fuel cost is enforced: one Fuel Point per Tank TOE Point attempted
     /// is expended (from the unit's tanks, then a co-located dump) before rolling, capping the attempt.
+    /// §22.62: whether a friendly Tank Delivery Squadron able to assist repairs shares `id`'s hex
+    /// (excluding `id` itself, and any TDS repair-locked this stage by §22.66).
+    pub(crate) fn hex_has_friendly_tds(&self, id: UnitId) -> bool {
+        let Some(u) = self.units.get(&id) else { return false };
+        let (Some(hex), side) = (u.hex(), u.nationality.side()) else { return false };
+        self.units.values().any(|o| {
+            o.id != id
+                && o.is_tds
+                && !o.tds_repair_locked
+                && o.nationality.side() == side
+                && o.hex() == Some(hex)
+        })
+    }
+
+    /// §22.63: return to play (at Cairo) any Tank Delivery Squadron whose eight-Game-Turn recovery
+    /// has elapsed. Called at the start of a Game-Turn. Returns the number returned.
+    pub fn process_tds_returns(&mut self) -> u32 {
+        use crate::state::map::HexId;
+        let cairo = HexId::parse("E1430").map(|h| h.to_hex_coord());
+        let gt = self.game_turn;
+        let mut returned = 0;
+        for u in self.units.values_mut() {
+            if u.is_tds && u.tds_return_game_turn.is_some_and(|r| gt >= r) {
+                u.location = cairo.map(UnitLocation::OnMap);
+                u.tds_return_game_turn = None;
+                returned += 1;
+            }
+        }
+        returned
+    }
+
     pub fn field_repair_tanks(&mut self, id: UnitId, roll: u32) -> u32 {
         // §22.13d: no field repairs in a Rainstorm or Sandstorm hex (Major Facilities exempt).
         if self.field_repair_blocked_by_weather(id) {
@@ -1950,6 +1985,8 @@ impl GameState {
         let Some(table) = self.reference.repair_table.clone() else {
             return 0;
         };
+        // §22.62: a co-located friendly Tank Delivery Squadron subtracts 1 from the field-repair roll.
+        let roll = if self.hex_has_friendly_tds(id) { roll.saturating_sub(1) } else { roll };
         let pct = table.tank_field_pct(roll);
         if pct == 0 {
             return 0;
@@ -2805,8 +2842,9 @@ impl GameState {
 
     /// Replacement Points of `class` available to rebuild `unit` at `hex`: those in co-located,
     /// trained pools assigned to this unit or unassigned (§20.41/§20.43).
-    fn available_replacement_class(&self, class: ReplacementClass, unit: UnitId, hex: HexCoord) -> u32 {
-        self.replacement_points
+    pub(crate) fn available_replacement_class(&self, class: ReplacementClass, unit: UnitId, hex: HexCoord) -> u32 {
+        let pools: u32 = self
+            .replacement_points
             .iter()
             .filter(|p| {
                 p.class == class
@@ -2815,12 +2853,24 @@ impl GameState {
                     && (p.assigned_to.is_none() || p.assigned_to == Some(unit))
             })
             .map(|p| p.count)
-            .sum()
+            .sum();
+        // §22.64: a co-located friendly Tank Delivery Squadron's reserves count as Tank points.
+        let tds = if class == ReplacementClass::Tank {
+            let side = self.units.get(&unit).map(|u| u.nationality.side());
+            self.units
+                .values()
+                .filter(|t| t.is_tds && t.hex() == Some(hex) && Some(t.nationality.side()) == side)
+                .map(|t| t.tds_tank_reserve)
+                .sum()
+        } else {
+            0
+        };
+        pools + tds
     }
 
     /// Remove `n` Replacement Points of `class` for `unit` at `hex` (pools assigned to this unit
     /// first, then unassigned).
-    fn draw_replacement_class(&mut self, class: ReplacementClass, unit: UnitId, hex: HexCoord, n: u32) {
+    pub(crate) fn draw_replacement_class(&mut self, class: ReplacementClass, unit: UnitId, hex: HexCoord, n: u32) {
         let mut owed = n;
         for assigned_first in [true, false] {
             for p in self.replacement_points.iter_mut().filter(|p| {
@@ -2835,6 +2885,20 @@ impl GameState {
                 let take = owed.min(p.count);
                 p.count -= take;
                 owed -= take;
+            }
+        }
+        // §22.64: fall back to co-located friendly Tank Delivery Squadron reserves for Tank points.
+        if owed > 0 && class == ReplacementClass::Tank {
+            let side = self.units.get(&unit).map(|u| u.nationality.side());
+            for t in self.units.values_mut() {
+                if owed == 0 {
+                    break;
+                }
+                if t.is_tds && t.hex() == Some(hex) && Some(t.nationality.side()) == side {
+                    let take = owed.min(t.tds_tank_reserve);
+                    t.tds_tank_reserve -= take;
+                    owed -= take;
+                }
             }
         }
     }
@@ -7979,6 +8043,10 @@ impl GameState {
     /// Effective Basic Stacking Points (§9.4) after any shell reduction (§9.28) and the
     /// parenthesized-HQ rule (§9.12: an HQ with nothing attached occupies 0 SP).
     pub fn effective_stacking_points(&self, id: UnitId) -> u32 {
+        // §22.63/§22.64: a Tank Delivery Squadron always occupies 0 Stacking Points.
+        if self.units.get(&id).is_some_and(|u| u.is_tds) {
+            return 0;
+        }
         if self.is_noncombat_hq(id) {
             return 0;
         }
@@ -8188,6 +8256,11 @@ impl GameState {
             u.status.in_training = false;
         }
         for u in self.units.values_mut() {
+            // §22.66: a Tank Delivery Squadron that exceeded its CPA (25) this stage may not repair
+            // next stage (computed from the stage's expenditure before it is reset).
+            if u.is_tds {
+                u.tds_repair_locked = u.cp_expended.0 > 250;
+            }
             u.cp_expended = Fixed(0);
             u.combat_cp = Fixed(0);
             u.moved_into_zoc = false;

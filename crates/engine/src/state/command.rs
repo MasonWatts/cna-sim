@@ -5554,6 +5554,39 @@ impl GameState {
                         sg.planes.clear();
                     }
                 }
+                // §22.63: a lone enemy Tank Delivery Squadron the mover (a combat unit) places in
+                // its ZOC — no friendly combat unit stacked with it — is eliminated; it may return
+                // to play eight Game-Turns later.
+                if self.is_combat_unit(unit) {
+                    let tds_hit: Vec<UnitId> = to
+                        .neighbors()
+                        .into_iter()
+                        .flat_map(|h| {
+                            self.units
+                                .values()
+                                .filter(|t| {
+                                    t.is_tds && t.hex() == Some(h) && t.nationality.side() != ms
+                                })
+                                .filter(|t| {
+                                    !self.units_in_hex(h).iter().any(|&u| {
+                                        self.units.get(&u).is_some_and(|x| {
+                                            x.nationality.side() == t.nationality.side() && x.total_toe() > 0
+                                        }) && self.is_combat_unit(u)
+                                    })
+                                })
+                                .map(|t| t.id)
+                                .collect::<Vec<_>>()
+                        })
+                        .collect();
+                    let return_gt = self.game_turn + 8;
+                    for id in tds_hit {
+                        if let Some(t) = self.units.get_mut(&id) {
+                            t.location = None;
+                            t.tds_return_game_turn = Some(return_gt);
+                            t.tds_tank_reserve = 0; // any held reserves are lost with it
+                        }
+                    }
+                }
             }
         }
         // §8.62/§8.67: recompute Contact from ZOC and clear any engagement this move broke off.

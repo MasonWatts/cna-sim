@@ -219,6 +219,23 @@ pub struct Unit {
     /// §42.41: this unit is airborne / airdrop-eligible (set from its OA sheet).
     #[serde(default)]
     pub airdroppable: bool,
+    /// §22.6: this counter is a Commonwealth Tank Delivery Squadron — an advanced field-repair
+    /// vehicle (CPA 25, 0 Stacking Points, no combat ratings) that speeds tank repair (§22.62),
+    /// holds ≤3 TOE tank reserves (§22.64), and tows at 20 CP (§22.65).
+    #[serde(default)]
+    pub is_tds: bool,
+    /// §22.63: for an eliminated Tank Delivery Squadron, the Game-Turn it may return to play (its
+    /// elimination Game-Turn + 8). `None` while in play.
+    #[serde(default)]
+    pub tds_return_game_turn: Option<u32>,
+    /// §22.64: reserve Tank TOE Strength Points a Tank Delivery Squadron currently holds (≤3);
+    /// available as trained Tank Replacement Points in its hex.
+    #[serde(default)]
+    pub tds_tank_reserve: u32,
+    /// §22.66: this Tank Delivery Squadron exceeded its CPA in the previous Operations Stage and may
+    /// not attempt repairs this stage (it may still tow). Reset each stage.
+    #[serde(default)]
+    pub tds_repair_locked: bool,
 
     // Organization: two independent, nullable links (§19.1).
     pub assigned_parent: Option<UnitId>,
@@ -366,6 +383,10 @@ impl Unit {
             org_size: OrgSize::Battalion,
             is_hq: false,
             airdroppable: false,
+            is_tds: false,
+            tds_return_game_turn: None,
+            tds_tank_reserve: 0,
+            tds_repair_locked: false,
             assigned_parent: None,
             attached_parent: None,
             assigned_capacity: 0,

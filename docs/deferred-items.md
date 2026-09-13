@@ -297,7 +297,17 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   setup — deferred to avoid fragile formation-name matching; needs per-formation OB verification.
 - [-] **AU25 — §21.5 capture broken-down vehicles.** Deferred: breakdown is unit-internal state (weapons_broken/toe_broken), not shed "Broken Down Vehicle markers" on the map, so there's nothing to capture; needs a marker model first.
 - [-] **AU26 — §21.6 tow broken-down vehicles.** Deferred: depends on the same broken-vehicle-marker model as AU25.
-- [ ] **AU27 — §22.6/§22.61–66 CW Tank Delivery Squadrons** (deliver tank Replacement Points).
+- [~] **AU27 — §22.6/§22.61–66 CW Tank Delivery Squadrons.** New `Unit.is_tds` unit type. Implemented:
+  §22.62 field-repair −1 for a co-located TDS (`hex_has_friendly_tds` → `field_repair_tanks`); §22.63
+  CPA 25 (`unit_cpa`), 0 Stacking Points (`effective_stacking_points`), no combat ratings (inherent),
+  ZOC-elimination of a lone TDS by an advancing enemy combat unit (`move_counter`) + eight-Game-Turn
+  return at Cairo (`process_tds_returns`); §22.64 ≤3-TOE tank reserves usable as co-located Tank
+  Replacement Points (`available_/draw_replacement_class`); §22.66 CPA-exceeded repair lockout
+  (`tds_repair_locked`, set at stage rollover, suppresses the §22.62 assist). Test
+  tank_delivery_squadron_22_6. **Deferred sub-rules (unmet dependencies, not skipped):** §22.65 towing
+  at 20 CP needs the tow / broken-vehicle-marker model (same gap as AU25/AU26); §22.62 destroyed-tank
+  repair-on-a-1 is entangled with the currently-simplified auto-repair of captured/destroyed
+  equipment. Scenario OB wiring of the three squadrons (A/B/C, arrive GT29/2, [4.43a]) is a follow-on.
 - [ ] **AU28 — §22.7 German Mobile Tank Repair unit.**
 
 ### Movement / stacking / terrain (§8–§9)

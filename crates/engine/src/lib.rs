@@ -1839,6 +1839,80 @@ mod tests {
     }
 
     #[test]
+    fn tank_delivery_squadron_22_6() {
+        use crate::state::game::{GameState, ReplacementClass};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
+        refs.load_repair_table(include_str!("../../../data/reference/repair-table.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let a = HexCoord::new(0, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+
+        // A Tank Delivery Squadron: §22.63 CPA 25, 0 Stacking Points.
+        let tds = g.spawn_unit(Nationality::Commonwealth, "tds", "DTS A", Composition::Weapons { groups: vec![] });
+        {
+            let u = g.unit_mut(tds).unwrap();
+            u.is_tds = true;
+            u.location = Some(UnitLocation::OnMap(a));
+        }
+        assert_eq!(g.unit_cpa(tds), Some(25));
+        assert_eq!(g.effective_stacking_points(tds), 0);
+
+        // A co-located friendly tank battalion with 8 broken tank points and fuel to repair them.
+        let mk_tank = |g: &mut GameState| {
+            let t = g.spawn_unit(Nationality::Commonwealth, "rtr", "tank bn", Composition::Weapons { groups: vec![WeaponGroup { system: "A9 Cruiser".into(), count: 1 }] });
+            let u = g.unit_mut(t).unwrap();
+            u.location = Some(UnitLocation::OnMap(a));
+            u.weapons_broken = vec![WeaponGroup { system: "A9 Cruiser".into(), count: 8 }];
+            u.fuel = 20;
+            t
+        };
+        // §22.62: with a co-located TDS, the field-repair roll of 2 is reduced to 1 (25% vs 10%),
+        // repairing more tank points than the same roll without the TDS.
+        let with_tds = mk_tank(&mut g);
+        assert!(g.hex_has_friendly_tds(with_tds));
+        let repaired_with = g.field_repair_tanks(with_tds, 2);
+
+        // Move the TDS away; an identical unit at the same roll repairs fewer (no −1).
+        g.unit_mut(tds).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(9, 9)));
+        let without_tds = mk_tank(&mut g);
+        assert!(!g.hex_has_friendly_tds(without_tds));
+        let repaired_without = g.field_repair_tanks(without_tds, 2);
+        assert!(repaired_with > repaired_without, "§22.62: TDS −1 should repair more ({repaired_with} vs {repaired_without})");
+
+        // §22.66: a repair-locked TDS provides no assistance.
+        g.unit_mut(tds).unwrap().location = Some(UnitLocation::OnMap(a));
+        g.unit_mut(tds).unwrap().tds_repair_locked = true;
+        assert!(!g.hex_has_friendly_tds(with_tds));
+        g.unit_mut(tds).unwrap().tds_repair_locked = false;
+
+        // §22.64: the TDS's tank reserves count as co-located Tank Replacement Points, and drawing
+        // pulls them down.
+        g.unit_mut(tds).unwrap().tds_tank_reserve = 3;
+        assert_eq!(g.available_replacement_class(ReplacementClass::Tank, with_tds, a), 3);
+        g.draw_replacement_class(ReplacementClass::Tank, with_tds, a, 2);
+        assert_eq!(g.unit(tds).unwrap().tds_tank_reserve, 1);
+
+        // §22.63: an eliminated TDS (return GT set) comes back at Cairo when its recovery elapses.
+        g.game_turn = 30;
+        {
+            let u = g.unit_mut(tds).unwrap();
+            u.location = None;
+            u.tds_return_game_turn = Some(38);
+        }
+        g.game_turn = 37;
+        assert_eq!(g.process_tds_returns(), 0); // not yet
+        g.game_turn = 38;
+        assert_eq!(g.process_tds_returns(), 1);
+        assert!(g.unit(tds).unwrap().location.is_some());
+        assert_eq!(g.unit(tds).unwrap().tds_return_game_turn, None);
+    }
+
+    #[test]
     fn stacking_limit_enforced() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;
