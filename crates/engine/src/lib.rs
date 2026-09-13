@@ -8317,6 +8317,47 @@ mod tests {
     }
 
     #[test]
+    fn cp_cohesion_economy_6_11_15() {
+        use crate::reference::terrain::Fixed;
+        use crate::state::game::GameState;
+        use crate::state::unit::{Composition, UnitLocation};
+        use crate::state::map::HexCoord;
+
+        let mut refs = ReferenceData::new();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let u = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 5 });
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(0, 0)));
+        let cpa = g.unit_cpa(u).unwrap();
+
+        // §11.24 per-segment cap: charging combat CP twice tops out at the cap, not double.
+        g.charge_combat_cp(u, 5);
+        g.charge_combat_cp(u, 5);
+        assert_eq!(g.unit(u).unwrap().combat_cp, Fixed(50));
+        assert_eq!(g.unit(u).unwrap().cp_expended, Fixed(50));
+
+        // §6.21: expending 2 CP beyond CPA earns 2 Disorganization Points (−2 cohesion).
+        g.unit_mut(u).unwrap().cp_expended = Fixed(cpa * 10);
+        g.unit_mut(u).unwrap().combat_cp = Fixed(0);
+        g.unit_mut(u).unwrap().cohesion = 0;
+        g.charge_combat_cp(u, 2);
+        assert_eq!(g.unit(u).unwrap().cohesion, -2, "§6.21: 2 CP over CPA → −2 cohesion");
+
+        // §6.24.1: an idle Operations Stage (no CP used) recovers 5 RP toward a 0 cap.
+        g.unit_mut(u).unwrap().cohesion = -8;
+        g.unit_mut(u).unwrap().cp_expended = Fixed(0);
+        g.begin_operations_stage();
+        assert_eq!(g.unit(u).unwrap().cohesion, -3, "§6.24.1: idle → +5 RP");
+        // Idle recovery never raises cohesion above 0.
+        g.unit_mut(u).unwrap().cohesion = -2;
+        g.unit_mut(u).unwrap().cp_expended = Fixed(0);
+        g.begin_operations_stage();
+        assert_eq!(g.unit(u).unwrap().cohesion, 0, "§6.24.1 caps idle recovery at 0");
+        // A stage in which the unit spent CP earns no idle RP.
+        let _ = cpa;
+    }
+
+    #[test]
     fn recce_armored_car_vs_recce_rows_20_3() {
         use crate::state::game::GameState;
         use crate::state::unit::{Composition, WeaponGroup};

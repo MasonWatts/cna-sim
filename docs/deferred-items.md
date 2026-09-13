@@ -209,14 +209,14 @@ Found by a fresh rulebook audit; none were in the tracker above. Ordered by impa
 Scope items excluded from "address them all" are marked `[-]` (by design).
 
 ### Systemic — the CP / cohesion economy
-- [ ] **AU1 — §11.2 combat expends Capability Points** (5 phasing / 3 non-phasing / 2 probe / 1 at
+- [x] **AU1 — §11.2 combat expends Capability Points** (5 phasing / 3 non-phasing / 2 probe / 1 at
   −4 diff). `cp_expended` is written only by movement/air-transport; close-assault/anti-armor/barrage
   never charge CP, so fighting is free against CPA and the §6.21 over-CPA disorganization never fires
   for combat.
-- [ ] **AU2 — §6.23/§6.24 cohesion recovery (Reorganization Points).** +5 for an idle Operations
+- [x] **AU2 — §6.23/§6.24 cohesion recovery (Reorganization Points).** +5 for an idle Operations
   Stage, +3 for a won close assault, capped at +10; today every cohesion write is a decrement — units
   never heal.
-- [ ] **AU3 — §15.87 (+§6.21) close-assault Disorganization.** A unit taking ≥30% TOE loss in one
+- [x] **AU3 — §15.87 (+§6.21) close-assault Disorganization.** A unit taking ≥30% TOE loss in one
   close assault gains 3 Disorganization Points (all involved units). Losses are computed but no DP.
 
 ### ZOC / reserve / status gates

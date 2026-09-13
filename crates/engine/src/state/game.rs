@@ -7150,6 +7150,43 @@ impl GameState {
         }
     }
 
+    /// §11.2/§11.24: charge a unit up to `cap` whole Capability Points for combat this Operations
+    /// Stage (5 phasing / 3 non-phasing / 2 probe), respecting the per-segment cap so a unit engaged
+    /// in more than one combat this stage isn't overcharged. Flows through `expend_cp`, so §6.21
+    /// over-CPA Disorganization applies.
+    pub fn charge_combat_cp(&mut self, id: UnitId, cap: i32) {
+        let cap_tenths = cap * 10;
+        let already = self.units.get(&id).map(|u| u.combat_cp.0).unwrap_or(0);
+        let add = (cap_tenths - already).max(0);
+        if add > 0 {
+            self.expend_cp(id, Fixed(add));
+            if let Some(u) = self.unit_mut(id) {
+                u.combat_cp = Fixed(u.combat_cp.0 + add);
+            }
+        }
+    }
+
+    /// §11.25: charge combat CP to *every* unit in each of `hexes` (participants and co-located
+    /// non-participants alike), each at 5 CP if it belongs to the phasing (active) side else 3, or 2
+    /// for a Probe (§11.23). Used by close-assault and anti-armor, which both charge attacker and
+    /// defender hexes.
+    pub(crate) fn charge_combat_hexes(&mut self, hexes: &[HexCoord], probe: bool) {
+        let phasing = self.active_player;
+        let mut ids: Vec<UnitId> = hexes.iter().flat_map(|&h| self.units_in_hex(h)).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        for id in ids {
+            let cap = if probe {
+                2
+            } else if self.units.get(&id).map(|u| u.nationality.side()) == Some(phasing) {
+                5
+            } else {
+                3
+            };
+            self.charge_combat_cp(id, cap);
+        }
+    }
+
     /// The hex a unit effectively occupies: its own location, or — if attached — the
     /// location resolved by following the attachment chain to the top counter.
     pub fn effective_hex(&self, id: UnitId) -> Option<HexCoord> {
@@ -7686,6 +7723,14 @@ impl GameState {
                 .collect();
             self.expend_water(&acted);
         }
+        // §6.24.1: a unit that expended no Capability Points this Operations Stage (and was not
+        // Training) recovers 5 Reorganization Points — but this idle recovery may never raise its
+        // Cohesion above 0 (read cp_expended / in_training before both are cleared below).
+        for u in self.units.values_mut() {
+            if u.cp_expended.0 == 0 && !u.status.in_training && u.cohesion < 0 {
+                u.cohesion = (u.cohesion + 5).min(0);
+            }
+        }
         // §17.3 Training: resolve the just-completed stage for each unit designated to Train (read
         // before CP is reset). §17.33: any CP expenditure interrupts, resetting progress; otherwise
         // the unit accrues a training stage, and every six raise its Basic Morale one step toward its
@@ -7707,6 +7752,7 @@ impl GameState {
         }
         for u in self.units.values_mut() {
             u.cp_expended = Fixed(0);
+            u.combat_cp = Fixed(0);
             u.moved_into_zoc = false;
             u.breakdown_points = 0;
             u.breakdown_checked_col = -1;

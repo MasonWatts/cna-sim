@@ -241,6 +241,10 @@ pub struct Unit {
     // Dynamic state (path-dependent primitives).
     pub cohesion: i32,
     pub cp_expended: Fixed,
+    /// §11.2/§11.24: Capability Points already charged to this unit **for combat** this Operations
+    /// Stage, so repeated combats respect the per-segment cap (5 phasing / 3 non-phasing). Part of
+    /// `cp_expended`; reset each stage.
+    pub combat_cp: Fixed,
     /// §8.14: set when the unit moved into an enemy ZOC this Operations Stage — it must
     /// then stop (no further movement until the next stage). Reset each stage.
     #[serde(default)]
@@ -346,6 +350,7 @@ impl Unit {
             composition,
             cohesion: 0,
             cp_expended: Fixed(0),
+            combat_cp: Fixed(0),
             moved_into_zoc: false,
             fuel: 0,
             ammo: 0,

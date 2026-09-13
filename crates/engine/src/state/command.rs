@@ -3895,6 +3895,11 @@ impl GameState {
         }
         // §16.21: a barraged hex may not be reconnoitred this stage.
         self.barraged_hexes_this_stage.insert(target);
+        // §11.22.1/§11.21a: the barraging units pay 5 CP if phasing (active side) else 3.
+        let cap = if side == self.active_player { 5 } else { 3 };
+        for &a in attackers {
+            self.charge_combat_cp(a, cap);
+        }
         Ok(CommandOutcome::Barrage(self.resolve_barrage(attackers, target_unit)))
     }
 
@@ -3928,6 +3933,11 @@ impl GameState {
         if let Some(s) = atk_side {
             self.land_combat_this_stage.insert(s);
         }
+        // §11.22/§11.25: anti-armor charges the firing hexes and the target hex — 5 CP for the
+        // phasing side, 3 for the non-phasing — before resolution (§6.22).
+        let mut cp_hexes: Vec<HexCoord> = attackers.iter().filter_map(|&a| self.effective_hex(a)).collect();
+        cp_hexes.push(target_hex);
+        self.charge_combat_hexes(&cp_hexes, false);
         let dice = self.rng.two_dice_raw();
         let outcome = self.resolve_anti_armor_core(attackers, target_hex, dice, withheld);
         // §16.46: anti-armor fire eliminates a Dummy Tank once the defender has no real armor left.
@@ -3978,7 +3988,44 @@ impl GameState {
         if !self.consume_combat_ammo(attackers, crate::state::game::CombatAction::CloseAssault) {
             return Err(CommandError::InsufficientAmmo);
         }
+        // §11.22/§11.25: the assaulting hexes pay 5 CP (phasing), the assaulted hex 3 (non-phasing);
+        // applied before resolution so any §6.21 over-CPA Disorganization feeds the morale check.
+        let mut cp_hexes: Vec<HexCoord> = attackers.iter().filter_map(|&a| self.effective_hex(a)).collect();
+        cp_hexes.push(target);
+        self.charge_combat_hexes(&cp_hexes, false);
+        // Snapshot TOE of all involved units for the §15.87 loss check.
+        let involved: Vec<(UnitId, u32)> = attackers
+            .iter()
+            .chain(defenders.iter())
+            .map(|&id| (id, self.unit(id).map(|u| u.total_toe()).unwrap_or(0)))
+            .collect();
         let outcome = self.resolve_close_assault(attackers, &defenders);
+        // §15.87/§6.21: a unit that loses ≥30% of its TOE in one close assault earns 3 Disorganization
+        // Points (−3 cohesion).
+        for (id, before) in &involved {
+            if *before == 0 {
+                continue;
+            }
+            let after = self.unit(*id).map(|u| u.total_toe()).unwrap_or(0);
+            if (before - after) * 100 >= before * 30 {
+                if let Some(u) = self.unit_mut(*id) {
+                    u.cohesion -= 3;
+                }
+            }
+        }
+        // §6.24.2: if the assault clears the hex of enemy combat units (defender vacates), each
+        // assaulting unit earns 3 Reorganization Points (cohesion, capped at +10).
+        let enemy_cleared = !self
+            .enemy_units_in_hex(target, side)
+            .iter()
+            .any(|&id| self.unit(id).is_some_and(|u| u.total_toe() > 0 && !u.is_hq));
+        if enemy_cleared {
+            for &a in attackers {
+                if let Some(u) = self.unit_mut(a) {
+                    u.cohesion = (u.cohesion + 3).min(10);
+                }
+            }
+        }
         // §50.14: the defenders fire defensively too — their melee weapons units spend defensive
         // close-assault Ammo (best-effort; the defender is already committed). (The broader §50.12
         // no-ammo → surrender / no-ZOC effect is a ZOC-wide rule left for the ZOC layer.)
