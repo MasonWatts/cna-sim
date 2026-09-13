@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 pub enum WeaponPoints {
     Bomb,
     Torpedo,
+    /// §12.53: the Artillery Barrage Points column, used when artillery barrages a facility other
+    /// than a Supply Dump or Air Facility (those use the Bomb column with Raw points, §12.54).
+    Barrage,
 }
 
 /// The target row-groups of the CRT. Airfields, air landing strips and ports share one group;
@@ -38,6 +41,10 @@ pub struct BombResultRow {
 pub struct AirBombardmentTable {
     pub bomb_bands: Vec<u32>,
     pub torpedo_bands: Vec<u32>,
+    /// §12.53 Artillery Barrage Points column bounds (1-2/3-4/5-6/7-10/11-12/13-14/15-16/17-18/
+    /// 19-20/21+). Defaults empty for older data — callers fall back to the Bomb scale then.
+    #[serde(default)]
+    pub barrage_bands: Vec<u32>,
     pub airfield_port_strip: Vec<BombResultRow>,
     pub supply_dump: Vec<BombResultRow>,
     pub fortification: Vec<BombResultRow>,
@@ -65,6 +72,9 @@ impl AirBombardmentTable {
         let bands = match weapon {
             WeaponPoints::Bomb => &self.bomb_bands,
             WeaponPoints::Torpedo => &self.torpedo_bands,
+            // Fall back to the Bomb scale if the Barrage column wasn't loaded.
+            WeaponPoints::Barrage if !self.barrage_bands.is_empty() => &self.barrage_bands,
+            WeaponPoints::Barrage => &self.bomb_bands,
         };
         bands
             .iter()
@@ -108,6 +118,13 @@ mod tests {
         assert_eq!(t.column_index(WeaponPoints::Torpedo, 5), 0);
         assert_eq!(t.column_index(WeaponPoints::Torpedo, 50), 3);
         assert_eq!(t.column_index(WeaponPoints::Torpedo, 341), 10);
+        // §12.53 Artillery Barrage Points scale (1-2/3-4/5-6/7-10/.../19-20/21+).
+        assert_eq!(t.column_index(WeaponPoints::Barrage, 2), 0);
+        assert_eq!(t.column_index(WeaponPoints::Barrage, 3), 1);
+        assert_eq!(t.column_index(WeaponPoints::Barrage, 10), 3);
+        assert_eq!(t.column_index(WeaponPoints::Barrage, 20), 8);
+        assert_eq!(t.column_index(WeaponPoints::Barrage, 21), 9);
+        assert_eq!(t.column_index(WeaponPoints::Barrage, 9999), 9);
     }
 
     #[test]

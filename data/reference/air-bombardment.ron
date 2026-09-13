@@ -15,6 +15,9 @@
 (
     bomb_bands:    [20, 40, 80, 120, 160, 200, 260, 320, 390, 470, 4294967295],
     torpedo_bands: [5, 12, 24, 50, 80, 120, 160, 210, 270, 340, 4294967295],
+    // §12.53 Artillery Barrage Points column (§41.5 header row b, PDF p107). 21+ maxes at the
+    // 391-470 (index 9) column; the 471+ column is unreachable by barrage.
+    barrage_bands: [2, 4, 6, 10, 12, 14, 16, 18, 20, 4294967295],
 
     // Airfields / Air Landing Strips / Ports (result = level count 0..4).
     airfield_port_strip: [

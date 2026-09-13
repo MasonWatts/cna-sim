@@ -29,6 +29,21 @@ pub enum RepairKind {
     Facility,
 }
 
+/// §12.5/§12.51: the kind of Facility an artillery barrage targets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FacilityTarget {
+    /// A Major City or a placed Fortification (§12.53 — Artillery Barrage Points column).
+    Fortification,
+    /// A Road hex (§12.53).
+    Road,
+    /// A Railroad hex (§12.53).
+    Railroad,
+    /// A Supply Dump (§12.54 — Bomb column, Raw Barrage Points).
+    SupplyDump,
+    /// An Air Facility — airfield / landing strip / port (§12.54).
+    AirFacility,
+}
+
 /// An action a player attempts. Validated and applied by [`GameState::apply`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
@@ -390,6 +405,10 @@ pub enum Command {
     /// drawn from a co-located trained Tank (or, for Italy, Recce) Replacement pool (Organization
     /// Phase). Raises its per-TOE ratings to Anti-Armor 1 / Offensive Close Assault 3 (§20.54).
     UpgradeRecce { unit: UnitId },
+    /// §12.5: artillery barrage against a Facility in `target` (rather than a unit). §12.53 uses the
+    /// §41.5 Artillery Barrage Points column for structures; §12.54 uses the Bomb column with Raw
+    /// Barrage Points for Supply Dumps and Air Facilities.
+    BarrageFacility { barragers: Vec<UnitId>, target: HexCoord, facility: FacilityTarget },
     /// §17.5: voluntarily surrender the entire stack in `hex` to an adjacent enemy combat unit
     /// (`captor`, which pays 2 CP to accept, §17.54). If `destroy_material`, the owner first
     /// attempts §17.55/§17.56 pre-capture destruction of tanks/guns ((die−1)×10%) and
@@ -606,6 +625,7 @@ impl Command {
             Command::CloseAssault { .. } => &["§15"],
             Command::AntiArmor { .. } => &["§14"],
             Command::Barrage { .. } => &["§12.6", "§12.23"],
+            Command::BarrageFacility { .. } => &["§12.5", "§12.53", "§12.54"],
             Command::OffShoreBombard { .. } => &["§30.2"],
             Command::Strafe { .. } => &["§40.5"],
             // Organization / reorganization & logistics.
@@ -803,6 +823,8 @@ pub enum CommandOutcome {
     ReplacementAbsorbed(u32),
     /// §19.8: AT TOE points added to a Brigade-level HQ (ad-hoc anti-tank battery).
     AntiTankAugmented(u32),
+    /// §12.5: an artillery barrage against a facility resolved with this raw table result.
+    FacilityBarrage { result: i32 },
     /// §20.5: an armored Recce / Armored-Car unit was upgraded.
     RecceUpgraded,
     /// §49.17: Fuel Points siphoned between units.
@@ -1438,6 +1460,9 @@ impl GameState {
                 let u = self.unit_mut(unit).ok_or(CommandError::UnitNotFound)?;
                 u.reserve = status;
                 Ok(CommandOutcome::ReserveDesignated)
+            }
+            Command::BarrageFacility { barragers, target, facility } => {
+                self.cmd_barrage_facility(&barragers, target, facility)
             }
             Command::VoluntarySurrender { hex, captor, destroy_material } => {
                 self.cmd_voluntary_surrender(hex, captor, destroy_material)
@@ -4020,6 +4045,86 @@ impl GameState {
             self.charge_combat_cp(a, cap);
         }
         Ok(CommandOutcome::Barrage(self.resolve_barrage(attackers, target_unit)))
+    }
+
+    /// §12.5 Barrage against a Facility. §12.53: structures (fortifications/cities, roads, railroads)
+    /// read the §41.5 Artillery Barrage Points column with **Actual** Barrage Points; §12.54: Supply
+    /// Dumps and Air Facilities read the Bomb column with **Raw** Barrage Points. The result is
+    /// applied through the shared facility-effect machinery.
+    fn cmd_barrage_facility(
+        &mut self,
+        barragers: &[UnitId],
+        target: HexCoord,
+        facility: FacilityTarget,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::aircraft::BombingMission as M;
+        use crate::reference::air_bombardment::{TargetGroup, WeaponPoints};
+        use crate::state::unit::RatingKind;
+        self.require_combat_phase()?;
+        if barragers.is_empty() {
+            return Err(CommandError::NoParticipants);
+        }
+        self.require_units_exist(barragers)?;
+        self.require_no_noncombat_hq(barragers)?;
+        // §6.26: a Disorganized unit may not attack (Pinned units may still barrage, §12.44).
+        if barragers.iter().any(|&a| self.unit(a).is_some_and(|u| u.cohesion <= -26)) {
+            return Err(CommandError::Disorganized);
+        }
+        let side = self.attackers_side(barragers)?;
+        // §12.31: artillery barrages an adjacent hex.
+        self.require_all_adjacent(barragers, target)?;
+        // §50.14: each barraging unit expends Ammo.
+        if !self.consume_combat_ammo(barragers, crate::state::game::CombatAction::Barrage) {
+            return Err(CommandError::InsufficientAmmo);
+        }
+        self.barraged_hexes_this_stage.insert(target);
+        // Raw & Actual Barrage Points across the firing units (§11.34 / §11.3).
+        let raw: i32 = barragers
+            .iter()
+            .filter_map(|&id| self.unit(id))
+            .map(|u| u.raw_strength(&self.reference, RatingKind::Barrage))
+            .sum();
+        let actual = ((raw + 5) / 10).max(0) as u32;
+        let raw = raw.max(0) as u32;
+        // §12.53 (structures → Artillery Barrage column, Actual) vs §12.54 (dump/air → Bomb column, Raw).
+        let (group, mission, weapon, points) = match facility {
+            FacilityTarget::Fortification => (TargetGroup::Fortification, M::CityFortification, WeaponPoints::Barrage, actual),
+            FacilityTarget::Road => (TargetGroup::Road, M::Road, WeaponPoints::Barrage, actual),
+            FacilityTarget::Railroad => (TargetGroup::Railroad, M::Railroad, WeaponPoints::Barrage, actual),
+            FacilityTarget::SupplyDump => (TargetGroup::SupplyDump, M::SupplyDump, WeaponPoints::Bomb, raw),
+            FacilityTarget::AirFacility => (TargetGroup::AirfieldPortStrip, M::AirFacility, WeaponPoints::Bomb, raw),
+        };
+        let roll = self.rng.two_dice_raw() as u32;
+        let result = self
+            .reference
+            .air_bombardment
+            .as_ref()
+            .map(|t| t.result(group, weapon, points, roll))
+            .unwrap_or(0);
+        // §11.22.1: barraging units pay 5 CP if phasing else 3.
+        let cap = if side == self.active_player { 5 } else { 3 };
+        for &a in barragers {
+            self.charge_combat_cp(a, cap);
+        }
+        if result > 0 {
+            match facility {
+                // Air facilities are reduced through their own capacity model, not the land-effect
+                // dispatcher; reduce every air facility in the hex by the result's levels.
+                FacilityTarget::AirFacility => {
+                    let kinds: Vec<crate::state::air::AirFacilityKind> = self
+                        .air_facilities
+                        .iter()
+                        .filter(|f| f.hex == target)
+                        .map(|f| f.kind)
+                        .collect();
+                    for kind in kinds {
+                        self.damage_air_facility(target, kind, result as u32);
+                    }
+                }
+                _ => self.apply_land_bombing_effect(mission, target, side, result as u32),
+            }
+        }
+        Ok(CommandOutcome::FacilityBarrage { result })
     }
 
     /// Anti-Armor fire (§14) at a target hex. Fire is adjacent-only (enforced here) and the §14.34

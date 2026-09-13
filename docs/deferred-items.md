@@ -250,12 +250,14 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   consequences (enum exists, feeds §15.84 vulnerability, but defaults Back with no setter).
 - [x] **AU14 — §12.46 barrage rolls the Trucks column** (truck casualties; a hit motorized unit loses
   transporting trucks).
-- [ ] **AU15 — §12.5/§12.52–55 artillery barrage vs Facilities** (cities/forts/roads/rails/dumps/
-  airfields) — land barrage targets a UnitId only. **INPUT NEEDED** for the main §12.53 case: it
-  reads the §41.5 table's *Artillery Barrage Points column*, which is NOT in the digitized
-  air-bombardment.ron (only `bomb_bands`/`torpedo_bands`). The §12.54 dump/air-facility sub-case
-  (Raw Barrage Points on the existing Bombload column) is implementable once that column + a
-  BarrageFacility command exist.
+- [x] **AU15 — §12.5/§12.52–55 artillery barrage vs Facilities.** New Command::BarrageFacility{
+  barragers,target,facility}. The §41.5 Artillery Barrage Points column was transcribed from PDF
+  p107 into air-bombardment.ron (`barrage_bands` = 1-2/3-4/5-6/7-10/11-12/13-14/15-16/17-18/19-20/
+  21+) with a new `WeaponPoints::Barrage`. §12.53 structures (Fortification/Major City, Road,
+  Railroad) read that column with **Actual** Barrage Points; §12.54 Supply Dumps and Air Facilities
+  read the Bomb column with **Raw** Barrage Points. Effects reuse `apply_land_bombing_effect`
+  (forts/roads/rails/dumps) and `damage_air_facility` (airfields/strips/ports). Tests
+  barrage_against_facility_12_5 + column_selection_41_5 (Barrage scale).
 - [x] **AU16 — §23.24 engineer/HQ in a close assault vs a fortified (non-major-city) hex → +1 Assault
   Differential for the attacker.**
 - [~] **AU17 — §26.26 minefield combat shift.** Close-assault +1 defender shift done (close_assault_env_shift); the anti-armor-fire column shift is still pending (the AA CRT is points-bracket, not a shiftable column).

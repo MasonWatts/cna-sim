@@ -2023,6 +2023,49 @@ mod tests {
     }
 
     #[test]
+    fn barrage_against_facility_12_5() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandOutcome, FacilityTarget};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
+        refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+        let mut g = GameState::new(refs, 7);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let firer_hex = HexCoord::new(0, 0);
+        let city = HexCoord::new(1, 0);
+        g.map.set_hex(firer_hex, HexTerrain::Clear);
+        g.map.set_hex(city, HexTerrain::MajorCity); // §25.12 Level-2 fortification
+
+        // A heavy artillery group (30× 25-pdr ≈ 24 Actual Barrage Points → the 21+ column).
+        let arty = g.spawn_unit(Nationality::Commonwealth, "x", "arty", Composition::Weapons { groups: vec![WeaponGroup { system: "25-pounder Gun".into(), count: 30 }] });
+        {
+            let u = g.unit_mut(arty).unwrap();
+            u.location = Some(UnitLocation::OnMap(firer_hex));
+            u.ammo = 500;
+        }
+        assert_eq!(g.fort_level(city), 2);
+
+        // §12.53: barrage the fortification. Any non-"11" roll in the 21+ column Reduces it (§41.37
+        // caps one level/stage), so the effect is deterministic in the result the table returns.
+        match g.apply(Command::BarrageFacility { barragers: vec![arty], target: city, facility: FacilityTarget::Fortification }) {
+            Ok(CommandOutcome::FacilityBarrage { result }) => {
+                assert!(result == 0 || result == 1, "fortification result is No Effect/Reduced");
+                assert_eq!(g.fort_level(city), if result >= 1 { 1 } else { 2 });
+            }
+            other => panic!("expected a facility barrage, got {other:?}"),
+        }
+        // The barrage charged the firer CP (§11.22.1).
+        assert!(g.unit(arty).unwrap().cp_expended.0 > 0);
+    }
+
+    #[test]
     fn stacking_limit_enforced() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;
