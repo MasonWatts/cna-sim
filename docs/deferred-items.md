@@ -262,8 +262,11 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [x] **AU18 — §23.21 reduced enemy-minefield entry cost extends to units stacked with an engineer.** move_step_plan now grants the engineer reduction to a mover co-located with an unpinned engineer-capable unit.
 
 ### Morale / organization / reinforcements (§17–§22)
-- [ ] **AU19 — §17.5/§17.51–56 voluntary surrender of a stack** (enemy pays 2 CP; optional pre-capture
-  destruction of tanks/guns/trucks).
+- [x] **AU19 — §17.5/§17.51–56 voluntary surrender of a stack.** New Command::VoluntarySurrender{hex,
+  captor,destroy_material}: the whole enemy-of-captor stack surrenders to an adjacent enemy combat
+  unit that pays 2 CP (§17.54; CaptorCannotAccept if it can't); optional §17.55/§17.56 pre-capture
+  destruction of tanks/guns ((die−1)×10%) and trucks ((die−1)×20%), then surrender_units (§17.51).
+  Test voluntary_surrender_17_5.
 - [ ] **AU20 — §19.8/§19.81–87 ad-hoc Axis AT batteries** (augment a Brigade HQ with AT Replacement
   Points; 67% gate, single gun type).
 - [ ] **AU21 — §19.9/§19.91–98 CW battalion AT augmentation** from GT-75 / Apr 1942.

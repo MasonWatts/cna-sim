@@ -378,6 +378,11 @@ pub enum Command {
     Repair { unit: UnitId, kind: RepairKind },
     /// §18: place a unit in (or out of) Reserve status (Reserve Designation Phase).
     DesignateReserve { unit: UnitId, status: crate::state::unit::ReserveStatus },
+    /// §17.5: voluntarily surrender the entire stack in `hex` to an adjacent enemy combat unit
+    /// (`captor`, which pays 2 CP to accept, §17.54). If `destroy_material`, the owner first
+    /// attempts §17.55/§17.56 pre-capture destruction of tanks/guns ((die−1)×10%) and
+    /// trucks ((die−1)×20%).
+    VoluntarySurrender { hex: HexCoord, captor: UnitId, destroy_material: bool },
     /// §30.15/§30.18: assign a Commonwealth warship to a location for the Operations Stage
     /// (Commonwealth Fleet Phase).
     AssignShip { ship_index: usize, location: crate::state::naval::ShipLocation },
@@ -607,6 +612,7 @@ impl Command {
             // Organization / training.
             Command::TrainUnit { .. } => &["§17.3"],
             Command::SetGunPosition { .. } => &["§12.11", "§12.12"],
+            Command::VoluntarySurrender { .. } => &["§17.5", "§17.54", "§17.56"],
             // Repair.
             Command::Repair { .. } => &["§22"],
             Command::RepairCapturedEquipment { .. } => &["§28.3"],
@@ -678,6 +684,9 @@ pub enum CommandOutcome {
     GuardReturned,
     /// §28.13 a Prisoner stack moved; `escaped` = prisoners lost to §28.23 for want of escort.
     PrisonersMoved { escaped: u32 },
+    /// §17.5 a stack voluntarily surrendered; `toe_lost` = total TOE Strength Points surrendered
+    /// (after any §17.56 pre-capture destruction), `destroyed` = TOE/truck points self-destroyed.
+    VoluntarilySurrendered { toe_lost: u32, destroyed: u32 },
     /// §17.3 a Commonwealth unit is training this stage; `basic_morale` is its Basic Morale after
     /// this stage's progression (raised toward its trained reference every six stages).
     UnitTraining { basic_morale: i32 },
@@ -898,6 +907,10 @@ pub enum CommandError {
     NonCombatHq,
     /// The target hex holds no eligible enemy units (of the required class, for barrage).
     NoTargets,
+    /// §17.5: the designated captor is not an enemy combat unit adjacent to the surrendering hex.
+    InvalidCaptor,
+    /// §17.54: the captor cannot expend the 2 CP required to accept a voluntary surrender.
+    CaptorCannotAccept,
     /// §12.23: a specific barrage target was designated but the firer does not know it is there
     /// (it is not In-Contact/Engaged, i.e. not revealed through previous combat).
     TargetNotKnown,
@@ -1395,6 +1408,9 @@ impl GameState {
                 let u = self.unit_mut(unit).ok_or(CommandError::UnitNotFound)?;
                 u.reserve = status;
                 Ok(CommandOutcome::ReserveDesignated)
+            }
+            Command::VoluntarySurrender { hex, captor, destroy_material } => {
+                self.cmd_voluntary_surrender(hex, captor, destroy_material)
             }
             Command::AssignShip { ship_index, location } => {
                 self.require_phase(Phase::CommonwealthFleet)?;
@@ -4124,6 +4140,88 @@ impl GameState {
         // §16.46: a formation with a Dummy Tank that undergoes Close Assault loses the dummy.
         self.eliminate_dummies_in_hex(target, side.opponent());
         Ok(CommandOutcome::CloseAssault(outcome))
+    }
+
+    /// §17.5 Voluntary Surrender of the whole stack in `hex` to an adjacent enemy combat unit.
+    fn cmd_voluntary_surrender(
+        &mut self,
+        hex: HexCoord,
+        captor: UnitId,
+        destroy_material: bool,
+    ) -> Result<CommandOutcome, CommandError> {
+        // §17.52a: not during a Combat Segment's steps b–f. The engine resolves combat atomically
+        // (no such sub-steps), so allow it in the Organization / Movement & Combat phases.
+        if !matches!(self.phase, Phase::Organization | Phase::MovementAndCombat) {
+            return Err(CommandError::WrongPhase);
+        }
+        let captor_u = self.unit(captor).ok_or(CommandError::UnitNotFound)?;
+        let captor_hex = captor_u.hex().ok_or(CommandError::UnitNotOnMap)?;
+        let captor_side = captor_u.nationality.side();
+        // §17.52c/§17.53: the captor must be an enemy combat unit adjacent to the surrendering hex.
+        if !self.is_combat_unit(captor) || !captor_hex.is_adjacent(hex) {
+            return Err(CommandError::InvalidCaptor);
+        }
+        // §17.52b: the *entire* enemy-of-captor stack in `hex` is surrendered.
+        let surrendering = self.enemy_units_in_hex(hex, captor_side);
+        if surrendering.is_empty() {
+            return Err(CommandError::NoTargets);
+        }
+        // §17.54: the captor must be able to expend 2 CP (within its remaining CPA) to accept.
+        let cpa = self.effective_cpa(captor).unwrap_or(0);
+        let remaining = cpa * 10 - self.unit(captor).map(|u| u.cp_expended.0).unwrap_or(0);
+        if remaining < 20 {
+            return Err(CommandError::CaptorCannotAccept);
+        }
+        // §17.55/§17.56: optional pre-capture destruction. One roll for tanks/guns ((die−1)×10%),
+        // one for trucks/Motorization Points ((die−1)×20%); fractions round down. Applied per unit.
+        let mut destroyed = 0u32;
+        if destroy_material {
+            let tg_pct = (self.rng.d6() as u32).saturating_sub(1) * 10;
+            let tk_pct = (self.rng.d6() as u32).saturating_sub(1) * 20;
+            for &id in &surrendering {
+                // Tanks/guns are Weapons-composition TOE; destroy tg_pct% (removed group-by-group).
+                let is_material = self.is_gun_unit(id) || self.unit_is_tank(id);
+                if is_material && tg_pct > 0 {
+                    let toe = self.unit(id).map(|u| u.total_toe()).unwrap_or(0);
+                    let mut kill = toe * tg_pct / 100;
+                    if let Some(u) = self.unit_mut(id) {
+                        if let crate::state::unit::Composition::Weapons { groups } = &mut u.composition {
+                            for g in groups.iter_mut() {
+                                let take = g.count.min(kill);
+                                g.count -= take;
+                                kill -= take;
+                                destroyed += take;
+                                if kill == 0 {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                // Trucks / Motorization Points: destroy tk_pct% (evenly across truck types).
+                if tk_pct > 0 {
+                    if let Some(u) = self.unit_mut(id) {
+                        let total = u.trucks.light + u.trucks.medium + u.trucks.heavy;
+                        let mut kill = total * tk_pct / 100;
+                        for slot in [&mut u.trucks.heavy, &mut u.trucks.medium, &mut u.trucks.light] {
+                            let take = (*slot).min(kill);
+                            *slot -= take;
+                            kill -= take;
+                            destroyed += take;
+                            if kill == 0 {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // §17.51: the rest is treated as a capture (prisoners for infantry, replacements for
+        // tanks/guns/aircraft) — surrender_units records the capture and zeroes their TOE.
+        let toe_lost = self.surrender_units(&surrendering);
+        // §17.54: the captor pays 2 CP to accept.
+        self.expend_cp_against(captor, Fixed(20), cpa);
+        Ok(CommandOutcome::VoluntarilySurrendered { toe_lost, destroyed })
     }
 
     /// Satisfy a mandated Retreat (§15.82). The path is a sequence of adjacent hexes, each

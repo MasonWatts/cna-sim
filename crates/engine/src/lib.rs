@@ -1570,6 +1570,50 @@ mod tests {
     }
 
     #[test]
+    fn voluntary_surrender_17_5() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(close_assault_refs(), 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Axis;
+        let cap_hex = HexCoord::new(0, 0);
+        let hex = HexCoord::new(1, 0);
+        let far = HexCoord::new(5, 5);
+        g.map.set_hex(cap_hex, HexTerrain::Clear);
+        g.map.set_hex(hex, HexTerrain::Clear);
+
+        // Captor: a Commonwealth combat unit adjacent to the surrendering hex (has a CPA to spend).
+        let captor = g.spawn_unit(Nationality::Commonwealth, "h", "captor", Composition::Organic { current_toe: 8 });
+        g.unit_mut(captor).unwrap().location = Some(UnitLocation::OnMap(cap_hex));
+        assert!(g.unit_cpa(captor).unwrap_or(0) >= 2, "test needs a captor with CPA ≥ 2");
+
+        // Surrendering Axis stack: infantry (→ prisoners).
+        let inf = g.spawn_unit(Nationality::German, "a", "inf", Composition::Organic { current_toe: 6 });
+        g.unit_mut(inf).unwrap().location = Some(UnitLocation::OnMap(hex));
+
+        // Non-adjacent captor target → InvalidCaptor.
+        assert_eq!(
+            g.apply(Command::VoluntarySurrender { hex: far, captor, destroy_material: false }),
+            Err(CommandError::InvalidCaptor)
+        );
+
+        let cp_before = g.unit(captor).unwrap().cp_expended.0;
+        match g.apply(Command::VoluntarySurrender { hex, captor, destroy_material: false }) {
+            Ok(CommandOutcome::VoluntarilySurrendered { toe_lost, .. }) => assert_eq!(toe_lost, 6),
+            other => panic!("expected surrender, got {other:?}"),
+        }
+        // §17.54: the captor paid 2 CP; the surrendering unit's TOE is zeroed.
+        assert_eq!(g.unit(captor).unwrap().cp_expended.0, cp_before + 20);
+        assert_eq!(g.unit(inf).unwrap().total_toe(), 0);
+        assert!(g.unit(inf).unwrap().status.surrendered);
+    }
+
+    #[test]
     fn stacking_limit_enforced() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;
