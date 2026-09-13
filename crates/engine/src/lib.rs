@@ -8410,6 +8410,47 @@ mod tests {
     }
 
     #[test]
+    fn rainstorm_terrain_and_construction_29_5() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::Command;
+        use crate::state::game::{GameState, Phase, Weather};
+        use crate::state::map::{HexCoord, HexsideKind};
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.active_player = Side::Commonwealth;
+        let (a, b) = (HexCoord::new(1, 1), HexCoord::new(2, 1));
+        g.map.set_hex(a, HexTerrain::Clear);
+        g.map.set_hex(b, HexTerrain::Clear);
+        g.map.set_hexside(a, b, HexsideKind::Wadi, None);
+        g.weather_by_section.insert('A', Weather::Rainstorm); // cols 1–33 = section A
+
+        let u = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 4 });
+        {
+            let unit = g.unit_mut(u).unwrap();
+            unit.location = Some(UnitLocation::OnMap(a));
+            unit.fuel = 1000;
+        }
+        g.phase = Phase::MovementAndCombat;
+        let mv = Command::MoveStep { unit: u, to: b, mode: MoveMode::NonMotorized };
+        // §29.55: a wadi hexside is uncrossable in a rainstorm (no road) → move refused.
+        assert!(g.dry_run(&mv).is_err(), "§29.55 wadi uncrossable in rainstorm");
+        // A road across the wadi restores the crossing.
+        g.map.set_hexside(a, b, HexsideKind::Road, None);
+        assert!(g.dry_run(&mv).is_ok(), "§29.55/§29.56 road crosses the wadi");
+
+        // §29.54: no construction in a rainstorm hex.
+        g.phase = Phase::Organization;
+        let fort = Command::BuildFortification { builders: vec![u], hex: a, level: 1 };
+        assert!(g.dry_run(&fort).is_err(), "§29.54 no construction in a rainstorm");
+    }
+
+    #[test]
     fn captured_supply_dump_49_50_51() {
         use crate::reference::units::Side;
         use crate::state::game::{Commodities, GameState};

@@ -4853,6 +4853,12 @@ impl GameState {
         }
     }
 
+    /// §29.42/§29.54: whether construction is barred in `coord` this stage — its section has a
+    /// Sandstorm or a Rainstorm.
+    pub fn storm_at(&self, coord: HexCoord) -> bool {
+        matches!(self.weather_at(coord), Weather::Sandstorm | Weather::Rainstorm)
+    }
+
     /// The weather in the map section containing `coord` (§29.1); Normal if unaffected.
     pub fn weather_at(&self, coord: HexCoord) -> Weather {
         let section = crate::state::map::section_char_of_col(coord.col);

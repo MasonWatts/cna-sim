@@ -1247,6 +1247,9 @@ impl GameState {
             Command::BuildFortification { builders, hex, level } => {
                 self.require_phase(Phase::Organization)?;
                 self.require_units_exist(&builders)?;
+                if self.storm_at(hex) {
+                    return Err(CommandError::ConstructionFailed); // §29.42/§29.54
+                }
                 if self.begin_fortification(&builders, hex, level) {
                     Ok(CommandOutcome::ConstructionStarted)
                 } else {
@@ -1256,6 +1259,9 @@ impl GameState {
             Command::BuildRailroad { builders, a, b } => {
                 self.require_phase(Phase::Organization)?;
                 self.require_units_exist(&builders)?;
+                if self.storm_at(a) || self.storm_at(b) {
+                    return Err(CommandError::ConstructionFailed); // §29.42/§29.54
+                }
                 if self.begin_railroad(&builders, a, b) {
                     Ok(CommandOutcome::ConstructionStarted)
                 } else {
@@ -1305,6 +1311,9 @@ impl GameState {
             Command::BuildRoad { builder, a, b } => {
                 self.require_phase(Phase::Organization)?;
                 self.require_units_exist(&[builder])?;
+                if self.storm_at(a) || self.storm_at(b) {
+                    return Err(CommandError::ConstructionFailed); // §29.42/§29.54
+                }
                 if self.build_road(builder, a, b) {
                     Ok(CommandOutcome::ConstructionStarted)
                 } else {
@@ -4146,7 +4155,31 @@ impl GameState {
     /// Per-step move cost from `from` into `to`, including the §29.44 sandstorm penalty:
     /// movement costs are doubled when entering a hex under an active sandstorm.
     fn move_step_cost(&self, from: HexCoord, to: HexCoord, mode: MoveMode) -> Option<MoveCost> {
+        use crate::state::game::Weather;
+        use crate::state::map::HexsideKind;
         let base = step_cost(&self.reference, &self.map, from, to, mode)?;
+        // §29.5x Rainstorm crossing restrictions (the destination's map section is stormed).
+        if self.weather_at(to) == Weather::Rainstorm {
+            let sides = self.map.hexsides_on(from, to);
+            let has = |k: HexsideKind| sides.iter().any(|h| h.kind == k);
+            let road = has(HexsideKind::Road);
+            let rail = has(HexsideKind::Railroad);
+            // §29.55: wadi hexsides are uncrossable except by a Road.
+            if has(HexsideKind::Wadi) && !road {
+                return Some(MoveCost::Prohibited);
+            }
+            // §29.57: river hexsides not crossed by a road or railroad are impassable.
+            if (has(HexsideKind::MajorRiver) || has(HexsideKind::MinorRiver)) && !(road || rail) {
+                return Some(MoveCost::Prohibited);
+            }
+            // §29.58: no motorized unit may enter a delta hex unless on a road or railroad.
+            if mode == MoveMode::Motorized
+                && self.map.terrain(to) == Some(crate::reference::terrain::HexTerrain::Delta)
+                && !(road || rail)
+            {
+                return Some(MoveCost::Prohibited);
+            }
+        }
         if self.sandstorm_at(to) {
             if let MoveCost::Cost(f) = base {
                 return Some(MoveCost::Cost(Fixed(f.0 * 2)));
