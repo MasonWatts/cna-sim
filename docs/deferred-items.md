@@ -200,3 +200,119 @@ New shared helper `within_cp_budget` (cost-limited Dijkstra over `move_step_cost
 
 Note: the earlier "only §64.7 campaign victory is modeled" entry is retired — §60.81 Scenario-1
 ("Graziani's Offensive") victory is now implemented (`GameState::scenario1_victory`, `view.rs`).
+
+---
+
+## Audit 2026-09-12 — untracked rule-coverage gaps (full §1–§65 re-read)
+
+Found by a fresh rulebook audit; none were in the tracker above. Ordered by impact.
+Scope items excluded from "address them all" are marked `[-]` (by design).
+
+### Systemic — the CP / cohesion economy
+- [ ] **AU1 — §11.2 combat expends Capability Points** (5 phasing / 3 non-phasing / 2 probe / 1 at
+  −4 diff). `cp_expended` is written only by movement/air-transport; close-assault/anti-armor/barrage
+  never charge CP, so fighting is free against CPA and the §6.21 over-CPA disorganization never fires
+  for combat.
+- [ ] **AU2 — §6.23/§6.24 cohesion recovery (Reorganization Points).** +5 for an idle Operations
+  Stage, +3 for a won close assault, capped at +10; today every cohesion write is a decrement — units
+  never heal.
+- [ ] **AU3 — §15.87 (+§6.21) close-assault Disorganization.** A unit taking ≥30% TOE loss in one
+  close assault gains 3 Disorganization Points (all involved units). Losses are computed but no DP.
+
+### ZOC / reserve / status gates
+- [ ] **AU4 — §10.3/§10.31–36 mandatory attack of enemy ZOC-exerting hexes** + Holding-Off Barrage +
+  §10.36 forced 3-hex retreat/3 DP fallback. ZOC projection/Contact/Engaged computed but never obligates combat.
+- [ ] **AU5 — §18.2 Reserve I/II effects** (Reserve I ≤1 hex, Reserve II no move; CP release caps;
+  §18.24 auto-DP; two-hex proximity exception). `ReserveStatus` stored but movement/reaction/release ignore it.
+- [ ] **AU6 — §12.44 Pinned** blocks Move/AntiArmor/CloseAssault (currently only RBA/Reaction check it).
+- [ ] **AU7 — §6.26 cohesion ≤ −26** blocks Move/CloseAssault/AntiArmor + adjacency auto-surrender
+  (currently only RBA/Reaction check the −26 gate; no auto-surrender).
+
+### Combat detail (§12–§15, §23, §26)
+- [ ] **AU8 — §15.9 Probe combat mode** (Engaged ignored, not-In-Contact, §15.95 all-recce −10%,
+  §15.96 defender spends no CP at diff < −3).
+- [ ] **AU9 — §15.29 defender allocates no units → auto-retreat 3 hexes + 3 DP** (decline-to-defend).
+- [ ] **AU10 — §15.23/§14.22 once-per-Combat-Segment per-hex guard** (only a per-side flag exists).
+- [ ] **AU11 — §13.28 a Retreat-Before-Assault unit still eats anti-armor fire (can't return it) and
+  its TOE counts for % losses.**
+- [ ] **AU12 — §15.15/§15.88 all non-phasing defenders out of ammo → en-masse surrender** (deferred in
+  a code comment near command.rs cmd_close_assault).
+- [ ] **AU13 — §12.1/§12.11–16 Gun Forward/Back declaration** command + its barrage/coordination
+  consequences (enum exists, feeds §15.84 vulnerability, but defaults Back with no setter).
+- [ ] **AU14 — §12.46 barrage rolls the Trucks column** (truck casualties; a hit motorized unit loses
+  transporting trucks).
+- [ ] **AU15 — §12.5/§12.52–55 artillery barrage vs Facilities** (cities/forts/roads/rails/dumps/
+  airfields) — land barrage targets a UnitId only.
+- [ ] **AU16 — §23.24 engineer/HQ in a close assault vs a fortified (non-major-city) hex → +1 Assault
+  Differential for the attacker.**
+- [ ] **AU17 — §26.26 minefield combat shift** — defender shifts all AT/close-assault columns +1 when
+  attacker or defender is in an enemy minefield.
+- [ ] **AU18 — §23.21 reduced enemy-minefield entry cost extends to units stacked with an engineer.**
+
+### Morale / organization / reinforcements (§17–§22)
+- [ ] **AU19 — §17.5/§17.51–56 voluntary surrender of a stack** (enemy pays 2 CP; optional pre-capture
+  destruction of tanks/guns/trucks).
+- [ ] **AU20 — §19.8/§19.81–87 ad-hoc Axis AT batteries** (augment a Brigade HQ with AT Replacement
+  Points; 67% gate, single gun type).
+- [ ] **AU21 — §19.9/§19.91–98 CW battalion AT augmentation** from GT-75 / Apr 1942.
+- [ ] **AU22 — §19.72/§19.73 battle-group forming composition caps** (German ≤4 bn/≤1 tank/≤2 inf;
+  Italian ≤3 bn/≤2 inf/≤1 armor, ≤2 in play) — pool exists, limits unenforced.
+- [ ] **AU23 — §20.5/§20.51–55 upgrade Armored-Car/Recce to newer vehicles** (Stuarts etc.; TOE change;
+  not before 1/39).
+- [ ] **AU24 — §20.8/§20.81–85 scheduled CW Mandatory Withdrawals** (reach Cairo/Alexandria by a listed
+  GT; §20.85 penalty) — distinct from the §64.75 voluntary path.
+- [ ] **AU25 — §21.5/§21.51–55 capture enemy broken-down (not destroyed) vehicles during movement.**
+- [ ] **AU26 — §21.6/§21.61–67 tow broken-down vehicles to a repair facility.**
+- [ ] **AU27 — §22.6/§22.61–66 CW Tank Delivery Squadrons** (deliver tank Replacement Points).
+- [ ] **AU28 — §22.7 German Mobile Tank Repair unit.**
+
+### Movement / stacking / terrain (§8–§9)
+- [ ] **AU29 — §9.33/§9.34 road/track 5-Stacking-Point transit limit** for motorized units passing
+  through friendlies (no break-up to evade).
+- [ ] **AU30 — §8.17 non-motorized units may never voluntarily exceed 150% of base CPA** (hard ceiling).
+- [ ] **AU31 — §9.25 ≤ five 0-Stacking-Point companies/batteries per hex** (unlimited only in a Major City).
+- [ ] **AU32 — §9.16 garrison "G" units stack free in their assigned city; AA/Flak free in Major
+  Cities and on airfields.**
+- [ ] **AU33 — §8.44/§8.45 Salt Marsh / Desert unit-subtype entry restrictions** (light-vehicle-only
+  off-road; no AFV close-assault into Salt Marsh).
+- [ ] **AU34 — §8.19 no CW land unit west of Marble Arch (A2109).**
+
+### Weather (§29) — rainstorm terrain cluster
+- [ ] **AU35 — §29.55 rainstorm: wadi hexsides uncrossable except by road; no wadi water draw.**
+- [ ] **AU36 — §29.56 rainstorm degrades road hexes to track cost/breakdown.**
+- [ ] **AU37 — §29.57 rainstorm: non-road/rail river hexsides impassable.**
+- [ ] **AU38 — §29.58 rainstorm bars vehicle/motorized units from delta hexes.**
+- [ ] **AU39 — §29.42/§29.54 no construction in a sandstorm/rainstorm hex** (BuildRoad/BuildRailroad
+  apply no weather check; only field repair is gated).
+- [ ] **AU40 — §29.32 construction sites need water rations in hot weather.**
+
+### Air ↔ land, logistics, naval (§35, §49–56)
+- [ ] **AU41 — §35.12 SGSU overrun / react-or-eliminate by advancing land units** (+ §34.82 non-replace-
+  for-1-GT, §35.13 one-GT return) — highest-impact air gap; airbases can't be overrun.
+- [ ] **AU42 — §35.27 grounded planes captured** (reusable by enemy 1 GT later) when their SGSU is
+  eliminated with planes on the ground.
+- [ ] **AU43 — §49.19/§50.16/§51.16 captured supply dumps** change ownership on overrun + captured-usable
+  fraction (fuel non-denominational; ⅓ ammo, ½ stores) — dumps currently never change hands.
+- [ ] **AU44 — §56.16 bombed convoy's own flak** (= lane tonnage ÷ 1000) fires back at attacking CW bombers.
+- [ ] **AU45 — §55.17 Bizerta annual 2d6=12 roll from GT35** before use (engine opens it deterministically
+  at GT≥35).
+- [ ] **AU46 — §41.81/§41.84/§41.86 CW bombing of the Axis Tripoli/Tunisia off-map boxes** (port level,
+  grounded planes; night vs Tripoli).
+- [ ] **AU47 — §30.5/§30.51–59 CW port-to-port naval troop transport** (Port Personnel Capacity; one
+  transfer/stage/port).
+- [ ] **AU48 — §30.4/§30.41–46 Italian 10th Light Flotilla frogman/Chariot raid** on the fleet at Alexandria.
+- [ ] **AU49 — §35.22 in-play plane transfer between squadrons** on SGSU loss / <50% ready capacity (low
+  impact while AU41 unmodeled).
+- [ ] **AU50 — §35.28 Italian squadrons may be all-German planes but not vice-versa** (asymmetric allowance).
+- [ ] **AU51 — §53.31/§53.32 trucks/guns off-track in salt-marsh auto-abandoned** (Qattara corner case).
+- [ ] **AU52 — §53.25 leapfrogging prohibition** (cargo inherits first truck's expended CP).
+- [ ] **AU53 — §28.18 prisoners optionally transported by trucks** (only foot path §28.13 modeled).
+
+### Scope — won't-do / out of scope (excluded from "address them all")
+- [-] **§32 Abstract Logistics** (+ §47/§58 abstract air/naval) — a whole *alternate* simplified
+  ruleset; the engine implements the full §34–56 games instead. Deliberate either/or.
+- [-] **Scenario-group victory conditions** §60.82 / §61.8 / §62.8 / §63.91 / §63.92 — absent because
+  those scenarios aren't built as playable setups (only §60.81 Scenario 1 and §64.7 campaign exist).
+  Land the scenarios first; the victory evaluators come with them.
+- [-] **§64.53/§64.54 "Desert Fox" shorter-campaign reduced pools; §59.36 first-OpStage maintenance ban;
+  §63.5 El Alamein special-rule toggles** — tied to unbuilt scenario setups.
