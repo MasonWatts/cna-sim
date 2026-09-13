@@ -94,7 +94,31 @@ impl GameState {
         // §14.32/14.33: terrain shifts the Anti-Armor column in the defender's favour; §14.35: a
         // shift below row 1 uses the 0 row.
         let terrain_shift = self.anti_armor_terrain_shift(attackers, target_hex);
-        let column = (actual + terrain_shift).max(0);
+        // §26.26: if the firing units are in an enemy minefield (or fire at a unit in one), the
+        // defender shifts the column one in his favour. (Does not apply to artillery bombardment.)
+        let minefield_shift = {
+            let firer_side = attackers
+                .iter()
+                .filter_map(|id| self.units.get(id))
+                .map(|u| u.nationality.side())
+                .next();
+            match firer_side {
+                Some(side) => {
+                    let enemy_mine = |h: HexCoord| {
+                        self.minefields.get(&h).is_some_and(|m| !m.dummy && m.side != side)
+                    };
+                    let firer_in_mine =
+                        attackers.iter().filter_map(|&a| self.effective_hex(a)).any(enemy_mine);
+                    if firer_in_mine || enemy_mine(target_hex) {
+                        -1
+                    } else {
+                        0
+                    }
+                }
+                None => 0,
+            }
+        };
+        let column = (actual + terrain_shift + minefield_shift).max(0);
 
         // §14.6 note: the Phasing Player fires one row lower (rows 11,12 unaffected). Anti-Armor
         // fire in Movement & Combat is the phasing player's fire (§14.12); infer it from the

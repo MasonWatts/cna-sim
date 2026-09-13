@@ -1268,11 +1268,38 @@ impl GameState {
     /// Total Basic Stacking Points of the independent on-map counters in `hex` (§9.14).
     /// Attached units are represented by their parent's counter and are not counted here.
     pub fn hex_stacking_points(&self, hex: HexCoord) -> u32 {
-        self.units
+        let base: u32 = self
+            .units
             .values()
             .filter(|u| u.hex() == Some(hex))
             .map(|u| self.effective_stacking_points(u.id))
-            .sum()
+            .sum();
+        // §9.16b: at an air facility, some AA/Flak units stack free — up to 3 at an airfield, 1 at
+        // an air landing strip. The most expensive qualifying units are the ones exempted.
+        let allowance = self
+            .air_facilities
+            .iter()
+            .filter(|f| f.hex == hex)
+            .map(|f| match f.kind {
+                crate::state::air::AirFacilityKind::Airfield => 3,
+                crate::state::air::AirFacilityKind::AirLandingStrip => 1,
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0);
+        if allowance == 0 {
+            return base;
+        }
+        let mut aa_sps: Vec<u32> = self
+            .units
+            .values()
+            .filter(|u| u.hex() == Some(hex) && self.unit_is_pure_anti_air(u.id))
+            .map(|u| self.effective_stacking_points(u.id))
+            .filter(|&sp| sp > 0)
+            .collect();
+        aa_sps.sort_unstable_by(|a, b| b.cmp(a));
+        let free: u32 = aa_sps.into_iter().take(allowance).sum();
+        base.saturating_sub(free)
     }
 
     pub fn unit_mut(&mut self, id: UnitId) -> Option<&mut Unit> {

@@ -1981,6 +1981,21 @@ mod tests {
         assert_eq!(g.effective_stacking_points(garr), 0);
         g.unit_mut(garr).unwrap().location = Some(UnitLocation::OnMap(field));
         assert_eq!(g.effective_stacking_points(garr), 1);
+
+        // §9.16b air-facility allowance: at an airfield, up to 3 AA/Flak units stack free; at a
+        // landing strip, 1. Four AA battalions (1 SP each) at `field` (Clear, not a Major City).
+        use crate::state::air::{AirFacility, AirFacilityKind};
+        g.unit_mut(garr).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(5, 5))); // clear `field`
+        g.unit_mut(flak).unwrap().location = Some(UnitLocation::OnMap(field));
+        for _ in 0..3 {
+            let f = g.spawn_unit(Nationality::German, "flak", "Flak bn", Composition::Weapons { groups: vec![WeaponGroup { system: "Heavy AA (88mm Flak)".into(), count: 3 }] });
+            g.unit_mut(f).unwrap().location = Some(UnitLocation::OnMap(field));
+        }
+        assert_eq!(g.hex_stacking_points(field), 4, "no facility yet: 4 AA × 1 SP");
+        g.add_air_facility(AirFacility::new(AirFacilityKind::AirLandingStrip, field));
+        assert_eq!(g.hex_stacking_points(field), 3, "landing strip frees 1 AA/Flak");
+        g.add_air_facility(AirFacility::new(AirFacilityKind::Airfield, field));
+        assert_eq!(g.hex_stacking_points(field), 1, "airfield frees 3 AA/Flak");
     }
 
     #[test]
@@ -12536,6 +12551,49 @@ mod tests {
         let out2 = g.resolve_anti_armor_with_dice(&[atk], HexCoord::new(1, 0), 66);
         assert_eq!(out2.armor_toe_removed, 0, "dismounted halftrack infantry is not anti-armor-affectable");
         assert_eq!(g.unit(ht2).unwrap().total_toe(), 7);
+    }
+
+    #[test]
+    fn anti_armor_minefield_shift_26_26() {
+        use crate::reference::units::Side;
+        use crate::state::game::{GameState, Minefield};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        refs.load_anti_armor_crt(include_str!("../../../data/reference/crt/anti-armor.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.active_player = Side::Axis; // CW gun fires non-phasing (no §14.6 row penalty)
+        let firer_hex = HexCoord::new(0, 0);
+        let target_hex = HexCoord::new(1, 0);
+
+        // 5× 6-pounder → 35 raw / 4 Actual Anti-Armor Points → base column 4.
+        let atk = g.spawn_unit(Nationality::Commonwealth, "gun", "AT bn", Composition::Weapons { groups: vec![WeaponGroup { system: "6-pounder".into(), count: 5 }] });
+        g.unit_mut(atk).unwrap().location = Some(UnitLocation::OnMap(firer_hex));
+        let mk_target = |g: &mut GameState| {
+            let t = g.spawn_unit(Nationality::German, "i", "Schützen", Composition::Organic { current_toe: 7 });
+            let u = g.unit_mut(t).unwrap();
+            u.location = Some(UnitLocation::OnMap(target_hex));
+            u.trucks = TruckPoints { light: 0, medium: 7, heavy: 0 };
+            t
+        };
+
+        // No minefield: column = 4.
+        mk_target(&mut g);
+        assert_eq!(g.resolve_anti_armor_with_dice(&[atk], target_hex, 66).column, 4);
+
+        // §26.26: the firer sits in an enemy (Axis) minefield → the defender shifts the column one
+        // in his favour (4 → 3).
+        g.minefields.insert(firer_hex, Minefield { side: Side::Axis, dummy: false });
+        mk_target(&mut g);
+        assert_eq!(g.resolve_anti_armor_with_dice(&[atk], target_hex, 66).column, 3);
+
+        // A dummy enemy minefield gives no shift (§26.26 real minefields only).
+        g.minefields.insert(firer_hex, Minefield { side: Side::Axis, dummy: true });
+        mk_target(&mut g);
+        assert_eq!(g.resolve_anti_armor_with_dice(&[atk], target_hex, 66).column, 4);
     }
 
     #[test]

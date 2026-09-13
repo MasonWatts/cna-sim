@@ -260,7 +260,10 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   barrage_against_facility_12_5 + column_selection_41_5 (Barrage scale).
 - [x] **AU16 — §23.24 engineer/HQ in a close assault vs a fortified (non-major-city) hex → +1 Assault
   Differential for the attacker.**
-- [~] **AU17 — §26.26 minefield combat shift.** Close-assault +1 defender shift done (close_assault_env_shift); the anti-armor-fire column shift is still pending (the AA CRT is points-bracket, not a shiftable column).
+- [x] **AU17 — §26.26 minefield combat shift.** Close-assault +1 defender shift (close_assault_env_shift)
+  AND the anti-armor column shift: when the firing units sit in an enemy minefield (or fire at a unit
+  in one), `resolve_anti_armor_core` shifts the AA column one in the defender's favour (dummy minefields
+  excluded; not applied to artillery bombardment). Test anti_armor_minefield_shift_26_26.
 - [x] **AU18 — §23.21 reduced enemy-minefield entry cost extends to units stacked with an engineer.** move_step_plan now grants the engineer reduction to a mover co-located with an unpinned engineer-capable unit.
 
 ### Morale / organization / reinforcements (§17–§22)
@@ -331,10 +334,10 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [~] **AU32 — §9.16 free-stacking exceptions.** Mechanics done in `effective_stacking_points`:
   §9.16a a garrison unit occupies 0 SP while in its assigned hex (new `Unit.garrison_location`);
   §9.16b a *pure* AA/Flak unit (`unit_is_pure_anti_air`) occupies 0 SP in a Major City. Test
-  free_stacking_garrison_and_flak_9_16. **Remaining:** the §9.16b air-facility allowance (1 AA/Flak
-  free with a landing strip, 3 with an airfield) is a hex-level capacity exception, not yet applied;
-  and the OB "G" garrison designations + locations (data, per counter) that would populate
-  `garrison_location` — needs the OB garrison markers.
+  free_stacking_garrison_and_flak_9_16. §9.16b air-facility allowance now applied in
+  `hex_stacking_points` (up to 3 AA/Flak free at an airfield, 1 at a landing strip; most-expensive
+  units exempted). **Remaining:** only the OB "G" garrison designations + locations (data, per
+  counter) that would populate `garrison_location` — needs the OB garrison markers.
 - [~] **AU33 — §8.44/§8.45 Salt Marsh / Desert restrictions.** §8.44 assault ban done: no motorized
   unit or AFV (`unit_is_afv`) may Close Assault a Salt Marsh defender (CommandError::SaltMarshAssault).
   Test salt_marsh_no_vehicle_assault_8_44. **Remaining (data-blocked):** the §8.44 off-track movement
