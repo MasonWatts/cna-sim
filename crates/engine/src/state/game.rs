@@ -276,6 +276,10 @@ pub struct CapturedEquipment {
     /// §14.52 (they control the hex); either owner may repair it (§14.54 / §28.3 pipeline).
     #[serde(default)]
     pub destroyed_tank: bool,
+    /// §14.54/§21.63: Capability Points expended towing this Destroyed Tank marker this Repair Phase
+    /// (cap 10, or 20 with a co-located Tank Delivery Squadron). Reset each stage.
+    #[serde(default)]
+    pub tow_cp_used: u32,
 }
 
 /// §28.24 escaped prisoners of `side` at `hex` heading home. In the modelled scope they wait to be
@@ -2652,6 +2656,44 @@ impl GameState {
         let mm = &mut self.broken_vehicles[i];
         mm.hex = to;
         mm.tow_cp_used += step;
+        true
+    }
+
+    /// §14.54/§21.6: tow the Destroyed Tank marker at `captured_equipment[i]` one hex to adjacent
+    /// `to` (as a Medium Truck), on the same 10-CP budget (20 with a co-located Tank Delivery Squadron,
+    /// §22.65), never into an enemy-controlled hex (§21.64). Only destroyed-tank markers are towable
+    /// this way. Returns whether the tow step was made.
+    pub(crate) fn tow_destroyed_tank(&mut self, i: usize, to: HexCoord) -> bool {
+        use crate::reference::terrain::MoveCost;
+        use crate::rules::movement::MoveMode;
+        let Some(e) = self.captured_equipment.get(i) else { return false };
+        if !e.destroyed_tank {
+            return false;
+        }
+        let (from, side, used) = (e.hex, e.captor, e.tow_cp_used);
+        if !from.is_adjacent(to) {
+            return false;
+        }
+        let enemy_controlled = self.hex_in_zoc_of(to, side.opponent())
+            && !self.units.values().any(|u| u.hex() == Some(to) && u.nationality.side() == side && u.total_toe() > 0);
+        if enemy_controlled {
+            return false;
+        }
+        let step = match self.move_step_cost(from, to, MoveMode::Motorized) {
+            Some(MoveCost::Cost(f)) => f.0.max(0) as u32,
+            _ => return false,
+        };
+        let cap = if self.units.values().any(|u| u.is_tds && u.hex() == Some(from) && u.nationality.side() == side) {
+            200
+        } else {
+            100
+        };
+        if used + step > cap {
+            return false;
+        }
+        let e = &mut self.captured_equipment[i];
+        e.hex = to;
+        e.tow_cp_used += step;
         true
     }
 
@@ -5922,7 +5964,7 @@ impl GameState {
         {
             e.count += count;
         } else {
-            self.captured_equipment.push(CapturedEquipment { captor, hex, nationality: owner, system, count, repaired: false, destroyed_tank: false });
+            self.captured_equipment.push(CapturedEquipment { captor, hex, nationality: owner, system, count, repaired: false, destroyed_tank: false, tow_cp_used: 0 });
         }
     }
 
@@ -5940,7 +5982,7 @@ impl GameState {
             e.count += count;
         } else {
             self.captured_equipment.push(CapturedEquipment {
-                captor: side, hex, nationality: owner, system, count, repaired: false, destroyed_tank: true,
+                captor: side, hex, nationality: owner, system, count, repaired: false, destroyed_tank: true, tow_cp_used: 0,
             });
         }
     }
@@ -8688,9 +8730,12 @@ impl GameState {
             raider.cpa_used = 0;
             raider.revealed = false;
         }
-        // §21.63: refresh each Broken Down Vehicle marker's tow allowance for the new Repair Phase.
+        // §21.63: refresh each Broken Down Vehicle / Destroyed Tank marker's tow allowance.
         for m in self.broken_vehicles.iter_mut() {
             m.tow_cp_used = 0;
+        }
+        for e in self.captured_equipment.iter_mut() {
+            e.tow_cp_used = 0;
         }
         // §8.98: refresh each free truck convoy's Movement Allowance for the new Truck Convoy Phase.
         for convoy in self.truck_convoys.iter_mut() {

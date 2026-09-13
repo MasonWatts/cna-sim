@@ -286,6 +286,10 @@
                 (name: "2nd Royal Tank Regt", abbr: "2 RTR", id: "g", comp: Weapons([("A13 Cruiser", 10)]), org_size: Battalion, arrival: Turn(game_turn: 2, stage: 3), parent: ""),
                 (name: "7th Royal Tank Regt", abbr: "7 RTR", id: "g", comp: Weapons([("Matilda Mk.II", 10)]), org_size: Battalion, arrival: Turn(game_turn: 2, stage: 3), parent: ""),
                 (name: "4th Royal Tank Regt", abbr: "4 RTR", id: "g", comp: Weapons([("Matilda Mk.II", 10)]), org_size: Battalion, arrival: Turn(game_turn: 29, stage: 2), parent: ""),
+                // §22.6 [4.43a]: the Desert Tank Delivery Organization — three squadrons, GT29/2.
+                (name: "Desert Tank Delivery Squadron A", abbr: "DTS A", id: "tds", comp: Weapons([]), org_size: Battalion, arrival: Turn(game_turn: 29, stage: 2), parent: "", is_tds: true),
+                (name: "Desert Tank Delivery Squadron B", abbr: "DTS B", id: "tds", comp: Weapons([]), org_size: Battalion, arrival: Turn(game_turn: 29, stage: 2), parent: "", is_tds: true),
+                (name: "Desert Tank Delivery Squadron C", abbr: "DTS C", id: "tds", comp: Weapons([]), org_size: Battalion, arrival: Turn(game_turn: 29, stage: 2), parent: "", is_tds: true),
                 (name: "10th, QVOC Guides", abbr: "10 QVG", id: "mm", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 84, stage: 2), parent: ""),
                 (name: "1st, The Royal Dragoons", abbr: "1 Royals", id: "kk", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 31, stage: 1), parent: ""),
             ],

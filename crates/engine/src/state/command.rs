@@ -415,6 +415,9 @@ pub enum Command {
     /// §20.81/§20.82: satisfy a by-type Mandatory Withdrawal choice by designating the `units` to
     /// withdraw (must match the choice's type/count, at Cairo/Alexandria at ≥75% TOE).
     SatisfyWithdrawalChoice { choice: usize, units: Vec<UnitId> },
+    /// §14.54/§21.6: tow the Destroyed Tank marker at `equipment` one hex to adjacent `to` (Repair
+    /// Phase; 10-CP budget, 20 with a co-located Tank Delivery Squadron).
+    TowDestroyedTank { equipment: usize, to: HexCoord },
     /// §30.4: (Axis) plan the once-per-game Italian Chariot raid on Alexandria (from July 1941).
     PlanChariotRaid,
     /// §30.44: (Axis) execute the planned Chariot raid — resolves the §30.46 table and damages
@@ -639,6 +642,7 @@ impl Command {
             Command::BarrageFacility { .. } => &["§12.5", "§12.53", "§12.54"],
             Command::TowBrokenVehicle { .. } => &["§21.6", "§21.63", "§22.65"],
             Command::SatisfyWithdrawalChoice { .. } => &["§20.81", "§20.82"],
+            Command::TowDestroyedTank { .. } => &["§14.54", "§21.6"],
             Command::PlanChariotRaid => &["§30.41", "§30.42"],
             Command::ExecuteChariotRaid => &["§30.44", "§30.46"],
             Command::OffShoreBombard { .. } => &["§30.2"],
@@ -1516,6 +1520,14 @@ impl GameState {
             Command::SatisfyWithdrawalChoice { choice, units } => {
                 self.require_phase(Phase::Organization)?;
                 self.satisfy_withdrawal_choice(choice, &units).map(CommandOutcome::WithdrawalChoiceSatisfied)
+            }
+            Command::TowDestroyedTank { equipment, to } => {
+                self.require_phase(Phase::Repair)?;
+                if self.tow_destroyed_tank(equipment, to) {
+                    Ok(CommandOutcome::BrokenVehicleTowed)
+                } else {
+                    Err(CommandError::TowFailed)
+                }
             }
             Command::PlanChariotRaid => {
                 if self.active_player != Side::Axis {

@@ -180,6 +180,7 @@ impl GameState {
                 unit.basic_morale_reference = form.basic_morale;
                 unit.is_hq = u.parent.is_empty() && u.name.contains("HQ");
                 unit.airdroppable = u.airdroppable; // §42.41 (from the OA sheet)
+                unit.is_tds = u.is_tds; // §22.6 Tank Delivery Squadron / Mobile Tank Repair Squad
                 unit.mandatory_withdrawal = u.withdrawal; // §20.8 [4.43a] withdrawal deadline
                 unit.return_at = u.return_at; // §20.8 [4.43a] scheduled return ("Rtn")
                 unit.return_toe = u.return_toe;

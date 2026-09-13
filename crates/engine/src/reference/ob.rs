@@ -77,6 +77,9 @@ pub struct ObUnit {
     /// units). Set when the airborne formations are promoted into the loaded OB.
     #[serde(default)]
     pub airdroppable: bool,
+    /// §22.6: this counter is a Tank Delivery Squadron / German Mobile Tank Repair Squad.
+    #[serde(default)]
+    pub is_tds: bool,
     /// §20.8: `(Game-Turn, Operations Stage)` this unit must be withdrawn by (the [4.43a] schedule).
     /// Stamped onto the spawned unit's `mandatory_withdrawal` at deploy. `None` = not scheduled.
     #[serde(default)]

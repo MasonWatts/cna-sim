@@ -2257,6 +2257,7 @@ mod tests {
         use crate::state::unit::{Composition, UnitLocation};
 
         let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
         refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
         let mut g = GameState::new(refs, 1);
         g.phase = Phase::Repair;
@@ -2292,6 +2293,17 @@ mod tests {
             matches!(r, Ok(CommandOutcome::CapturedEquipmentRepaired) | Err(CommandError::RepairFailed)),
             "TDS field repair is roll-dependent, got {r:?}"
         );
+
+        // §14.54/§21.6: a Destroyed Tank marker may be towed toward a facility in the Repair Phase.
+        use crate::reference::terrain::HexTerrain;
+        let t0 = HexCoord::new(5, 5);
+        let t1 = t0.neighbors()[0];
+        g.map.set_hex(t0, HexTerrain::Clear);
+        g.map.set_hex(t1, HexTerrain::Clear);
+        g.record_destroyed_tank(t0, Nationality::Commonwealth, "A9 Cruiser".into(), 2);
+        let idx = g.captured_equipment.iter().position(|e| e.destroyed_tank && e.hex == t0).unwrap();
+        assert_eq!(g.apply(Command::TowDestroyedTank { equipment: idx, to: t1 }), Ok(CommandOutcome::BrokenVehicleTowed));
+        assert_eq!(g.captured_equipment[idx].hex, t1);
     }
 
     #[test]
@@ -5233,6 +5245,11 @@ mod tests {
             for form in &refs.orders_of_battle[&nat].formations {
                 let names: HashSet<&str> = form.units.iter().map(|u| u.name.as_str()).collect();
                 for u in &form.units {
+                    // §22.6 Tank Delivery Squadrons are special counters with no §4.46 characteristics
+                    // (CPA/stacking come from `is_tds`), so they carry no characteristics id.
+                    if u.is_tds {
+                        continue;
+                    }
                     assert!(
                         !u.id.is_empty() && chars.contains_key(&u.id),
                         "{:?}: OB unit {:?} (formation {:?}) has id {:?} not in characteristics",

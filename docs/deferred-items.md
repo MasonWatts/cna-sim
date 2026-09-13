@@ -338,7 +338,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   `tow_broken_vehicle` moves a marker one hex as a Medium Truck within a 10-CP budget (§21.63; 20 CP
   with a co-located Tank Delivery Squadron, §22.65), never into an enemy-controlled hex (§21.64);
   budget reset each stage. Test broken_vehicle_capture_and_tow_21_5.
-- [~] **AU27 — §22.6/§22.61–66 CW Tank Delivery Squadrons.** New `Unit.is_tds` unit type. Implemented:
+- [x] **AU27 — §22.6/§22.61–66 CW Tank Delivery Squadrons.** New `Unit.is_tds` unit type. Implemented:
   §22.62 field-repair −1 for a co-located TDS (`hex_has_friendly_tds` → `field_repair_tanks`); §22.63
   CPA 25 (`unit_cpa`), 0 Stacking Points (`effective_stacking_points`), no combat ratings (inherent),
   ZOC-elimination of a lone TDS by an advancing enemy combat unit (`move_counter`) + eight-Game-Turn
@@ -349,10 +349,11 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   model. §22.62 destroyed-tank repair-on-a-1 **done**: `cmd_repair_captured_equipment` now gates a
   Destroyed Tank marker on a Repair Facility (§14.54) or a co-located same-nationality TDS rolling a 1
   (§22.62 — CommandError::RepairFailed otherwise); surrendered §28.3 equipment is unchanged. Test
-  destroyed_tank_repair_gate_22_62. **Remaining (minor):** physically towing a *destroyed-tank* marker
-  across hexes to a facility (§14.54) isn't wired — a TDS repairs it in-field on a 1 or it repairs at
-  a facility it already sits at; and the scenario OB placement of the three squadrons (A/B/C, GT29/2)
-  is a follow-on.
+  destroyed_tank_repair_gate_22_62. **Destroyed-tank towing done:** `CapturedEquipment.tow_cp_used` +
+  `tow_destroyed_tank` + Command::TowDestroyedTank move a destroyed-tank marker one hex/Medium-Truck
+  within the 10-CP (20-with-TDS) budget to a facility (§14.54/§21.6). **OB placement done:** new
+  `ObUnit.is_tds` (stamped at deploy); the three Desert Tank Delivery Squadrons (A/B/C) are in the CW
+  OB arriving GT29/2 ([4.43a]). AU27 fully implemented.
 - [x] **AU28 — §22.7 German Mobile Tank Repair Squad.** Treated exactly as a TDS (reuses `is_tds` —
   CPA 25, 0 stacking, ZOC-elimination/return, reserves, lockout), but the §22.62 assist and §22.64
   reserves are now matched by **nationality** (not just side), so a German squad repairs only German
