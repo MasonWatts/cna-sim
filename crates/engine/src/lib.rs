@@ -1946,6 +1946,44 @@ mod tests {
     }
 
     #[test]
+    fn free_stacking_garrison_and_flak_9_16() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, OrgSize, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_weapons_systems(Nationality::German, include_str!("../../../data/reference/weapons/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let city = HexCoord::new(0, 0);
+        let field = HexCoord::new(2, 0);
+        g.map.set_hex(city, HexTerrain::MajorCity);
+        g.map.set_hex(field, HexTerrain::Clear);
+
+        // §9.16b: a pure AA/Flak unit stacks free (0 SP) in a Major City, but not in the open.
+        let flak = g.spawn_unit(Nationality::German, "flak", "Flak bn", Composition::Weapons { groups: vec![WeaponGroup { system: "Heavy AA (88mm Flak)".into(), count: 3 }] });
+        g.unit_mut(flak).unwrap().org_size = OrgSize::Battalion;
+        g.unit_mut(flak).unwrap().location = Some(UnitLocation::OnMap(city));
+        assert!(g.unit_is_pure_anti_air(flak));
+        assert_eq!(g.effective_stacking_points(flak), 0);
+        g.unit_mut(flak).unwrap().location = Some(UnitLocation::OnMap(field));
+        assert_eq!(g.effective_stacking_points(flak), 1);
+
+        // §9.16a: a garrison ("G") unit has 0 SP in its assigned hex, its org SP elsewhere.
+        let garr = g.spawn_unit(Nationality::German, "g", "garrison bn", Composition::Organic { current_toe: 4 });
+        {
+            let u = g.unit_mut(garr).unwrap();
+            u.org_size = OrgSize::Battalion;
+            u.garrison_location = Some(city);
+            u.location = Some(UnitLocation::OnMap(city));
+        }
+        assert_eq!(g.effective_stacking_points(garr), 0);
+        g.unit_mut(garr).unwrap().location = Some(UnitLocation::OnMap(field));
+        assert_eq!(g.effective_stacking_points(garr), 1);
+    }
+
+    #[test]
     fn stacking_limit_enforced() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;

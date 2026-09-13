@@ -8052,10 +8052,55 @@ impl GameState {
         if self.units.get(&id).is_some_and(|u| u.is_tds) {
             return 0;
         }
+        // §9.16a: a garrison unit ("G") occupies 0 Stacking Points while in its assigned hex.
+        if let Some(u) = self.units.get(&id) {
+            if u.garrison_location.is_some() && u.garrison_location == u.hex() {
+                return 0;
+            }
+        }
+        // §9.16b: a pure anti-aircraft unit stacks free (0 SP) in a Major City.
+        if self.unit_is_pure_anti_air(id)
+            && self
+                .units
+                .get(&id)
+                .and_then(|u| u.hex())
+                .map(|h| self.map.terrain(h) == Some(crate::reference::terrain::HexTerrain::MajorCity))
+                .unwrap_or(false)
+        {
+            return 0;
+        }
         if self.is_noncombat_hq(id) {
             return 0;
         }
         self.effective_org_size(id).stacking_points()
+    }
+
+    /// §9.16b: whether `id` is a *pure* anti-aircraft unit — a Weapons unit whose every group is an
+    /// AntiAir weapon system, or an Organic unit whose §4.46 type is an anti-air/flak unit.
+    pub(crate) fn unit_is_pure_anti_air(&self, id: UnitId) -> bool {
+        let Some(u) = self.units.get(&id) else { return false };
+        match &u.composition {
+            Composition::Weapons { groups } => {
+                let table = self.reference.weapons_systems.get(&u.nationality);
+                !groups.is_empty()
+                    && groups.iter().all(|g| {
+                        table
+                            .and_then(|m| m.get(&g.system))
+                            .map(|w| matches!(w.kind, WeaponKind::LightAntiAir | WeaponKind::HeavyAntiAir))
+                            .unwrap_or(false)
+                    })
+            }
+            Composition::Organic { .. } => self
+                .reference
+                .unit_characteristics
+                .get(&u.nationality)
+                .and_then(|m| m.get(&u.id_code))
+                .map(|uc| {
+                    let t = &uc.unit_type;
+                    t.contains("Anti-Air") || t.contains("Anti-air") || t.contains("Flak") || t.contains("AA")
+                })
+                .unwrap_or(false),
+        }
     }
 
     /// Advance to the next step in the Sequence of Play (§5.2): through the stage steps

@@ -326,8 +326,13 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   step (escarpment/sandstorm) that current cost-mechanics tests rely on, and likely needs a §8.16
   minimum-move exception; low value vs. the §6.21 over-CPA Disorganization already modeled.
 - [x] **AU31 — §9.25 ≤ five independent 0-SP companies/batteries per hex** (unlimited in a Major City; attached units ride their parent). Enforced in move_step_plan. Test zero_sp_company_stacking_cap_9_25.
-- [ ] **AU32 — §9.16 garrison "G" units stack free in their assigned city; AA/Flak free in Major
-  Cities and on airfields.**
+- [~] **AU32 — §9.16 free-stacking exceptions.** Mechanics done in `effective_stacking_points`:
+  §9.16a a garrison unit occupies 0 SP while in its assigned hex (new `Unit.garrison_location`);
+  §9.16b a *pure* AA/Flak unit (`unit_is_pure_anti_air`) occupies 0 SP in a Major City. Test
+  free_stacking_garrison_and_flak_9_16. **Remaining:** the §9.16b air-facility allowance (1 AA/Flak
+  free with a landing strip, 3 with an airfield) is a hex-level capacity exception, not yet applied;
+  and the OB "G" garrison designations + locations (data, per counter) that would populate
+  `garrison_location` — needs the OB garrison markers.
 - [ ] **AU33 — §8.44/§8.45 Salt Marsh / Desert unit-subtype entry restrictions** (light-vehicle-only
   off-road; no AFV close-assault into Salt Marsh).
 - [-] **AU34 — §8.19 no CW west of Marble Arch (A2109 = col 9).** Deferred: a blanket col-9 gate

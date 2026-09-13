@@ -267,6 +267,10 @@ pub struct Unit {
     /// Its per-TOE ratings become Anti-Armor 1 (was 0) and Offensive Close Assault 3 (was 2), §20.54.
     #[serde(default)]
     pub recce_upgraded: bool,
+    /// §9.16a: the city/village hex this unit garrisons (counter "G"). It occupies 0 Stacking Points
+    /// while in this hex. `None` for non-garrison units. Set from the OB "G" designation.
+    #[serde(default)]
+    pub garrison_location: Option<HexCoord>,
     /// §20.8: this unit is scheduled for Mandatory Withdrawal at `(Game-Turn, Operations Stage)`.
     /// It must reach Cairo/Alexandria at ≥75% max TOE by then (§20.83) or be eliminated. Set from
     /// the [4.43a] withdrawal schedule when bound to the scenario Order of Battle.
@@ -395,6 +399,7 @@ impl Unit {
             composition,
             anti_tank_augment: None,
             recce_upgraded: false,
+            garrison_location: None,
             mandatory_withdrawal: None,
             cohesion: 0,
             cp_expended: Fixed(0),
