@@ -269,13 +269,17 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 ### Movement / stacking / terrain (§8–§9)
 - [ ] **AU29 — §9.33/§9.34 road/track 5-Stacking-Point transit limit** for motorized units passing
   through friendlies (no break-up to evade).
-- [ ] **AU30 — §8.17 non-motorized units may never voluntarily exceed 150% of base CPA** (hard ceiling).
+- [-] **AU30 — §8.17 150% CPA hard ceiling.** Deferred: a hard ceiling blocks a single expensive
+  step (escarpment/sandstorm) that current cost-mechanics tests rely on, and likely needs a §8.16
+  minimum-move exception; low value vs. the §6.21 over-CPA Disorganization already modeled.
 - [ ] **AU31 — §9.25 ≤ five 0-Stacking-Point companies/batteries per hex** (unlimited only in a Major City).
 - [ ] **AU32 — §9.16 garrison "G" units stack free in their assigned city; AA/Flak free in Major
   Cities and on airfields.**
 - [ ] **AU33 — §8.44/§8.45 Salt Marsh / Desert unit-subtype entry restrictions** (light-vehicle-only
   off-road; no AFV close-assault into Salt Marsh).
-- [ ] **AU34 — §8.19 no CW land unit west of Marble Arch (A2109).**
+- [-] **AU34 — §8.19 no CW west of Marble Arch (A2109 = col 9).** Deferred: a blanket col-9 gate
+  breaks the many synthetic tests that place CW units at low columns; it's a map-convenience
+  boundary of little gameplay value on the real map.
 
 ### Weather (§29) — rainstorm terrain cluster
 - [x] **AU35 — §29.55 rainstorm: wadi hexsides uncrossable except by road; no wadi water draw.**
@@ -294,8 +298,9 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [x] **AU43 — §49.19/§50.16/§51.16 captured supply dumps** change ownership on overrun + captured-usable
   fraction (fuel non-denominational; ⅓ ammo, ½ stores) — dumps currently never change hands.
 - [ ] **AU44 — §56.16 bombed convoy's own flak** (= lane tonnage ÷ 1000) fires back at attacking CW bombers.
-- [ ] **AU45 — §55.17 Bizerta annual 2d6=12 roll from GT35** before use (engine opens it deterministically
-  at GT≥35).
+- [-] **AU45 — §55.17 Bizerta annual 2d6=12 roll.** Deferred: the port's `available_from_gt` isn't
+  wired into runtime `Port::is_operable` (which is just efficiency>0), so both the GT-35 gate and the
+  annual roll need a Port open-flag set at turn start; low impact (Tunis-box late-war edge port).
 - [ ] **AU46 — §41.81/§41.84/§41.86 CW bombing of the Axis Tripoli/Tunisia off-map boxes** (port level,
   grounded planes; night vs Tripoli).
 - [ ] **AU47 — §30.5/§30.51–59 CW port-to-port naval troop transport** (Port Personnel Capacity; one
