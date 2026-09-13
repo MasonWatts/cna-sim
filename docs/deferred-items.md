@@ -253,7 +253,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [ ] **AU20 — §19.8/§19.81–87 ad-hoc Axis AT batteries** (augment a Brigade HQ with AT Replacement
   Points; 67% gate, single gun type).
 - [ ] **AU21 — §19.9/§19.91–98 CW battalion AT augmentation** from GT-75 / Apr 1942.
-- [ ] **AU22 — §19.72/§19.73 battle-group forming composition caps** (German ≤4 bn/≤1 tank/≤2 inf;
+- [x] **AU22 — §19.72/§19.73 battle-group forming composition caps** (German ≤4 bn/≤1 tank/≤2 inf;
   Italian ≤3 bn/≤2 inf/≤1 armor, ≤2 in play) — pool exists, limits unenforced.
 - [ ] **AU23 — §20.5/§20.51–55 upgrade Armored-Car/Recce to newer vehicles** (Stuarts etc.; TOE change;
   not before 1/39).
@@ -265,8 +265,12 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [ ] **AU28 — §22.7 German Mobile Tank Repair unit.**
 
 ### Movement / stacking / terrain (§8–§9)
-- [ ] **AU29 — §9.33/§9.34 road/track 5-Stacking-Point transit limit** for motorized units passing
-  through friendlies (no break-up to evade).
+- [-] **AU29 — §9.33/§9.34 road/track 5-SP transit limit.** Deferred: presupposes the §9.29 base
+  5-point Road/Track Stacking Limit and an explicit "on-the-road / off-road-marker" per-hex state,
+  neither of which the current cost-only movement model represents (a road is just a cheap hexside
+  crossing; there is no road-bonus/negate-terrain state to lose by "going around"). Implementing the
+  transit refinement alone would fabricate a mechanic on top of an absent base rule; needs the road
+  stacking + on-road-state model first.
 - [-] **AU30 — §8.17 150% CPA hard ceiling.** Deferred: a hard ceiling blocks a single expensive
   step (escarpment/sandstorm) that current cost-mechanics tests rely on, and likely needs a §8.16
   minimum-move exception; low value vs. the §6.21 over-CPA Disorganization already modeled.

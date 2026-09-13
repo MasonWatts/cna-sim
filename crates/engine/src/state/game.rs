@@ -7593,6 +7593,14 @@ impl GameState {
                     Side::Commonwealth if armor => (true, if gt < 68 { Some(1) } else { None }, None, None),
                     _ => (false, None, None, None),
                 },
+                // §19.72/§19.73 Battle-Group composition: German BG ≤1 tank & ≤2 infantry;
+                // Italian BG ≤1 armor & ≤2 infantry. (The "+2 additional companies over the
+                // battalion limit" numeric allowance is a documented simplification — the caps
+                // here count all attached tank/infantry uniformly, as elsewhere in this chart.)
+                OrgSize::BattleGroup => match side {
+                    Side::Axis => (false, Some(2), Some(1), None),
+                    Side::Commonwealth => (false, None, None, None),
+                },
                 _ => (false, None, None, None),
             };
         if is_tank && no_tank {

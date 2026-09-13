@@ -13724,6 +13724,51 @@ mod tests {
     }
 
     #[test]
+    fn battle_group_composition_caps_19_72() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, OrgSize, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::German, include_str!("../../../data/reference/weapons/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        g.active_player = Side::Axis;
+        let a = HexCoord::new(0, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+
+        // §19.72: a German Battle Group takes ≤1 tank and ≤2 infantry battalions (numeric cap 4).
+        let bg = g.spawn_unit(Nationality::German, "b", "battle group", Composition::Weapons { groups: vec![] });
+        g.unit_mut(bg).unwrap().org_size = OrgSize::BattleGroup;
+        g.unit_mut(bg).unwrap().location = Some(UnitLocation::OnMap(a));
+        let mk_tank = |g: &mut GameState| {
+            let u = g.spawn_unit(Nationality::German, "f", "pz bn", Composition::Weapons { groups: vec![WeaponGroup { system: "Pz III H".into(), count: 5 }] });
+            g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(a));
+            u
+        };
+        let mk_inf = |g: &mut GameState| {
+            let u = g.spawn_unit(Nationality::German, "i", "inf bn", Composition::Organic { current_toe: 4 });
+            g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(a));
+            u
+        };
+        let (t1, t2) = (mk_tank(&mut g), mk_tank(&mut g));
+        let (i1, i2, i3) = (mk_inf(&mut g), mk_inf(&mut g), mk_inf(&mut g));
+
+        assert_eq!(g.apply(Command::AttachUnit { unit: t1, parent: bg }), Ok(CommandOutcome::UnitAttached));
+        // 2nd tank rejected by the ≤1-tank cap (still within the numeric limit of 4).
+        assert_eq!(g.apply(Command::AttachUnit { unit: t2, parent: bg }), Err(CommandError::ReorgIllegal));
+        assert_eq!(g.apply(Command::AttachUnit { unit: i1, parent: bg }), Ok(CommandOutcome::UnitAttached));
+        assert_eq!(g.apply(Command::AttachUnit { unit: i2, parent: bg }), Ok(CommandOutcome::UnitAttached));
+        // 3rd infantry rejected by the ≤2-infantry cap.
+        assert_eq!(g.apply(Command::AttachUnit { unit: i3, parent: bg }), Err(CommandError::ReorgIllegal));
+    }
+
+    #[test]
     fn attachment_count_distinguishes_arm_19_5() {
         // §19.5 Maximum Attachment Chart: the numeric cap depends on the parent's ARM
         // (armor vs infantry/other), not just its org size, nationality and Game-Turn.
