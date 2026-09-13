@@ -370,8 +370,14 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   the §8.8 off-map complex is modeled as transit *nodes* (name/transit/direction), not facilities with
   a port level or grounded-plane state to reduce. Needs an off-map-box facility model (port level +
   based-plane state) before the bombing effect (incl. night-vs-Tripoli) has anything to act on.
-- [ ] **AU47 — §30.5/§30.51–59 CW port-to-port naval troop transport** (Port Personnel Capacity; one
-  transfer/stage/port).
+- [-] **AU47 — §30.5/§30.51–59 CW port-to-port naval troop transport.** Deferred (modeling gap, NOT
+  missing data): the Port Personnel Capacity (§30.54/§30.59) is already digitized as
+  `PortSpec.stacking_in`/`stacking_out` in `port-capacity.ron`. The blocker is that the engine keys
+  ports by **name** (`ports: HashMap<String, Port>`) with no general port-name↔hex association (the
+  map only marks a nameless `Feature::Port`; only San Giorgio carries an ad-hoc hex↔port link), so a
+  unit transfer between port *hexes* can't resolve which port (and capacity) a hex is. Needs a
+  port↔hex mapping (+ scenario port-hex data) before §30.51–58 can be located; the capacity math is
+  then trivial.
 - [ ] **AU48 — §30.4/§30.41–46 Italian 10th Light Flotilla frogman/Chariot raid** on the fleet at Alexandria.
 - [-] **AU49 — §35.22 in-play plane transfer between squadrons.** Deferred: a faithful transfer needs
   the §35.21 same-class rule, the §35.23 capacity cap, and the §35.22 "transfer mission" (fly to the
