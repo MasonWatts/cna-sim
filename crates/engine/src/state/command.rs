@@ -5286,6 +5286,35 @@ impl GameState {
                 if !surrender.is_empty() {
                     self.surrender_units(&surrender);
                 }
+                // §35.12: an enemy SGSU the mover is now adjacent to, with no friendly combat unit
+                // stacked with it, cannot react during the enemy's move and is eliminated; §35.27:
+                // its grounded planes are lost. (§35.13: it may be redeployed one Game-Turn later.)
+                let overrun: Vec<crate::state::air::SquadronId> = to
+                    .neighbors()
+                    .into_iter()
+                    .flat_map(|h| {
+                        self.sgsus
+                            .iter()
+                            .filter(|(_, sg)| {
+                                sg.location == Some(h) && sg.nationality.side() != ms
+                            })
+                            .filter(|(_, sg)| {
+                                !self.units_in_hex(h).iter().any(|&u| {
+                                    self.units.get(&u).is_some_and(|x| {
+                                        x.nationality.side() == sg.nationality.side() && x.total_toe() > 0
+                                    }) && self.is_combat_unit(u)
+                                })
+                            })
+                            .map(|(id, _)| *id)
+                            .collect::<Vec<_>>()
+                    })
+                    .collect();
+                for id in overrun {
+                    if let Some(sg) = self.sgsus.get_mut(&id) {
+                        sg.location = None;
+                        sg.planes.clear();
+                    }
+                }
             }
         }
         // §8.62/§8.67: recompute Contact from ZOC and clear any engagement this move broke off.

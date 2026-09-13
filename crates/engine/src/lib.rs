@@ -8410,6 +8410,54 @@ mod tests {
     }
 
     #[test]
+    fn sgsu_overrun_by_land_35_12() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::Command;
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::rules::movement::MoveMode;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        for c in 0..8 {
+            g.map.set_hex(HexCoord::new(c, 0), HexTerrain::Clear);
+        }
+        // Unescorted German SGSU at (1,0) with planes on the ground.
+        let mut sg = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Fighter, "JG 27", 5, Some(HexCoord::new(1, 0)));
+        sg.add_planes("Bf.109F", AircraftClass::Fighter, 8, 1);
+        g.sgsus.insert(SquadronId(1), sg);
+        // Escorted German SGSU at (5,0), stacked with a German combat unit.
+        g.sgsus.insert(SquadronId(2), Sgsu::new(SquadronId(2), Nationality::German, SquadronClass::Fighter, "JG 53", 5, Some(HexCoord::new(5, 0))));
+        let guard = g.spawn_unit(Nationality::German, "p", "guard", Composition::Organic { current_toe: 4 });
+        g.unit_mut(guard).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(5, 0)));
+
+        let m1 = g.spawn_unit(Nationality::Commonwealth, "h", "m1", Composition::Organic { current_toe: 4 });
+        let m2 = g.spawn_unit(Nationality::Commonwealth, "h", "m2", Composition::Organic { current_toe: 4 });
+        g.unit_mut(m1).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(3, 0)));
+        g.unit_mut(m1).unwrap().fuel = 1000;
+        g.unit_mut(m2).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(7, 0)));
+        g.unit_mut(m2).unwrap().fuel = 1000;
+
+        // m1 → (2,0), adjacent to the unescorted SGSU at (1,0): §35.12 eliminates it, §35.27 loses planes.
+        assert!(g.apply(Command::MoveStep { unit: m1, to: HexCoord::new(2, 0), mode: MoveMode::NonMotorized }).is_ok());
+        assert_eq!(g.sgsus[&SquadronId(1)].location, None, "§35.12 unescorted SGSU eliminated");
+        assert!(g.sgsus[&SquadronId(1)].planes.is_empty(), "§35.27 grounded planes lost");
+        // m2 → (6,0), adjacent to the escorted SGSU at (5,0): it survives.
+        assert!(g.apply(Command::MoveStep { unit: m2, to: HexCoord::new(6, 0), mode: MoveMode::NonMotorized }).is_ok());
+        assert_eq!(g.sgsus[&SquadronId(2)].location, Some(HexCoord::new(5, 0)), "escorted SGSU survives");
+    }
+
+    #[test]
     fn hex_once_per_combat_segment_15_23() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;

@@ -290,10 +290,12 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [ ] **AU40 — §29.32 construction sites need water rations in hot weather.**
 
 ### Air ↔ land, logistics, naval (§35, §49–56)
-- [ ] **AU41 — §35.12 SGSU overrun / react-or-eliminate by advancing land units** (+ §34.82 non-replace-
-  for-1-GT, §35.13 one-GT return) — highest-impact air gap; airbases can't be overrun.
-- [ ] **AU42 — §35.27 grounded planes captured** (reusable by enemy 1 GT later) when their SGSU is
-  eliminated with planes on the ground.
+- [x] **AU41 — §35.12 SGSU overrun by advancing land units.** move_counter now eliminates an enemy
+  SGSU a mover ends adjacent to when no friendly combat unit is stacked with it (it can't react
+  during the enemy move); location→None (redeployable later, §35.13).
+- [~] **AU42 — §35.27 grounded planes.** An overrun SGSU's grounded planes are now lost (planes
+  cleared on elimination). The capture-for-enemy-reuse (1 GT later) refinement is still pending —
+  needs a cross-nationality captured-plane pool.
 - [x] **AU43 — §49.19/§50.16/§51.16 captured supply dumps** change ownership on overrun + captured-usable
   fraction (fuel non-denominational; ⅓ ammo, ½ stores) — dumps currently never change hands.
 - [ ] **AU44 — §56.16 bombed convoy's own flak** (= lane tonnage ÷ 1000) fires back at attacking CW bombers.
