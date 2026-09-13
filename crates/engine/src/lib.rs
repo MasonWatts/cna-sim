@@ -624,6 +624,82 @@ mod tests {
     }
 
     #[test]
+    fn reserve_release_cpa_cap_18_24() {
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, ReserveStatus};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let a = HexCoord::new(0, 0);
+        let b = HexCoord::new(1, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+        g.map.set_hex(b, HexTerrain::Clear);
+        g.phase = Phase::MovementAndCombat;
+
+        // "k" has a CPA of 10; released from Reserve II → hard cap of 5 (§18.24.1). With 5 CP already
+        // spent the unit is at its cap, so any further voluntary move is barred.
+        let u = g.spawn_unit(Nationality::Commonwealth, "k", "rel", Composition::Organic { current_toe: 4 });
+        {
+            let uu = g.unit_mut(u).unwrap();
+            uu.location = Some(crate::state::unit::UnitLocation::OnMap(a));
+            uu.released_from_reserve = Some(ReserveStatus::ReserveII);
+            uu.cp_expended = crate::reference::terrain::Fixed(50); // at the half-CPA cap
+        }
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: u, to: b, mode: MoveMode::NonMotorized }),
+            Err(CommandError::InReserve)
+        );
+        // Not released from Reserve: the ordinary over-CPA rule applies (move allowed, §6.21).
+        g.unit_mut(u).unwrap().released_from_reserve = None;
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: u, to: b, mode: MoveMode::NonMotorized }),
+            Ok(CommandOutcome::Moved)
+        );
+    }
+
+    #[test]
+    fn reserve_release_one_offensive_assault_18_23() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, ReserveStatus, UnitLocation};
+
+        let mut g = GameState::new(close_assault_refs(), 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let atk = HexCoord::new(0, 0);
+        let tgt = HexCoord::new(1, 0);
+        g.map.set_hex(atk, HexTerrain::Clear);
+        g.map.set_hex(tgt, HexTerrain::Clear);
+        let a = g.spawn_unit(Nationality::Commonwealth, "h", "rel", Composition::Organic { current_toe: 5 });
+        {
+            let u = g.unit_mut(a).unwrap();
+            u.location = Some(UnitLocation::OnMap(atk));
+            u.released_from_reserve = Some(ReserveStatus::ReserveI);
+            u.made_offensive_assault = true; // already used its one assault
+        }
+        let def = g.spawn_unit(Nationality::German, "a", "def", Composition::Organic { current_toe: 4 });
+        g.unit_mut(def).unwrap().location = Some(UnitLocation::OnMap(tgt));
+        // §18.23.2: a second offensive Close Assault by a released unit is barred.
+        assert_eq!(
+            g.apply(Command::CloseAssault { attackers: vec![a], target: tgt }),
+            Err(CommandError::InReserve)
+        );
+        // With its assault not yet used, the one-assault rule does not bar it.
+        g.unit_mut(a).unwrap().made_offensive_assault = false;
+        assert_ne!(
+            g.apply(Command::CloseAssault { attackers: vec![a], target: tgt }),
+            Err(CommandError::InReserve)
+        );
+    }
+
+    #[test]
     fn over_cpa_movement_earns_disorganization() {
         use crate::reference::terrain::{Fixed, HexTerrain};
         use crate::rules::movement::MoveMode;

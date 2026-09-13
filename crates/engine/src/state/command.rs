@@ -1472,6 +1472,12 @@ impl GameState {
             Command::DesignateReserve { unit, status } => {
                 self.require_phase(Phase::ReserveDesignation)?;
                 let u = self.unit_mut(unit).ok_or(CommandError::UnitNotFound)?;
+                // §18.23/§18.24: releasing a unit from Reserve (to None) marks it so this stage's
+                // release restrictions (CPA cap, one assault, §18.24.3 DP) apply.
+                use crate::state::unit::ReserveStatus;
+                if status == ReserveStatus::None && u.reserve != ReserveStatus::None {
+                    u.released_from_reserve = Some(u.reserve);
+                }
                 u.reserve = status;
                 Ok(CommandOutcome::ReserveDesignated)
             }
@@ -4239,6 +4245,13 @@ impl GameState {
             return Err(CommandError::NoWater);
         }
         let side = self.attackers_side(attackers)?;
+        // §18.23.2/§18.24.2: a unit released from Reserve this stage may make only one offensive
+        // Close Assault.
+        if attackers.iter().any(|&a| {
+            self.unit(a).is_some_and(|u| u.released_from_reserve.is_some() && u.made_offensive_assault)
+        }) {
+            return Err(CommandError::InReserve);
+        }
         // §8.44: no motorized unit or AFV may Assault a defender in a Salt Marsh hex.
         if self.map.terrain(target) == Some(crate::reference::terrain::HexTerrain::SaltMarsh)
             && attackers.iter().any(|&a| self.unit_is_motorized(a) || self.unit_is_afv(a))
@@ -4320,6 +4333,18 @@ impl GameState {
         self.land_combat_this_stage.insert(side);
         // §16.46: a formation with a Dummy Tank that undergoes Close Assault loses the dummy.
         self.eliminate_dummies_in_hex(target, side.opponent());
+        // §18.23.2/§18.24.2: record each attacker's one offensive assault; §18.24.3: a unit released
+        // from Reserve II that engages in combat this stage automatically earns one Disorganization Point.
+        for &a in attackers {
+            if let Some(u) = self.unit_mut(a) {
+                let reserve_ii = u.released_from_reserve == Some(crate::state::unit::ReserveStatus::ReserveII);
+                let first = !u.made_offensive_assault;
+                u.made_offensive_assault = true;
+                if reserve_ii && first {
+                    u.cohesion -= 1;
+                }
+            }
+        }
         Ok(CommandOutcome::CloseAssault(outcome))
     }
 
@@ -5575,6 +5600,15 @@ impl GameState {
             let already = self.unit(unit).map(|u| u.cp_expended.0).unwrap_or(0);
             if already + cp.0 > cpa * 10 {
                 return Err(CommandError::AirdropCpaLimit);
+            }
+        }
+        // §18.23.1/§18.24.1: a unit released from Reserve this stage may not voluntarily exceed its
+        // CPA — the full CPA for Reserve I, one-half (rounded down) for Reserve II.
+        if let Some(level) = self.unit(unit).and_then(|u| u.released_from_reserve) {
+            let cap = if level == crate::state::unit::ReserveStatus::ReserveII { cpa / 2 } else { cpa };
+            let already = self.unit(unit).map(|u| u.cp_expended.0).unwrap_or(0);
+            if already + cp.0 > cap * 10 {
+                return Err(CommandError::InReserve);
             }
         }
         // §49.13/49.16: the move's Fuel must be payable from the mover's (and riders') tanks and any

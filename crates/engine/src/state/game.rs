@@ -8498,6 +8498,8 @@ impl GameState {
             u.combat_cp = Fixed(0);
             u.moved_into_zoc = false;
             u.reserve_moved_this_stage = false;
+            u.released_from_reserve = None;
+            u.made_offensive_assault = false;
             u.retreated_before_assault = false;
             u.breakdown_points = 0;
             u.breakdown_checked_col = -1;

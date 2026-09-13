@@ -225,12 +225,15 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   structure and the self-play agents' action enumeration — all combat is currently modeled as
   voluntary. High-regression, cross-cutting subsystem better done as a dedicated effort; ZOC/Contact/
   Engaged are computed, only the obligation is missing.
-- [~] **AU5 — §18.2 Reserve I/II effects.** §18.22 fully done: Reserve II never moves; Reserve I may
-  move exactly one hex per Operations Stage (new `Unit.reserve_moved_this_stage`, reset each stage;
-  CommandError::InReserve once spent). Test reserve_ii_may_not_move_18_22. **Remaining:** only the
-  §18.23–24 *release-segment* refinements (a released unit may not voluntarily exceed its CPA and may
-  make one offensive assault; §18.24 auto-DP; two-hex proximity) — these need a dedicated Reserve
-  Release Segment + released-this-stage tracking; low value (Reserve status is agent-unused).
+- [x] **AU5 — §18.2 Reserve I/II effects.** §18.22: Reserve II never moves; Reserve I moves one hex/
+  stage (`reserve_moved_this_stage`). §18.23/§18.24 release restrictions: releasing a unit from Reserve
+  (DesignateReserve→None) sets `Unit.released_from_reserve`, which imposes a hard CPA cap on movement —
+  full for Reserve I, half (rounded down) for Reserve II (§18.23.1/§18.24.1) — allows only one offensive
+  Close Assault (`made_offensive_assault`, §18.23.2/§18.24.2), and levies the §18.24.3 auto-DP on a
+  Reserve-II-released unit's first offensive Close Assault. Tests reserve_ii_may_not_move_18_22,
+  reserve_release_cpa_cap_18_24, reserve_release_one_offensive_assault_18_23. (Minor simplifications:
+  the §18.24.3 DP fires on the Close-Assault path, not AA/Barrage-only participation; §18.25's "move
+  without being within two hexes of an enemy" is a relaxation of the unmodeled §8.23 base rule, moot.)
 - [x] **AU6 — §12.44 Pinned** blocks Move/AntiArmor/CloseAssault (currently only RBA/Reaction check it).
 - [x] **AU7 — §6.26 cohesion ≤ −26** blocks Move/CloseAssault/AntiArmor + adjacency auto-surrender
   (currently only RBA/Reaction check the −26 gate; no auto-surrender).

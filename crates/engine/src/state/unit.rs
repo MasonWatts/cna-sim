@@ -292,6 +292,15 @@ pub struct Unit {
     /// Stage — it may not move again until released. Reset each stage.
     #[serde(default)]
     pub reserve_moved_this_stage: bool,
+    /// §18.23/§18.24: the Reserve status a unit was *released from* this Operations Stage (`None` if
+    /// it wasn't). Drives the release restrictions: a hard CPA cap (full for Reserve I, half for
+    /// Reserve II), one offensive Close Assault, and the §18.24.3 auto-DP for Reserve II. Reset each stage.
+    #[serde(default)]
+    pub released_from_reserve: Option<ReserveStatus>,
+    /// §18.23.2/§18.24.2: set once a unit has made an offensive Close Assault this Operations Stage
+    /// (a released unit may make only one). Reset each stage.
+    #[serde(default)]
+    pub made_offensive_assault: bool,
     /// §13.28: set when the unit Retreated Before Assault this Operations Stage. In a hex then
     /// attacked, it takes/is susceptible to anti-armor fire but may not *direct* it, and its
     /// Close Assault ratings are excluded from the defense (though its TOE still takes % losses).
@@ -410,6 +419,8 @@ impl Unit {
             combat_cp: Fixed(0),
             moved_into_zoc: false,
             reserve_moved_this_stage: false,
+            released_from_reserve: None,
+            made_offensive_assault: false,
             retreated_before_assault: false,
             fuel: 0,
             ammo: 0,
