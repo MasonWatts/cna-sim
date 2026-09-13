@@ -243,6 +243,10 @@ pub struct Unit {
     /// and inherits the infantry unit's CPA (§19.97). `None` for everything else.
     #[serde(default)]
     pub anti_tank_augment: Option<WeaponGroup>,
+    /// §20.5: this armored Recce / Armored-Car unit has been upgraded (a light tank added, §20.52).
+    /// Its per-TOE ratings become Anti-Armor 1 (was 0) and Offensive Close Assault 3 (was 2), §20.54.
+    #[serde(default)]
+    pub recce_upgraded: bool,
 
     // Dynamic state (path-dependent primitives).
     pub cohesion: i32,
@@ -361,6 +365,7 @@ impl Unit {
             formation_role: FormationRole::Normal,
             composition,
             anti_tank_augment: None,
+            recce_upgraded: false,
             cohesion: 0,
             cp_expended: Fixed(0),
             combat_cp: Fixed(0),
@@ -409,12 +414,21 @@ impl Unit {
     pub fn raw_strength(&self, refs: &ReferenceData, kind: RatingKind) -> i32 {
         match &self.composition {
             Composition::Organic { current_toe } => {
-                let rating = refs
+                let mut rating = refs
                     .unit_characteristics
                     .get(&self.nationality)
                     .and_then(|m| m.get(&self.id_code))
                     .and_then(|uc| organic_rating(uc, kind))
                     .unwrap_or(0);
+                // §20.54: an upgraded Recce / Armored-Car unit's TOE gains an Anti-Armor Rating of 1
+                // (was 0) and an Offensive Close Assault Rating of 3 (was 2).
+                if self.recce_upgraded {
+                    match kind {
+                        RatingKind::AntiArmor => rating = 1,
+                        RatingKind::CloseAssaultOff => rating = 3,
+                        _ => {}
+                    }
+                }
                 // §19.9/§19.93: a Commonwealth infantry battalion's added Anti-Tank gun TOE (a
                 // second weapons system) contributes its own weapon-system ratings.
                 let augment = self.anti_tank_augment.as_ref().map_or(0, |ag| {

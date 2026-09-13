@@ -2663,6 +2663,72 @@ impl GameState {
         Ok(count)
     }
 
+    /// §20.5/§20.51–55: upgrade an armored Recce / Armored-Car unit by adding a light-tank TOE point
+    /// (§20.53: CW Stuarts, German Pz II, Italian M11/L6 or recce/AC Replacement Points), drawn from
+    /// a co-located trained Replacement pool. The unit's per-TOE ratings rise to Anti-Armor 1 / Off
+    /// Close Assault 3 (§20.54). Returns Ok(()) on success.
+    pub(crate) fn upgrade_recce(
+        &mut self,
+        unit: UnitId,
+    ) -> Result<(), crate::state::command::CommandError> {
+        use crate::state::command::CommandError;
+        let u = self.units.get(&unit).ok_or(CommandError::UnitNotFound)?;
+        if u.recce_upgraded {
+            return Err(CommandError::RecceUpgradeIllegal); // already upgraded
+        }
+        // §20.51: only armored Recce / Armored-Car units that deploy with an Anti-Armor Rating of 0.
+        let uc = self
+            .reference
+            .unit_characteristics
+            .get(&u.nationality)
+            .and_then(|m| m.get(&u.id_code))
+            .ok_or(CommandError::RecceUpgradeIllegal)?;
+        let is_recce = uc.unit_type.contains("Recce") || uc.unit_type.contains("Reconnaissance");
+        let armored = uc.armor_protection.map(|r| r.value).unwrap_or(0) > 0;
+        let base_anti_armor = uc.anti_armor.map(|r| r.value).unwrap_or(0);
+        if !is_recce || !armored || base_anti_armor != 0 {
+            return Err(CommandError::RecceUpgradeIllegal);
+        }
+        // §20.51 exception: a Commonwealth Recce unit assigned to an Infantry Division may not be
+        // upgraded (a non-armor Division / Super-Brigade parent).
+        if u.nationality.side() == Side::Commonwealth {
+            if let Some(p) = u.assigned_parent {
+                if let Some(par) = self.units.get(&p) {
+                    if !par.is_armor
+                        && matches!(par.org_size, OrgSize::Division | OrgSize::SuperBrigade)
+                    {
+                        return Err(CommandError::RecceUpgradeIllegal);
+                    }
+                }
+            }
+        }
+        // §20.53: draw one upgrade point — a Tank Replacement Point (CW Stuart / German Pz II /
+        // Italian M11-L6), or for the Italians an armored recce/AC (Recce-class) point.
+        let hex = self.units.get(&unit).and_then(|u| u.hex()).ok_or(CommandError::UnitNotOnMap)?;
+        let class = if self.available_replacement_class(ReplacementClass::Tank, unit, hex) >= 1 {
+            ReplacementClass::Tank
+        } else if self.units.get(&unit).map(|u| u.nationality) == Some(Nationality::Italian)
+            && self.available_replacement_class(ReplacementClass::Recce, unit, hex) >= 1
+        {
+            ReplacementClass::Recce
+        } else {
+            return Err(CommandError::RecceUpgradeIllegal); // no eligible replacement point co-located
+        };
+        self.draw_replacement_class(class, unit, hex, 1);
+        let side = self.units.get(&unit).map(|u| u.nationality.side()).unwrap_or(Side::Axis);
+        *self.replacements_used.entry(side).or_insert(0) += 1;
+        self.replacement_points.retain(|p| p.count > 0);
+        // §20.52: add the point to the TOE if there is room; otherwise it is folded in without
+        // increasing the TOE (the unit is already at maximum).
+        if self.unit_toe_headroom(unit) > 0 {
+            self.add_toe(unit, 1);
+        }
+        if let Some(u) = self.units.get_mut(&unit) {
+            u.recce_upgraded = true;
+        }
+        Ok(())
+    }
+
     /// TOE Strength Points a unit may still gain before hitting its §4.44 Max-TOE (`u32::MAX` if the
     /// unit has no listed maximum).
     fn unit_toe_headroom(&self, id: UnitId) -> u32 {

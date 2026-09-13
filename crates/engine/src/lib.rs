@@ -1735,6 +1735,63 @@ mod tests {
     }
 
     #[test]
+    fn upgrade_armored_car_effectiveness_20_5() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, ReplacementClass};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, OrgSize, RatingKind, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        g.active_player = Side::Commonwealth;
+        let a = HexCoord::new(0, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+
+        // "kk" = armored Recce (armor 2), Anti-Armor 0, Off CA 2 → eligible (§20.51).
+        let recce = g.spawn_unit(Nationality::Commonwealth, "kk", "armd recce", Composition::Organic { current_toe: 4 });
+        g.unit_mut(recce).unwrap().location = Some(UnitLocation::OnMap(a));
+        let pool = g.add_replacement_points(ReplacementClass::Tank, 5, Side::Commonwealth, Some(UnitLocation::OnMap(a)), None);
+        g.replacement_points[pool].training_remaining = 0;
+
+        // Baseline ratings: Anti-Armor 0, Offensive Close Assault 2 × 4 TOE = 8.
+        assert_eq!(g.unit(recce).unwrap().raw_strength(&g.reference, RatingKind::AntiArmor), 0);
+        assert_eq!(g.unit(recce).unwrap().raw_strength(&g.reference, RatingKind::CloseAssaultOff), 8);
+
+        // "hh" already has Anti-Armor 1 → not eligible (§20.51 "arrive with AA rating of zero").
+        let hh = g.spawn_unit(Nationality::Commonwealth, "hh", "recce w/ AA", Composition::Organic { current_toe: 4 });
+        g.unit_mut(hh).unwrap().location = Some(UnitLocation::OnMap(a));
+        assert_eq!(g.apply(Command::UpgradeRecce { unit: hh }), Err(CommandError::RecceUpgradeIllegal));
+
+        // Upgrade "kk": §20.52 adds a tank TOE point (4 → 5); §20.54 raises the per-TOE ratings.
+        assert_eq!(g.apply(Command::UpgradeRecce { unit: recce }), Ok(CommandOutcome::RecceUpgraded));
+        assert!(g.unit(recce).unwrap().recce_upgraded);
+        assert_eq!(g.unit(recce).unwrap().total_toe(), 5);
+        assert_eq!(g.unit(recce).unwrap().raw_strength(&g.reference, RatingKind::AntiArmor), 5); // 1 × 5
+        assert_eq!(g.unit(recce).unwrap().raw_strength(&g.reference, RatingKind::CloseAssaultOff), 15); // 3 × 5
+        // Already upgraded → illegal to repeat.
+        assert_eq!(g.apply(Command::UpgradeRecce { unit: recce }), Err(CommandError::RecceUpgradeIllegal));
+
+        // §20.51 exception: a CW Recce assigned to an Infantry Division may not be upgraded.
+        let inf_div = g.spawn_unit(Nationality::Commonwealth, "hqx", "inf div", Composition::Weapons { groups: vec![] });
+        {
+            let u = g.unit_mut(inf_div).unwrap();
+            u.is_hq = true;
+            u.org_size = OrgSize::Division; // is_armor defaults false
+        }
+        let recce2 = g.spawn_unit(Nationality::Commonwealth, "kk", "div recce", Composition::Organic { current_toe: 4 });
+        {
+            let u = g.unit_mut(recce2).unwrap();
+            u.location = Some(UnitLocation::OnMap(a));
+            u.assigned_parent = Some(inf_div);
+        }
+        assert_eq!(g.apply(Command::UpgradeRecce { unit: recce2 }), Err(CommandError::RecceUpgradeIllegal));
+    }
+
+    #[test]
     fn stacking_limit_enforced() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;

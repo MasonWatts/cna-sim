@@ -281,8 +281,12 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   unchanged. Fully rules-specified. Test commonwealth_battalion_anti_tank_19_9.
 - [x] **AU22 — §19.72/§19.73 battle-group forming composition caps** (German ≤4 bn/≤1 tank/≤2 inf;
   Italian ≤3 bn/≤2 inf/≤1 armor, ≤2 in play) — pool exists, limits unenforced.
-- [ ] **AU23 — §20.5/§20.51–55 upgrade Armored-Car/Recce to newer vehicles** (Stuarts etc.; TOE change;
-  not before 1/39).
+- [x] **AU23 — §20.5/§20.51–55 upgrade Armored-Car/Recce to newer vehicles.** New Command::UpgradeRecce
+  {unit}: an armored Recce/AC unit with Anti-Armor 0 (not a CW recce in an infantry division, §20.51)
+  consumes one Tank (Italy: or Recce) Replacement Point from a co-located trained pool (§20.53), adds
+  a TOE point if below max (§20.52), and gains per-TOE Anti-Armor 1 / Off Close Assault 3 (§20.54) via
+  a new `Unit.recce_upgraded` flag folded into raw_strength. The §20.55 1/39 gate predates the
+  campaign (always satisfied). Fully rules-specified. Test upgrade_armored_car_effectiveness_20_5.
 - [ ] **AU24 — §20.8/§20.81–85 scheduled CW Mandatory Withdrawals** (reach Cairo/Alexandria by a listed
   GT; §20.85 penalty) — distinct from the §64.75 voluntary path.
 - [-] **AU25 — §21.5 capture broken-down vehicles.** Deferred: breakdown is unit-internal state (weapons_broken/toe_broken), not shed "Broken Down Vehicle markers" on the map, so there's nothing to capture; needs a marker model first.

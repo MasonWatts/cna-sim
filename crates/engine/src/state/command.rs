@@ -386,6 +386,10 @@ pub enum Command {
     /// `gun_system` Anti-Tank guns, drawn from co-located trained Gun Replacement Points
     /// (Organization Phase).
     AugmentBattalionAntiTank { battalion: UnitId, gun_system: String, count: u32 },
+    /// §20.5: upgrade an armored Recce / Armored-Car unit with a light-tank TOE point (§20.53),
+    /// drawn from a co-located trained Tank (or, for Italy, Recce) Replacement pool (Organization
+    /// Phase). Raises its per-TOE ratings to Anti-Armor 1 / Offensive Close Assault 3 (§20.54).
+    UpgradeRecce { unit: UnitId },
     /// §17.5: voluntarily surrender the entire stack in `hex` to an adjacent enemy combat unit
     /// (`captor`, which pays 2 CP to accept, §17.54). If `destroy_material`, the owner first
     /// attempts §17.55/§17.56 pre-capture destruction of tanks/guns ((die−1)×10%) and
@@ -623,6 +627,7 @@ impl Command {
             Command::VoluntarySurrender { .. } => &["§17.5", "§17.54", "§17.56"],
             Command::AugmentAntiTank { .. } => &["§19.8", "§19.82", "§19.83"],
             Command::AugmentBattalionAntiTank { .. } => &["§19.9", "§19.92", "§19.94"],
+            Command::UpgradeRecce { .. } => &["§20.5", "§20.53", "§20.54"],
             // Repair.
             Command::Repair { .. } => &["§22"],
             Command::RepairCapturedEquipment { .. } => &["§28.3"],
@@ -798,6 +803,8 @@ pub enum CommandOutcome {
     ReplacementAbsorbed(u32),
     /// §19.8: AT TOE points added to a Brigade-level HQ (ad-hoc anti-tank battery).
     AntiTankAugmented(u32),
+    /// §20.5: an armored Recce / Armored-Car unit was upgraded.
+    RecceUpgraded,
     /// §49.17: Fuel Points siphoned between units.
     FuelSiphoned(u32),
     /// §49.14: a land unit refuelled to capacity (new Fuel level).
@@ -925,6 +932,9 @@ pub enum CommandError {
     AntiTankAugmentIllegal,
     /// §19.82: augmentation is barred because some Axis anti-tank unit is below 67% of its max TOE.
     AntiTankReadinessGate,
+    /// §20.5: the recce upgrade is illegal (not an eligible armored Recce/AC unit with Anti-Armor 0,
+    /// already upgraded, a CW recce in an infantry division, or no co-located upgrade Replacement Point).
+    RecceUpgradeIllegal,
     /// §17.5: the designated captor is not an enemy combat unit adjacent to the surrendering hex.
     InvalidCaptor,
     /// §17.54: the captor cannot expend the 2 CP required to accept a voluntary surrender.
@@ -1439,6 +1449,10 @@ impl GameState {
                 self.require_phase(Phase::Organization)?;
                 self.augment_battalion_anti_tank(battalion, &gun_system, count)
                     .map(CommandOutcome::AntiTankAugmented)
+            }
+            Command::UpgradeRecce { unit } => {
+                self.require_phase(Phase::Organization)?;
+                self.upgrade_recce(unit).map(|()| CommandOutcome::RecceUpgraded)
             }
             Command::AssignShip { ship_index, location } => {
                 self.require_phase(Phase::CommonwealthFleet)?;
