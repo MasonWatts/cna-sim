@@ -220,8 +220,11 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   close assault gains 3 Disorganization Points (all involved units). Losses are computed but no DP.
 
 ### ZOC / reserve / status gates
-- [ ] **AU4 — §10.3/§10.31–36 mandatory attack of enemy ZOC-exerting hexes** + Holding-Off Barrage +
-  §10.36 forced 3-hex retreat/3 DP fallback. ZOC projection/Contact/Engaged computed but never obligates combat.
+- [-] **AU4 — §10.3/§10.31–36 mandatory attack of ZOC-exerting hexes.** Deferred: a mandatory-combat
+  *obligation* (Holding-Off Barrage + §10.36 forced 3-hex retreat/3-DP fallback) reshapes the turn
+  structure and the self-play agents' action enumeration — all combat is currently modeled as
+  voluntary. High-regression, cross-cutting subsystem better done as a dedicated effort; ZOC/Contact/
+  Engaged are computed, only the obligation is missing.
 - [~] **AU5 — §18.2 Reserve I/II effects.** §18.22 Reserve II "never moves" enforced in the move gate
   (CommandError::InReserve; test reserve_ii_may_not_move_18_22). Remaining: Reserve I's one-hex/CP-free
   move and the §18.23–24 release-segment restrictions (CP-cap, one-assault, auto-DP, two-hex proximity)
@@ -231,9 +234,14 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   (currently only RBA/Reaction check the −26 gate; no auto-surrender).
 
 ### Combat detail (§12–§15, §23, §26)
-- [ ] **AU8 — §15.9 Probe combat mode** (Engaged ignored, not-In-Contact, §15.95 all-recce −10%,
-  §15.96 defender spends no CP at diff < −3).
-- [ ] **AU9 — §15.29 defender allocates no units → auto-retreat 3 hexes + 3 DP** (decline-to-defend).
+- [-] **AU8 — §15.9 Probe combat mode.** Deferred: a distinct combat *mode* (new command + agent
+  wiring + the §15.95 all-recce −10% / §15.96 no-defender-CP modifiers) that the operational
+  abstraction never invokes; a discrete opt-in feature, best as its own effort rather than bolted
+  onto the atomic close-assault resolver.
+- [-] **AU9 — §15.29 decline-to-defend.** Deferred: tied to the defender-allocation choice model (the
+  remaining A3 detail, §15.16 per-TOE defensive commitment). `cmd_close_assault` resolves atomically
+  with the *whole* enemy stack defending, so there is no "allocate zero units" trigger to hang the
+  auto-retreat-3/3-DP on until defender allocation is modeled.
 - [x] **AU10 — §15.23/§14.22 once-per-Combat-Segment per-hex guard.** close_assaulted_hexes_this_stage / anti_armor_hexes_this_stage (reset per stage) refuse a repeat close assault / anti-armor on the same hex. Test hex_once_per_combat_segment_15_23.
 - [x] **AU11 — §13.28 a Retreat-Before-Assault unit still eats anti-armor fire (can't return it) and
   its TOE counts for % losses.**
@@ -243,7 +251,11 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [x] **AU14 — §12.46 barrage rolls the Trucks column** (truck casualties; a hit motorized unit loses
   transporting trucks).
 - [ ] **AU15 — §12.5/§12.52–55 artillery barrage vs Facilities** (cities/forts/roads/rails/dumps/
-  airfields) — land barrage targets a UnitId only.
+  airfields) — land barrage targets a UnitId only. **INPUT NEEDED** for the main §12.53 case: it
+  reads the §41.5 table's *Artillery Barrage Points column*, which is NOT in the digitized
+  air-bombardment.ron (only `bomb_bands`/`torpedo_bands`). The §12.54 dump/air-facility sub-case
+  (Raw Barrage Points on the existing Bombload column) is implementable once that column + a
+  BarrageFacility command exist.
 - [x] **AU16 — §23.24 engineer/HQ in a close assault vs a fortified (non-major-city) hex → +1 Assault
   Differential for the attacker.**
 - [~] **AU17 — §26.26 minefield combat shift.** Close-assault +1 defender shift done (close_assault_env_shift); the anti-armor-fire column shift is still pending (the AA CRT is points-bracket, not a shiftable column).
@@ -307,8 +319,10 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [-] **AU45 — §55.17 Bizerta annual 2d6=12 roll.** Deferred: the port's `available_from_gt` isn't
   wired into runtime `Port::is_operable` (which is just efficiency>0), so both the GT-35 gate and the
   annual roll need a Port open-flag set at turn start; low impact (Tunis-box late-war edge port).
-- [ ] **AU46 — §41.81/§41.84/§41.86 CW bombing of the Axis Tripoli/Tunisia off-map boxes** (port level,
-  grounded planes; night vs Tripoli).
+- [-] **AU46 — §41.81/§41.84/§41.86 CW bombing of the Axis Tripoli/Tunisia off-map boxes.** Deferred:
+  the §8.8 off-map complex is modeled as transit *nodes* (name/transit/direction), not facilities with
+  a port level or grounded-plane state to reduce. Needs an off-map-box facility model (port level +
+  based-plane state) before the bombing effect (incl. night-vs-Tripoli) has anything to act on.
 - [ ] **AU47 — §30.5/§30.51–59 CW port-to-port naval troop transport** (Port Personnel Capacity; one
   transfer/stage/port).
 - [ ] **AU48 — §30.4/§30.41–46 Italian 10th Light Flotilla frogman/Chariot raid** on the fleet at Alexandria.
