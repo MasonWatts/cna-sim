@@ -1,0 +1,7 @@
+{
+  // Static-asset-only Worker: serves the Vite build output (dist/) over Cloudflare's CDN.
+  // No Worker script — `assets.directory` alone publishes the SPA. See docs/visualization-architecture.md.
+  "name": "cna-viewer",
+  "compatibility_date": "2026-09-13",
+  "assets": { "directory": "./dist" }
+}
