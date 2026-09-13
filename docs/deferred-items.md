@@ -315,12 +315,15 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   cw_withdrawal_schedule_bound_to_ob_20_8. **All single-cycle returns now bound** across 6 formations
   (4th Indian Div HQ+arty+CIH Rtn28/3, 5th Bde Rtn28/3→WD-again36/1, 7th Bde Rtn30/2→WD-again75/1,
   11th Bde Rtn30/1; 5th Indian Div 9th Bde+HQ+144-Fld Rtn75/3 & 9th Bde WD-again100/2, 10th Bde+28-Fld
-  Rtn73/1; 70th Inf Div 16th Bde Rtn50/2→WD-again73/1; 50th Inf Div 150th Bde Rtn58/3; 9th Aus Div all
-  Rtn86/3→WD-again108/1; 1st Army Tank 42/44 RTR Rtn99/1). **Remaining (need a model extension or
-  clarification, not routine data-entry):** the 2nd NZ Division cycles *twice* (WD25/2→Rtn35/1→WD72/2
-  →Rtn85/2) which the single return-slot can't hold; the 1st Armored Bde returns re-designated as the
-  32nd Army Tank Bde (76/2); and the 23rd/14th Infantry Bde returns (51/3, 54/1) whose withdrawal side
-  wasn't in the first-time set. GT23/3 (no 2nd Armored Div in OB) and GT97/2 (runtime "any 3 bns") stand.
+  Rtn73/1; 70th Inf Div 16th Bde Rtn50/2→WD-again73/1 and 14th Bde WD40/1→Rtn54/1 and 23rd Bde's
+  1 Essex+1 Durham LI WD38/2→Rtn51/3; 50th Inf Div 150th Bde Rtn58/3; 9th Aus Div all Rtn86/3→
+  WD-again108/1; 1st Army Tank 42/44 RTR Rtn99/1). Also picked up two withdrawal entries first missed
+  in the dense columns (GT40/1 14th Bde, GT38/2 Essex/Durham). **Remaining (need a model extension or
+  source clarification, not routine data-entry):** the 2nd NZ Division cycles *twice*
+  (WD25/2→Rtn35/1→WD72/2→Rtn85/2) — the single return-slot can't hold it, and its internal timing is
+  ambiguous (6th NZ Bde Rtn31/1 vs the "remainder / seven infantry units" Rtn35/1 don't cleanly map),
+  so it's left unbound rather than guessed; the 1st Armored Bde returns re-designated as the 32nd Army
+  Tank Bde (76/2). GT23/3 (no 2nd Armored Div in OB) and GT97/2 (runtime "any 3 bns") stand.
 - [x] **AU25 — §21.5 capture broken-down vehicles.** New `BrokenVehicle` map marker: a unit's broken
   vehicles (weapons_broken/toe_broken/trucks_broken) are shed as a marker when it is eliminated
   (`shed_broken_vehicles` in surrender_units). §21.52 `capture_broken_vehicles` — a moving
