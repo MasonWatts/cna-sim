@@ -484,7 +484,7 @@
         // Benghazi Garrison (Hex A4827) — §4.44b (PDF p155). Deployed. No garrison HQ on the sheet;
         // the four units are independent (parent "").
         (
-            name: "Benghazi Garrison",
+            name: "Benghazi Garrison", garrison_hex: Some("A4827"),
             org_size: StandardBrigade,
             basic_morale: -3,
             units: [
@@ -500,7 +500,7 @@
         // also matches note a (the artillery is not part of the 31st Gaf regiment). The blank-id
         // "San Giorgio" (scuttled cruiser) is omitted.
         (
-            name: "Tobruk Garrison",
+            name: "Tobruk Garrison", garrison_hex: Some("C4807"),
             org_size: StandardBrigade,
             basic_morale: -3,
             units: [
@@ -532,7 +532,7 @@
         // for the 30th (transcribed verbatim). Blank-id "...Artiglieri" header dropped; artillery/AA
         // left independent (note b: not part of the 30th regiment).
         (
-            name: "Bardia Garrison",
+            name: "Bardia Garrison", garrison_hex: Some("C4321"),
             org_size: StandardBrigade,
             basic_morale: -3,
             units: [
@@ -551,7 +551,7 @@
         ),
         // Derna Garrison (Hex B5925) — §4.44b (PDF p156). Deployed.
         (
-            name: "Derna Garrison",
+            name: "Derna Garrison", garrison_hex: Some("B5925"),
             org_size: StandardBrigade,
             basic_morale: -3,
             units: [
@@ -564,7 +564,7 @@
         // Giariabub Oasis Complex Garrison (Hex C1014) — §4.44b (PDF p157). Deployed. No HQ on the
         // sheet; the six units are independent (parent "").
         (
-            name: "Giariabub Oasis Garrison",
+            name: "Giariabub Oasis Garrison", garrison_hex: Some("C1014"),
             org_size: StandardBrigade,
             basic_morale: 0,
             units: [
@@ -583,13 +583,13 @@
             org_size: StandardBrigade,
             basic_morale: -3,
             units: [
-                (name: "Sceferzen Oasis Garrison Bn", abbr: "Scfzrn", id: "dd", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: ""),
-                (name: "Fort Maddalenna Garrison Bn", abbr: "FtMad", id: "q", comp: Organic(Under(2)), org_size: Battalion, arrival: Deployed, parent: ""),
-                (name: "EGUG Garrison Bn", abbr: "EGUG", id: "ee", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: ""),
-                (name: "Benina AA Battery", abbr: "Benina", id: "uu", comp: Weapons([("Light AA (20mm M/35 Breda)", 2)]), org_size: Company, arrival: Deployed, parent: ""),
-                (name: "Mechili Garrison Bn", abbr: "Mechili", id: "r", comp: Organic(Under(2)), org_size: Battalion, arrival: Deployed, parent: ""),
-                (name: "Soluch Garrison AT Coy", abbr: "Soluch AT", id: "rr", comp: Weapons([("47/32 Mod. 37", 2)]), org_size: Company, arrival: Deployed, parent: ""),
-                (name: "Soluch Garrison Arty Regt", abbr: "Soluch Art", id: "jj", comp: Weapons([("100/17 Howitzer", 12)]), org_size: Battalion, arrival: Deployed, parent: ""),
+                (name: "Sceferzen Oasis Garrison Bn", abbr: "Scfzrn", id: "dd", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "", garrison: Some("C3419")),
+                (name: "Fort Maddalenna Garrison Bn", abbr: "FtMad", id: "q", comp: Organic(Under(2)), org_size: Battalion, arrival: Deployed, parent: "", garrison: Some("C3019")),
+                (name: "EGUG Garrison Bn", abbr: "EGUG", id: "ee", comp: Organic(Normal), org_size: Battalion, arrival: Deployed, parent: "", garrison: Some("C1715")),
+                (name: "Benina AA Battery", abbr: "Benina", id: "uu", comp: Weapons([("Light AA (20mm M/35 Breda)", 2)]), org_size: Company, arrival: Deployed, parent: "", garrison: Some("A4829")),
+                (name: "Mechili Garrison Bn", abbr: "Mechili", id: "r", comp: Organic(Under(2)), org_size: Battalion, arrival: Deployed, parent: "", garrison: Some("B4921")),
+                (name: "Soluch Garrison AT Coy", abbr: "Soluch AT", id: "rr", comp: Weapons([("47/32 Mod. 37", 2)]), org_size: Company, arrival: Deployed, parent: "", garrison: Some("A4130")),
+                (name: "Soluch Garrison Arty Regt", abbr: "Soluch Art", id: "jj", comp: Weapons([("100/17 Howitzer", 12)]), org_size: Battalion, arrival: Deployed, parent: "", garrison: Some("A4130")),
             ],
         ),
         // Unassigned Armored Units — §4.44b (PDF p157). Every row prints a BLANK id in the source;

@@ -5938,6 +5938,41 @@ mod tests {
     }
 
     #[test]
+    fn italian_garrison_free_stacking_9_16() {
+        use crate::state::game::GameState;
+        use crate::state::map::HexId;
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Italian, include_str!("../../../data/reference/unit-characteristics/italian.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::Italian, include_str!("../../../data/reference/weapons/italian.ron")).unwrap();
+        refs.load_order_of_battle(Nationality::Italian, include_str!("../../../data/ob/italian.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let bardia = HexId::parse("C4321").unwrap().to_hex_coord();
+        let elsewhere = HexId::parse("C4322").unwrap().to_hex_coord();
+        g.map.set_hex(bardia, HexTerrain::Clear);
+        g.map.set_hex(elsewhere, HexTerrain::Clear);
+
+        // §9.16a: the Bardia Garrison HQ (a top-level counter) has 0 Stacking Points at Bardia, its
+        // normal brigade value (2) elsewhere. (Attached sub-units ride the parent counter, so the
+        // garrison free-stacking is exercised on the independent counter.)
+        g.deploy_formation(Nationality::Italian, "Bardia Garrison", bardia).unwrap();
+        let hq = g.units.values().find(|u| u.name == "30th Gaf S di C HQ").map(|u| u.id).unwrap();
+        assert_eq!(g.unit(hq).unwrap().garrison_location, Some(bardia));
+        assert_eq!(g.effective_stacking_points(hq), 0);
+        g.unit_mut(hq).unwrap().location = Some(crate::state::unit::UnitLocation::OnMap(elsewhere));
+        assert_eq!(g.effective_stacking_points(hq), 2);
+
+        // Per-unit override: the scattered Fort Maddalenna garrison is assigned to its own hex.
+        let ftmad = HexId::parse("C3019").unwrap().to_hex_coord();
+        g.map.set_hex(ftmad, HexTerrain::Clear);
+        g.deploy_formation(Nationality::Italian, "Minor Garrison Units", ftmad).unwrap();
+        let fm = g.units.values().find(|u| u.name == "Fort Maddalenna Garrison Bn").map(|u| u.id).unwrap();
+        assert_eq!(g.unit(fm).unwrap().garrison_location, Some(ftmad));
+        assert_eq!(g.effective_stacking_points(fm), 0);
+    }
+
+    #[test]
     fn cw_withdrawal_schedule_bound_to_ob_20_8() {
         let mut refs = ReferenceData::new();
         refs.load_order_of_battle(Nationality::Commonwealth, include_str!("../../../data/ob/commonwealth.ron")).unwrap();

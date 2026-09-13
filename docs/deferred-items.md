@@ -351,13 +351,16 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   step (escarpment/sandstorm) that current cost-mechanics tests rely on, and likely needs a §8.16
   minimum-move exception; low value vs. the §6.21 over-CPA Disorganization already modeled.
 - [x] **AU31 — §9.25 ≤ five independent 0-SP companies/batteries per hex** (unlimited in a Major City; attached units ride their parent). Enforced in move_step_plan. Test zero_sp_company_stacking_cap_9_25.
-- [~] **AU32 — §9.16 free-stacking exceptions.** Mechanics done in `effective_stacking_points`:
+- [x] **AU32 — §9.16 free-stacking exceptions.** Mechanics done in `effective_stacking_points`:
   §9.16a a garrison unit occupies 0 SP while in its assigned hex (new `Unit.garrison_location`);
   §9.16b a *pure* AA/Flak unit (`unit_is_pure_anti_air`) occupies 0 SP in a Major City. Test
-  free_stacking_garrison_and_flak_9_16. §9.16b air-facility allowance now applied in
-  `hex_stacking_points` (up to 3 AA/Flak free at an airfield, 1 at a landing strip; most-expensive
-  units exempted). **Remaining:** only the OB "G" garrison designations + locations (data, per
-  counter) that would populate `garrison_location` — needs the OB garrison markers.
+  free_stacking_garrison_and_flak_9_16. §9.16b air-facility allowance applied in `hex_stacking_points`
+  (up to 3 AA/Flak free at an airfield, 1 at a landing strip). §9.16a garrison binding **done**: the
+  rulebook confirms all Italian garrison-formation units carry the "G" and gives every location, so
+  the OB now carries a formation `garrison_hex` (Benghazi A4827 / Tobruk C4807 / Bardia C4321 / Derna
+  B5925 / Giariabub C1014) plus per-unit `garrison` overrides for the scattered minor garrisons
+  (Sceferzen C3419, Fort Maddalenna C3019, EGUG C1715, Benina A4829, Mechili B4921, Soluch A4130),
+  stamped onto `garrison_location` at deploy. Test italian_garrison_free_stacking_9_16.
 - [~] **AU33 — §8.44/§8.45 Salt Marsh / Desert restrictions.** §8.44 assault ban done: no motorized
   unit or AFV (`unit_is_afv`) may Close Assault a Salt Marsh defender (CommandError::SaltMarshAssault).
   Test salt_marsh_no_vehicle_assault_8_44. **Remaining (data-blocked):** the §8.44 off-track movement

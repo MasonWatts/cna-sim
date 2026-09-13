@@ -181,6 +181,12 @@ impl GameState {
                 unit.is_hq = u.parent.is_empty() && u.name.contains("HQ");
                 unit.airdroppable = u.airdroppable; // §42.41 (from the OA sheet)
                 unit.mandatory_withdrawal = u.withdrawal; // §20.8 [4.43a] withdrawal deadline
+                // §9.16a: a garrison unit's assigned hex (per-unit override, else the formation's).
+                unit.garrison_location = u
+                    .garrison
+                    .as_deref()
+                    .or(form.garrison_hex.as_deref())
+                    .and_then(|s| crate::state::map::HexId::parse(s).map(|h| h.to_hex_coord()));
             }
             // Resolve Organic TOE now that characteristics are known.
             if let ObComposition::Organic(toe) = &u.comp {

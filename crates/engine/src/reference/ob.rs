@@ -43,6 +43,11 @@ pub struct Formation {
     /// Marmarica / 63 Cirene) — modeled on a standard template.
     #[serde(default)]
     pub abstracted: bool,
+    /// §9.16a: for a garrison formation, the hex label of the city/town it garrisons — every unit
+    /// deploys with `garrison_location` set to it (0 Stacking Points there). A per-unit `garrison`
+    /// override wins for scattered garrisons. `None` for non-garrison formations.
+    #[serde(default)]
+    pub garrison_hex: Option<String>,
     #[serde(default)]
     pub units: Vec<ObUnit>,
 }
@@ -76,6 +81,10 @@ pub struct ObUnit {
     /// Stamped onto the spawned unit's `mandatory_withdrawal` at deploy. `None` = not scheduled.
     #[serde(default)]
     pub withdrawal: Option<(u32, u32)>,
+    /// §9.16a: hex label of the city/town this garrison unit is assigned to (overrides the
+    /// formation's `garrison_hex`, for scattered minor garrisons). `None` = use the formation's.
+    #[serde(default)]
+    pub garrison: Option<String>,
     #[serde(default)]
     pub notes: String,
 }
