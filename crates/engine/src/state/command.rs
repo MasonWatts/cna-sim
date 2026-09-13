@@ -4198,16 +4198,28 @@ impl GameState {
 
     /// Per-step move cost from `from` into `to`, including the §29.44 sandstorm penalty:
     /// movement costs are doubled when entering a hex under an active sandstorm.
-    fn move_step_cost(&self, from: HexCoord, to: HexCoord, mode: MoveMode) -> Option<MoveCost> {
+    pub(crate) fn move_step_cost(&self, from: HexCoord, to: HexCoord, mode: MoveMode) -> Option<MoveCost> {
+        use crate::rules::movement::{crossing_cost_with, hex_entry_cost};
         use crate::state::game::Weather;
         use crate::state::map::HexsideKind;
-        let base = step_cost(&self.reference, &self.map, from, to, mode)?;
+        let mut base = step_cost(&self.reference, &self.map, from, to, mode)?;
         // §29.5x Rainstorm crossing restrictions (the destination's map section is stormed).
         if self.weather_at(to) == Weather::Rainstorm {
             let sides = self.map.hexsides_on(from, to);
             let has = |k: HexsideKind| sides.iter().any(|h| h.kind == k);
             let road = has(HexsideKind::Road);
             let rail = has(HexsideKind::Railroad);
+            // §29.56: during a rainstorm road hexes cost the same as tracks.
+            if road {
+                if let Some(entry) = hex_entry_cost(&self.reference, &self.map, to, mode) {
+                    let cross = crossing_cost_with(&self.reference, &self.map, from, to, mode, true);
+                    base = match (entry, cross) {
+                        (MoveCost::Prohibited, _) | (_, MoveCost::Prohibited) => MoveCost::Prohibited,
+                        (MoveCost::EntireCpa, _) | (_, MoveCost::EntireCpa) => MoveCost::EntireCpa,
+                        (MoveCost::Cost(x), MoveCost::Cost(y)) => MoveCost::Cost(Fixed(x.0 + y.0)),
+                    };
+                }
+            }
             // §29.55: wadi hexsides are uncrossable except by a Road.
             if has(HexsideKind::Wadi) && !road {
                 return Some(MoveCost::Prohibited);

@@ -281,7 +281,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 
 ### Weather (§29) — rainstorm terrain cluster
 - [x] **AU35 — §29.55 rainstorm: wadi hexsides uncrossable except by road; no wadi water draw.**
-- [ ] **AU36 — §29.56 rainstorm degrades road hexes to track cost/breakdown.**
+- [x] **AU36 — §29.56 rainstorm degrades road hexes to track cost/breakdown.**
 - [x] **AU37 — §29.57 rainstorm: non-road/rail river hexsides impassable.**
 - [x] **AU38 — §29.58 rainstorm bars vehicle/motorized units from delta hexes.**
 - [x] **AU39 — §29.42/§29.54 no construction in a sandstorm/rainstorm hex** (BuildRoad/BuildRailroad

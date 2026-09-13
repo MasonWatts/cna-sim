@@ -58,14 +58,32 @@ pub fn crossing_cost(
     to: crate::state::map::HexCoord,
     mode: MoveMode,
 ) -> MoveCost {
+    crossing_cost_with(refs, map, from, to, mode, false)
+}
+
+/// `crossing_cost`, but when `road_as_track` a Road hexside is charged the Track crossing cost
+/// (§29.56: during a rainstorm road hexes cost the same as tracks).
+pub fn crossing_cost_with(
+    refs: &ReferenceData,
+    map: &crate::state::map::Map,
+    from: crate::state::map::HexCoord,
+    to: crate::state::map::HexCoord,
+    mode: MoveMode,
+    road_as_track: bool,
+) -> MoveCost {
+    use crate::reference::terrain::HexsideTerrain;
     use crate::state::map::HexsideKind;
     let sides = map.hexsides_on(from, to);
     if sides.is_empty() {
         return MoveCost::Cost(Fixed(0));
     }
     let cost_of = |h: &crate::state::map::Hexside| -> MoveCost {
+        let mut key = h.resolve(from, to);
+        if road_as_track && key == HexsideTerrain::Road {
+            key = HexsideTerrain::Track;
+        }
         refs.hexsides
-            .get(&h.resolve(from, to))
+            .get(&key)
             .map(|p| match mode {
                 MoveMode::NonMotorized => p.cross.non_mot,
                 MoveMode::Motorized => p.cross.mot,

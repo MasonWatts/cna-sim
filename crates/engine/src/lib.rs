@@ -6096,6 +6096,35 @@ mod tests {
     }
 
     #[test]
+    fn rainstorm_road_costs_like_track_29_56() {
+        use crate::reference::terrain::MoveCost;
+        use crate::rules::movement::MoveMode;
+        use crate::state::game::{GameState, Weather};
+        use crate::state::map::{HexCoord, HexsideKind};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let a = HexCoord::new(10, 10);
+        let b = a.neighbors()[0];
+        g.map.set_hex(a, HexTerrain::Clear);
+        g.map.set_hex(b, HexTerrain::Clear);
+        g.map.set_hexside(a, b, HexsideKind::Road, None);
+
+        let cost = |g: &GameState| match g.move_step_cost(a, b, MoveMode::Motorized) {
+            Some(MoveCost::Cost(f)) => f.0,
+            other => panic!("expected a cost, got {other:?}"),
+        };
+        let normal = cost(&g);
+        // §29.56: in a rainstorm the Road crossing (mot 0.5) is charged as a Track (mot 1.0),
+        // i.e. +0.5 CP = +5 tenths.
+        g.weather_by_section
+            .insert(crate::state::map::section_char_of_col(b.col), Weather::Rainstorm);
+        let stormed = cost(&g);
+        assert_eq!(stormed, normal + 5);
+    }
+
+    #[test]
     fn supplies_evaporate() {
         use crate::reference::units::Side;
         use crate::state::game::{Commodities, GameState, SupplyDump};
