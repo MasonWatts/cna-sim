@@ -5418,11 +5418,14 @@ impl GameState {
             if u.cohesion <= -26 {
                 return Err(CommandError::Disorganized);
             }
-            // §18.22: a Reserve II unit may never move. (A Reserve I unit's one-hex/CP-free move
-            // and the §18.23–24 release-segment caps need the Reserve Release Segment phase and
-            // per-stage move tracking — see AU5 in docs/deferred-items.md.)
-            if u.reserve == crate::state::unit::ReserveStatus::ReserveII {
-                return Err(CommandError::InReserve);
+            // §18.22: a Reserve II unit may never move; a Reserve I unit may move only one hex per
+            // Operations Stage (CP-free), so once it has taken that hex it may not move again.
+            match u.reserve {
+                crate::state::unit::ReserveStatus::ReserveII => return Err(CommandError::InReserve),
+                crate::state::unit::ReserveStatus::ReserveI if u.reserve_moved_this_stage => {
+                    return Err(CommandError::InReserve)
+                }
+                _ => {}
             }
         }
         if !from.is_adjacent(to) {
@@ -5616,6 +5619,10 @@ impl GameState {
             .expect("unit existence checked above")
             .location = Some(crate::state::unit::UnitLocation::OnMap(to));
         self.expend_cp_against(unit, cp, cpa);
+        // §18.22: a Reserve I unit spends its single one-hex move for the stage.
+        if self.unit(unit).is_some_and(|u| u.reserve == crate::state::unit::ReserveStatus::ReserveI) {
+            self.unit_mut(unit).expect("checked").reserve_moved_this_stage = true;
+        }
         // §54.41: a land combat unit that enters a rail hex becomes the last to control it.
         self.note_rail_control(to, unit);
         // §26.15/26.23: entering an enemy dummy minefield reveals it (removed at the end of the
@@ -5687,10 +5694,20 @@ impl GameState {
                             .collect::<Vec<_>>()
                     })
                     .collect();
+                let capture_gt = self.game_turn + 1;
                 for id in overrun {
                     if let Some(sg) = self.sgsus.get_mut(&id) {
                         sg.location = None;
-                        sg.planes.clear();
+                        // §35.27: grounded planes are captured by the overrunning side (usable one
+                        // Game-Turn later), not simply destroyed.
+                        let planes = std::mem::take(&mut sg.planes);
+                        if !planes.is_empty() {
+                            self.captured_planes.push(crate::state::game::CapturedPlanes {
+                                captor: ms,
+                                planes,
+                                available_game_turn: capture_gt,
+                            });
+                        }
                     }
                 }
                 // §22.63: a lone enemy Tank Delivery Squadron the mover (a combat unit) places in

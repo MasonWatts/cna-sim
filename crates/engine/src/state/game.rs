@@ -195,6 +195,18 @@ pub struct PrisonerGroup {
     pub cpa_used: u32,
 }
 
+/// §35.27 planes captured on the ground when their SGSU was overrun (§35.12): the capturing side may
+/// use them one Game-Turn later, or destroy them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CapturedPlanes {
+    /// The side that captured the planes (the overrunning side).
+    pub captor: Side,
+    /// The captured plane groups (their original nationality's aircraft type).
+    pub planes: Vec<crate::state::air::PlaneGroup>,
+    /// The Game-Turn from which the captor may use them (§35.27: one Game-Turn after capture).
+    pub available_game_turn: u32,
+}
+
 /// §28.3 captured equipment (tank/gun/AA TOE taken when a weapons unit surrenders) — reusable by the
 /// captor against its former owner once repaired. `nationality` is the original owner (its weapon
 /// system / repair rules apply).
@@ -813,6 +825,10 @@ pub struct GameState {
     /// Desert-raider counters in play or awaiting re-form (§27): up to two LRDG + one DSA.
     #[serde(default)]
     pub raiders: Vec<Raider>,
+    /// §35.27: planes captured on the ground when their SGSU was overrun (§35.12). Each pool is owned
+    /// by the capturing side and becomes usable one Game-Turn after capture.
+    #[serde(default)]
+    pub captured_planes: Vec<CapturedPlanes>,
     /// §30.42: the global Operations-Stage index on which the Axis planned its Chariot raid (the raid
     /// executes on the seventh stage after). `None` while none is planned.
     #[serde(default)]
@@ -1139,6 +1155,7 @@ impl GameState {
             rommel: None,
             truck_convoys: Vec::new(),
             raiders: Vec::new(),
+            captured_planes: Vec::new(),
             chariot_raid_planned_stage: None,
             chariot_raid_used: false,
             layforce_alexandria_since: None,
@@ -2420,6 +2437,45 @@ impl GameState {
         self.chariot_raid_used = true;
         self.chariot_raid_planned_stage = None;
         Ok(damage)
+    }
+
+    /// §35.27: total captured planes owned by `side` that are now usable (available Game-Turn reached).
+    pub fn available_captured_planes(&self, side: Side) -> u32 {
+        let gt = self.game_turn;
+        self.captured_planes
+            .iter()
+            .filter(|c| c.captor == side && gt >= c.available_game_turn)
+            .flat_map(|c| c.planes.iter())
+            .map(|g| g.count)
+            .sum()
+    }
+
+    /// §35.27: move any now-usable captured-plane pools owned by `side` into `squadron` (which must
+    /// belong to `side`). Captured planes may be used cross-nationality (§35.27 overrides the normal
+    /// §35.28 maintenance rule). Returns the number of planes moved; consumed pools are removed.
+    pub fn claim_captured_planes(
+        &mut self,
+        side: Side,
+        squadron: crate::state::air::SquadronId,
+    ) -> u32 {
+        if self.sgsus.get(&squadron).map(|s| s.nationality.side()) != Some(side) {
+            return 0;
+        }
+        let gt = self.game_turn;
+        let mut claimed: Vec<crate::state::air::PlaneGroup> = Vec::new();
+        self.captured_planes.retain(|c| {
+            if c.captor == side && gt >= c.available_game_turn {
+                claimed.extend(c.planes.iter().cloned());
+                false
+            } else {
+                true
+            }
+        });
+        let moved: u32 = claimed.iter().map(|g| g.count).sum();
+        if let Some(sg) = self.sgsus.get_mut(&squadron) {
+            sg.planes.extend(claimed);
+        }
+        moved
     }
 
     /// §20.83: eliminate a unit that failed its Mandatory Withdrawal deadline (zeroes its TOE and
@@ -8429,6 +8485,7 @@ impl GameState {
             u.cp_expended = Fixed(0);
             u.combat_cp = Fixed(0);
             u.moved_into_zoc = false;
+            u.reserve_moved_this_stage = false;
             u.retreated_before_assault = false;
             u.breakdown_points = 0;
             u.breakdown_checked_col = -1;

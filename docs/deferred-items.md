@@ -225,10 +225,12 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   structure and the self-play agents' action enumeration — all combat is currently modeled as
   voluntary. High-regression, cross-cutting subsystem better done as a dedicated effort; ZOC/Contact/
   Engaged are computed, only the obligation is missing.
-- [~] **AU5 — §18.2 Reserve I/II effects.** §18.22 Reserve II "never moves" enforced in the move gate
-  (CommandError::InReserve; test reserve_ii_may_not_move_18_22). Remaining: Reserve I's one-hex/CP-free
-  move and the §18.23–24 release-segment restrictions (CP-cap, one-assault, auto-DP, two-hex proximity)
-  need a Reserve Release Segment phase + per-stage moved-hex tracking, which the phase structure lacks.
+- [~] **AU5 — §18.2 Reserve I/II effects.** §18.22 fully done: Reserve II never moves; Reserve I may
+  move exactly one hex per Operations Stage (new `Unit.reserve_moved_this_stage`, reset each stage;
+  CommandError::InReserve once spent). Test reserve_ii_may_not_move_18_22. **Remaining:** only the
+  §18.23–24 *release-segment* refinements (a released unit may not voluntarily exceed its CPA and may
+  make one offensive assault; §18.24 auto-DP; two-hex proximity) — these need a dedicated Reserve
+  Release Segment + released-this-stage tracking; low value (Reserve status is agent-unused).
 - [x] **AU6 — §12.44 Pinned** blocks Move/AntiArmor/CloseAssault (currently only RBA/Reaction check it).
 - [x] **AU7 — §6.26 cohesion ≤ −26** blocks Move/CloseAssault/AntiArmor + adjacency auto-surrender
   (currently only RBA/Reaction check the −26 gate; no auto-surrender).
@@ -362,9 +364,11 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [x] **AU41 — §35.12 SGSU overrun by advancing land units.** move_counter now eliminates an enemy
   SGSU a mover ends adjacent to when no friendly combat unit is stacked with it (it can't react
   during the enemy move); location→None (redeployable later, §35.13).
-- [~] **AU42 — §35.27 grounded planes.** An overrun SGSU's grounded planes are now lost (planes
-  cleared on elimination). The capture-for-enemy-reuse (1 GT later) refinement is still pending —
-  needs a cross-nationality captured-plane pool.
+- [x] **AU42 — §35.27 grounded planes captured.** An overrun SGSU's grounded planes are now captured
+  by the overrunning side into `GameState.captured_planes` (not merely destroyed) and become usable
+  one Game-Turn later: `available_captured_planes(side)` reports the ready pool and
+  `claim_captured_planes(side, squadron)` moves them into one of the captor's squadrons (cross-
+  nationality, per §35.27 overriding §35.28). Test extended in sgsu_overrun_by_land_35_12.
 - [x] **AU43 — §49.19/§50.16/§51.16 captured supply dumps** change ownership on overrun + captured-usable
   fraction (fuel non-denominational; ⅓ ammo, ½ stores) — dumps currently never change hands.
 - [-] **AU44 — §56.16 convoy flak fires back.** The flak-point formula exists (rules::naval::convoy_flak_points); applying the losses to the attacking bombers needs a squadron ref, but the convoy-bombing command is numeric/abstracted — within the owner-ruled air-combat abstraction (B6–B8).

@@ -288,6 +288,10 @@ pub struct Unit {
     /// then stop (no further movement until the next stage). Reset each stage.
     #[serde(default)]
     pub moved_into_zoc: bool,
+    /// §18.22: set when a Reserve I unit has taken its single (CP-free) one-hex move this Operations
+    /// Stage — it may not move again until released. Reset each stage.
+    #[serde(default)]
+    pub reserve_moved_this_stage: bool,
     /// §13.28: set when the unit Retreated Before Assault this Operations Stage. In a hex then
     /// attacked, it takes/is susceptible to anti-armor fire but may not *direct* it, and its
     /// Close Assault ratings are excluded from the defense (though its TOE still takes % losses).
@@ -405,6 +409,7 @@ impl Unit {
             cp_expended: Fixed(0),
             combat_cp: Fixed(0),
             moved_into_zoc: false,
+            reserve_moved_this_stage: false,
             retreated_before_assault: false,
             fuel: 0,
             ammo: 0,

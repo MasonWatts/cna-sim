@@ -595,6 +595,32 @@ mod tests {
             g.apply(Command::MoveStep { unit: u, to: b, mode: MoveMode::NonMotorized }),
             Ok(CommandOutcome::Moved)
         );
+
+        // §18.22: a Reserve I unit may move exactly one hex per Operations Stage.
+        let c = HexCoord::new(2, 0);
+        g.map.set_hex(c, HexTerrain::Clear);
+        let r1 = g.spawn_unit(Nationality::Commonwealth, "h", "res1", Composition::Organic { current_toe: 5 });
+        {
+            let uu = g.unit_mut(r1).unwrap();
+            uu.location = Some(crate::state::unit::UnitLocation::OnMap(a));
+            uu.reserve = ReserveStatus::ReserveI;
+        }
+        // First hex: allowed.
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: r1, to: b, mode: MoveMode::NonMotorized }),
+            Ok(CommandOutcome::Moved)
+        );
+        // A second hex the same stage: barred (its one move is spent).
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: r1, to: c, mode: MoveMode::NonMotorized }),
+            Err(CommandError::InReserve)
+        );
+        // The flag resets at the next Operations Stage, restoring the one-hex move.
+        g.unit_mut(r1).unwrap().reserve_moved_this_stage = false;
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: r1, to: c, mode: MoveMode::NonMotorized }),
+            Ok(CommandOutcome::Moved)
+        );
     }
 
     #[test]
@@ -9303,10 +9329,20 @@ mod tests {
         // m1 → (2,0), adjacent to the unescorted SGSU at (1,0): §35.12 eliminates it, §35.27 loses planes.
         assert!(g.apply(Command::MoveStep { unit: m1, to: HexCoord::new(2, 0), mode: MoveMode::NonMotorized }).is_ok());
         assert_eq!(g.sgsus[&SquadronId(1)].location, None, "§35.12 unescorted SGSU eliminated");
-        assert!(g.sgsus[&SquadronId(1)].planes.is_empty(), "§35.27 grounded planes lost");
+        assert!(g.sgsus[&SquadronId(1)].planes.is_empty(), "§35.27 grounded planes leave the SGSU");
         // m2 → (6,0), adjacent to the escorted SGSU at (5,0): it survives.
         assert!(g.apply(Command::MoveStep { unit: m2, to: HexCoord::new(6, 0), mode: MoveMode::NonMotorized }).is_ok());
         assert_eq!(g.sgsus[&SquadronId(2)].location, Some(HexCoord::new(5, 0)), "escorted SGSU survives");
+
+        // §35.27: the 8 grounded planes were captured by the overrunning (Commonwealth) side, usable
+        // one Game-Turn later — not simply destroyed.
+        assert_eq!(g.available_captured_planes(Side::Commonwealth), 0, "not usable the turn of capture");
+        g.game_turn = 2;
+        assert_eq!(g.available_captured_planes(Side::Commonwealth), 8);
+        g.sgsus.insert(SquadronId(3), Sgsu::new(SquadronId(3), Nationality::Commonwealth, SquadronClass::Fighter, "RAF", 5, Some(HexCoord::new(0, 0))));
+        assert_eq!(g.claim_captured_planes(Side::Commonwealth, SquadronId(3)), 8, "captured planes claimed into a CW squadron");
+        assert!(g.captured_planes.is_empty());
+        assert_eq!(g.sgsus[&SquadronId(3)].planes.iter().map(|p| p.count).sum::<u32>(), 8);
     }
 
     #[test]
