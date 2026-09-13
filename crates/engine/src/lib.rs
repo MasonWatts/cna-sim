@@ -11334,6 +11334,50 @@ mod tests {
     }
 
     #[test]
+    fn halftrack_absorption_14_48() {
+        use crate::reference::units::Side;
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation, WeaponGroup};
+
+        // Refs: CW weapons (the 6-pounder firer) + German unit-characteristics (halftrack "i" carries
+        // Armor-Protection 1) + the anti-armor CRT.
+        let mut refs = ReferenceData::new();
+        refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        refs.load_anti_armor_crt(include_str!("../../../data/reference/crt/anti-armor.ron")).unwrap();
+
+        let mut g = GameState::new(refs, 1);
+        g.active_player = Side::Axis; // CW gun is the non-phasing firer (no §14.6 row penalty)
+        let hex = HexCoord::new(0, 0);
+        let atk = g.spawn_unit(
+            Nationality::Commonwealth, "gun", "AT bn",
+            Composition::Weapons { groups: vec![WeaponGroup { system: "6-pounder".into(), count: 5 }] },
+        );
+
+        // A mounted German Schützen halftrack battalion (Organic, id "i", AP 1) alone in the hex.
+        let ht = g.spawn_unit(Nationality::German, "i", "Schützen (halftrack)", Composition::Organic { current_toe: 7 });
+        {
+            let u = g.unit_mut(ht).unwrap();
+            u.location = Some(UnitLocation::OnMap(hex));
+            u.trucks = TruckPoints { light: 0, medium: 7, heavy: 0 };
+        }
+        // Dice 66 → 9 Damage. §14.48: halftracks are the only affectable points, so AP 1 doubles to
+        // 2 → ceil(9/2) = 5 TOE lost (not 7, which AP 1 would give). Trucks scale to the 2/7 survivors.
+        let out = g.resolve_anti_armor_with_dice(&[atk], hex, 66);
+        assert_eq!(out.armor_toe_removed, 5, "§14.48 doubled AP (2): ceil(9/2)=5 removed, not 7");
+        assert_eq!(g.unit(ht).unwrap().total_toe(), 2);
+        assert_eq!(g.unit(ht).unwrap().trucks.medium, 2, "§14.48 transporting trucks lost with the halftracks (7→2)");
+
+        // Dismounted (no Truck Points) the same unit is ordinary infantry — unaffected by anti-armor.
+        let ht2 = g.spawn_unit(Nationality::German, "i", "Schützen (dismounted)", Composition::Organic { current_toe: 7 });
+        g.unit_mut(ht2).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(1, 0)));
+        let out2 = g.resolve_anti_armor_with_dice(&[atk], HexCoord::new(1, 0), 66);
+        assert_eq!(out2.armor_toe_removed, 0, "dismounted halftrack infantry is not anti-armor-affectable");
+        assert_eq!(g.unit(ht2).unwrap().total_toe(), 7);
+    }
+
+    #[test]
     fn anti_armor_phasing_row_penalty_14_6() {
         use crate::reference::crt::AntiArmorCrt;
         use crate::reference::units::Side;

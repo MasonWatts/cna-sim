@@ -7,9 +7,9 @@
 //! §14.21 withholding is honored: defending units passed as `withheld` take no Anti-Armor damage.
 //! §14.12 defensive/mutual fire is supported at the command layer — the `AntiArmor` command is not
 //! gated to the phasing player, so the non-phasing side fires it at the assaulting armor's hex, and
-//! two calls (one per side) give a mutual exchange. Deferred (later increments): the §15.16
-//! per-TOE-point close-assault commitment split, and §14.48 halftrack absorption (needs halftrack
-//! TOE + truck-linkage modeling).
+//! two calls (one per side) give a mutual exchange. §14.48 halftrack absorption is modeled in
+//! `apply_armor_damage`. Deferred (later increment): the §15.16 per-TOE-point close-assault
+//! commitment split.
 
 use serde::{Deserialize, Serialize};
 use crate::reference::crt::{
@@ -184,17 +184,23 @@ impl GameState {
 
     /// Apply Damage Points to the armored TOE in `hex` (§14.42–43). Each armor TOE point
     /// absorbs its Armor-Protection rating in damage; we remove highest-absorption points first
-    /// so the fewest TOE are lost (a default choice; a player/AI may override later). §14.47: a
-    /// self-propelled gun (an Artillery/Anti-Tank weapon that also carries an Armor-Protection
-    /// rating) absorbs at its Armor Protection **plus** its Vulnerability rating.
+    /// so the fewest TOE are lost (a default choice; a player/AI may override later).
+    ///  - §14.47: a self-propelled gun (Artillery/Anti-Tank weapon that also carries an
+    ///    Armor-Protection rating) absorbs at its Armor Protection **plus** its Vulnerability.
+    ///  - §14.48: truck-transported halftrack infantry (Organic units whose §4.44 characteristics
+    ///    carry an Armor-Protection rating — the German "i" Schützen) are anti-armor-affectable and
+    ///    absorb at that rating; if the hit side's *only* affectable points in the hex are
+    ///    halftracks, they **double** it. A destroyed halftrack TOE point also loses its
+    ///    transporting Truck Points.
     fn apply_armor_damage(&mut self, hex: HexCoord, damage: i32, withheld: &[UnitId]) -> u32 {
         if damage <= 0 {
             return 0;
         }
-        // Collect (unit, group index, absorption-per-TOE, is-tank, nationality, system) for every
-        // armored weapon group. §14.21: a unit withheld from both Anti-Armor and Close Assault is
-        // not affected by Anti-Armor fire and is excluded here.
-        let mut armored: Vec<(UnitId, usize, i32, bool, crate::reference::units::Nationality, String)> = Vec::new();
+        // Collect every absorbing element: (unit, Some(group)|None-for-halftrack, absorb-per-TOE,
+        // is-tank, is-halftrack, nationality, system). §14.21: a unit withheld from both Anti-Armor
+        // and Close Assault is not affected by Anti-Armor fire and is excluded here.
+        type Absorber = (UnitId, Option<usize>, i32, bool, bool, crate::reference::units::Nationality, String);
+        let mut armored: Vec<Absorber> = Vec::new();
         for id in self.units_in_hex(hex) {
             if withheld.contains(&id) {
                 continue;
@@ -202,36 +208,61 @@ impl GameState {
             let Some(unit) = self.units.get(&id) else {
                 continue;
             };
-            let Composition::Weapons { groups } = &unit.composition else {
-                continue;
-            };
             let nat = unit.nationality;
-            for (gi, g) in groups.iter().enumerate() {
-                let ws = self.reference.weapons_systems.get(&nat).and_then(|m| m.get(&g.system));
-                let ap = ws.and_then(|w| w.armor_protection).map(|r| r.value).unwrap_or(0);
-                // §14.47 self-propelled gun: a gun weapon that also has armor protection.
-                let sp_bonus = ws
-                    .filter(|w| matches!(w.kind, WeaponKind::Artillery | WeaponKind::AntiTank))
-                    .and_then(|w| w.vulnerability)
-                    .map(|r| r.value)
-                    .unwrap_or(0);
-                let is_tank = ws.map(|w| matches!(w.kind, WeaponKind::Tank)).unwrap_or(false);
-                let absorb = ap + sp_bonus;
-                if absorb > 0 && g.count > 0 {
-                    armored.push((id, gi, absorb, is_tank, nat, g.system.clone()));
+            match &unit.composition {
+                Composition::Weapons { groups } => {
+                    for (gi, g) in groups.iter().enumerate() {
+                        let ws = self.reference.weapons_systems.get(&nat).and_then(|m| m.get(&g.system));
+                        let ap = ws.and_then(|w| w.armor_protection).map(|r| r.value).unwrap_or(0);
+                        // §14.47 self-propelled gun: a gun weapon that also has armor protection.
+                        let sp_bonus = ws
+                            .filter(|w| matches!(w.kind, WeaponKind::Artillery | WeaponKind::AntiTank))
+                            .and_then(|w| w.vulnerability)
+                            .map(|r| r.value)
+                            .unwrap_or(0);
+                        let is_tank = ws.map(|w| matches!(w.kind, WeaponKind::Tank)).unwrap_or(false);
+                        let absorb = ap + sp_bonus;
+                        if absorb > 0 && g.count > 0 {
+                            armored.push((id, Some(gi), absorb, is_tank, false, nat, g.system.clone()));
+                        }
+                    }
                 }
+                Composition::Organic { current_toe } => {
+                    // §14.48 halftrack: an Organic infantry unit whose characteristics carry an
+                    // Armor-Protection rating, but only while truck-transported (riding its
+                    // halftracks). Dismounted (no Truck Points) it is ordinary infantry, unaffected.
+                    let ap = self
+                        .reference
+                        .unit_characteristics
+                        .get(&nat)
+                        .and_then(|m| m.get(&unit.id_code))
+                        .and_then(|c| c.armor_protection)
+                        .map(|r| r.value)
+                        .unwrap_or(0);
+                    let mounted = unit.trucks.light + unit.trucks.medium + unit.trucks.heavy > 0;
+                    if ap > 0 && *current_toe > 0 && mounted {
+                        armored.push((id, None, ap, false, true, nat, String::new()));
+                    }
+                }
+            }
+        }
+        // §14.48: double halftrack absorption when the hit side's only affectable points are halftracks.
+        if !armored.is_empty() && armored.iter().all(|a| a.4) {
+            for a in armored.iter_mut() {
+                a.2 *= 2;
             }
         }
         armored.sort_by_key(|a| std::cmp::Reverse(a.2)); // highest absorption first
 
         let mut remaining = damage;
         let mut removed = 0u32;
-        for (id, gi, absorb, is_tank, nat, system) in armored {
+        for (id, gi, absorb, is_tank, halftrack, nat, system) in armored {
             if remaining <= 0 {
                 break;
             }
-            let count = match &self.units.get(&id).unwrap().composition {
-                Composition::Weapons { groups } => groups[gi].count,
+            let count = match (&self.units.get(&id).unwrap().composition, gi) {
+                (Composition::Weapons { groups }, Some(g)) => groups[g].count,
+                (Composition::Organic { current_toe }, None) => *current_toe,
                 _ => 0,
             };
             if count == 0 {
@@ -240,8 +271,18 @@ impl GameState {
             let needed = ((remaining + absorb - 1) / absorb) as u32; // ceil(remaining / absorb)
             let take = needed.min(count);
             if let Some(unit) = self.units.get_mut(&id) {
-                if let Composition::Weapons { groups } = &mut unit.composition {
-                    groups[gi].count -= take;
+                match (&mut unit.composition, gi) {
+                    (Composition::Weapons { groups }, Some(g)) => groups[g].count -= take,
+                    (Composition::Organic { current_toe }, None) => {
+                        *current_toe -= take;
+                        // §14.48: the halftrack's transporting Truck Points are lost with it —
+                        // scale the unit's trucks to the surviving TOE fraction.
+                        let keep = count - take;
+                        unit.trucks.light = unit.trucks.light * keep / count;
+                        unit.trucks.medium = unit.trucks.medium * keep / count;
+                        unit.trucks.heavy = unit.trucks.heavy * keep / count;
+                    }
+                    _ => {}
                 }
             }
             // §14.46/§14.51: destroyed *tanks* leave retrievable Destroyed Tank Markers (owned by
@@ -249,6 +290,7 @@ impl GameState {
             if is_tank && take > 0 {
                 self.record_destroyed_tank(hex, nat, system, take);
             }
+            let _ = halftrack;
             removed += take;
             remaining -= (take as i32) * absorb;
         }
