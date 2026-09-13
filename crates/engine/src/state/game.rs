@@ -19,7 +19,8 @@ use crate::state::air::{AirFacility, AirFacilityKind, Sgsu, SquadronId};
 use crate::state::map::{Feature, HexCoord, HexId, HexsideKind, Map};
 use crate::state::unit::{Composition, OrgSize, Unit, UnitId, UnitLocation};
 
-/// Weather for the Operations Stage (§29.0). Per-map-section detail is deferred.
+/// Weather for the Operations Stage (§29.0). Resolved per map section (§29.1) via
+/// `weather_by_section` / `determine_weather`; this is the overall/default value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Weather {
     Normal,

@@ -21,8 +21,11 @@ Keep this file in sync as items land. When an item is done, update the matching 
   Remaining finer detail: the §15.16 per-TOE-point close-assault commitment split (not the AA immunity).
 - [x] **A4 — Self-propelled-gun absorption (§14.47).** SP guns (Artillery/AntiTank weapon with an
   armor-protection rating) absorb at AP + Vulnerability in `apply_armor_damage`.
-  - [ ] **A4b — §14.48 halftrack absorption.** Blocked: halftracks (Schutzen "i" bns) are modeled
-    as Organic infantry, not armored weapon groups — needs a halftrack TOE + truck-linkage model.
+  - [x] **A4b — §14.48 halftrack absorption.** `apply_armor_damage` now includes truck-transported
+    Organic units whose §4.44 characteristics carry an Armor-Protection rating (German "i" Schützen):
+    they absorb at that rating, doubled when the hit side's only affectable points are halftracks;
+    a destroyed halftrack TOE point also drops its transporting Truck Points. Dismounted (no trucks)
+    the unit is ordinary infantry, unaffected. Test `halftrack_absorption_14_48`.
 - [x] **A5 — Destroyed-tank markers & capture** (§14.46/§14.5). `apply_armor_damage` records destroyed
   *tanks* (Tank-kind only, §14.51) as `CapturedEquipment{destroyed_tank:true}` owned by their side;
   `resolve_destroyed_tank_capture` (§14.52, per Operations Stage) flips ownership to the enemy when
@@ -66,8 +69,13 @@ Keep this file in sync as items land. When an item is done, update the matching 
 
 - [x] **C1 — §20.3 absorb classifier residuals.** `conversion_row_for_unit`: recce row now derived
   from composition (`unit_has_armored_points`) — armored-recce vs light Motorcycle/Camel/Reconnaissance
-  — instead of "assume armored". MG/HW rows already verified by §4.46 names. Residual: "Armored Car"
-  needs an explicit name (no armored-car weapon kind in the data).
+  — instead of "assume armored". MG/HW rows already verified by §4.46 names.
+  - [-] **C1b — Armored-Car vs Armored-Reconnaissance split.** Blocked-by-data: the two are distinct
+    §20.3 rows (Armored Car = 2 ArmR / 1 Lt Tank; Armored Recce = 1 ArmR / 1 Lt Tank) but the
+    rulebook only separates them by the counter's in-box unit-type symbol, which is not in the OB
+    (§20.51 lumps both under one ID-code set). `conversion_row_for_unit` detects "Armored Car" by
+    name where present and otherwise defaults an armored recce unit to the Armored-Reconnaissance
+    row; a full split needs the counter symbols transcribed. Not fabricated.
 
 ## D. Reorganization (§19, §8.12, `state/game.rs`)
 
@@ -102,8 +110,12 @@ blocked on either that chart or hierarchical-OB modeling — not on engine logic
   has no water source; a stack reduced to 0 dies out.
 - [x] **E2 — §51.17 Guard-Point Stores upkeep.** New `feed_guards` draws 2 Stores per Guard Point per
   Game-Turn from the nearest dump (§51.12 prisoner Stores were already modeled via §28.15/`feed_prisoners`).
-- [x] **E3 — §17.32 minor training areas** (Amiriya E2212 / Abougir E3815 / Deghelia E3512, plus
-  the missing Alexandria E3714). `is_cw_training_area` now keys all six; test extended.
+- [x] **E3 — §17.32/§20.43 training areas (data-driven, side-locked).** Superseded the earlier
+  hard-coded `is_cw_training_area` list: training areas are now `Feature::CwTrainingArea` /
+  `Feature::AxisTrainingArea` on the map (§20.43 — the two lists are not interchangeable), placed on
+  the section RON (CW: Cairo/Helwan/Alexandria/Amiriya/Aboukir/Dekheila; Axis: Benghazi/Tobruk/
+  Bardia). `is_training_area(hex, side)` reads the side's feature. §20.43 Replacement-Point training
+  is also location-gated on these (the countdown runs only at a training area for the pool's side).
 
 ## F. Desert raiders & patrols (§8.9, §8.11, `state/command.rs`, `state/game.rs`)
 
