@@ -2529,18 +2529,30 @@ impl GameState {
         } else if ut.contains("Anti-air") {
             "Anti-air"
         } else if ut.contains("Reconnaissance") || ut.contains("Recce") {
-            // §20.3 has three recce rows. Prefer the name; otherwise derive from composition — a
-            // recce unit carrying armor-protected weapon points (armored cars / recce tanks) is
-            // Armored Reconnaissance, while an Organic or unarmored recce unit is the light
-            // Motorcycle/Camel/Reconnaissance row (motorcycle, camel, or horsed cavalry recce).
-            if name.contains("Armored Car") || name.contains("Armoured Car") {
+            // §20.3 recce rows. Armored Car vs Armored Reconnaissance is the counter's §4.46 symbol,
+            // NOT derivable from id/composition — e.g. CW "1 CIH" (oval+slash = Armored Recce) and
+            // "13th DCO Lancers" (oval+wheels = Armored Car) share id "ll". So:
+            //  • by §4.46 legend, German armored recce is *always* Armored Reconnaissance (no
+            //    armored-car glyph) and Italian armored recce is *always* Armored Car (no
+            //    armored-reconnaissance glyph);
+            //  • Commonwealth is mixed, read per-counter from PDF p184–185 (below);
+            //  • an unarmored recce unit (camel/horse/motorcycle) is the light Motorcycle/Camel/
+            //    Reconnaissance row.
+            // Commonwealth armored-car units read from the §4.46 counter sheets (p184–185); the rest
+            // of the CW recce units default to Armored Reconnaissance pending their counter reads.
+            let cw_armored_car = name.contains("Armored Car")
+                || name.contains("Armoured Car")
+                || name.contains("Derbyshire Yeomanry")
+                || name.contains("Royal Dragoons")
+                || name.contains("DCO Lancers");
+            if cw_armored_car {
                 "Armored Car"
-            } else if name.contains("Motorcycle") || name.contains("Camel") || name.contains("Cavalry") {
+            } else if !self.unit_has_armored_points(id) {
                 "Motorcycle/Camel/Reconnaissance"
-            } else if self.unit_has_armored_points(id) {
-                "Armored Reconnaissance"
+            } else if u.nationality == Nationality::Italian {
+                "Armored Car"
             } else {
-                "Motorcycle/Camel/Reconnaissance"
+                "Armored Reconnaissance"
             }
         } else if ut.contains("Infantry") {
             // §20.3 footnotes a/b/c/d: special-infantry rows keyed off the unit's identity. Detected

@@ -70,12 +70,19 @@ Keep this file in sync as items land. When an item is done, update the matching 
 - [x] **C1 — §20.3 absorb classifier residuals.** `conversion_row_for_unit`: recce row now derived
   from composition (`unit_has_armored_points`) — armored-recce vs light Motorcycle/Camel/Reconnaissance
   — instead of "assume armored". MG/HW rows already verified by §4.46 names.
-  - [-] **C1b — Armored-Car vs Armored-Reconnaissance split.** Blocked-by-data: the two are distinct
-    §20.3 rows (Armored Car = 2 ArmR / 1 Lt Tank; Armored Recce = 1 ArmR / 1 Lt Tank) but the
-    rulebook only separates them by the counter's in-box unit-type symbol, which is not in the OB
-    (§20.51 lumps both under one ID-code set). `conversion_row_for_unit` detects "Armored Car" by
-    name where present and otherwise defaults an armored recce unit to the Armored-Reconnaissance
-    row; a full split needs the counter symbols transcribed. Not fabricated.
+  - [~] **C1b — Armored-Car vs Armored-Reconnaissance split.** Resolved from the §4.46 counter
+    legends (PDF; German/Italian legends + CW counter sheets p184–185, read 2026-09-12):
+    - **German** armored recce → *Armored Reconnaissance* always (German legend has no armored-car
+      glyph). Already the engine default.
+    - **Italian** armored recce → *Armored Car* always (Italian legend has no armored-reconnaissance
+      glyph — Autoblinda `vv`/`ww`). Now applied by nationality in `conversion_row_for_unit`.
+    - **Commonwealth** is genuinely mixed and NOT derivable from id/composition (e.g. `1 CIH`
+      oval+slash = Armored Recce vs `13 DCO Lancers` oval+wheels = Armored Car, both id `ll`). Read
+      per-counter: confirmed Armored Car = Derbyshire Yeomanry, Royal Dragoons, 13th DCO Lancers,
+      the SA "Armored Car" regts; CIH = Armored Reconnaissance. These are keyed by name; the
+      remaining ~15 CW recce units default to Armored Reconnaissance pending their p184–185 counter
+      reads (11th Hussars, 10th QVOC Guides, 44/50/51 Recce, 6/7/9 Aus Div Cav, DoY Cav, 2 NZ Cav,
+      7 SA Recce, 1 Polish Cav, 1 Free Fr). Test `recce_armored_car_vs_recce_rows_20_3`.
 
 ## D. Reorganization (§19, §8.12, `state/game.rs`)
 

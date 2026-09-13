@@ -8318,6 +8318,47 @@ mod tests {
     }
 
     #[test]
+    fn recce_armored_car_vs_recce_rows_20_3() {
+        use crate::state::game::GameState;
+        use crate::state::unit::{Composition, WeaponGroup};
+        let mut refs = ReferenceData::new();
+        for (nat, uc, ws) in [
+            (Nationality::Commonwealth, "commonwealth", "commonwealth"),
+            (Nationality::Italian, "italian", "italian"),
+        ] {
+            let _ = uc;
+            let _ = ws;
+            refs.load_unit_characteristics(nat, match nat {
+                Nationality::Commonwealth => include_str!("../../../data/reference/unit-characteristics/commonwealth.ron"),
+                _ => include_str!("../../../data/reference/unit-characteristics/italian.ron"),
+            }).unwrap();
+            refs.load_weapons_systems(nat, match nat {
+                Nationality::Commonwealth => include_str!("../../../data/reference/weapons/commonwealth.ron"),
+                _ => include_str!("../../../data/reference/weapons/italian.ron"),
+            }).unwrap();
+        }
+        let mut g = GameState::new(refs, 1);
+        let arm = |sys: &str| Composition::Weapons { groups: vec![WeaponGroup { system: sys.into(), count: 3 }] };
+
+        // §4.46: Italian armored recce has no armored-reconnaissance glyph → it is Armored Car.
+        let it = g.spawn_unit(Nationality::Italian, "ww", "RECo 'Nizza Cavalleria'", arm("L 6/40"));
+        assert_eq!(g.conversion_row_for_unit(it), "Armored Car");
+
+        // Commonwealth is mixed; read from the §4.46 counters (p184–185):
+        // Derbyshire Yeomanry & 13th DCO Lancers = oval-on-wheels = Armored Car (by name, any comp);
+        let dy = g.spawn_unit(Nationality::Commonwealth, "hh", "2nd Derbyshire Yeomanry", Composition::Organic { current_toe: 4 });
+        let dcl = g.spawn_unit(Nationality::Commonwealth, "ll", "13th DCO Lancers", Composition::Organic { current_toe: 4 });
+        assert_eq!(g.conversion_row_for_unit(dy), "Armored Car");
+        assert_eq!(g.conversion_row_for_unit(dcl), "Armored Car");
+        // Central India Horse = oval+slash = Armored Reconnaissance (armored, not a named car);
+        let cih = g.spawn_unit(Nationality::Commonwealth, "ll", "Central India Horse", arm("A10 Cruiser"));
+        assert_eq!(g.conversion_row_for_unit(cih), "Armored Reconnaissance");
+        // An unarmored recce unit (no armored points) is the light Motorcycle/Camel/Reconnaissance row.
+        let light = g.spawn_unit(Nationality::Commonwealth, "ll", "2nd New Zealand Cavalry", Composition::Organic { current_toe: 4 });
+        assert_eq!(g.conversion_row_for_unit(light), "Motorcycle/Camel/Reconnaissance");
+    }
+
+    #[test]
     fn fortification_bombing_and_city_gate_41() {
         use crate::reference::aircraft::{AircraftClass, BombingMission};
         use crate::reference::squadron::SquadronClass;
