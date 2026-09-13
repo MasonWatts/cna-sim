@@ -8358,6 +8358,32 @@ mod tests {
     }
 
     #[test]
+    fn captured_supply_dump_49_50_51() {
+        use crate::reference::units::Side;
+        use crate::state::game::{Commodities, GameState};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        let hex = HexCoord::new(0, 0);
+        g.add_supply_dump_full(
+            UnitLocation::OnMap(hex),
+            Side::Axis,
+            Commodities { fuel: 100, ammo: 9, stores: 10, water: 20 },
+        );
+        // A Commonwealth unit takes the hex; no Axis unit remains.
+        let cw = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 4 });
+        g.unit_mut(cw).unwrap().location = Some(UnitLocation::OnMap(hex));
+        g.resolve_captured_dumps();
+        let d = &g.supply_dumps[0];
+        assert_eq!(d.side, Side::Commonwealth, "dump changes hands");
+        assert_eq!(d.supply.fuel, 100, "§49.19 fuel non-denominational — intact");
+        assert_eq!(d.supply.ammo, 3, "§50.16 ⅓ ammo (ceil 9/3)");
+        assert_eq!(d.supply.stores, 5, "§51.16 ½ stores");
+        assert_eq!(d.supply.water, 20, "water passes intact");
+    }
+
+    #[test]
     fn recce_armored_car_vs_recce_rows_20_3() {
         use crate::state::game::GameState;
         use crate::state::unit::{Composition, WeaponGroup};

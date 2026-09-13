@@ -5065,6 +5065,35 @@ impl GameState {
         }
     }
 
+    /// §49.19/§50.16/§51.16: a supply dump whose hex the enemy now controls (enemy present, owner
+    /// absent) changes hands. Fuel and Water are non-denominational and pass intact (§49.19); only
+    /// one-third of the Ammo (rounded up, §50.16) and half the Stores (§51.16) survive capture.
+    pub(crate) fn resolve_captured_dumps(&mut self) {
+        for i in 0..self.supply_dumps.len() {
+            let (owner, hex) = {
+                let d = &self.supply_dumps[i];
+                match d.location {
+                    UnitLocation::OnMap(h) if !d.dummy => (d.side, h),
+                    _ => continue,
+                }
+            };
+            let enemy = owner.opponent();
+            let ids = self.units_in_hex(hex);
+            let enemy_present = ids.iter().any(|&id| {
+                self.units.get(&id).is_some_and(|u| u.nationality.side() == enemy && u.total_toe() > 0)
+            });
+            let owner_present = ids.iter().any(|&id| {
+                self.units.get(&id).is_some_and(|u| u.nationality.side() == owner && u.total_toe() > 0)
+            });
+            if enemy_present && !owner_present {
+                let d = &mut self.supply_dumps[i];
+                d.side = enemy;
+                d.supply.ammo = d.supply.ammo.div_ceil(3); // §50.16
+                d.supply.stores /= 2; // §51.16
+            }
+        }
+    }
+
     /// §28.11/§28.3: when `unit` surrenders, convert its losses — infantry (Organic) TOE becomes
     /// Prisoner Points for the opponent (§28.11); weapon (tank/gun/AA) TOE becomes captured
     /// equipment (§28.3). Called from the surrender resolution before the unit's TOE is zeroed.
@@ -7685,6 +7714,7 @@ impl GameState {
         self.resolve_prisoner_escapes();
         // §14.52: Destroyed Tank Markers in hexes the enemy now controls are captured.
         self.resolve_destroyed_tank_capture();
+        self.resolve_captured_dumps();
         for g in self.prisoner_groups.iter_mut() {
             g.cpa_used = 0;
         }

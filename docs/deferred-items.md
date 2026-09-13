@@ -291,7 +291,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   for-1-GT, §35.13 one-GT return) — highest-impact air gap; airbases can't be overrun.
 - [ ] **AU42 — §35.27 grounded planes captured** (reusable by enemy 1 GT later) when their SGSU is
   eliminated with planes on the ground.
-- [ ] **AU43 — §49.19/§50.16/§51.16 captured supply dumps** change ownership on overrun + captured-usable
+- [x] **AU43 — §49.19/§50.16/§51.16 captured supply dumps** change ownership on overrun + captured-usable
   fraction (fuel non-denominational; ⅓ ammo, ½ stores) — dumps currently never change hands.
 - [ ] **AU44 — §56.16 bombed convoy's own flak** (= lane tonnage ÷ 1000) fires back at attacking CW bombers.
 - [ ] **AU45 — §55.17 Bizerta annual 2d6=12 roll from GT35** before use (engine opens it deterministically
