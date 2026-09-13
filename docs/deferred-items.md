@@ -310,8 +310,16 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   on other mechanics):** the 7 "[again]" re-withdrawals need the §20.8 return (Rtn) cycle; GT23/3
   "1st Armored Bde [2]" has no 2nd Armored Division in the OB; GT97/2 "any three infantry battalions"
   is a runtime §20.81 choice (the 22nd Guards Bde HQ is bound).
-- [-] **AU25 — §21.5 capture broken-down vehicles.** Deferred: breakdown is unit-internal state (weapons_broken/toe_broken), not shed "Broken Down Vehicle markers" on the map, so there's nothing to capture; needs a marker model first.
-- [-] **AU26 — §21.6 tow broken-down vehicles.** Deferred: depends on the same broken-vehicle-marker model as AU25.
+- [x] **AU25 — §21.5 capture broken-down vehicles.** New `BrokenVehicle` map marker: a unit's broken
+  vehicles (weapons_broken/toe_broken/trucks_broken) are shed as a marker when it is eliminated
+  (`shed_broken_vehicles` in surrender_units). §21.52 `capture_broken_vehicles` — a moving
+  battalion-or-larger combat unit flips an adjacent unprotected enemy marker to its side; §21.53
+  protection (guarded by an owner combat/HQ/Engineer, or in an owner-controlled hex) via
+  `broken_vehicle_protected`. Test broken_vehicle_capture_and_tow_21_5.
+- [x] **AU26 — §21.6 tow broken-down vehicles.** New Command::TowBrokenVehicle (Repair Phase):
+  `tow_broken_vehicle` moves a marker one hex as a Medium Truck within a 10-CP budget (§21.63; 20 CP
+  with a co-located Tank Delivery Squadron, §22.65), never into an enemy-controlled hex (§21.64);
+  budget reset each stage. Test broken_vehicle_capture_and_tow_21_5.
 - [~] **AU27 — §22.6/§22.61–66 CW Tank Delivery Squadrons.** New `Unit.is_tds` unit type. Implemented:
   §22.62 field-repair −1 for a co-located TDS (`hex_has_friendly_tds` → `field_repair_tanks`); §22.63
   CPA 25 (`unit_cpa`), 0 Stacking Points (`effective_stacking_points`), no combat ratings (inherent),
@@ -319,10 +327,12 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   return at Cairo (`process_tds_returns`); §22.64 ≤3-TOE tank reserves usable as co-located Tank
   Replacement Points (`available_/draw_replacement_class`); §22.66 CPA-exceeded repair lockout
   (`tds_repair_locked`, set at stage rollover, suppresses the §22.62 assist). Test
-  tank_delivery_squadron_22_6. **Deferred sub-rules (unmet dependencies, not skipped):** §22.65 towing
-  at 20 CP needs the tow / broken-vehicle-marker model (same gap as AU25/AU26); §22.62 destroyed-tank
-  repair-on-a-1 is entangled with the currently-simplified auto-repair of captured/destroyed
-  equipment. Scenario OB wiring of the three squadrons (A/B/C, arrive GT29/2, [4.43a]) is a follow-on.
+  tank_delivery_squadron_22_6. §22.65 TDS 20-CP towing now works via the AU25/AU26 broken-vehicle
+  marker model (`tow_broken_vehicle` grants 20 CP when a TDS shares the marker's hex). **Remaining:**
+  §22.62 destroyed-tank repair-on-a-1 is entangled with the currently-simplified auto-repair of
+  captured/destroyed equipment; towing of *destroyed-tank* markers (a separate `CapturedEquipment`
+  structure, not `BrokenVehicle`) isn't wired; and the scenario OB placement of the three squadrons
+  (A/B/C, arrive GT29/2, [4.43a]) is a follow-on.
 - [x] **AU28 — §22.7 German Mobile Tank Repair Squad.** Treated exactly as a TDS (reuses `is_tds` —
   CPA 25, 0 stacking, ZOC-elimination/return, reserves, lockout), but the §22.62 assist and §22.64
   reserves are now matched by **nationality** (not just side), so a German squad repairs only German

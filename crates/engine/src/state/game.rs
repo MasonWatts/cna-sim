@@ -207,6 +207,31 @@ pub struct CapturedPlanes {
     pub available_game_turn: u32,
 }
 
+/// §21.5/§21.6 a Broken Down Vehicle marker shed on the map (when its unit is eliminated with
+/// broken-down vehicles still aboard). It may be captured by an adjacent enemy battalion (§21.52)
+/// and towed to a Repair Facility (§21.6). Holds the broken vehicles' composition so a repair
+/// facility can restore them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrokenVehicle {
+    /// The side that currently owns the marker (flips to the enemy on capture, §21.52).
+    pub side: Side,
+    pub hex: HexCoord,
+    pub nationality: Nationality,
+    /// Broken weapon-system TOE (tanks/SP/recce/guns) held in the marker.
+    #[serde(default)]
+    pub weapons: Vec<crate::state::unit::WeaponGroup>,
+    /// Broken Organic TOE Strength Points (self-rated vehicle units).
+    #[serde(default)]
+    pub toe: u32,
+    /// Broken first-line Truck Points held in the marker.
+    #[serde(default)]
+    pub trucks: crate::state::unit::TruckPoints,
+    /// §21.63: Capability Points expended towing this marker this Repair Phase (cap 10, or 20 with a
+    /// Tank Delivery Squadron, §22.65). Reset each stage.
+    #[serde(default)]
+    pub tow_cp_used: u32,
+}
+
 /// §28.3 captured equipment (tank/gun/AA TOE taken when a weapons unit surrenders) — reusable by the
 /// captor against its former owner once repaired. `nationality` is the original owner (its weapon
 /// system / repair rules apply).
@@ -829,6 +854,10 @@ pub struct GameState {
     /// by the capturing side and becomes usable one Game-Turn after capture.
     #[serde(default)]
     pub captured_planes: Vec<CapturedPlanes>,
+    /// §21.5/§21.6: Broken Down Vehicle markers on the map (shed when a unit with broken vehicles is
+    /// eliminated). Capturable by an adjacent enemy battalion and towable to a Repair Facility.
+    #[serde(default)]
+    pub broken_vehicles: Vec<BrokenVehicle>,
     /// §30.42: the global Operations-Stage index on which the Axis planned its Chariot raid (the raid
     /// executes on the seventh stage after). `None` while none is planned.
     #[serde(default)]
@@ -1156,6 +1185,7 @@ impl GameState {
             truck_convoys: Vec::new(),
             raiders: Vec::new(),
             captured_planes: Vec::new(),
+            broken_vehicles: Vec::new(),
             chariot_raid_planned_stage: None,
             chariot_raid_used: false,
             layforce_alexandria_since: None,
@@ -2481,6 +2511,117 @@ impl GameState {
             sg.planes.extend(claimed);
         }
         moved
+    }
+
+    /// §21.5: shed a unit's broken-down vehicles (weapons/organic-TOE/trucks) as a Broken Down
+    /// Vehicle marker in its current hex, clearing them from the unit. Called when the unit is
+    /// eliminated so its broken vehicles remain on the map to be captured/towed/repaired. No-op if
+    /// the unit has no broken vehicles or no hex.
+    pub(crate) fn shed_broken_vehicles(&mut self, id: UnitId) {
+        let Some(u) = self.units.get_mut(&id) else { return };
+        let Some(hex) = u.hex() else { return };
+        let weapons = std::mem::take(&mut u.weapons_broken);
+        let toe = std::mem::take(&mut u.toe_broken);
+        let trucks = std::mem::take(&mut u.trucks_broken);
+        if weapons.is_empty() && toe == 0 && trucks == crate::state::unit::TruckPoints::default() {
+            return;
+        }
+        let (side, nationality) = (u.nationality.side(), u.nationality);
+        self.broken_vehicles.push(BrokenVehicle {
+            side,
+            hex,
+            nationality,
+            weapons,
+            toe,
+            trucks,
+            tow_cp_used: 0,
+        });
+    }
+
+    /// §21.53: whether a Broken Down Vehicle marker at index `i` is protected from capture — stacked
+    /// with a friendly (owner-side) combat unit / HQ / Engineer, or in an owner-controlled hex.
+    fn broken_vehicle_protected(&self, i: usize) -> bool {
+        let Some(m) = self.broken_vehicles.get(i) else { return true };
+        let owner = m.side;
+        // A co-located friendly combat unit, HQ, or Engineer protects it.
+        let guarded = self.units.values().any(|u| {
+            u.hex() == Some(m.hex)
+                && u.nationality.side() == owner
+                && u.total_toe() > 0
+                && (self.is_combat_unit(u.id) || u.is_hq || {
+                    self.reference
+                        .unit_characteristics
+                        .get(&u.nationality)
+                        .and_then(|c| c.get(&u.id_code))
+                        .map(|c| c.unit_type.contains("Engineer"))
+                        .unwrap_or(false)
+                })
+        });
+        // §21.53: also protected in an owner-controlled hex (an owner unit projects ZOC into it).
+        guarded || self.hex_in_zoc_of(m.hex, owner)
+    }
+
+    /// §21.52: capture the Broken Down Vehicle markers a moving battalion-or-larger combat unit
+    /// (`mover`) is now adjacent to, when they are the enemy's and unprotected (§21.53). Returns the
+    /// number of markers captured (their `side` flips to the mover's).
+    pub(crate) fn capture_broken_vehicles(&mut self, mover: UnitId) -> u32 {
+        let Some(u) = self.units.get(&mover) else { return 0 };
+        // §21.52: only a battalion-size-or-larger combat unit captures.
+        if !self.is_combat_unit(mover) || u.org_size.size_rank() < OrgSize::Battalion.size_rank() {
+            return 0;
+        }
+        let (mover_side, Some(mover_hex)) = (u.nationality.side(), u.hex()) else { return 0 };
+        let adj: Vec<HexCoord> = mover_hex.neighbors().into_iter().chain(std::iter::once(mover_hex)).collect();
+        let mut captured = 0;
+        for i in 0..self.broken_vehicles.len() {
+            let m = &self.broken_vehicles[i];
+            if m.side == mover_side || !adj.contains(&m.hex) {
+                continue;
+            }
+            // §21.54: reachable through passable terrain — approximated by adjacency here.
+            if self.broken_vehicle_protected(i) {
+                continue;
+            }
+            self.broken_vehicles[i].side = mover_side;
+            captured += 1;
+        }
+        captured
+    }
+
+    /// §21.6/§21.63/§22.65: tow the Broken Down Vehicle marker at index `i` one hex to adjacent `to`
+    /// (as a Medium Truck). Budget is 10 Capability Points per Repair Phase, or 20 if a friendly Tank
+    /// Delivery Squadron shares the marker's hex (§22.65). §21.64: may not tow into an enemy-controlled
+    /// hex (enemy ZOC not negated by a friendly unit there). Returns whether the tow step was made.
+    pub(crate) fn tow_broken_vehicle(&mut self, i: usize, to: HexCoord) -> bool {
+        use crate::reference::terrain::MoveCost;
+        use crate::rules::movement::MoveMode;
+        let Some(m) = self.broken_vehicles.get(i) else { return false };
+        let (from, side, used) = (m.hex, m.side, m.tow_cp_used);
+        if !from.is_adjacent(to) {
+            return false;
+        }
+        // §21.64: not into an enemy-controlled hex (enemy ZOC with no friendly unit present).
+        let enemy_controlled = self.hex_in_zoc_of(to, side.opponent())
+            && !self.units.values().any(|u| u.hex() == Some(to) && u.nationality.side() == side && u.total_toe() > 0);
+        if enemy_controlled {
+            return false;
+        }
+        let step = match self.move_step_cost(from, to, MoveMode::Motorized) {
+            Some(MoveCost::Cost(f)) => f.0.max(0) as u32,
+            _ => return false, // prohibited / off-map
+        };
+        let cap = if self.units.values().any(|u| u.is_tds && u.hex() == Some(from) && u.nationality.side() == side) {
+            200 // §22.65: a Tank Delivery Squadron tows at 20 CP
+        } else {
+            100 // §21.63: otherwise 10 CP
+        };
+        if used + step > cap {
+            return false;
+        }
+        let mm = &mut self.broken_vehicles[i];
+        mm.hex = to;
+        mm.tow_cp_used += step;
+        true
     }
 
     /// §20.83: eliminate a unit that failed its Mandatory Withdrawal deadline (zeroes its TOE and
@@ -8384,6 +8525,10 @@ impl GameState {
         for raider in self.raiders.iter_mut() {
             raider.cpa_used = 0;
             raider.revealed = false;
+        }
+        // §21.63: refresh each Broken Down Vehicle marker's tow allowance for the new Repair Phase.
+        for m in self.broken_vehicles.iter_mut() {
+            m.tow_cp_used = 0;
         }
         // §8.98: refresh each free truck convoy's Movement Allowance for the new Truck Convoy Phase.
         for convoy in self.truck_convoys.iter_mut() {

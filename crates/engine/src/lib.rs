@@ -2185,6 +2185,58 @@ mod tests {
     }
 
     #[test]
+    fn broken_vehicle_capture_and_tow_21_5() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::German, include_str!("../../../data/reference/weapons/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let m = HexCoord::new(1, 0);
+        let c = HexCoord::new(2, 0);
+        let d = HexCoord::new(3, 0);
+        for h in [HexCoord::new(0, 0), m, c, d] {
+            g.map.set_hex(h, HexTerrain::Clear);
+        }
+
+        // A German tank battalion with 3 broken-down tanks aboard, at hex m.
+        let pz = g.spawn_unit(Nationality::German, "f", "pz bn", Composition::Weapons { groups: vec![WeaponGroup { system: "Pz III H".into(), count: 2 }] });
+        {
+            let u = g.unit_mut(pz).unwrap();
+            u.location = Some(UnitLocation::OnMap(m));
+            u.weapons_broken = vec![WeaponGroup { system: "Pz III H".into(), count: 3 }];
+            u.trucks_broken = TruckPoints { light: 1, ..Default::default() };
+        }
+        // §21.5: on elimination the broken vehicles are shed as a marker (not lost).
+        g.surrender_units(&[pz]);
+        assert_eq!(g.broken_vehicles.len(), 1);
+        assert_eq!(g.broken_vehicles[0].side, Side::Axis);
+        assert_eq!(g.broken_vehicles[0].hex, m);
+        assert_eq!(g.unit(pz).unwrap().weapons_broken.len(), 0, "shed off the unit");
+
+        // §21.52: a Commonwealth infantry battalion adjacent to the unprotected marker captures it.
+        let inf = g.spawn_unit(Nationality::Commonwealth, "h", "capturer", Composition::Organic { current_toe: 5 });
+        g.unit_mut(inf).unwrap().location = Some(UnitLocation::OnMap(c));
+        assert_eq!(g.capture_broken_vehicles(inf), 1);
+        assert_eq!(g.broken_vehicles[0].side, Side::Commonwealth, "§21.52 marker captured");
+
+        // §21.6: in the Repair Phase the captured marker may be towed one hex (10-CP budget).
+        g.phase = Phase::Repair;
+        g.active_player = Side::Commonwealth;
+        assert_eq!(g.apply(Command::TowBrokenVehicle { marker: 0, to: c }), Ok(CommandOutcome::BrokenVehicleTowed));
+        assert_eq!(g.broken_vehicles[0].hex, c);
+        // A second tow step within budget continues.
+        assert_eq!(g.apply(Command::TowBrokenVehicle { marker: 0, to: d }), Ok(CommandOutcome::BrokenVehicleTowed));
+        assert_eq!(g.broken_vehicles[0].hex, d);
+    }
+
+    #[test]
     fn chariot_raid_30_4() {
         use crate::reference::units::Side;
         use crate::state::command::{Command, CommandError, CommandOutcome};

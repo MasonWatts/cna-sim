@@ -1317,6 +1317,9 @@ impl GameState {
             // §28.11/§28.3: infantry TOE → Prisoner Points, weapons TOE → captured equipment, taken
             // by the opponent — recorded before the unit's Strength is zeroed.
             self.capture_on_surrender(id);
+            // §21.5: any broken-down vehicles aboard are shed as a Broken Down Vehicle marker on the
+            // map (capturable/towable) rather than vanishing with the eliminated unit.
+            self.shed_broken_vehicles(id);
             if let Some(u) = self.units.get_mut(&id) {
                 lost += u.total_toe();
                 match &mut u.composition {

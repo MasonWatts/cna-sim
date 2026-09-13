@@ -409,6 +409,9 @@ pub enum Command {
     /// §41.5 Artillery Barrage Points column for structures; §12.54 uses the Bomb column with Raw
     /// Barrage Points for Supply Dumps and Air Facilities.
     BarrageFacility { barragers: Vec<UnitId>, target: HexCoord, facility: FacilityTarget },
+    /// §21.6: tow the Broken Down Vehicle marker at index `marker` one hex to adjacent `to`
+    /// (Repair Phase; 10 CP budget, 20 with a co-located Tank Delivery Squadron).
+    TowBrokenVehicle { marker: usize, to: HexCoord },
     /// §30.4: (Axis) plan the once-per-game Italian Chariot raid on Alexandria (from July 1941).
     PlanChariotRaid,
     /// §30.44: (Axis) execute the planned Chariot raid — resolves the §30.46 table and damages
@@ -631,6 +634,7 @@ impl Command {
             Command::AntiArmor { .. } => &["§14"],
             Command::Barrage { .. } => &["§12.6", "§12.23"],
             Command::BarrageFacility { .. } => &["§12.5", "§12.53", "§12.54"],
+            Command::TowBrokenVehicle { .. } => &["§21.6", "§21.63", "§22.65"],
             Command::PlanChariotRaid => &["§30.41", "§30.42"],
             Command::ExecuteChariotRaid => &["§30.44", "§30.46"],
             Command::OffShoreBombard { .. } => &["§30.2"],
@@ -832,6 +836,8 @@ pub enum CommandOutcome {
     AntiTankAugmented(u32),
     /// §12.5: an artillery barrage against a facility resolved with this raw table result.
     FacilityBarrage { result: i32 },
+    /// §21.6: a Broken Down Vehicle marker was towed one hex.
+    BrokenVehicleTowed,
     /// §30.4: the Chariot raid was planned.
     ChariotRaidPlanned,
     /// §30.44: the Chariot raid was executed, inflicting `damage` Gun-Rating Damage Points.
@@ -1042,6 +1048,9 @@ pub enum CommandError {
     InReserve,
     /// §8.44: a motorized unit or AFV may not Close Assault a defender in a Salt Marsh hex.
     SaltMarshAssault,
+    /// §21.6: the Broken Down Vehicle marker could not be towed (bad index, non-adjacent, enemy-
+    /// controlled destination, prohibited terrain, or the tow budget is exhausted).
+    TowFailed,
     /// §30.4: the Chariot raid cannot be planned/executed now (already used, wrong window, not yet
     /// planned, or the seven-stage delay has not elapsed).
     ChariotRaidIllegal,
@@ -1483,6 +1492,14 @@ impl GameState {
             }
             Command::BarrageFacility { barragers, target, facility } => {
                 self.cmd_barrage_facility(&barragers, target, facility)
+            }
+            Command::TowBrokenVehicle { marker, to } => {
+                self.require_phase(Phase::Repair)?;
+                if self.tow_broken_vehicle(marker, to) {
+                    Ok(CommandOutcome::BrokenVehicleTowed)
+                } else {
+                    Err(CommandError::TowFailed)
+                }
             }
             Command::PlanChariotRaid => {
                 if self.active_player != Side::Axis {
@@ -5779,6 +5796,9 @@ impl GameState {
                 }
             }
         }
+        // §21.52: a moving battalion-or-larger combat unit captures adjacent unprotected enemy
+        // Broken Down Vehicle markers.
+        self.capture_broken_vehicles(unit);
         // §8.62/§8.67: recompute Contact from ZOC and clear any engagement this move broke off.
         self.refresh_contact_status();
         Ok(CommandOutcome::Moved)
