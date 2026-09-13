@@ -6115,6 +6115,16 @@ mod tests {
         let cameron = ret("4th Indian Division", "2nd Camerons").unwrap();
         assert_eq!(cameron.return_at, Some((30, 1)));
         assert_eq!(cameron.withdrawal_after_return, None);
+
+        // Cross-formation single-cycle returns.
+        let aus9 = ret("9th Australian Division", "9th Australian Div HQ").unwrap();
+        assert_eq!((aus9.return_at, aus9.withdrawal_after_return), (Some((86, 3)), Some((108, 1))));
+        let wyork = ret("5th Indian Division", "2nd West Yorkshires").unwrap(); // 9th Ind Bde
+        assert_eq!((wyork.return_at, wyork.withdrawal_after_return), (Some((75, 3)), Some((100, 2))));
+        let bde150 = ret("50th Infantry Division", "150th Infantry Bde HQ").unwrap();
+        assert_eq!(bde150.return_at, Some((58, 3)));
+        let rtr42 = ret("1st Army Tank Brigade", "42nd Royal Tank Regt").unwrap();
+        assert_eq!(rtr42.return_at, Some((99, 1)));
     }
 
     #[test]

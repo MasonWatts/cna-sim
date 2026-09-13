@@ -2624,6 +2624,8 @@ impl GameState {
         true
     }
 
+    // (single-return model: a unit withdraws once, returns once, and may re-withdraw once — this
+    // covers every [4.43a] cycle except the 2nd NZ Division's double cycle, noted in AU24.)
     /// §20.8 ("Rtn"): return to play any withdrawn unit whose scheduled return `(Game-Turn, stage)`
     /// has been reached. It re-enters at Cairo, restored to `return_toe` (else its maximum, §20.8
     /// legend), cleared of `withdrawn`, and carrying any "[again]" re-withdrawal deadline. Returns the
