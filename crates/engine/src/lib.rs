@@ -1837,6 +1837,77 @@ mod tests {
         assert_eq!(out.toe_removed, 0);
     }
 
+    #[test]
+    fn barrage_truck_casualties_12_46() {
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, TruckPoints, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(
+            Nationality::Commonwealth,
+            include_str!("../../../data/reference/unit-characteristics/commonwealth.ron"),
+        )
+        .unwrap();
+        refs.load_weapons_systems(
+            Nationality::Commonwealth,
+            include_str!("../../../data/reference/weapons/commonwealth.ron"),
+        )
+        .unwrap();
+        refs.load_barrage_crt(include_str!("../../../data/reference/crt/barrage.ron"))
+            .unwrap();
+        let mut g = GameState::new(refs, 1);
+
+        let arty = g.spawn_unit(
+            Nationality::Commonwealth,
+            "x",
+            "arty",
+            Composition::Weapons {
+                groups: vec![WeaponGroup { system: "25-pounder Gun".into(), count: 30 }],
+            },
+        );
+        let clear = HexCoord::new(0, 0);
+        g.map.set_hex(clear, HexTerrain::Clear);
+
+        // Target with NO trucks: the §12.46 truck roll is skipped entirely.
+        let no_trucks = g.spawn_unit(
+            Nationality::Commonwealth,
+            "h",
+            "inf",
+            Composition::Organic { current_toe: 10 },
+        );
+        g.unit_mut(no_trucks).unwrap().location =
+            Some(crate::state::unit::UnitLocation::OnMap(clear));
+        let out = g.resolve_barrage_with_dice(&[arty], no_trucks, 21);
+        assert_eq!(out.trucks_removed, 0);
+
+        // Target WITH trucks: the separate Truck-column roll may destroy 0..=2 Truck Points,
+        // distributed evenly. The removed count must match the actual drop in the truck pool.
+        let with_trucks = g.spawn_unit(
+            Nationality::Commonwealth,
+            "h",
+            "inf",
+            Composition::Organic { current_toe: 10 },
+        );
+        {
+            let u = g.unit_mut(with_trucks).unwrap();
+            u.location = Some(crate::state::unit::UnitLocation::OnMap(clear));
+            u.trucks = TruckPoints { light: 4, medium: 4, heavy: 4 };
+        }
+        let before: u32 = {
+            let t = &g.unit(with_trucks).unwrap().trucks;
+            t.light + t.medium + t.heavy
+        };
+        let out = g.resolve_barrage_with_dice(&[arty], with_trucks, 21);
+        let after: u32 = {
+            let t = &g.unit(with_trucks).unwrap().trucks;
+            t.light + t.medium + t.heavy
+        };
+        assert!(out.trucks_removed <= 2);
+        assert_eq!(before - after, out.trucks_removed);
+    }
+
     fn close_assault_refs() -> ReferenceData {
         let mut refs = ReferenceData::new();
         refs.load_terrain(TERRAIN_RON).unwrap();

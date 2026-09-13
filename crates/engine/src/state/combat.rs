@@ -394,6 +394,8 @@ pub struct BarrageOutcome {
     pub terrain_shift: i32,
     /// TOE Strength Points removed from the target.
     pub toe_removed: u32,
+    /// §12.46: first-line Truck Points destroyed by the separate Truck-column roll.
+    pub trucks_removed: u32,
     /// Whether the target became Pinned.
     pub pinned: bool,
 }
@@ -485,6 +487,35 @@ impl GameState {
                 u.status.pinned = true;
             }
         }
+        // §12.46: a separate roll on the Trucks column determines how many first-line Truck
+        // Points attached to the target are destroyed (only if any are present). Guns/Trucks
+        // are never Pinned, so only the point loss applies.
+        let has_trucks = self
+            .units
+            .get(&target)
+            .map(|u| u.trucks.light + u.trucks.medium + u.trucks.heavy > 0)
+            .unwrap_or(false);
+        let trucks_removed = if has_trucks {
+            let truck_dice = self.rng.two_dice_raw();
+            let truck_result = self
+                .reference
+                .barrage_crt
+                .as_ref()
+                .map(|crt| crt.result_shifted(BarrageTargetClass::Truck, actual, truck_dice, 0))
+                .unwrap_or(BarrageResult::NoEffect);
+            let loss = match truck_result {
+                BarrageResult::One => 1,
+                BarrageResult::Two => 2,
+                _ => 0,
+            };
+            if loss > 0 {
+                self.remove_trucks(target, loss)
+            } else {
+                0
+            }
+        } else {
+            0
+        };
         BarrageOutcome {
             dice,
             actual_points: actual,
@@ -492,8 +523,38 @@ impl GameState {
             result,
             terrain_shift,
             toe_removed,
+            trucks_removed,
             pinned: pin,
         }
+    }
+
+    /// Remove up to `n` first-line Truck Points from a unit, distributing losses as evenly as
+    /// possible among truck types (§12.46), returning how many were removed.
+    fn remove_trucks(&mut self, target: UnitId, n: u32) -> u32 {
+        let Some(u) = self.units.get_mut(&target) else {
+            return 0;
+        };
+        let mut removed = 0;
+        for _ in 0..n {
+            // Pick the currently-largest non-empty type so losses stay even.
+            let t = &mut u.trucks;
+            let pick = [
+                (t.heavy, 2u8),
+                (t.medium, 1u8),
+                (t.light, 0u8),
+            ]
+            .into_iter()
+            .filter(|(c, _)| *c > 0)
+            .max_by_key(|(c, _)| *c);
+            match pick {
+                Some((_, 2)) => t.heavy -= 1,
+                Some((_, 1)) => t.medium -= 1,
+                Some((_, 0)) => t.light -= 1,
+                _ => break,
+            }
+            removed += 1;
+        }
+        removed
     }
 
     /// §12.33 terrain column shift for a barrage: the target hex's Barrage `CombatMod`

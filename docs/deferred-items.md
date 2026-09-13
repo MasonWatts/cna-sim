@@ -238,7 +238,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [x] **AU12 — §15.88/§15.15 assaulted out-of-ammo / ≤−17-cohesion defenders auto-surrender.** cmd_close_assault surrenders such defenders before resolution (en masse if all); the rest defend. Test assaulted_defender_auto_surrenders_15_88.
 - [x] **AU13 — §12.1/§12.11–16 Gun Forward/Back declaration** command + its barrage/coordination
   consequences (enum exists, feeds §15.84 vulnerability, but defaults Back with no setter).
-- [ ] **AU14 — §12.46 barrage rolls the Trucks column** (truck casualties; a hit motorized unit loses
+- [x] **AU14 — §12.46 barrage rolls the Trucks column** (truck casualties; a hit motorized unit loses
   transporting trucks).
 - [ ] **AU15 — §12.5/§12.52–55 artillery barrage vs Facilities** (cities/forts/roads/rails/dumps/
   airfields) — land barrage targets a UnitId only.
