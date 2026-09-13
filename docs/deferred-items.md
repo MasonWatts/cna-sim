@@ -224,8 +224,8 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   §10.36 forced 3-hex retreat/3 DP fallback. ZOC projection/Contact/Engaged computed but never obligates combat.
 - [ ] **AU5 — §18.2 Reserve I/II effects** (Reserve I ≤1 hex, Reserve II no move; CP release caps;
   §18.24 auto-DP; two-hex proximity exception). `ReserveStatus` stored but movement/reaction/release ignore it.
-- [ ] **AU6 — §12.44 Pinned** blocks Move/AntiArmor/CloseAssault (currently only RBA/Reaction check it).
-- [ ] **AU7 — §6.26 cohesion ≤ −26** blocks Move/CloseAssault/AntiArmor + adjacency auto-surrender
+- [x] **AU6 — §12.44 Pinned** blocks Move/AntiArmor/CloseAssault (currently only RBA/Reaction check it).
+- [x] **AU7 — §6.26 cohesion ≤ −26** blocks Move/CloseAssault/AntiArmor + adjacency auto-surrender
   (currently only RBA/Reaction check the −26 gate; no auto-surrender).
 
 ### Combat detail (§12–§15, §23, §26)

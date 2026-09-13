@@ -8358,6 +8358,58 @@ mod tests {
     }
 
     #[test]
+    fn pinned_and_disorganized_gates_6_26_12_44() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::rules::movement::MoveMode;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        for c in 0..4 {
+            g.map.set_hex(HexCoord::new(c, 0), HexTerrain::Clear);
+        }
+        let u = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 4 });
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(0, 0)));
+
+        let mv = Command::MoveStep { unit: u, to: HexCoord::new(1, 0), mode: MoveMode::NonMotorized };
+        let ca = Command::CloseAssault { attackers: vec![u], target: HexCoord::new(1, 0) };
+        let aa = Command::AntiArmor { attackers: vec![u], target_hex: HexCoord::new(1, 0), withheld: vec![] };
+        // §12.44 Pinned bars move / anti-armor / close-assault.
+        g.unit_mut(u).unwrap().status.pinned = true;
+        assert_eq!(g.dry_run(&mv), Err(CommandError::Pinned));
+        assert_eq!(g.dry_run(&ca), Err(CommandError::Pinned));
+        assert_eq!(g.dry_run(&aa), Err(CommandError::Pinned));
+        // §6.26 Disorganized (≤ −26) bars the same.
+        g.unit_mut(u).unwrap().status.pinned = false;
+        g.unit_mut(u).unwrap().cohesion = -26;
+        assert_eq!(g.dry_run(&mv), Err(CommandError::Disorganized));
+        assert_eq!(g.dry_run(&ca), Err(CommandError::Disorganized));
+
+        // §6.26 auto-surrender: a mover ending adjacent to a Disorganized enemy makes it surrender.
+        let axis = g.spawn_unit(Nationality::Italian, "p", "disorg", Composition::Organic { current_toe: 5 });
+        g.unit_mut(axis).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(1, 0)));
+        g.unit_mut(axis).unwrap().cohesion = -26;
+        let mover = g.spawn_unit(Nationality::Commonwealth, "h", "mover", Composition::Organic { current_toe: 4 });
+        {
+            let m = g.unit_mut(mover).unwrap();
+            m.location = Some(UnitLocation::OnMap(HexCoord::new(3, 0)));
+            m.fuel = 1000;
+        }
+        // Move to (2,0), which is adjacent to the Disorganized Axis unit at (1,0).
+        assert!(g.apply(Command::MoveStep { unit: mover, to: HexCoord::new(2, 0), mode: MoveMode::NonMotorized }).is_ok());
+        assert!(g.unit(axis).unwrap().status.surrendered, "§6.26 adjacency auto-surrender");
+        assert_eq!(g.unit(axis).unwrap().total_toe(), 0);
+    }
+
+    #[test]
     fn captured_supply_dump_49_50_51() {
         use crate::reference::units::Side;
         use crate::state::game::{Commodities, GameState};

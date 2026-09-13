@@ -1173,7 +1173,7 @@ impl GameState {
 
     /// A side Surrenders: eliminate every unit's Strength Points and flag it; return the
     /// total TOE lost (all taken prisoner).
-    fn surrender_units(&mut self, units: &[UnitId]) -> u32 {
+    pub(crate) fn surrender_units(&mut self, units: &[UnitId]) -> u32 {
         let mut lost = 0;
         for &id in units {
             // §28.11/§28.3: infantry TOE → Prisoner Points, weapons TOE → captured equipment, taken

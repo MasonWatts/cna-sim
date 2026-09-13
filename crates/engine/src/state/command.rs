@@ -947,6 +947,8 @@ pub enum CommandError {
     ReactIntoZoc,
     /// §8.53b/§8.54: a faster, large-enough adjacent enemy pins the unit (no reaction).
     Pinned,
+    /// §6.26: a unit with a Cohesion Level of −26 or worse may not move, attack, or defend.
+    Disorganized,
     /// An off-map movement step failed (§8.8).
     OffMap(crate::state::game::OffMapError),
     /// §56.2: the convoy could not be planned (lane unavailable, over the allowable tonnage, or a
@@ -3807,6 +3809,23 @@ impl GameState {
         }
     }
 
+    /// §12.44 Pinned / §6.26 Disorganized (Cohesion ≤ −26): such a unit may not fire anti-armor or
+    /// close-assault. (Pinned units may still barrage — §12.44 lists only move / anti-armor / close
+    /// assault — so barrage checks the −26 gate on its own.)
+    fn require_can_attack(&self, attackers: &[UnitId]) -> Result<(), CommandError> {
+        for &a in attackers {
+            if let Some(u) = self.unit(a) {
+                if u.status.pinned {
+                    return Err(CommandError::Pinned);
+                }
+                if u.cohesion <= -26 {
+                    return Err(CommandError::Disorganized);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// The common side of the attacking units (they must all be one side).
     fn attackers_side(&self, attackers: &[UnitId]) -> Result<Side, CommandError> {
         let mut sides = attackers
@@ -3860,6 +3879,10 @@ impl GameState {
         }
         self.require_units_exist(attackers)?;
         self.require_no_noncombat_hq(attackers)?;
+        // §6.26: a Disorganized (≤ −26) unit may not attack. (Pinned units *may* barrage, §12.44.)
+        if attackers.iter().any(|&a| self.unit(a).is_some_and(|u| u.cohesion <= -26)) {
+            return Err(CommandError::Disorganized);
+        }
         let side = self.attackers_side(attackers)?;
         // §12.31: artillery barrages an *adjacent* occupied hex.
         self.require_all_adjacent(attackers, target)?;
@@ -3917,6 +3940,8 @@ impl GameState {
         }
         self.require_units_exist(attackers)?;
         self.require_no_noncombat_hq(attackers)?;
+        // §12.44 Pinned / §6.26 Disorganized (≤ −26): may not fire anti-armor.
+        self.require_can_attack(attackers)?;
         if self.map.terrain(target_hex).is_none() {
             return Err(CommandError::DestinationOffMap);
         }
@@ -3971,6 +3996,8 @@ impl GameState {
         }
         self.require_units_exist(attackers)?;
         self.require_no_noncombat_hq(attackers)?;
+        // §12.44 Pinned / §6.26 Disorganized (≤ −26): may not close-assault.
+        self.require_can_attack(attackers)?;
         // §52.51/52: a water-deprived unit may not engage in offensive close assault.
         if attackers.iter().any(|&a| self.unit_water_deprived(a)) {
             return Err(CommandError::NoWater);
@@ -4984,6 +5011,16 @@ impl GameState {
         if self.unit(unit).expect("checked").moved_into_zoc {
             return Err(CommandError::MustStopInZoc);
         }
+        // §12.44 Pinned / §6.26 Disorganized (cohesion ≤ −26): may not voluntarily move.
+        {
+            let u = self.unit(unit).expect("checked");
+            if u.status.pinned {
+                return Err(CommandError::Pinned);
+            }
+            if u.cohesion <= -26 {
+                return Err(CommandError::Disorganized);
+            }
+        }
         if !from.is_adjacent(to) {
             return Err(CommandError::NotAdjacent);
         }
@@ -5178,6 +5215,26 @@ impl GameState {
         // §8.14: having entered an enemy ZOC, the unit must stop for the rest of the stage.
         if to_zoc {
             self.unit_mut(unit).expect("checked").moved_into_zoc = true;
+        }
+        // §6.26: a Disorganized enemy unit (Cohesion ≤ −26) that the mover is now adjacent to
+        // surrenders, regardless of the mover's size.
+        if self.is_combat_unit(unit) {
+            let mover_side = self.unit(unit).map(|u| u.nationality.side());
+            if let Some(ms) = mover_side {
+                let surrender: Vec<UnitId> = to
+                    .neighbors()
+                    .into_iter()
+                    .flat_map(|h| self.units_in_hex(h))
+                    .filter(|&e| {
+                        self.units.get(&e).is_some_and(|u| {
+                            u.nationality.side() != ms && u.total_toe() > 0 && u.cohesion <= -26
+                        })
+                    })
+                    .collect();
+                if !surrender.is_empty() {
+                    self.surrender_units(&surrender);
+                }
+            }
         }
         // §8.62/§8.67: recompute Contact from ZOC and clear any engagement this move broke off.
         self.refresh_contact_status();
