@@ -222,8 +222,10 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 ### ZOC / reserve / status gates
 - [ ] **AU4 — §10.3/§10.31–36 mandatory attack of enemy ZOC-exerting hexes** + Holding-Off Barrage +
   §10.36 forced 3-hex retreat/3 DP fallback. ZOC projection/Contact/Engaged computed but never obligates combat.
-- [ ] **AU5 — §18.2 Reserve I/II effects** (Reserve I ≤1 hex, Reserve II no move; CP release caps;
-  §18.24 auto-DP; two-hex proximity exception). `ReserveStatus` stored but movement/reaction/release ignore it.
+- [~] **AU5 — §18.2 Reserve I/II effects.** §18.22 Reserve II "never moves" enforced in the move gate
+  (CommandError::InReserve; test reserve_ii_may_not_move_18_22). Remaining: Reserve I's one-hex/CP-free
+  move and the §18.23–24 release-segment restrictions (CP-cap, one-assault, auto-DP, two-hex proximity)
+  need a Reserve Release Segment phase + per-stage moved-hex tracking, which the phase structure lacks.
 - [x] **AU6 — §12.44 Pinned** blocks Move/AntiArmor/CloseAssault (currently only RBA/Reaction check it).
 - [x] **AU7 — §6.26 cohesion ≤ −26** blocks Move/CloseAssault/AntiArmor + adjacency auto-surrender
   (currently only RBA/Reaction check the −26 gate; no auto-surrender).

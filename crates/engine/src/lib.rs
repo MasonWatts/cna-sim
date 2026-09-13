@@ -565,6 +565,39 @@ mod tests {
     }
 
     #[test]
+    fn reserve_ii_may_not_move_18_22() {
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, ReserveStatus};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let a = HexCoord::new(0, 0);
+        let b = HexCoord::new(1, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+        g.map.set_hex(b, HexTerrain::Clear);
+        let u = g.spawn_unit(Nationality::Commonwealth, "h", "res", Composition::Organic { current_toe: 5 });
+        g.unit_mut(u).unwrap().location = Some(crate::state::unit::UnitLocation::OnMap(a));
+        g.phase = Phase::MovementAndCombat;
+
+        // §18.22: a Reserve II unit may never move.
+        g.unit_mut(u).unwrap().reserve = ReserveStatus::ReserveII;
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: u, to: b, mode: MoveMode::NonMotorized }),
+            Err(CommandError::InReserve)
+        );
+        // Cleared reserve: the move is allowed again.
+        g.unit_mut(u).unwrap().reserve = ReserveStatus::None;
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: u, to: b, mode: MoveMode::NonMotorized }),
+            Ok(CommandOutcome::Moved)
+        );
+    }
+
+    #[test]
     fn over_cpa_movement_earns_disorganization() {
         use crate::reference::terrain::{Fixed, HexTerrain};
         use crate::rules::movement::MoveMode;

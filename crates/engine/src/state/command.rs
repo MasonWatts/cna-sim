@@ -964,6 +964,8 @@ pub enum CommandError {
     /// §13.28: a unit that Retreated Before Assault may not *direct* anti-armor fire (though it
     /// remains susceptible to it).
     CannotDirectAntiArmor,
+    /// §18.22: a Reserve II unit may never move (until released in a Reserve Release Segment).
+    InReserve,
     /// An off-map movement step failed (§8.8).
     OffMap(crate::state::game::OffMapError),
     /// §56.2: the convoy could not be planned (lane unavailable, over the allowable tonnage, or a
@@ -5136,6 +5138,12 @@ impl GameState {
             }
             if u.cohesion <= -26 {
                 return Err(CommandError::Disorganized);
+            }
+            // §18.22: a Reserve II unit may never move. (A Reserve I unit's one-hex/CP-free move
+            // and the §18.23–24 release-segment caps need the Reserve Release Segment phase and
+            // per-stage move tracking — see AU5 in docs/deferred-items.md.)
+            if u.reserve == crate::state::unit::ReserveStatus::ReserveII {
+                return Err(CommandError::InReserve);
             }
         }
         if !from.is_adjacent(to) {
