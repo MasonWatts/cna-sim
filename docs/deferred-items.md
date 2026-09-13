@@ -270,7 +270,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [-] **AU30 — §8.17 150% CPA hard ceiling.** Deferred: a hard ceiling blocks a single expensive
   step (escarpment/sandstorm) that current cost-mechanics tests rely on, and likely needs a §8.16
   minimum-move exception; low value vs. the §6.21 over-CPA Disorganization already modeled.
-- [ ] **AU31 — §9.25 ≤ five 0-Stacking-Point companies/batteries per hex** (unlimited only in a Major City).
+- [x] **AU31 — §9.25 ≤ five independent 0-SP companies/batteries per hex** (unlimited in a Major City; attached units ride their parent). Enforced in move_step_plan. Test zero_sp_company_stacking_cap_9_25.
 - [ ] **AU32 — §9.16 garrison "G" units stack free in their assigned city; AA/Flak free in Major
   Cities and on airfields.**
 - [ ] **AU33 — §8.44/§8.45 Salt Marsh / Desert unit-subtype entry restrictions** (light-vehicle-only
@@ -297,7 +297,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   needs a cross-nationality captured-plane pool.
 - [x] **AU43 — §49.19/§50.16/§51.16 captured supply dumps** change ownership on overrun + captured-usable
   fraction (fuel non-denominational; ⅓ ammo, ½ stores) — dumps currently never change hands.
-- [ ] **AU44 — §56.16 bombed convoy's own flak** (= lane tonnage ÷ 1000) fires back at attacking CW bombers.
+- [-] **AU44 — §56.16 convoy flak fires back.** The flak-point formula exists (rules::naval::convoy_flak_points); applying the losses to the attacking bombers needs a squadron ref, but the convoy-bombing command is numeric/abstracted — within the owner-ruled air-combat abstraction (B6–B8).
 - [-] **AU45 — §55.17 Bizerta annual 2d6=12 roll.** Deferred: the port's `available_from_gt` isn't
   wired into runtime `Port::is_operable` (which is just efficiency>0), so both the GT-35 gate and the
   annual roll need a Port open-flag set at turn start; low impact (Tunis-box late-war edge port).

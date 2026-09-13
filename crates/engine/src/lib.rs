@@ -8410,6 +8410,47 @@ mod tests {
     }
 
     #[test]
+    fn zero_sp_company_stacking_cap_9_25() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, OrgSize, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let target = HexCoord::new(1, 0);
+        g.map.set_hex(HexCoord::new(0, 0), HexTerrain::Clear);
+        g.map.set_hex(target, HexTerrain::Clear);
+        // Five independent 0-SP companies already in the target hex.
+        for _ in 0..5 {
+            let c = g.spawn_unit(Nationality::Commonwealth, "h", "coy", Composition::Organic { current_toe: 1 });
+            let u = g.unit_mut(c).unwrap();
+            u.org_size = OrgSize::Company;
+            u.location = Some(UnitLocation::OnMap(target));
+        }
+        let mover = g.spawn_unit(Nationality::Commonwealth, "h", "coy6", Composition::Organic { current_toe: 1 });
+        {
+            let u = g.unit_mut(mover).unwrap();
+            u.org_size = OrgSize::Company;
+            u.location = Some(UnitLocation::OnMap(HexCoord::new(0, 0)));
+            u.fuel = 1000;
+        }
+        let mv = Command::MoveStep { unit: mover, to: target, mode: MoveMode::NonMotorized };
+        // §9.25: a sixth 0-SP company can't stack in a non-major-city hex.
+        assert_eq!(g.dry_run(&mv), Err(CommandError::StackingLimitExceeded));
+        // Unlimited in a Major City.
+        g.map.set_hex(target, HexTerrain::MajorCity);
+        assert!(g.dry_run(&mv).is_ok(), "§9.25 no cap in a Major City");
+    }
+
+    #[test]
     fn assaulted_defender_auto_surrenders_15_88() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;

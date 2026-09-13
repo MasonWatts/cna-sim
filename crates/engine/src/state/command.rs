@@ -5163,6 +5163,27 @@ impl GameState {
                 return Err(CommandError::StackingLimitExceeded);
             }
         }
+        // §9.25: at most five independent 0-Stacking-Point companies/batteries may stack in one hex
+        // (unlimited only in a Major City). Attached/assigned 0-SP units ride their parent and don't
+        // count. Applies when the mover is itself such a unit.
+        let mover_zero_sp_company = self.effective_stacking_points(unit) == 0
+            && self.effective_org_size(unit) == crate::state::unit::OrgSize::Company
+            && self.unit(unit).is_some_and(|u| u.attached_parent.is_none());
+        if mover_zero_sp_company && to_terrain != crate::reference::terrain::HexTerrain::MajorCity {
+            let existing = self
+                .units_in_hex(to)
+                .into_iter()
+                .filter(|&o| {
+                    o != unit
+                        && self.effective_stacking_points(o) == 0
+                        && self.effective_org_size(o) == crate::state::unit::OrgSize::Company
+                        && self.unit(o).is_some_and(|u| u.attached_parent.is_none())
+                })
+                .count();
+            if existing >= 5 {
+                return Err(CommandError::StackingLimitExceeded);
+            }
+        }
         // §52.51: a vehicle (or truck-motorized unit) deprived of Water may not move.
         if self.unit_water_deprived(unit) {
             let is_vehicle = matches!(
