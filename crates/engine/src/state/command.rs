@@ -1263,6 +1263,9 @@ impl GameState {
                 if self.storm_at(hex) {
                     return Err(CommandError::ConstructionFailed); // §29.42/§29.54
                 }
+                if !self.charge_construction_water(hex, &builders) {
+                    return Err(CommandError::ConstructionFailed); // §24.21 hot-weather water
+                }
                 if self.begin_fortification(&builders, hex, level) {
                     Ok(CommandOutcome::ConstructionStarted)
                 } else {
@@ -1274,6 +1277,9 @@ impl GameState {
                 self.require_units_exist(&builders)?;
                 if self.storm_at(a) || self.storm_at(b) {
                     return Err(CommandError::ConstructionFailed); // §29.42/§29.54
+                }
+                if !self.charge_construction_water(a, &builders) {
+                    return Err(CommandError::ConstructionFailed); // §24.21 hot-weather water
                 }
                 if self.begin_railroad(&builders, a, b) {
                     Ok(CommandOutcome::ConstructionStarted)
@@ -1326,6 +1332,9 @@ impl GameState {
                 self.require_units_exist(&[builder])?;
                 if self.storm_at(a) || self.storm_at(b) {
                     return Err(CommandError::ConstructionFailed); // §29.42/§29.54
+                }
+                if !self.charge_construction_water(a, &[builder]) {
+                    return Err(CommandError::ConstructionFailed); // §24.21 hot-weather water
                 }
                 if self.build_road(builder, a, b) {
                     Ok(CommandOutcome::ConstructionStarted)

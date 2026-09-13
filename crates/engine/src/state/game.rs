@@ -4882,6 +4882,36 @@ impl GameState {
         matches!(self.weather_at(coord), Weather::Sandstorm | Weather::Rainstorm)
     }
 
+    /// §24.21/§29.32: during Hot Weather a construction site needs 10 Water Points (beyond the
+    /// builders' own requirements). Returns `false` if the site is Hot and the builders can't
+    /// pool 10 Water; otherwise deducts the 10 (greedily across builders) and returns `true`.
+    /// A site in Normal/storm weather has no extra water requirement.
+    pub(crate) fn charge_construction_water(&mut self, site: HexCoord, builders: &[UnitId]) -> bool {
+        if self.weather_at(site) != Weather::Hot {
+            return true;
+        }
+        let available: u32 = builders
+            .iter()
+            .filter_map(|id| self.units.get(id))
+            .map(|u| u.water)
+            .sum();
+        if available < 10 {
+            return false;
+        }
+        let mut owed = 10u32;
+        for id in builders {
+            if owed == 0 {
+                break;
+            }
+            if let Some(u) = self.units.get_mut(id) {
+                let take = u.water.min(owed);
+                u.water -= take;
+                owed -= take;
+            }
+        }
+        true
+    }
+
     /// The weather in the map section containing `coord` (§29.1); Normal if unaffected.
     pub fn weather_at(&self, coord: HexCoord) -> Weather {
         let section = crate::state::map::section_char_of_col(coord.col);

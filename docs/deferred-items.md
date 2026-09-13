@@ -286,7 +286,7 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [x] **AU38 — §29.58 rainstorm bars vehicle/motorized units from delta hexes.**
 - [x] **AU39 — §29.42/§29.54 no construction in a sandstorm/rainstorm hex** (BuildRoad/BuildRailroad
   apply no weather check; only field repair is gated).
-- [ ] **AU40 — §29.32 construction sites need water rations in hot weather.**
+- [x] **AU40 — §29.32 construction sites need water rations in hot weather.**
 
 ### Air ↔ land, logistics, naval (§35, §49–56)
 - [x] **AU41 — §35.12 SGSU overrun by advancing land units.** move_counter now eliminates an enemy

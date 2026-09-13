@@ -6066,6 +6066,36 @@ mod tests {
     }
 
     #[test]
+    fn construction_hot_weather_water_24_21() {
+        use crate::state::game::{GameState, Weather};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let a = HexCoord::new(0, 0); // section A
+        g.map.set_hex(a, HexTerrain::Clear);
+        let b = g.spawn_unit(Nationality::Commonwealth, "h", "eng", Composition::Organic { current_toe: 4 });
+        g.unit_mut(b).unwrap().location = Some(UnitLocation::OnMap(a));
+
+        // Normal weather: no extra water requirement, nothing deducted.
+        g.unit_mut(b).unwrap().water = 5;
+        assert!(g.charge_construction_water(a, &[b]));
+        assert_eq!(g.unit(b).unwrap().water, 5);
+
+        // Hot weather, < 10 Water pooled: construction site can't be supplied → false, unchanged.
+        g.weather_by_section.insert('A', Weather::Hot);
+        assert!(!g.charge_construction_water(a, &[b]));
+        assert_eq!(g.unit(b).unwrap().water, 5);
+
+        // Hot weather with ≥ 10 Water: succeeds and deducts exactly 10.
+        g.unit_mut(b).unwrap().water = 12;
+        assert!(g.charge_construction_water(a, &[b]));
+        assert_eq!(g.unit(b).unwrap().water, 2);
+    }
+
+    #[test]
     fn supplies_evaporate() {
         use crate::reference::units::Side;
         use crate::state::game::{Commodities, GameState, SupplyDump};
