@@ -272,7 +272,13 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   co-located trained Gun Replacement pools — §19.83 initial ≥3, §19.81 ≤6, §19.86 one type,
   §19.82 all-other-AT-units-≥67% gate (AntiTankReadinessGate); §19.85 the HQ derives the gun's CPA
   in unit_cpa. Fully rules-specified (no OB data needed). Test ad_hoc_axis_anti_tank_battery_19_8.
-- [ ] **AU21 — §19.9/§19.91–98 CW battalion AT augmentation** from GT-75 / Apr 1942.
+- [x] **AU21 — §19.9/§19.91–98 CW battalion AT augmentation.** New Command::AugmentBattalionAntiTank
+  {battalion,gun_system,count}: from GT 75 a CW infantry battalion with CPA ≥10 and Off/Def Close
+  Assault 1/2 or 2/2 (§19.92) may take AT gun TOE — 2 points if the chart `+` motorized-capable flag
+  is set, else 1 (§19.94) — drawn from co-located trained Gun Replacement pools, gated by §19.96
+  (parent AT regiments at max). Modeled via a new `Unit.anti_tank_augment` field folded into
+  raw_strength (a "second weapons system", §19.93) that leaves TOE/shell (§19.98) and CPA (§19.97)
+  unchanged. Fully rules-specified. Test commonwealth_battalion_anti_tank_19_9.
 - [x] **AU22 — §19.72/§19.73 battle-group forming composition caps** (German ≤4 bn/≤1 tank/≤2 inf;
   Italian ≤3 bn/≤2 inf/≤1 armor, ≤2 in play) — pool exists, limits unenforced.
 - [ ] **AU23 — §20.5/§20.51–55 upgrade Armored-Car/Recce to newer vehicles** (Stuarts etc.; TOE change;

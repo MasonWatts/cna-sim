@@ -237,6 +237,12 @@ pub struct Unit {
     pub formation_role: FormationRole,
 
     pub composition: Composition,
+    /// §19.9: Anti-Tank gun TOE points added to a Commonwealth infantry battalion (a "second
+    /// weapons system", §19.93). Held alongside the Organic infantry TOE — it contributes its
+    /// weapon-system ratings (chiefly Anti-Armor) but does not affect shell determinations (§19.98)
+    /// and inherits the infantry unit's CPA (§19.97). `None` for everything else.
+    #[serde(default)]
+    pub anti_tank_augment: Option<WeaponGroup>,
 
     // Dynamic state (path-dependent primitives).
     pub cohesion: i32,
@@ -354,6 +360,7 @@ impl Unit {
             is_armor: false,
             formation_role: FormationRole::Normal,
             composition,
+            anti_tank_augment: None,
             cohesion: 0,
             cp_expended: Fixed(0),
             combat_cp: Fixed(0),
@@ -408,7 +415,17 @@ impl Unit {
                     .and_then(|m| m.get(&self.id_code))
                     .and_then(|uc| organic_rating(uc, kind))
                     .unwrap_or(0);
-                rating * (*current_toe as i32)
+                // §19.9/§19.93: a Commonwealth infantry battalion's added Anti-Tank gun TOE (a
+                // second weapons system) contributes its own weapon-system ratings.
+                let augment = self.anti_tank_augment.as_ref().map_or(0, |ag| {
+                    refs.weapons_systems
+                        .get(&self.nationality)
+                        .and_then(|m| m.get(&ag.system))
+                        .and_then(|ws| weapon_rating(ws, kind))
+                        .unwrap_or(0)
+                        * (ag.count as i32)
+                });
+                rating * (*current_toe as i32) + augment
             }
             Composition::Weapons { groups } => {
                 let table = refs.weapons_systems.get(&self.nationality);

@@ -1679,6 +1679,62 @@ mod tests {
     }
 
     #[test]
+    fn commonwealth_battalion_anti_tank_19_9() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase, ReplacementClass};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, OrgSize, RatingKind, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        g.active_player = Side::Commonwealth;
+        let a = HexCoord::new(0, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+
+        // "l" = CPA 10 + motorized-capable, CA 2/2 → eligible, up to 2 AT points (§19.94).
+        let bn = g.spawn_unit(Nationality::Commonwealth, "l", "mot inf bn", Composition::Organic { current_toe: 6 });
+        g.unit_mut(bn).unwrap().org_size = OrgSize::Battalion;
+        g.unit_mut(bn).unwrap().location = Some(UnitLocation::OnMap(a));
+        let pool = g.add_replacement_points(ReplacementClass::Gun, 10, Side::Commonwealth, Some(UnitLocation::OnMap(a)), None);
+        g.replacement_points[pool].training_remaining = 0;
+
+        let gun = "6-pounder".to_string();
+        // §19.91: not before GT 75.
+        g.game_turn = 74;
+        assert_eq!(
+            g.apply(Command::AugmentBattalionAntiTank { battalion: bn, gun_system: gun.clone(), count: 2 }),
+            Err(CommandError::AntiTankAugmentIllegal)
+        );
+        g.game_turn = 75;
+        // 2 points is legal for a motorized-capable battalion.
+        assert_eq!(g.apply(Command::AugmentBattalionAntiTank { battalion: bn, gun_system: gun.clone(), count: 2 }), Ok(CommandOutcome::AntiTankAugmented(2)));
+        // §19.9: the AT guns add their Anti-Armor rating (6-pounder = 7 × 2 = 14 raw).
+        assert_eq!(g.unit(bn).unwrap().raw_strength(&g.reference, RatingKind::AntiArmor), 14);
+        // §19.97: the infantry unit keeps its own CPA (10); §19.98: TOE (for shell) unchanged.
+        assert_eq!(g.unit_cpa(bn), Some(10));
+        assert_eq!(g.unit(bn).unwrap().total_toe(), 6);
+        // §19.94: a 3rd point exceeds the motorized cap of 2.
+        assert_eq!(
+            g.apply(Command::AugmentBattalionAntiTank { battalion: bn, gun_system: gun.clone(), count: 1 }),
+            Err(CommandError::AntiTankAugmentIllegal)
+        );
+
+        // "k" = CPA 10, NOT motorized-capable, CA 2/2 → eligible, but only 1 AT point.
+        let bn2 = g.spawn_unit(Nationality::Commonwealth, "k", "leg inf bn", Composition::Organic { current_toe: 7 });
+        g.unit_mut(bn2).unwrap().location = Some(UnitLocation::OnMap(a));
+        assert_eq!(
+            g.apply(Command::AugmentBattalionAntiTank { battalion: bn2, gun_system: gun.clone(), count: 2 }),
+            Err(CommandError::AntiTankAugmentIllegal)
+        );
+        assert_eq!(g.apply(Command::AugmentBattalionAntiTank { battalion: bn2, gun_system: gun.clone(), count: 1 }), Ok(CommandOutcome::AntiTankAugmented(1)));
+    }
+
+    #[test]
     fn stacking_limit_enforced() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;

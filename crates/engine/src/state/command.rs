@@ -382,6 +382,10 @@ pub enum Command {
     /// with `count` TOE points of `gun_system` (a single AT gun type), drawn from co-located trained
     /// Gun-class Replacement Points (Organization Phase).
     AugmentAntiTank { hq: UnitId, gun_system: String, count: u32 },
+    /// §19.9: augment a Commonwealth infantry battalion (from GT 75) with `count` TOE points of
+    /// `gun_system` Anti-Tank guns, drawn from co-located trained Gun Replacement Points
+    /// (Organization Phase).
+    AugmentBattalionAntiTank { battalion: UnitId, gun_system: String, count: u32 },
     /// §17.5: voluntarily surrender the entire stack in `hex` to an adjacent enemy combat unit
     /// (`captor`, which pays 2 CP to accept, §17.54). If `destroy_material`, the owner first
     /// attempts §17.55/§17.56 pre-capture destruction of tanks/guns ((die−1)×10%) and
@@ -618,6 +622,7 @@ impl Command {
             Command::SetGunPosition { .. } => &["§12.11", "§12.12"],
             Command::VoluntarySurrender { .. } => &["§17.5", "§17.54", "§17.56"],
             Command::AugmentAntiTank { .. } => &["§19.8", "§19.82", "§19.83"],
+            Command::AugmentBattalionAntiTank { .. } => &["§19.9", "§19.92", "§19.94"],
             // Repair.
             Command::Repair { .. } => &["§22"],
             Command::RepairCapturedEquipment { .. } => &["§28.3"],
@@ -1428,6 +1433,11 @@ impl GameState {
             Command::AugmentAntiTank { hq, gun_system, count } => {
                 self.require_phase(Phase::Organization)?;
                 self.augment_anti_tank(hq, &gun_system, count)
+                    .map(CommandOutcome::AntiTankAugmented)
+            }
+            Command::AugmentBattalionAntiTank { battalion, gun_system, count } => {
+                self.require_phase(Phase::Organization)?;
+                self.augment_battalion_anti_tank(battalion, &gun_system, count)
                     .map(CommandOutcome::AntiTankAugmented)
             }
             Command::AssignShip { ship_index, location } => {

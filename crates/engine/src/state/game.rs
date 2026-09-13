@@ -2569,6 +2569,100 @@ impl GameState {
         Ok(count)
     }
 
+    /// §19.9/§19.91–98: augment a Commonwealth infantry battalion with `count` Anti-Tank gun TOE
+    /// points (a single gun type, §19.93), drawn from co-located trained Gun-class Replacement
+    /// pools. Returns the points added.
+    pub(crate) fn augment_battalion_anti_tank(
+        &mut self,
+        battalion: UnitId,
+        gun_system: &str,
+        count: u32,
+    ) -> Result<u32, crate::state::command::CommandError> {
+        use crate::reference::units::WeaponKind;
+        use crate::state::command::CommandError;
+        use crate::state::unit::WeaponGroup;
+        // §19.91: not before the 75th Game-Turn (1 April 1942).
+        if self.game_turn < 75 {
+            return Err(CommandError::AntiTankAugmentIllegal);
+        }
+        let u = self.units.get(&battalion).ok_or(CommandError::UnitNotFound)?;
+        if u.nationality.side() != Side::Commonwealth
+            || !matches!(u.composition, Composition::Organic { .. })
+        {
+            return Err(CommandError::AntiTankAugmentIllegal);
+        }
+        // §19.92: eligible only if CPA ≥ 10 and Off/Def Close Assault of 1/2 or 2/2.
+        let uc = self
+            .reference
+            .unit_characteristics
+            .get(&u.nationality)
+            .and_then(|m| m.get(&u.id_code))
+            .ok_or(CommandError::AntiTankAugmentIllegal)?;
+        let ca_ok = uc
+            .close_assault
+            .map(|c| matches!(c.off.value, 1 | 2) && c.def.value == 2)
+            .unwrap_or(false);
+        if uc.cpa.value < 10 || !ca_ok {
+            return Err(CommandError::AntiTankAugmentIllegal);
+        }
+        // §19.94: historically motorized (chart `+`) battalions may hold 2 AT points, others 1.
+        let max_at = if uc.cpa.motorized_capable { 2 } else { 1 };
+        // The gun must be a Commonwealth AntiTank weapon system.
+        let is_at = self
+            .reference
+            .weapons_systems
+            .get(&u.nationality)
+            .and_then(|m| m.get(gun_system))
+            .map(|ws| ws.kind == WeaponKind::AntiTank)
+            .unwrap_or(false);
+        if !is_at || count == 0 {
+            return Err(CommandError::AntiTankAugmentIllegal);
+        }
+        // §19.93: a single AT gun type; respect the §19.94 cap.
+        let cur_count = match &u.anti_tank_augment {
+            Some(ag) if ag.system != gun_system => return Err(CommandError::AntiTankAugmentIllegal),
+            Some(ag) => ag.count,
+            None => 0,
+        };
+        if cur_count + count > max_at {
+            return Err(CommandError::AntiTankAugmentIllegal);
+        }
+        // §19.96: barred if any anti-tank regiment assigned to the battalion's parent unit(s) is
+        // below its maximum TOE Strength.
+        let parents: Vec<UnitId> = [u.assigned_parent, u.attached_parent].into_iter().flatten().collect();
+        if !parents.is_empty() {
+            let ids: Vec<UnitId> = self.units.keys().copied().collect();
+            for id in ids {
+                let Some(sib) = self.units.get(&id) else { continue };
+                let assigned_to_parent = sib.assigned_parent.map(|p| parents.contains(&p)).unwrap_or(false);
+                if !assigned_to_parent || !self.unit_is_anti_tank(id) {
+                    continue;
+                }
+                if let Some(max) = self.unit_max_toe(id) {
+                    if max > 0 && sib.total_toe() < max {
+                        return Err(CommandError::AntiTankReadinessGate);
+                    }
+                }
+            }
+        }
+        // §19.95: draw the AT points from co-located, trained Gun-class Replacement pools.
+        let hex = self.units.get(&battalion).and_then(|u| u.hex()).ok_or(CommandError::UnitNotOnMap)?;
+        if self.available_replacement_class(ReplacementClass::Gun, battalion, hex) < count {
+            return Err(CommandError::AntiTankAugmentIllegal);
+        }
+        self.draw_replacement_class(ReplacementClass::Gun, battalion, hex, count);
+        *self.replacements_used.entry(Side::Commonwealth).or_insert(0) += count;
+        self.replacement_points.retain(|p| p.count > 0);
+        // §19.93: attach the AT gun TOE alongside the infantry (a second weapons system).
+        if let Some(u) = self.units.get_mut(&battalion) {
+            match &mut u.anti_tank_augment {
+                Some(ag) => ag.count += count,
+                None => u.anti_tank_augment = Some(WeaponGroup { system: gun_system.to_string(), count }),
+            }
+        }
+        Ok(count)
+    }
+
     /// TOE Strength Points a unit may still gain before hitting its §4.44 Max-TOE (`u32::MAX` if the
     /// unit has no listed maximum).
     fn unit_toe_headroom(&self, id: UnitId) -> u32 {
