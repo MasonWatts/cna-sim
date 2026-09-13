@@ -5951,6 +5951,14 @@ mod tests {
         // Idempotent: re-processing brings nobody new in.
         g.process_arrivals();
         assert_eq!(g.units.len(), 17);
+
+        // §20.8 [4.43a]: withdrawal deadlines are stamped from the OB onto the deployed units.
+        // 5th Indian Bde → GT13/3, 7th Indian Bde → GT14/3, the rest of the division → GT15/2.
+        assert_eq!(g.unit(named(&g, "1st Royal Fusiliers").unwrap()).unwrap().mandatory_withdrawal, Some((13, 3)));
+        assert_eq!(g.unit(bde).unwrap().mandatory_withdrawal, Some((14, 3)));
+        assert_eq!(g.unit(sussex).unwrap().mandatory_withdrawal, Some((14, 3)));
+        assert_eq!(g.unit(div_hq).unwrap().mandatory_withdrawal, Some((15, 2)));
+        assert_eq!(g.unit(named(&g, "Central India Horse").unwrap()).unwrap().mandatory_withdrawal, Some((15, 2)));
     }
 
     #[test]

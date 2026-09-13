@@ -180,6 +180,7 @@ impl GameState {
                 unit.basic_morale_reference = form.basic_morale;
                 unit.is_hq = u.parent.is_empty() && u.name.contains("HQ");
                 unit.airdroppable = u.airdroppable; // §42.41 (from the OA sheet)
+                unit.mandatory_withdrawal = u.withdrawal; // §20.8 [4.43a] withdrawal deadline
             }
             // Resolve Organic TOE now that characteristics are known.
             if let ObComposition::Organic(toe) = &u.comp {
