@@ -2142,6 +2142,70 @@ mod tests {
     }
 
     #[test]
+    fn salt_marsh_and_desert_movement_subtypes_8_44_8_45() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::{HexCoord, HexsideKind};
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::MovementAndCombat;
+        let a = HexCoord::new(0, 0);
+        let marsh = HexCoord::new(1, 0);
+        let desert = HexCoord::new(0, 1);
+        g.map.set_hex(a, HexTerrain::Clear);
+        g.map.set_hex(marsh, HexTerrain::SaltMarsh);
+        g.map.set_hex(desert, HexTerrain::Desert);
+
+        // §8.44: a tank (AFV) may not enter a Salt Marsh off-track.
+        let tank = g.spawn_unit(Nationality::Commonwealth, "rtr", "tank", Composition::Weapons { groups: vec![WeaponGroup { system: "A9 Cruiser".into(), count: 4 }] });
+        { let u = g.unit_mut(tank).unwrap(); u.location = Some(UnitLocation::OnMap(a)); u.fuel = 500; }
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: tank, to: marsh, mode: MoveMode::Motorized }),
+            Err(CommandError::ProhibitedTerrain)
+        );
+        // With a Track across the hexside, the tank may enter.
+        g.map.set_hexside(a, marsh, HexsideKind::Track, None);
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: tank, to: marsh, mode: MoveMode::Motorized }),
+            Ok(CommandOutcome::Moved)
+        );
+
+        // §8.44: a Recce unit enters a Salt Marsh off-track (exempt). ("hh" is a Recce Bn.)
+        let recce = g.spawn_unit(Nationality::Commonwealth, "hh", "recce", Composition::Organic { current_toe: 4 });
+        g.unit_mut(recce).unwrap().location = Some(UnitLocation::OnMap(a));
+        let marsh2 = HexCoord::new(1, 1);
+        g.map.set_hex(marsh2, HexTerrain::SaltMarsh);
+        assert!(a.is_adjacent(marsh2));
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: recce, to: marsh2, mode: MoveMode::NonMotorized }),
+            Ok(CommandOutcome::Moved)
+        );
+
+        // §8.45: a motorcycle (Kradschützen) unit may not enter a Desert hex at all.
+        let krad = g.spawn_unit(Nationality::Commonwealth, "h", "15th Kradschutzen Bn", Composition::Organic { current_toe: 4 });
+        g.unit_mut(krad).unwrap().location = Some(UnitLocation::OnMap(a));
+        assert!(g.unit_is_motorcycle(krad));
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: krad, to: desert, mode: MoveMode::NonMotorized }),
+            Err(CommandError::ProhibitedTerrain)
+        );
+        // Ordinary infantry enters the Desert fine.
+        let inf = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 4 });
+        g.unit_mut(inf).unwrap().location = Some(UnitLocation::OnMap(a));
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: inf, to: desert, mode: MoveMode::NonMotorized }),
+            Ok(CommandOutcome::Moved)
+        );
+    }
+
+    #[test]
     fn barrage_against_facility_12_5() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;

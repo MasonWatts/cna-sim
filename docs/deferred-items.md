@@ -361,13 +361,15 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   B5925 / Giariabub C1014) plus per-unit `garrison` overrides for the scattered minor garrisons
   (Sceferzen C3419, Fort Maddalenna C3019, EGUG C1715, Benina A4829, Mechili B4921, Soluch A4130),
   stamped onto `garrison_location` at deploy. Test italian_garrison_free_stacking_9_16.
-- [~] **AU33 — §8.44/§8.45 Salt Marsh / Desert restrictions.** §8.44 assault ban done: no motorized
-  unit or AFV (`unit_is_afv`) may Close Assault a Salt Marsh defender (CommandError::SaltMarshAssault).
-  Test salt_marsh_no_vehicle_assault_8_44. **Remaining (data-blocked):** the §8.44 off-track movement
-  restriction and §8.45 Desert bans hinge on the §4.46 movement-*subtypes* — "Light Truck", "motorcycle
-  infantry", "motorcycle Recce", the one camel unit — which are NOT in the digitized characteristics
-  (no motorcycle/camel/light-truck labels), so classifying them (and thus the enter/leave gates)
-  needs those counter movement-subtype designations to avoid wrongly abandoning units.
+- [x] **AU33 — §8.44/§8.45 Salt Marsh / Desert restrictions.** Fully done — the movement subtypes turned
+  out to be derivable from existing data: `unit_is_motorcycle` (the game's only one, German
+  Kradschützen, by name), `unit_is_camel` (Meharisti/Sahariano, by name), `unit_is_light_truck_borne`
+  (light-only TruckPoints), `is_recce_unit`, `unit_is_afv`; there are no "motorcycle Recce" units
+  (light recce are all camel/desert-patrol/Bersaglieri-MG, per C1b). §8.44 assault ban
+  (SaltMarshAssault); §8.44 plan_move_step off-track gate (a prohibited vehicle — motorized/AFV not a
+  Light-Truck/Recce/motorcycle/camel — needs a Road/Track hexside to enter/leave a Salt Marsh); §8.45
+  Desert entry barred to Light Trucks and motorcycle units. Tests salt_marsh_no_vehicle_assault_8_44,
+  salt_marsh_and_desert_movement_subtypes_8_44_8_45.
 - [-] **AU34 — §8.19 no CW west of Marble Arch (A2109 = col 9).** Deferred: a blanket col-9 gate
   breaks the many synthetic tests that place CW units at low columns; it's a map-convenience
   boundary of little gameplay value on the real map.

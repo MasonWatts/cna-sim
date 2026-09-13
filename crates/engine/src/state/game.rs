@@ -7101,6 +7101,24 @@ impl GameState {
         })
     }
 
+    /// §8.44/§8.45: a motorcycle unit (the German Kradschützen battalion — the game's only one).
+    pub(crate) fn unit_is_motorcycle(&self, id: UnitId) -> bool {
+        self.units.get(&id).is_some_and(|u| u.name.contains("Krad") || u.name.contains("Motorcycle"))
+    }
+
+    /// §8.44: a camel unit (the Italian Meharisti / Sahariano) — travels as infantry in Salt Marsh.
+    pub(crate) fn unit_is_camel(&self, id: UnitId) -> bool {
+        self.units.get(&id).is_some_and(|u| u.name.contains("Camel"))
+    }
+
+    /// §8.44/§8.45: a unit transported solely by Light Trucks (light Truck Points, none medium/heavy).
+    pub(crate) fn unit_is_light_truck_borne(&self, id: UnitId) -> bool {
+        self.units.get(&id).is_some_and(|u| {
+            let t = &u.trucks;
+            t.light > 0 && t.medium == 0 && t.heavy == 0
+        })
+    }
+
     /// §8.44: whether a unit is an AFV — a tank unit, or an armored Recce / Armored-Car unit (one
     /// whose §4.44 characteristics carry an Armor-Protection rating).
     pub(crate) fn unit_is_afv(&self, id: UnitId) -> bool {

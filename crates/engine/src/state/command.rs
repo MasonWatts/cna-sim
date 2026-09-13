@@ -5540,9 +5540,33 @@ impl GameState {
                 mine_casualty_check = !eng && is_vehicle;
             }
         }
+        let to_terrain = self.map.terrain(to).ok_or(CommandError::DestinationOffMap)?;
+        // §8.45: Desert hexes are forbidden to Light Trucks and motorcycle units (too light for the
+        // soft sand) — they may not enter, whether or not a track runs through.
+        if to_terrain == crate::reference::terrain::HexTerrain::Desert
+            && (self.unit_is_light_truck_borne(unit) || self.unit_is_motorcycle(unit))
+        {
+            return Err(CommandError::ProhibitedTerrain);
+        }
+        // §8.44: a Salt Marsh may be entered/left off-track only by Light Trucks, Recce units,
+        // motorcycle infantry, or (as infantry) the camel; any other motorized unit or AFV must use
+        // a Road or Track hexside.
+        if to_terrain == crate::reference::terrain::HexTerrain::SaltMarsh {
+            use crate::state::map::HexsideKind;
+            let on_track = self.map.hexsides_on(from, to).iter().any(|h| {
+                matches!(h.kind, HexsideKind::Road | HexsideKind::Track | HexsideKind::UnfinishedRoad)
+            });
+            let exempt = self.is_recce_unit(unit)
+                || self.unit_is_motorcycle(unit)
+                || self.unit_is_camel(unit)
+                || self.unit_is_light_truck_borne(unit);
+            let prohibited_vehicle = (self.unit_is_motorized(unit) || self.unit_is_afv(unit)) && !exempt;
+            if prohibited_vehicle && !on_track {
+                return Err(CommandError::ProhibitedTerrain);
+            }
+        }
         // §9.14/§9.31: may not end a move where total stacking points exceed the terrain
         // limit. (The mover is currently at `from`, so it is not yet counted at `to`.)
-        let to_terrain = self.map.terrain(to).ok_or(CommandError::DestinationOffMap)?;
         if let Some(limit) = self
             .reference
             .terrain
