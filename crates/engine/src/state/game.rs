@@ -1946,16 +1946,19 @@ impl GameState {
     /// is treated as 0%), moving them from `weapons_broken` back into the composition. Returns
     /// the TOE repaired. §22.26 Fuel cost is enforced: one Fuel Point per Tank TOE Point attempted
     /// is expended (from the unit's tanks, then a co-located dump) before rolling, capping the attempt.
-    /// §22.62: whether a friendly Tank Delivery Squadron able to assist repairs shares `id`'s hex
-    /// (excluding `id` itself, and any TDS repair-locked this stage by §22.66).
+    /// §22.62/§22.7: whether a Tank Delivery Squadron (or German Mobile Tank Repair Squad) able to
+    /// assist repairs shares `id`'s hex. Matched by **nationality**, not just side — a German squad
+    /// repairs only German tanks, never Italian or captured Commonwealth (§22.7). Excludes `id`
+    /// itself and any TDS repair-locked this stage (§22.66).
     pub(crate) fn hex_has_friendly_tds(&self, id: UnitId) -> bool {
         let Some(u) = self.units.get(&id) else { return false };
-        let (Some(hex), side) = (u.hex(), u.nationality.side()) else { return false };
+        let Some(hex) = u.hex() else { return false };
+        let nat = u.nationality;
         self.units.values().any(|o| {
             o.id != id
                 && o.is_tds
                 && !o.tds_repair_locked
-                && o.nationality.side() == side
+                && o.nationality == nat
                 && o.hex() == Some(hex)
         })
     }
@@ -2854,12 +2857,13 @@ impl GameState {
             })
             .map(|p| p.count)
             .sum();
-        // §22.64: a co-located friendly Tank Delivery Squadron's reserves count as Tank points.
+        // §22.64/§22.7: a co-located Tank Delivery Squadron / German Mobile Tank Repair Squad of the
+        // same nationality contributes its reserves as Tank points.
         let tds = if class == ReplacementClass::Tank {
-            let side = self.units.get(&unit).map(|u| u.nationality.side());
+            let nat = self.units.get(&unit).map(|u| u.nationality);
             self.units
                 .values()
-                .filter(|t| t.is_tds && t.hex() == Some(hex) && Some(t.nationality.side()) == side)
+                .filter(|t| t.is_tds && t.hex() == Some(hex) && Some(t.nationality) == nat)
                 .map(|t| t.tds_tank_reserve)
                 .sum()
         } else {
@@ -2887,14 +2891,15 @@ impl GameState {
                 owed -= take;
             }
         }
-        // §22.64: fall back to co-located friendly Tank Delivery Squadron reserves for Tank points.
+        // §22.64/§22.7: fall back to co-located same-nationality TDS / German Mobile Tank Repair
+        // Squad reserves for Tank points.
         if owed > 0 && class == ReplacementClass::Tank {
-            let side = self.units.get(&unit).map(|u| u.nationality.side());
+            let nat = self.units.get(&unit).map(|u| u.nationality);
             for t in self.units.values_mut() {
                 if owed == 0 {
                     break;
                 }
-                if t.is_tds && t.hex() == Some(hex) && Some(t.nationality.side()) == side {
+                if t.is_tds && t.hex() == Some(hex) && Some(t.nationality) == nat {
                     let take = owed.min(t.tds_tank_reserve);
                     t.tds_tank_reserve -= take;
                     owed -= take;

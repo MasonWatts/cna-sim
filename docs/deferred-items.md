@@ -308,7 +308,12 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   at 20 CP needs the tow / broken-vehicle-marker model (same gap as AU25/AU26); §22.62 destroyed-tank
   repair-on-a-1 is entangled with the currently-simplified auto-repair of captured/destroyed
   equipment. Scenario OB wiring of the three squadrons (A/B/C, arrive GT29/2, [4.43a]) is a follow-on.
-- [ ] **AU28 — §22.7 German Mobile Tank Repair unit.**
+- [x] **AU28 — §22.7 German Mobile Tank Repair Squad.** Treated exactly as a TDS (reuses `is_tds` —
+  CPA 25, 0 stacking, ZOC-elimination/return, reserves, lockout), but the §22.62 assist and §22.64
+  reserves are now matched by **nationality** (not just side), so a German squad repairs only German
+  tanks — never Italian or captured Commonwealth (§22.7). Test german_mobile_tank_repair_squad_22_7.
+  (Same §22.65 tow / §22.62 destroyed-tank-on-1 sub-rules deferred as for AU27; the single counter's
+  OB placement is a scenario follow-on.)
 
 ### Movement / stacking / terrain (§8–§9)
 - [-] **AU29 — §9.33/§9.34 road/track 5-SP transit limit.** Deferred: presupposes the §9.29 base

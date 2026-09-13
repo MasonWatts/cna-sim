@@ -1913,6 +1913,39 @@ mod tests {
     }
 
     #[test]
+    fn german_mobile_tank_repair_squad_22_7() {
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let a = HexCoord::new(0, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+
+        // §22.7: the German Mobile Tank Repair Squad is treated exactly like a TDS (is_tds), but
+        // repairs only German tanks — never Italian (or captured Commonwealth).
+        let squad = g.spawn_unit(Nationality::German, "mtr", "Mobile Tank Repair", Composition::Weapons { groups: vec![] });
+        {
+            let u = g.unit_mut(squad).unwrap();
+            u.is_tds = true;
+            u.location = Some(UnitLocation::OnMap(a));
+        }
+        assert_eq!(g.unit_cpa(squad), Some(25));
+        assert_eq!(g.effective_stacking_points(squad), 0);
+
+        let ger_tank = g.spawn_unit(Nationality::German, "pz", "pz bn", Composition::Organic { current_toe: 4 });
+        g.unit_mut(ger_tank).unwrap().location = Some(UnitLocation::OnMap(a));
+        let ita_tank = g.spawn_unit(Nationality::Italian, "car", "carri bn", Composition::Organic { current_toe: 4 });
+        g.unit_mut(ita_tank).unwrap().location = Some(UnitLocation::OnMap(a));
+
+        // Same-nationality German unit gets the assist; the co-located Italian unit does not (§22.7).
+        assert!(g.hex_has_friendly_tds(ger_tank));
+        assert!(!g.hex_has_friendly_tds(ita_tank));
+    }
+
+    #[test]
     fn stacking_limit_enforced() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;
