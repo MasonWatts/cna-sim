@@ -1,0 +1,55 @@
+// Commonwealth Mandatory Withdrawal Schedule (§20.8) — DATA.
+//
+// Transcribed verbatim from the [4.43a] "Commonwealth Land Unit Reinforcement and Withdrawal
+// Schedule", PDF p114–115 (read 2026-09-13). This file holds only the WITHDRAWAL ("WD:") entries;
+// the arrival ("reinforcement") and "Rtn:" (return) entries of the same chart are handled by the
+// reinforcement schedule (scenario `reinforcements` + OB `Arrival::Turn`).
+//
+// Per the chart legend (p115):
+//   * `game_turn` / `ops_stage` = the Game-Turn and Operations Stage on which the withdrawal MUST
+//     be performed (§20.83). The units must be at Cairo or Alexandria at ≥75% max TOE by then
+//     (§20.82/§20.85), or they are eliminated (§20.83) and may not return.
+//   * `tpt` = (truck_value_points, motorization_points) that must accompany the withdrawal (the
+//     chart's "Tpt: a/b"). Truck Value Points: 1 Light = ½, 1 Medium = 1, 1 Heavy = 2.
+//   * `units` = the verbatim withdrawal text. Bracketed tokens are the parent formation / nationality
+//     (SIZE: Div/Bde/Bn/Coy; NAT: In=Indian, Aus=Australian, NZ=New Zealand, SA=South African, no
+//     nationality = British). "[Less …]" excludes the named sub-formations; "any N …" is a §20.81
+//     by-type choice left to the Commonwealth player (§20.82: pick units at ≥75% TOE).
+//
+// This is transcription, not interpretation — the runtime unit binding (mapping each entry to the
+// scenario OB's units) is a separate concern; see docs/deferred-items.md AU24.
+(
+    withdrawals: [
+        (game_turn: 13, ops_stage: 3, tpt: (10, 10),  units: "5th Indian Brigade [4 In]"),
+        (game_turn: 14, ops_stage: 3, tpt: (23, 20),  units: "7th Indian Brigade [4 In]"),
+        (game_turn: 15, ops_stage: 2, tpt: (16, 12),  units: "4th Indian Division [Less the 5th & 7th Brigades]"),
+        (game_turn: 23, ops_stage: 3, tpt: (40, 30),  units: "1st Armored Brigade [2]"),
+        (game_turn: 25, ops_stage: 1, tpt: (10, 10),  units: "4th NZ Brigade"),
+        (game_turn: 25, ops_stage: 2, tpt: (25, 15),  units: "2nd NZ Division [Less 4th & 5th Brigades, 4th Fld Arty Regt and 6th Fld Arty Regt]"),
+        (game_turn: 26, ops_stage: 1, tpt: (20, 20),  units: "16th Australian Brigade [6 Aus]"),
+        (game_turn: 27, ops_stage: 2, tpt: (78, 50),  units: "6th Australian Division [Less 16th & 17th Brigades]"),
+        (game_turn: 28, ops_stage: 2, tpt: (20, 20),  units: "17th Australian Brigade [6 Aus]"),
+        (game_turn: 36, ops_stage: 1, tpt: (32, 30),  units: "5th Indian Brigade [again, 4 In]"),
+        (game_turn: 36, ops_stage: 3, tpt: (20, 20),  units: "HQ 70th Infantry Division, 16th Infantry Brigade [70]"),
+        (game_turn: 44, ops_stage: 2, tpt: (38, 32),  units: "150th Infantry Brigade [50]"),
+        (game_turn: 46, ops_stage: 1, tpt: (56, 40),  units: "18th Australian Brigade [i.e. all units assigned to the 7th Australian Division]"),
+        (game_turn: 46, ops_stage: 3, tpt: (27, 20),  units: "5th Indian Division [Less 10th & 29th Brigades]"),
+        (game_turn: 49, ops_stage: 2, tpt: (67, 47),  units: "9th Australian Division [Less 20th & 26th Brigades]"),
+        (game_turn: 50, ops_stage: 1, tpt: (39, 30),  units: "10th Indian Brigade [5 In]"),
+        (game_turn: 53, ops_stage: 2, tpt: (33, 21),  units: "26th Australian Brigade [9 Aus]"),
+        (game_turn: 54, ops_stage: 2, tpt: (33, 21),  units: "20th Australian Brigade [9 Aus]"),
+        (game_turn: 63, ops_stage: 1, tpt: (25, 20),  units: "The Polish (Carpathian) Brigade"),
+        (game_turn: 67, ops_stage: 1, tpt: (3, 2),    units: "HQ 7th Armored Brigade [7]"),
+        (game_turn: 70, ops_stage: 2, tpt: (50, 40),  units: "70th Infantry Division [again, Less 16th Brigade]"),
+        (game_turn: 72, ops_stage: 2, tpt: (107, 90), units: "2nd NZ Division [again, for the 4 NZ Brigade]"),
+        (game_turn: 73, ops_stage: 1, tpt: (20, 20),  units: "16th Infantry Brigade [again, 70]"),
+        (game_turn: 75, ops_stage: 1, tpt: (22, 20),  units: "7th Indian Brigade [again, 4 In]"),
+        (game_turn: 88, ops_stage: 1, tpt: (30, 25),  units: "3rd Indian Motor Brigade"),
+        (game_turn: 93, ops_stage: 2, tpt: (22, 18),  units: "25th Indian Brigade Group [10 In], 42nd and 44th RTR [both of 1 Army Tank Bde]"),
+        (game_turn: 97, ops_stage: 2, tpt: (26, 21),  units: "22nd/200th Guards Brigade [HQ] and any three infantry battalions"),
+        (game_turn: 100, ops_stage: 2, tpt: (40, 30), units: "9th Indian Brigade [again, 5 In]"),
+        (game_turn: 108, ops_stage: 1, tpt: (125, 90), units: "9th Australian Division [again]"),
+        (game_turn: 110, ops_stage: 1, tpt: (7, 3),   units: "HQ 10th Armored Division"),
+        (game_turn: 110, ops_stage: 3, tpt: (33, 26), units: "9th Armored Brigade [10]"),
+    ],
+)

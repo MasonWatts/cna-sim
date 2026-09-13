@@ -1792,6 +1792,53 @@ mod tests {
     }
 
     #[test]
+    fn mandatory_withdrawal_schedule_20_8() {
+        use crate::state::game::GameState;
+        use crate::state::map::HexId;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_cw_withdrawal_schedule(include_str!("../../../data/reference/cw-withdrawal-schedule.ron")).unwrap();
+
+        // The transcribed schedule parses and the first due entry is at GT13 / Stage 3.
+        let sched = refs.cw_withdrawal_schedule.clone().unwrap();
+        assert_eq!(sched.withdrawals.len(), 31);
+        let first: Vec<_> = sched.due_at(13, 3).collect();
+        assert_eq!(first.len(), 1);
+        assert!(first[0].units.contains("5th Indian Brigade"));
+        assert_eq!(first[0].tpt, (10, 10));
+
+        let mut g = GameState::new(refs, 1);
+        g.game_turn = 13;
+        g.operations_stage = 3;
+        let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
+        let elsewhere = HexId::parse("D3714").unwrap().to_hex_coord(); // Mersa Matruh (not a depot)
+
+        // "k" has a max TOE of 7. Three units flagged for withdrawal at this deadline:
+        let mk = |g: &mut GameState, toe, at| {
+            let u = g.spawn_unit(Nationality::Commonwealth, "k", "wd bn", Composition::Organic { current_toe: toe });
+            let uu = g.unit_mut(u).unwrap();
+            uu.location = Some(UnitLocation::OnMap(at));
+            uu.mandatory_withdrawal = Some((13, 3));
+            u
+        };
+        let at_full = mk(&mut g, 7, cairo);     // at Cairo, 100% ≥ 75% → withdrawn
+        let absent = mk(&mut g, 7, elsewhere);  // full strength but not at a depot → eliminated
+        let weak = mk(&mut g, 2, cairo);        // at Cairo but < 75% (2 of 7) → eliminated
+
+        let (withdrawn, eliminated) = g.enforce_mandatory_withdrawals();
+        assert_eq!((withdrawn, eliminated), (1, 2));
+        // §20.84: removed from play.
+        assert!(g.unit(at_full).unwrap().status.withdrawn);
+        assert_eq!(g.unit(at_full).unwrap().location, None);
+        // §20.83: eliminated (TOE zeroed, off-map), not marked withdrawn.
+        assert_eq!(g.unit(absent).unwrap().total_toe(), 0);
+        assert!(!g.unit(absent).unwrap().status.withdrawn);
+        assert_eq!(g.unit(weak).unwrap().total_toe(), 0);
+    }
+
+    #[test]
     fn stacking_limit_enforced() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;

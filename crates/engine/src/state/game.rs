@@ -2242,6 +2242,63 @@ impl GameState {
         }
     }
 
+    /// §20.8/§20.82–85: enforce Commonwealth Mandatory Withdrawals due at the current (Game-Turn,
+    /// Operations Stage). A flagged unit that has reached Cairo or Alexandria at ≥75% of its maximum
+    /// TOE is removed from play (§20.84, `withdrawn`); one that has not arrived / is under-strength is
+    /// eliminated (§20.83) and may not return. Returns `(withdrawn, eliminated)` counts. Units are
+    /// flagged via `Unit.mandatory_withdrawal` (bound to the [4.43a] schedule at scenario setup).
+    pub fn enforce_mandatory_withdrawals(&mut self) -> (u32, u32) {
+        use crate::state::map::HexId;
+        let now = (self.game_turn, self.operations_stage as u32);
+        let depots: Vec<HexCoord> = ["E1430", "E3613"] // Cairo, Alexandria (§20.83)
+            .iter()
+            .filter_map(|s| HexId::parse(s).map(|h| h.to_hex_coord()))
+            .collect();
+        let due: Vec<UnitId> = self
+            .units
+            .iter()
+            .filter(|(_, u)| u.mandatory_withdrawal == Some(now))
+            .map(|(&id, _)| id)
+            .collect();
+        let (mut withdrawn, mut eliminated) = (0, 0);
+        for id in due {
+            let at_depot = self.units.get(&id).and_then(|u| u.hex()).is_some_and(|h| depots.contains(&h));
+            // §20.82/§20.85: must be at ≥75% of maximum TOE (4× current ≥ 3× max).
+            let strong_enough = match self.unit_max_toe(id) {
+                Some(max) if max > 0 => self.units.get(&id).map(|u| u.total_toe() * 4 >= max * 3).unwrap_or(false),
+                _ => true, // no listed maximum → strength gate is not applicable
+            };
+            if at_depot && strong_enough {
+                // §20.84: removed from play (may return later per the schedule).
+                if let Some(u) = self.units.get_mut(&id) {
+                    u.status.withdrawn = true;
+                    u.location = None;
+                    u.mandatory_withdrawal = None;
+                }
+                withdrawn += 1;
+            } else {
+                // §20.83: not present / under-strength by the deadline → eliminated, no return.
+                self.eliminate_unit_to_withdrawal(id);
+                eliminated += 1;
+            }
+        }
+        (withdrawn, eliminated)
+    }
+
+    /// §20.83: eliminate a unit that failed its Mandatory Withdrawal deadline (zeroes its TOE and
+    /// removes it from the map; it may not return).
+    fn eliminate_unit_to_withdrawal(&mut self, id: UnitId) {
+        if let Some(u) = self.units.get_mut(&id) {
+            match &mut u.composition {
+                Composition::Organic { current_toe } => *current_toe = 0,
+                Composition::Weapons { groups } => groups.iter_mut().for_each(|g| g.count = 0),
+            }
+            u.anti_tank_augment = None;
+            u.location = None;
+            u.mandatory_withdrawal = None;
+        }
+    }
+
     /// §20.62/§20.64: before Axis Replacement production arrives this Game-Turn, cap it at the
     /// turn's **actual** rolled Shipping Tonnage allowance (§56.21). Replacement Points have priority
     /// over supplies (§20.64), but they cannot exceed the roll itself — production planned two turns

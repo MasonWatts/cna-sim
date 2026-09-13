@@ -113,6 +113,9 @@ pub struct UnitStatus {
     pub surrendered: bool,
     /// Axis unit stacked with General Rommel (+1 Adjusted Morale in assault, §17.28).
     pub with_rommel: bool,
+    /// §20.84: the unit has been removed from play by a Mandatory Withdrawal (distinct from
+    /// elimination — it may return later per the schedule).
+    pub withdrawn: bool,
 }
 
 /// The four consumable supply types (§3.1).
@@ -247,6 +250,11 @@ pub struct Unit {
     /// Its per-TOE ratings become Anti-Armor 1 (was 0) and Offensive Close Assault 3 (was 2), §20.54.
     #[serde(default)]
     pub recce_upgraded: bool,
+    /// §20.8: this unit is scheduled for Mandatory Withdrawal at `(Game-Turn, Operations Stage)`.
+    /// It must reach Cairo/Alexandria at ≥75% max TOE by then (§20.83) or be eliminated. Set from
+    /// the [4.43a] withdrawal schedule when bound to the scenario Order of Battle.
+    #[serde(default)]
+    pub mandatory_withdrawal: Option<(u32, u32)>,
 
     // Dynamic state (path-dependent primitives).
     pub cohesion: i32,
@@ -366,6 +374,7 @@ impl Unit {
             composition,
             anti_tank_augment: None,
             recce_upgraded: false,
+            mandatory_withdrawal: None,
             cohesion: 0,
             cp_expended: Fixed(0),
             combat_cp: Fixed(0),

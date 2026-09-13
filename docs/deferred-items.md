@@ -287,8 +287,14 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   a TOE point if below max (§20.52), and gains per-TOE Anti-Armor 1 / Off Close Assault 3 (§20.54) via
   a new `Unit.recce_upgraded` flag folded into raw_strength. The §20.55 1/39 gate predates the
   campaign (always satisfied). Fully rules-specified. Test upgrade_armored_car_effectiveness_20_5.
-- [ ] **AU24 — §20.8/§20.81–85 scheduled CW Mandatory Withdrawals** (reach Cairo/Alexandria by a listed
-  GT; §20.85 penalty) — distinct from the §64.75 voluntary path.
+- [~] **AU24 — §20.8/§20.81–85 scheduled CW Mandatory Withdrawals.** Schedule transcribed verbatim
+  from [4.43a] (PDF p114–115, 2026-09-13) into `data/reference/cw-withdrawal-schedule.ron` (31 WD
+  entries: GT/stage, units, Tpt) and loaded into `ReferenceData.cw_withdrawal_schedule`. Mechanics
+  done: `Unit.mandatory_withdrawal` deadline + `enforce_mandatory_withdrawals` (§20.82–85 — at
+  Cairo/Alexandria ≥75% max TOE → removed from play `status.withdrawn`, §20.84; else eliminated,
+  §20.83). Test mandatory_withdrawal_schedule_20_8. **Remaining:** binding each schedule entry to the
+  campaign OB units (resolving `[Less …]` exclusions and "any N …" §20.81 type-selectors) at scenario
+  setup — deferred to avoid fragile formation-name matching; needs per-formation OB verification.
 - [-] **AU25 — §21.5 capture broken-down vehicles.** Deferred: breakdown is unit-internal state (weapons_broken/toe_broken), not shed "Broken Down Vehicle markers" on the map, so there's nothing to capture; needs a marker model first.
 - [-] **AU26 — §21.6 tow broken-down vehicles.** Deferred: depends on the same broken-vehicle-marker model as AU25.
 - [ ] **AU27 — §22.6/§22.61–66 CW Tank Delivery Squadrons** (deliver tank Replacement Points).

@@ -24,6 +24,7 @@ pub mod convoy;
 pub mod equivalent_weights;
 pub mod squadron;
 pub mod patrol;
+pub mod withdrawal;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -155,6 +156,9 @@ pub struct ReferenceData {
     /// Water Availability Table (§52.7).
     #[serde(default)]
     pub water_table: Option<logistics::WaterAvailabilityTable>,
+    /// §20.8 Commonwealth Mandatory Withdrawal Schedule ([4.43a], p114–115).
+    #[serde(default)]
+    pub cw_withdrawal_schedule: Option<withdrawal::WithdrawalSchedule>,
     /// Truck Characteristics Chart (§54.2).
     #[serde(default)]
     pub truck_chart: Option<logistics::TruckChart>,
@@ -248,6 +252,7 @@ impl ReferenceData {
         // Logistics.
         load!(load_ammo_consumption, "../../../../data/reference/ammo-consumption.ron");
         load!(load_water_availability, "../../../../data/reference/water-availability.ron");
+        load!(load_cw_withdrawal_schedule, "../../../../data/reference/cw-withdrawal-schedule.ron");
         load!(load_truck_chart, "../../../../data/reference/truck-characteristics.ron");
         load!(load_breakdown_table, "../../../../data/reference/breakdown-table.ron");
         load!(load_repair_table, "../../../../data/reference/repair-table.ron");
@@ -530,6 +535,12 @@ impl ReferenceData {
     /// Load the Water Availability Table (§52.7).
     pub fn load_water_availability(&mut self, ron_str: &str) -> Result<(), ron::error::SpannedError> {
         self.water_table = Some(ron::from_str(ron_str)?);
+        Ok(())
+    }
+
+    /// Load the §20.8 Commonwealth Mandatory Withdrawal Schedule ([4.43a]).
+    pub fn load_cw_withdrawal_schedule(&mut self, ron_str: &str) -> Result<(), ron::error::SpannedError> {
+        self.cw_withdrawal_schedule = Some(ron::from_str(ron_str)?);
         Ok(())
     }
 
