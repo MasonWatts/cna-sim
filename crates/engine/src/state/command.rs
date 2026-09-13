@@ -409,6 +409,11 @@ pub enum Command {
     /// §41.5 Artillery Barrage Points column for structures; §12.54 uses the Bomb column with Raw
     /// Barrage Points for Supply Dumps and Air Facilities.
     BarrageFacility { barragers: Vec<UnitId>, target: HexCoord, facility: FacilityTarget },
+    /// §30.4: (Axis) plan the once-per-game Italian Chariot raid on Alexandria (from July 1941).
+    PlanChariotRaid,
+    /// §30.44: (Axis) execute the planned Chariot raid — resolves the §30.46 table and damages
+    /// Commonwealth ships at Alexandria.
+    ExecuteChariotRaid,
     /// §17.5: voluntarily surrender the entire stack in `hex` to an adjacent enemy combat unit
     /// (`captor`, which pays 2 CP to accept, §17.54). If `destroy_material`, the owner first
     /// attempts §17.55/§17.56 pre-capture destruction of tanks/guns ((die−1)×10%) and
@@ -626,6 +631,8 @@ impl Command {
             Command::AntiArmor { .. } => &["§14"],
             Command::Barrage { .. } => &["§12.6", "§12.23"],
             Command::BarrageFacility { .. } => &["§12.5", "§12.53", "§12.54"],
+            Command::PlanChariotRaid => &["§30.41", "§30.42"],
+            Command::ExecuteChariotRaid => &["§30.44", "§30.46"],
             Command::OffShoreBombard { .. } => &["§30.2"],
             Command::Strafe { .. } => &["§40.5"],
             // Organization / reorganization & logistics.
@@ -825,6 +832,10 @@ pub enum CommandOutcome {
     AntiTankAugmented(u32),
     /// §12.5: an artillery barrage against a facility resolved with this raw table result.
     FacilityBarrage { result: i32 },
+    /// §30.4: the Chariot raid was planned.
+    ChariotRaidPlanned,
+    /// §30.44: the Chariot raid was executed, inflicting `damage` Gun-Rating Damage Points.
+    ChariotRaidExecuted { damage: u32 },
     /// §20.5: an armored Recce / Armored-Car unit was upgraded.
     RecceUpgraded,
     /// §49.17: Fuel Points siphoned between units.
@@ -1031,6 +1042,9 @@ pub enum CommandError {
     InReserve,
     /// §8.44: a motorized unit or AFV may not Close Assault a defender in a Salt Marsh hex.
     SaltMarshAssault,
+    /// §30.4: the Chariot raid cannot be planned/executed now (already used, wrong window, not yet
+    /// planned, or the seven-stage delay has not elapsed).
+    ChariotRaidIllegal,
     /// An off-map movement step failed (§8.8).
     OffMap(crate::state::game::OffMapError),
     /// §56.2: the convoy could not be planned (lane unavailable, over the allowable tonnage, or a
@@ -1463,6 +1477,18 @@ impl GameState {
             }
             Command::BarrageFacility { barragers, target, facility } => {
                 self.cmd_barrage_facility(&barragers, target, facility)
+            }
+            Command::PlanChariotRaid => {
+                if self.active_player != Side::Axis {
+                    return Err(CommandError::WrongPhase);
+                }
+                self.plan_chariot_raid().map(|()| CommandOutcome::ChariotRaidPlanned)
+            }
+            Command::ExecuteChariotRaid => {
+                if self.active_player != Side::Axis {
+                    return Err(CommandError::WrongPhase);
+                }
+                self.execute_chariot_raid().map(|damage| CommandOutcome::ChariotRaidExecuted { damage })
             }
             Command::VoluntarySurrender { hex, captor, destroy_material } => {
                 self.cmd_voluntary_surrender(hex, captor, destroy_material)

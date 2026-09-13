@@ -2066,6 +2066,47 @@ mod tests {
     }
 
     #[test]
+    fn chariot_raid_30_4() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::GameState;
+        use crate::state::naval::Ship;
+
+        let mut g = GameState::new(ReferenceData::new(), 3);
+        g.active_player = Side::Axis;
+        g.fleet.push(Ship::new("Valiant", 8, 4));
+        g.fleet.push(Ship::new("Queen Elizabeth", 6, 3)); // both default to Alexandria
+
+        // §30.41: not before July 1941 (Game-Turn 10 ≈ late 1940).
+        g.game_turn = 10;
+        g.operations_stage = 1;
+        assert_eq!(g.apply(Command::PlanChariotRaid), Err(CommandError::ChariotRaidIllegal));
+
+        // From mid-1941 the raid may be planned.
+        g.game_turn = 60;
+        g.operations_stage = 1;
+        assert_eq!(g.apply(Command::PlanChariotRaid), Ok(CommandOutcome::ChariotRaidPlanned));
+        // §30.42: it may not fire before the seventh Operations Stage after planning.
+        assert_eq!(g.apply(Command::ExecuteChariotRaid), Err(CommandError::ChariotRaidIllegal));
+
+        // Seven stages later it executes; Damage Points reduce the Alexandria fleet's Gun Ratings.
+        g.game_turn = 63;
+        g.operations_stage = 1;
+        let before: u32 = g.fleet.iter().map(|s| s.gun_rating).sum();
+        let damage = match g.apply(Command::ExecuteChariotRaid) {
+            Ok(CommandOutcome::ChariotRaidExecuted { damage }) => damage,
+            other => panic!("expected raid execution, got {other:?}"),
+        };
+        assert!(damage <= 18, "at most three dice of Damage Points");
+        let after: u32 = g.fleet.iter().map(|s| s.gun_rating).sum();
+        assert_eq!(before - after, damage.min(before));
+        assert!(g.chariot_raid_used);
+
+        // §30.45: only once per game.
+        assert_eq!(g.apply(Command::PlanChariotRaid), Err(CommandError::ChariotRaidIllegal));
+    }
+
+    #[test]
     fn stacking_limit_enforced() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;

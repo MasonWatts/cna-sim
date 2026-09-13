@@ -813,6 +813,13 @@ pub struct GameState {
     /// Desert-raider counters in play or awaiting re-form (§27): up to two LRDG + one DSA.
     #[serde(default)]
     pub raiders: Vec<Raider>,
+    /// §30.42: the global Operations-Stage index on which the Axis planned its Chariot raid (the raid
+    /// executes on the seventh stage after). `None` while none is planned.
+    #[serde(default)]
+    pub chariot_raid_planned_stage: Option<u32>,
+    /// §30.45: whether the once-per-game Italian Chariot raid on Alexandria has been used.
+    #[serde(default)]
+    pub chariot_raid_used: bool,
     /// §27.73: the Game-Turn the Layforce commando battalion entered Alexandria (it must spend one
     /// full Game-Turn there before an amphibious landing); `None` while it is not in Alexandria.
     #[serde(default)]
@@ -1132,6 +1139,8 @@ impl GameState {
             rommel: None,
             truck_convoys: Vec::new(),
             raiders: Vec::new(),
+            chariot_raid_planned_stage: None,
+            chariot_raid_used: false,
             layforce_alexandria_since: None,
             layforce_free_supply_until: None,
             sas_free_supply_until: None,
@@ -2323,6 +2332,67 @@ impl GameState {
             }
         }
         (withdrawn, eliminated)
+    }
+
+    /// A monotonic Operations-Stage index across the whole game (three stages per Game-Turn), used
+    /// to schedule stage-delayed events like the §30.42 Chariot raid.
+    pub fn global_ops_stage(&self) -> u32 {
+        self.game_turn.saturating_sub(1) * 3 + self.operations_stage as u32
+    }
+
+    /// §30.4/§30.41–42: plan the once-per-game Italian Chariot raid on Alexandria (Axis, no earlier
+    /// than July 1941). It may be executed on the seventh Operations Stage after planning (§30.42).
+    pub(crate) fn plan_chariot_raid(&mut self) -> Result<(), crate::state::command::CommandError> {
+        use crate::state::command::CommandError;
+        if self.chariot_raid_used || self.chariot_raid_planned_stage.is_some() {
+            return Err(CommandError::ChariotRaidIllegal);
+        }
+        let d = date_of(self.game_turn);
+        if !(d.year > 1941 || (d.year == 1941 && d.month >= 7)) {
+            return Err(CommandError::ChariotRaidIllegal); // §30.41: not before July 1941
+        }
+        self.chariot_raid_planned_stage = Some(self.global_ops_stage());
+        Ok(())
+    }
+
+    /// §30.44/§30.46: execute the planned Chariot raid — roll the Chariot Raid Table (1→3 dice,
+    /// 2–3→2, 4–5→1, 6→none), sum the dice for Damage Points, and apply them to Commonwealth ships
+    /// at Alexandria (§30.34), concentrating on the strongest. Returns the Damage Points inflicted.
+    pub(crate) fn execute_chariot_raid(&mut self) -> Result<u32, crate::state::command::CommandError> {
+        use crate::state::command::CommandError;
+        use crate::state::naval::ShipLocation;
+        let Some(planned) = self.chariot_raid_planned_stage else {
+            return Err(CommandError::ChariotRaidIllegal);
+        };
+        // §30.42: executes on the seventh Operations Stage following the plan.
+        if self.chariot_raid_used || self.global_ops_stage() < planned + 7 {
+            return Err(CommandError::ChariotRaidIllegal);
+        }
+        let dice = match self.rng.d6() {
+            1 => 3,
+            2 | 3 => 2,
+            4 | 5 => 1,
+            _ => 0,
+        };
+        let damage: u32 = (0..dice).map(|_| self.rng.d6() as u32).sum();
+        let mut owed = damage;
+        while owed > 0 {
+            let Some(idx) = self
+                .fleet
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.location == ShipLocation::Alexandria && s.gun_rating > 0)
+                .max_by_key(|(_, s)| s.gun_rating)
+                .map(|(i, _)| i)
+            else {
+                break; // no undamaged CW ships at Alexandria left to hit
+            };
+            self.fleet[idx].damage(1);
+            owed -= 1;
+        }
+        self.chariot_raid_used = true;
+        self.chariot_raid_planned_stage = None;
+        Ok(damage)
     }
 
     /// §20.83: eliminate a unit that failed its Mandatory Withdrawal deadline (zeroes its TOE and

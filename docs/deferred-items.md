@@ -380,7 +380,12 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   unit transfer between port *hexes* can't resolve which port (and capacity) a hex is. Needs a
   port↔hex mapping (+ scenario port-hex data) before §30.51–58 can be located; the capacity math is
   then trivial.
-- [ ] **AU48 — §30.4/§30.41–46 Italian 10th Light Flotilla frogman/Chariot raid** on the fleet at Alexandria.
+- [x] **AU48 — §30.4/§30.41–46 Italian Chariot raid on Alexandria.** New Command::PlanChariotRaid +
+  ExecuteChariotRaid (Axis). §30.41 not before July 1941 (`date_of`); §30.42 executes on the 7th
+  Operations Stage after planning (`global_ops_stage`); §30.45 once per game; §30.46 Chariot Raid
+  Table (from the Desktop capture: die 1→3 dice, 2–3→2, 4–5→1, 6→no effect) → the dice total is
+  Damage Points applied to Commonwealth ships at Alexandria (§30.34 `Ship::damage`, concentrated on
+  the strongest). Test chariot_raid_30_4.
 - [-] **AU49 — §35.22 in-play plane transfer between squadrons.** Deferred: a faithful transfer needs
   the §35.21 same-class rule, the §35.23 capacity cap, and the §35.22 "transfer mission" (fly to the
   new base unless co-located) with its in-transit grounding — a real air-management subsystem for a
