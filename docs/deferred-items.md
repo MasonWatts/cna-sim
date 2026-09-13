@@ -327,12 +327,14 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   return at Cairo (`process_tds_returns`); §22.64 ≤3-TOE tank reserves usable as co-located Tank
   Replacement Points (`available_/draw_replacement_class`); §22.66 CPA-exceeded repair lockout
   (`tds_repair_locked`, set at stage rollover, suppresses the §22.62 assist). Test
-  tank_delivery_squadron_22_6. §22.65 TDS 20-CP towing now works via the AU25/AU26 broken-vehicle
-  marker model (`tow_broken_vehicle` grants 20 CP when a TDS shares the marker's hex). **Remaining:**
-  §22.62 destroyed-tank repair-on-a-1 is entangled with the currently-simplified auto-repair of
-  captured/destroyed equipment; towing of *destroyed-tank* markers (a separate `CapturedEquipment`
-  structure, not `BrokenVehicle`) isn't wired; and the scenario OB placement of the three squadrons
-  (A/B/C, arrive GT29/2, [4.43a]) is a follow-on.
+  tank_delivery_squadron_22_6. §22.65 TDS 20-CP towing works via the AU25/AU26 broken-vehicle marker
+  model. §22.62 destroyed-tank repair-on-a-1 **done**: `cmd_repair_captured_equipment` now gates a
+  Destroyed Tank marker on a Repair Facility (§14.54) or a co-located same-nationality TDS rolling a 1
+  (§22.62 — CommandError::RepairFailed otherwise); surrendered §28.3 equipment is unchanged. Test
+  destroyed_tank_repair_gate_22_62. **Remaining (minor):** physically towing a *destroyed-tank* marker
+  across hexes to a facility (§14.54) isn't wired — a TDS repairs it in-field on a 1 or it repairs at
+  a facility it already sits at; and the scenario OB placement of the three squadrons (A/B/C, GT29/2)
+  is a follow-on.
 - [x] **AU28 — §22.7 German Mobile Tank Repair Squad.** Treated exactly as a TDS (reuses `is_tds` —
   CPA 25, 0 stacking, ZOC-elimination/return, reserves, lockout), but the §22.62 assist and §22.64
   reserves are now matched by **nationality** (not just side), so a German squad repairs only German

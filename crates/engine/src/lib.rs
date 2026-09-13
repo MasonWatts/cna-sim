@@ -2249,6 +2249,52 @@ mod tests {
     }
 
     #[test]
+    fn destroyed_tank_repair_gate_22_62() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{FacilityKind, GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_weapons_systems(Nationality::Commonwealth, include_str!("../../../data/reference/weapons/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Repair;
+        g.active_player = Side::Commonwealth;
+        let hex = HexCoord::new(0, 0);
+
+        // A destroyed Commonwealth tank marker (captor = Commonwealth).
+        g.record_destroyed_tank(hex, Nationality::Commonwealth, "A9 Cruiser".into(), 2);
+        // §14.54: no Repair Facility and no Tank Delivery Squadron here → cannot be repaired.
+        assert_eq!(
+            g.apply(Command::RepairCapturedEquipment { hex, system: "A9 Cruiser".into() }),
+            Err(CommandError::RepairFailed)
+        );
+        // At a Major Repair Facility it repairs (§14.54 towed-to-facility maintenance).
+        g.repair_facilities.insert(hex, FacilityKind::Major);
+        assert_eq!(
+            g.apply(Command::RepairCapturedEquipment { hex, system: "A9 Cruiser".into() }),
+            Ok(CommandOutcome::CapturedEquipmentRepaired)
+        );
+
+        // §22.62: a co-located Tank Delivery Squadron can repair a destroyed tank in the field, but
+        // only on a die roll of 1 — so the attempt is either a repair or a failure (never illegal).
+        let hex2 = HexCoord::new(1, 0);
+        g.record_destroyed_tank(hex2, Nationality::Commonwealth, "A9 Cruiser".into(), 2);
+        let tds = g.spawn_unit(Nationality::Commonwealth, "tds", "DTS", Composition::Weapons { groups: vec![] });
+        {
+            let u = g.unit_mut(tds).unwrap();
+            u.is_tds = true;
+            u.location = Some(UnitLocation::OnMap(hex2));
+        }
+        let r = g.apply(Command::RepairCapturedEquipment { hex: hex2, system: "A9 Cruiser".into() });
+        assert!(
+            matches!(r, Ok(CommandOutcome::CapturedEquipmentRepaired) | Err(CommandError::RepairFailed)),
+            "TDS field repair is roll-dependent, got {r:?}"
+        );
+    }
+
+    #[test]
     fn broken_vehicle_capture_and_tow_21_5() {
         use crate::reference::units::Side;
         use crate::state::command::{Command, CommandOutcome};

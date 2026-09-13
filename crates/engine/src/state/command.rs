@@ -1051,6 +1051,9 @@ pub enum CommandError {
     /// §21.6: the Broken Down Vehicle marker could not be towed (bad index, non-adjacent, enemy-
     /// controlled destination, prohibited terrain, or the tow budget is exhausted).
     TowFailed,
+    /// §14.54/§22.62: a Destroyed Tank could not be repaired here — no Repair Facility, and no
+    /// co-located same-nationality Tank Delivery Squadron rolling a 1.
+    RepairFailed,
     /// §30.4: the Chariot raid cannot be planned/executed now (already used, wrong window, not yet
     /// planned, or the seven-stage delay has not elapsed).
     ChariotRaidIllegal,
@@ -5324,17 +5327,33 @@ impl GameState {
     fn cmd_repair_captured_equipment(&mut self, hex: HexCoord, system: String) -> Result<CommandOutcome, CommandError> {
         self.require_phase(Phase::Repair)?;
         let side = self.active_player;
-        let e = self
+        let idx = self
             .captured_equipment
-            .iter_mut()
-            .find(|e| e.captor == side && e.hex == hex && e.system == system && !e.repaired)
+            .iter()
+            .position(|e| e.captor == side && e.hex == hex && e.system == system && !e.repaired)
             .ok_or(CommandError::PrisonerActionIllegal)?;
-        e.repaired = true;
-        let (owner, count) = (e.nationality, e.count);
+        let (owner, count, destroyed) = {
+            let e = &self.captured_equipment[idx];
+            (e.nationality, e.count, e.destroyed_tank)
+        };
+        // §14.54/§22.62: a Destroyed Tank marker is not field-repairable just anywhere — it needs a
+        // Repair Facility (reached by towing, §14.54) or a co-located same-nationality Tank Delivery
+        // Squadron, which repairs a destroyed tank only on a die roll of 1 (§22.62). Surrendered
+        // captured equipment (§28.3, `destroyed_tank == false`) repairs as before.
+        if destroyed && !self.repair_facilities.contains_key(&hex) {
+            let tds_here = self
+                .units
+                .values()
+                .any(|u| u.is_tds && u.hex() == Some(hex) && u.nationality == owner);
+            if !tds_here || self.rng.d6() != 1 {
+                return Err(CommandError::RepairFailed);
+            }
+        }
+        self.captured_equipment[idx].repaired = true;
         // §22.5: enter the Replacement Point pool already trained (no Training clock).
         let class = self.replacement_class_for_system(owner, &system);
-        let idx = self.add_replacement_points(class, count, side, Some(crate::state::unit::UnitLocation::OnMap(hex)), None);
-        self.replacement_points[idx].training_remaining = 0;
+        let ri = self.add_replacement_points(class, count, side, Some(crate::state::unit::UnitLocation::OnMap(hex)), None);
+        self.replacement_points[ri].training_remaining = 0;
         Ok(CommandOutcome::CapturedEquipmentRepaired)
     }
 
