@@ -20,7 +20,7 @@ const FEATURE_BLUE = "#3f8fc4"; // the paper legend's feature blue (Oasis palms,
 
 export const ROUTE_DARK = "#4a4644";
 const RAIL_BLUE = "#2f9e86"; // teal-green, per the paper map — distinct from the river blue
-export const ROUTE_KINDS = new Set(["Road", "UnfinishedRoad", "Track", "Railroad", "UnfinishedRailroad"]);
+export const ROUTE_KINDS = new Set(["Road", "UnfinishedRoad", "Track", "Railroad", "UnfinishedRailroad", "DestroyedRailroad"]);
 export const EDGE_KINDS = new Set(["MajorRiver", "MinorRiver", "Wadi", "Ridge", "Escarpment", "Slope"]);
 const EDGE_HALF = 13; // half a hex side (circumradius/2) — the shared edge's half-length
 
@@ -109,6 +109,33 @@ export function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: nu
       <g stroke={ROUTE_DARK} strokeWidth={1.1} strokeDasharray={dash}>
         <line x1={A.x + nx * o} y1={A.y + ny * o} x2={B.x + nx * o} y2={B.y + ny * o} />
         <line x1={A.x - nx * o} y1={A.y - ny * o} x2={B.x - nx * o} y2={B.y - ny * o} />
+      </g>
+    );
+  }
+  if (kind === "DestroyedRailroad") {
+    // §24.66 blown rail: a grey spine the same thickness as a live railroad, with small ✕ marks
+    // where a live line has orthogonal ties.
+    const GREY = "#9a9a9a";
+    const XS = 1.7; // half-diagonal of each ✕
+    const ux = dx / len;
+    const uy = dy / len;
+    const N = 6;
+    const marks = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const px = A.x + dx * t;
+      const py = A.y + dy * t;
+      const a1x = (ux + nx) * XS * 0.71;
+      const a1y = (uy + ny) * XS * 0.71;
+      const a2x = (ux - nx) * XS * 0.71;
+      const a2y = (uy - ny) * XS * 0.71;
+      marks.push(<line key={`a${i}`} x1={px - a1x} y1={py - a1y} x2={px + a1x} y2={py + a1y} strokeWidth={1.1} />);
+      marks.push(<line key={`b${i}`} x1={px - a2x} y1={py - a2y} x2={px + a2x} y2={py + a2y} strokeWidth={1.1} />);
+    }
+    return (
+      <g stroke={GREY} strokeLinecap="round">
+        <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} strokeWidth={1.3} />
+        {marks}
       </g>
     );
   }
@@ -224,6 +251,186 @@ export function featureGlyph(feature: string): JSX.Element | null {
 
 // Terrain <pattern> definitions, tiled in user (map) space so they zoom with the board. Rendered
 // once in the SVG <defs>.
+// Compose a counter glyph from a set of primitives (branch symbols + overlaid modifiers), per
+// docs/unit-glyphs.md. Drawn white, centred at the origin (the caller positions it on the TOE line).
+export function unitTypeGlyph(primitives: string[]): JSX.Element | null {
+  if (!primitives || primitives.length === 0) return null;
+  const S = "#fff";
+  const sw = 1.0;
+  const has = (p: string) => primitives.includes(p);
+  const parts: JSX.Element[] = [];
+  const add = (el: JSX.Element) => parts.push(<g key={parts.length}>{el}</g>);
+
+  // NATO-style unit frame: a rectangle bounding box around the symbol. Mobility wheels hang below it.
+  const FW = 6.2; // half-width
+  const FH = 4.2; // half-height
+  const frame = <rect key="frame" x={-FW} y={-FH} width={2 * FW} height={2 * FH} fill="none" stroke={S} strokeWidth={sw} />;
+
+  // Standalone roles (label centred in the frame).
+  const role = (t: string, size: number) => (
+    <g>{frame}<text y={size / 2 - 0.6} textAnchor="middle" fontSize={size} fontWeight={700} fill={S} fontFamily="sans-serif">{t}</text></g>
+  );
+  if (has("Hq")) return role("HQ", 7);
+  if (has("Tds")) return role("TDS", 5.6);
+  if (has("RailConstruction")) return role("RR", 6.5);
+  // Road construction: two crossed hammers/picks, tool heads at the lower (down) ends of the handles.
+  if (has("RoadConstruction"))
+    return (
+      <g fill="none" stroke={S} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+        {frame}
+        <line x1={3} y1={-2.8} x2={-3} y2={2.8} />
+        <line x1={-3} y1={-2.8} x2={3} y2={2.8} />
+        {/* blocky tool heads at the lower ends */}
+        <g strokeWidth={1.9} strokeLinecap="butt">
+          <line x1={-3.7} y1={2.0} x2={-2.3} y2={3.6} />
+          <line x1={3.7} y1={2.0} x2={2.3} y2={3.6} />
+        </g>
+      </g>
+    );
+
+  const heavy = has("Heavy");
+  const sp = has("SelfPropelled") || (has("Armor") && (has("Artillery") || has("AntiTank")));
+  // The infantry ✕ fills the frame (⊠); its corners sit just inside the border.
+  const xw = FW - 0.5;
+  const xh = FH - 0.4;
+
+  // Self-propelled / plain armor / support group (Infantry+Armor): the armor "track" — a stadium
+  // (rectangle with fully rounded ends), behind any co-drawn branch.
+  if (sp || has("Armor")) {
+    add(<rect x={-4.2} y={-2.4} width={8.4} height={4.8} rx={2.4} ry={2.4} fill="none" stroke={S} strokeWidth={sw} />);
+  }
+  // Infantry / machine-gun ✕ (Commando draws its own smaller ✕ below).
+  if ((has("Infantry") || has("MachineGun")) && !has("Commando")) {
+    add(
+      <g fill="none" stroke={S} strokeWidth={sw} strokeLinecap="round">
+        <line x1={-xw} y1={-xh} x2={xw} y2={xh} />
+        <line x1={-xw} y1={xh} x2={xw} y2={-xh} />
+      </g>,
+    );
+    if (has("MachineGun")) {
+      // A small vertical (up) arrow over the centre of the ✕.
+      add(
+        <g fill="none" stroke={S} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+          <line x1={0} y1={2.2} x2={0} y2={-2.4} />
+          <polyline points="-1.3,-1 0,-2.8 1.3,-1" />
+        </g>,
+      );
+    }
+  }
+  if (has("Artillery")) add(<circle cx={0} cy={0} r={1.7} fill={S} />);
+  // Coastal-defense gun: a diamond through the midpoints of the box edges (top/bottom/left/right),
+  // with an artillery-sized centre dot.
+  if (has("CoastalGun"))
+    add(
+      <g stroke={S} strokeWidth={sw}>
+        <polygon points={`0,${-xh} ${xw},0 0,${xh} ${-xw},0`} fill="none" strokeLinejoin="round" />
+        <circle cx={0} cy={0} r={1.7} fill={S} stroke="none" />
+      </g>,
+    );
+  // Anti-tank: arms from the two bottom corners up to the midpoint of the top edge.
+  if (has("AntiTank")) add(<polyline points={`${-xw},${xh} 0,${-xh} ${xw},${xh}`} fill="none" stroke={S} strokeWidth={sw} strokeLinejoin="round" />);
+  // Tank destroyer (SP anti-tank): AT chevron + armor stadium + artillery dot.
+  if (has("TankDestroyer"))
+    add(
+      <g fill="none" stroke={S} strokeWidth={sw} strokeLinejoin="round">
+        <rect x={-4.2} y={-2.4} width={8.4} height={4.8} rx={2.4} ry={2.4} />
+        <polyline points={`${-xw},${xh} 0,${-xh} ${xw},${xh}`} />
+        <circle cx={0} cy={0} r={1.25} fill={S} stroke="none" />
+      </g>,
+    );
+  // Anti-air: the anti-tank chevron with a horizontal crossbar → an "A" (filled top when heavy).
+  if (has("AntiAir")) {
+    const abar = xh * 0.4; // crossbar height
+    const ax = (xw * (abar + xh)) / (2 * xh); // arm x at the crossbar
+    add(
+      <g fill="none" stroke={S} strokeWidth={sw} strokeLinejoin="round">
+        <polyline points={`${-xw},${xh} 0,${-xh} ${xw},${xh}`} />
+        <line x1={-ax} y1={abar} x2={ax} y2={abar} />
+        {heavy && <polygon points={`${-ax},${abar} 0,${-xh} ${ax},${abar}`} fill={S} stroke="none" />}
+      </g>,
+    );
+  }
+  if (has("Cavalry")) add(<line x1={-xw} y1={xh} x2={xw} y2={-xh} stroke={S} strokeWidth={sw} strokeLinecap="round" />);
+  // Armored car: the armor stadium (car body), raised, sitting on three wheels.
+  if (has("ArmoredCar"))
+    add(
+      <g stroke={S} strokeWidth={sw}>
+        <rect x={-4} y={-3} width={8} height={4} rx={2} ry={2} fill="none" />
+        <circle cx={-2.4} cy={2.6} r={0.95} fill={S} stroke="none" />
+        <circle cx={0} cy={2.6} r={0.95} fill={S} stroke="none" />
+        <circle cx={2.4} cy={2.6} r={0.95} fill={S} stroke="none" />
+      </g>,
+    );
+  // Armored recon: the armor stadium with a diagonal slash. Motorcycle recce is not armored — just
+  // the slash (the stadium is dropped; motorcycle wheels are added below).
+  if (has("Recon"))
+    add(
+      <g fill="none" stroke={S} strokeWidth={sw}>
+        {!has("Motorcycle") && <rect x={-4.2} y={-2.4} width={8.4} height={4.8} rx={2.4} ry={2.4} />}
+        <line x1={-xw} y1={xh} x2={xw} y2={-xh} />
+      </g>,
+    );
+  if (has("Engineer"))
+    add(
+      <g fill="none" stroke={S} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+        <line x1={-3.2} y1={-1.8} x2={3.2} y2={-1.8} />
+        <line x1={-3.2} y1={-1.8} x2={-3.2} y2={1.8} />
+        <line x1={0} y1={-1.8} x2={0} y2={1.8} />
+        <line x1={3.2} y1={-1.8} x2={3.2} y2={1.8} />
+      </g>,
+    );
+
+  // "Any unit" with no branch → the empty frame box.
+  if (parts.length === 0 && has("AnyUnit")) return <g>{frame}</g>;
+
+  // Modifiers overlaid on the branch.
+  // Motorized (and Bersaglieri, which is drawn as motorized): wheels just above where the ✕ arms meet
+  // the bottom edge, tucked inside the lower corners.
+  if (has("Motorized") || has("Bersaglieri")) {
+    add(<circle cx={-xw + 0.9} cy={xh - 2.4} r={1.1} fill={S} />);
+    add(<circle cx={xw - 0.9} cy={xh - 2.4} r={1.1} fill={S} />);
+  }
+  // Motorcycle: with Recon, two rings under the right side of the slash; on infantry (e.g. Bersaglieri
+  // motorcycle infantry), two wheels under the ✕ intersection.
+  if (has("Motorcycle")) {
+    if (has("Recon")) {
+      add(<circle cx={1.4} cy={2.6} r={1.5} fill="none" stroke={S} strokeWidth={sw} />);
+      add(<circle cx={4.6} cy={2.6} r={1.5} fill="none" stroke={S} strokeWidth={sw} />);
+    } else {
+      add(<circle cx={-1.3} cy={2.4} r={1.0} fill={S} />);
+      add(<circle cx={1.3} cy={2.4} r={1.0} fill={S} />);
+    }
+  }
+  // Airborne (parachute): a small gull just below the ✕ intersection.
+  if (has("Airborne")) add(<path d="M -1.7 3.1 A 1.2 1.2 0 0 1 0 3.1 A 1.2 1.2 0 0 1 1.7 3.1" fill="none" stroke={S} strokeWidth={sw} strokeLinecap="round" />);
+  // Heavy-weapons infantry (foot / motorized / parachute): the left portion of the box filled solid —
+  // the same solid bar for all, so heavy-para matches heavy-inf and motor heavy-weapons.
+  if (has("Infantry") && has("Heavy")) add(<rect x={-xw - 0.1} y={-xh} width={xw - 0.9} height={2 * xh} fill={S} stroke="none" />);
+  if (has("Camel")) add(<text x={3.0} y={3.9} textAnchor="middle" fontSize={6.2} fontWeight={700} fill={S} fontFamily="sans-serif">c</text>);
+  // Marine: an anchor overlaid on the infantry ✕ (ring, shaft, stock, and fluke arc).
+  if (has("Marine"))
+    add(
+      <g fill="none" stroke={S} strokeWidth={0.9} strokeLinecap="round">
+        <circle cx={0} cy={-3} r={0.9} />
+        <line x1={0} y1={-2.2} x2={0} y2={3} />
+        <line x1={-1.7} y1={-1.3} x2={1.7} y2={-1.3} />
+        <path d="M -2.2 1.4 A 2.4 2.4 0 0 0 2.2 1.4" />
+      </g>,
+    );
+  // Commando: a smaller ✕ (short of the box corners) with arrowheads atop the upper arms.
+  if (has("Commando"))
+    add(
+      <g fill="none" stroke={S} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+        <line x1={-3} y1={-2.8} x2={3} y2={2.8} />
+        <line x1={-3} y1={2.8} x2={3} y2={-2.8} />
+        <polyline points="-2.53,-1.27 -3,-2.8 -1.44,-2.44" />
+        <polyline points="2.53,-1.27 3,-2.8 1.44,-2.44" />
+      </g>,
+    );
+
+  return parts.length ? <g>{frame}{parts}</g> : null;
+}
+
 export const PATTERNS = (
   <defs>
     <pattern id="patGravel" width={14} height={14} patternUnits="userSpaceOnUse">

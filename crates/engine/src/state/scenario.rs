@@ -181,6 +181,7 @@ impl GameState {
                 unit.is_hq = u.parent.is_empty() && u.name.contains("HQ");
                 unit.airdroppable = u.airdroppable; // §42.41 (from the OA sheet)
                 unit.is_tds = u.is_tds; // §22.6 Tank Delivery Squadron / Mobile Tank Repair Squad
+                unit.unit_type = u.unit_type; // leaf type, if the OB sets it
                 unit.mandatory_withdrawal = u.withdrawal; // §20.8 [4.43a] withdrawal deadline
                 unit.return_at = u.return_at; // §20.8 [4.43a] scheduled return ("Rtn")
                 unit.return_toe = u.return_toe;
@@ -457,6 +458,9 @@ struct ScenarioUnit {
     /// Whether this counter is an HQ with a parenthesized Stacking Point value (§9.12).
     #[serde(default)]
     is_hq: bool,
+    /// Leaf unit type (like the OB `unit_type`).
+    #[serde(default)]
+    unit_type: Option<crate::reference::formation_org::UnitType>,
     /// Starting hex label, e.g. `"C3920"`. Empty for attached units (they are represented
     /// by their parent's counter — no own location).
     #[serde(default)]
@@ -493,6 +497,8 @@ impl GameState {
         let data: ScenarioData = ron::from_str(ron_str).map_err(ScenarioError::Ron)?;
         self.game_turn = data.game_turn;
         self.first_turn_initiative = data.first_turn_initiative;
+        // §55.3: seed the port table from the reference chart so port efficiency/blocking is tracked.
+        self.init_ports_from_chart();
         // §31: place the Rommel counter, if the scenario includes it.
         self.rommel = match data.rommel {
             Some(rp) => {
@@ -524,6 +530,7 @@ impl GameState {
             let unit = self.unit_mut(id).expect("just spawned");
             unit.org_size = u.org_size;
             unit.is_hq = u.is_hq;
+            unit.unit_type = u.unit_type;
             // §17.31: `basic_morale` in the scenario is the trained reference; a green unit may start
             // lower via `arrival_morale`. Non-green units have current == reference.
             unit.basic_morale_reference = u.basic_morale;
@@ -610,6 +617,7 @@ impl GameState {
                         water: d.water,
                     },
                     dummy: d.dummy,
+                    constructed: true,
                 });
             }
         }

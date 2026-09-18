@@ -4,7 +4,13 @@ export type UnitView = { id: number, name: string, nationality: string, side: st
 /**
  * `[col, row]` of the unit's effective hex (attached units ride their parent), or `None`.
  */
-hex: [number, number] | null, org_size: string, toe: number, fuel: number, ammo: number, cohesion: number, 
+hex: [number, number] | null, org_size: string, 
+/**
+ * The counter-symbol primitives (a set of branch + modifier names, e.g. `["Infantry"]`,
+ * `["Infantry","Motorized"]`, `["Armor","Artillery"]`, `["Hq"]`). The viewer composes the glyph
+ * from these. Empty when unclassified.
+ */
+unit_type: Array<string>, toe: number, fuel: number, ammo: number, cohesion: number, 
 /**
  * §4.44/§17 current Basic Morale. Green Commonwealth units arrive below `morale_reference` and
  * train up toward it (§17.34); for non-green units the two are equal.

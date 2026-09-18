@@ -1254,7 +1254,7 @@
     "3625": (terrain: Delta, features: []),
     "3626": (terrain: Delta, features: []),
     "3627": (terrain: Delta, features: []),
-    "3628": (terrain: Delta, features: []),
+    "3628": (terrain: Delta, features: [], label: "Nile Delta"),
     "3629": (terrain: Delta, features: []),
     "3630": (terrain: Delta, features: []),
     "3631": (terrain: Delta, features: []),

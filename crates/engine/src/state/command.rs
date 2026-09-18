@@ -70,6 +70,22 @@ pub enum Command {
     /// Convoy Phase). It spends its supply CPA and may not enter an enemy ZOC unoccupied by a
     /// Friendly unit (§10.29).
     MoveTruckConvoy { convoy: usize, to: HexCoord },
+    /// §20.46: move the on-map Replacement-Point pool at index `index` one hex to adjacent `to`
+    /// (Truck Convoy Phase — pools move toward the front as truck convoys). May not voluntarily enter
+    /// an enemy ZOC unless a Friendly unit already holds the hex (§20.42). (Per-pool CPA budget and
+    /// §20.45 Stores/Fuel upkeep for the haul are deferred.)
+    MoveReplacement { index: usize, to: HexCoord },
+    /// §20.44: load (pick up) a co-located Replacement-Point pool onto a free truck convoy, binding
+    /// the two so the pool rides the convoy (and the convoy gains §27.58 escort effects). Infantry
+    /// pools must be loaded before they can move; the convoy must have enough §54.2 infantry lift.
+    LoadReplacement { convoy: usize, pool: usize },
+    /// §20.44: unload (drop off) a Replacement-Point pool from its carrying convoy, clearing the
+    /// binding so the pool becomes a standalone (stranded) counter again.
+    UnloadReplacement { pool: usize },
+    /// §24.9: construct a Supply Dump at a co-located TOE Strength Point's hex, turning loose supplies
+    /// there into a convoy-loadable dump. A real dump costs 3 CP + 20 Store Points (Logistics Game); a
+    /// `dummy` dump costs 3 CP only. (Organization Phase.)
+    ConstructSupplyDump { unit: UnitId, hex: HexCoord, dummy: bool },
     /// §27.72/§27.73: land the Layforce commando (which has spent a full Game-Turn in Alexandria)
     /// in any coastal hex `to` (Movement & Combat Phase). Costs 5 CP per 50 hexes the transporting
     /// ships moved (`ship_hexes`) plus the hex's terrain entry cost; grants the §27.74 supply window.
@@ -349,6 +365,16 @@ pub enum Command {
     /// §53.11: return a unit's first-line Truck Points to its side's free pool (Organization Phase),
     /// so they can be reassigned. Any supply currently loaded on those trucks blocks the release.
     ReleaseTrucks { unit: UnitId, light: u32, medium: u32, heavy: u32 },
+    /// §53.14/§53.24: load supply from a co-located Friendly Supply Dump onto the free truck convoy
+    /// at index `convoy` (Truck Convoy Phase) — the pick-up end of a dump→dump/unit haul. Returns the
+    /// amount loaded.
+    LoadConvoy { convoy: usize, commodity: crate::state::game::Commodity, amount: u32 },
+    /// §53.14/§53.24: off-load supply from the free truck convoy at index `convoy` into a Friendly
+    /// Supply Dump in its hex (creating one if none) — the drop-off end. Returns the amount unloaded.
+    UnloadConvoy { convoy: usize, commodity: crate::state::game::Commodity, amount: u32 },
+    /// §22.13: field-repair the broken-down Truck Points of the free truck convoy at `convoy` (Repair
+    /// Phase); `roll` (1-6) drives how many are recovered.
+    RepairConvoyTrucks { convoy: usize, roll: u8 },
     /// §52.16: poison a well (Movement & Combat Phase); `die` decides success.
     PoisonWell { hex: HexCoord, die: u8 },
     /// §52.17: sweeten (un-poison) a well (Movement & Combat Phase); `die` decides success.
@@ -659,6 +685,11 @@ impl Command {
             Command::FlyBombingMissionAt { .. } | Command::FlyBombingMission { .. } => &["§39", "§41.3"],
             // Truck convoy & prisoners.
             Command::MoveTruckConvoy { .. } => &["§8.98"],
+            Command::MoveReplacement { .. } => &["§20.46", "§20.42"],
+            Command::LoadReplacement { .. } | Command::UnloadReplacement { .. } => &["§20.44"],
+            Command::ConstructSupplyDump { .. } => &["§24.9"],
+            Command::LoadConvoy { .. } | Command::UnloadConvoy { .. } => &["§53.14", "§53.24"],
+            Command::RepairConvoyTrucks { .. } => &["§22.13"],
             Command::MovePrisoners { .. } => &["§28.13"],
             // Organization / training.
             Command::TrainUnit { .. } => &["§17.3"],
@@ -812,6 +843,12 @@ pub enum CommandOutcome {
     TruckConvoyFormed { convoy: usize },
     /// §8.98: a free truck convoy moved to `hex`, with `cpa_used` tenths of a CP spent this phase.
     TruckConvoyMoved { hex: HexCoord, cpa_used: u32 },
+    /// §20.46: a Replacement-Point pool moved one hex to `hex`.
+    ReplacementMoved { index: usize, hex: HexCoord },
+    /// §20.44: a Replacement-Point pool was loaded onto (`convoy: Some`) or unloaded from a convoy.
+    ReplacementBinding { pool: usize, convoy: Option<usize> },
+    /// §24.9: a Supply Dump was constructed at `hex` (`dummy` = a §32.18 decoy).
+    SupplyDumpConstructed { hex: HexCoord, dummy: bool },
     /// §27.72: the Layforce commando made an amphibious landing at `hex`.
     LayforceLanded { hex: HexCoord },
     /// §27.77: the Layforce commando re-embarked and was returned to Alexandria.
@@ -1165,6 +1202,9 @@ pub enum CommandError {
     AbortNotPermitted,
     /// §38.36: no Stores Point is present at the squadron's base to pay for the refit attempt.
     InsufficientStores,
+    /// §24.9: a Supply Dump cannot be constructed here — the builder is not co-located with `hex`, or
+    /// (for a real dump) is not a TOE Strength Point.
+    DumpConstructionIllegal,
     /// §35.14: the SGSU lacks its own upkeep and may not repair (refit) its planes this stage.
     SgsuUnsupplied,
     /// §30: the referenced warship does not exist.
@@ -1199,6 +1239,10 @@ impl GameState {
                 self.cmd_form_truck_convoy(from_unit, light, medium, heavy)
             }
             Command::MoveTruckConvoy { convoy, to } => self.cmd_move_truck_convoy(convoy, to),
+            Command::MoveReplacement { index, to } => self.cmd_move_replacement(index, to),
+            Command::LoadReplacement { convoy, pool } => self.cmd_load_replacement(convoy, pool),
+            Command::UnloadReplacement { pool } => self.cmd_unload_replacement(pool),
+            Command::ConstructSupplyDump { unit, hex, dummy } => self.cmd_construct_supply_dump(unit, hex, dummy),
             Command::LandLayforce { unit, to, ship_hexes } => self.cmd_land_layforce(unit, to, ship_hexes),
             Command::EmbarkLayforce { unit } => self.cmd_embark_layforce(unit),
             Command::LandSas { unit, to, ship_hexes } => self.cmd_land_sas(unit, to, ship_hexes),
@@ -1318,12 +1362,38 @@ impl GameState {
             Command::LoadTrucks { unit, commodity, amount } => {
                 self.require_phase(Phase::Organization)?;
                 self.require_units_exist(&[unit])?;
+                // §6.3/§53.24: loading/off-loading during the Organization Phase costs 0 CP (the
+                // Supply-Distribution free-load exception); a CP cost applies only in other phases.
                 Ok(CommandOutcome::TrucksLoaded(self.load_trucks(unit, commodity, amount)))
             }
             Command::UnloadTrucks { unit, commodity, amount } => {
                 self.require_phase(Phase::Organization)?;
                 self.require_units_exist(&[unit])?;
                 Ok(CommandOutcome::TrucksUnloaded(self.unload_trucks(unit, commodity, amount)))
+            }
+            Command::LoadConvoy { convoy, commodity, amount } => {
+                self.require_phase(Phase::TruckConvoy)?;
+                let side = self.truck_convoys.get(convoy).map(|c| c.side).ok_or(CommandError::TruckConvoyCannotMove)?;
+                if self.active_player != side {
+                    return Err(CommandError::WrongPhase);
+                }
+                Ok(CommandOutcome::TrucksLoaded(self.load_convoy(convoy, commodity, amount)))
+            }
+            Command::UnloadConvoy { convoy, commodity, amount } => {
+                self.require_phase(Phase::TruckConvoy)?;
+                let side = self.truck_convoys.get(convoy).map(|c| c.side).ok_or(CommandError::TruckConvoyCannotMove)?;
+                if self.active_player != side {
+                    return Err(CommandError::WrongPhase);
+                }
+                Ok(CommandOutcome::TrucksUnloaded(self.unload_convoy(convoy, commodity, amount)))
+            }
+            Command::RepairConvoyTrucks { convoy, roll } => {
+                self.require_phase(Phase::Repair)?;
+                let side = self.truck_convoys.get(convoy).map(|c| c.side).ok_or(CommandError::TruckConvoyCannotMove)?;
+                if self.active_player != side {
+                    return Err(CommandError::WrongPhase);
+                }
+                Ok(CommandOutcome::Repaired(self.repair_convoy_trucks(convoy, roll)))
             }
             Command::AssignTrucks { unit, light, medium, heavy } => {
                 self.cmd_assign_trucks(unit, light, medium, heavy)
@@ -2753,7 +2823,7 @@ impl GameState {
     /// truck losses.
     fn resolve_truck_convoy_raid(&mut self, raider: usize, convoy: usize, roll: u32) -> Result<CommandOutcome, CommandError> {
         use crate::state::game::Commodity;
-        let carries_repl = self.truck_convoys[convoy].carries_replacements;
+        let carries_repl = self.convoy_carries_replacements(convoy);
         // §27.58: "all trucks carrying Replacement Points" — the convoy hauls replacements and has
         // no remaining commodity cargo.
         let all_repl = carries_repl && self.truck_convoys[convoy].cargo.is_empty();
@@ -2780,6 +2850,12 @@ impl GameState {
             for cm in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
                 let have = c.cargo.get(cm);
                 *c.cargo.get_mut(cm) = have - have.checked_div(total).unwrap_or(0);
+            }
+            // §27.58: if that was the convoy's last Truck Point, any hauled pool can no longer ride —
+            // drop it back onto the hex so it becomes a standalone (stranded) counter again.
+            let c = &self.truck_convoys[convoy];
+            if c.trucks.light + c.trucks.medium + c.trucks.heavy == 0 {
+                self.drop_convoy_replacements(convoy);
             }
         }
         if carries_repl && eff >= 6 && !eliminated {
@@ -2823,7 +2899,7 @@ impl GameState {
             trucks: crate::state::unit::TruckPoints { light, medium, heavy },
             cargo,
             cpa_used: 0,
-            carries_replacements: false,
+            trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
         Ok(CommandOutcome::TruckConvoyFormed { convoy: self.truck_convoys.len() - 1 })
     }
@@ -2863,7 +2939,206 @@ impl GameState {
         }
         c.cpa_used += cost;
         c.hex = to;
-        Ok(CommandOutcome::TruckConvoyMoved { hex: to, cpa_used: c.cpa_used })
+        let cpa_used = c.cpa_used;
+        // §21.21/24 + §53.22: the entered hex's Breakdown Points accrue to the convoy; a breakdown
+        // check (truck BAR 2L) then loses a proportion of its Truck Points.
+        let hex_bp = self
+            .map
+            .terrain(to)
+            .and_then(|t| self.reference.terrain.get(&t))
+            .map(|p| p.breakdown.0)
+            .unwrap_or(0);
+        self.truck_convoys[convoy].breakdown_points += hex_bp.max(0) as u32;
+        self.resolve_convoy_breakdown(convoy);
+        Ok(CommandOutcome::TruckConvoyMoved { hex: to, cpa_used })
+    }
+
+    /// §20.46: move an on-map Replacement-Point pool one hex toward the front (Truck Convoy Phase),
+    /// as a truck convoy would. §20.42: it may not voluntarily enter an enemy ZOC unless a Friendly
+    /// unit already holds the destination. Terrain must be enterable (motorized step cost). The
+    /// per-pool CPA budget and §20.45 Stores/Fuel upkeep of the haul are deferred.
+    /// Tenths of infantry TOE Strength Points a truck convoy can lift (§54.2 = Σ trucks × per-point
+    /// infantry capacity), used to decide whether it can haul a Replacement-Point pool (§20.44).
+    fn convoy_inf_capacity_tenths(&self, convoy: &crate::state::game::TruckConvoy) -> u32 {
+        let Some(chart) = self.reference.truck_chart.as_ref() else {
+            return 0;
+        };
+        let t = &convoy.trucks;
+        t.light * chart.light.toe_inf_tenths.unwrap_or(0)
+            + t.medium * chart.medium.toe_inf_tenths.unwrap_or(0)
+            + t.heavy * chart.heavy.toe_inf_tenths.unwrap_or(0)
+    }
+
+    fn cmd_move_replacement(&mut self, index: usize, to: HexCoord) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::terrain::MoveCost;
+        use crate::rules::movement::{step_cost, MoveMode};
+        use crate::state::game::{Commodity, ReplacementClass};
+        self.require_phase(Phase::TruckConvoy)?;
+        let p = self.replacement_points.get(index).ok_or(CommandError::ReplacementFailed)?;
+        let side = p.side;
+        if self.active_player != side {
+            return Err(CommandError::WrongPhase);
+        }
+        let from = p.location.as_ref().and_then(|l| l.hex()).ok_or(CommandError::ReplacementFailed)?;
+        // §20.42d/§20.46: a pool moves "for purposes of assignment"; its CPA is that of its assigned unit.
+        let assigned = p.assigned_to.ok_or(CommandError::ReplacementFailed)?;
+        let pool_cpa_used = p.cpa_used;
+        let class = p.class;
+        let lift_tenths = p.count * 10; // §20.45: 1 Replacement Point ≈ 1 TOE Strength Point to lift
+        if !self.map.neighbors(from).any(|n| n == to) {
+            return Err(CommandError::ReplacementFailed);
+        }
+        // §20.42a: no voluntary entry into an enemy ZOC unless a Friendly unit already holds the hex.
+        let enemy = side.opponent();
+        let friendly = self
+            .units_in_hex(to)
+            .into_iter()
+            .any(|x| self.unit(x).is_some_and(|u| u.nationality.side() == side));
+        if self.hex_in_zoc_of(to, enemy) && !friendly {
+            return Err(CommandError::ReplacementFailed);
+        }
+        // Motorized truck-convoy step cost (§20.46), in tenths of a CP (`Fixed`); terrain must be enterable.
+        let cost = match step_cost(&self.reference, &self.map, from, to, MoveMode::Motorized) {
+            Some(MoveCost::Cost(f)) => f.0.max(0),
+            _ => return Err(CommandError::ReplacementFailed),
+        };
+        // §20.42d: the pool may never exceed its assigned unit's CPA (tenths, like `cp_expended`).
+        if pool_cpa_used as i32 + cost > self.effective_cpa(assigned).unwrap_or(0).max(0) * 10 {
+            return Err(CommandError::ReplacementFailed);
+        }
+        // §20.44/§20.46 haulage: an Infantry pool must ride a co-located Friendly truck convoy with
+        // enough §54.2 infantry lift and movement allowance for the step; that convoy travels with the
+        // pool and its Truck Points burn the Fuel. Tank/Gun/Recce points may move on their own (§20.44),
+        // costing the Fuel of the minimum Truck Points that would lift them.
+        let light_inf = self.reference.truck_chart.as_ref().and_then(|c| c.light.toe_inf_tenths).unwrap_or(5).max(1);
+        let (carrier, truck_points) = if class == ReplacementClass::Infantry {
+            // A co-located Friendly convoy can lift the pool and still afford the step (§54.2/§8.98).
+            let can_carry = |s: &Self, i: usize| {
+                let c = &s.truck_convoys[i];
+                c.side == side
+                    && c.hex == from
+                    && s.convoy_inf_capacity_tenths(c) >= lift_tenths
+                    && c.cpa_used as i32 + cost <= s.truck_convoy_cpa(c) as i32
+            };
+            // §20.46: ride the already-bound convoy when it can still make the step; otherwise pick up
+            // (auto-load onto) a co-located one and bind to it — the binding then persists across the
+            // haul (and drives §27.58 raid effects) until the pool is dropped or absorbed.
+            let bound = self.replacement_points[index]
+                .carried_by
+                .filter(|&i| i < self.truck_convoys.len() && can_carry(self, i));
+            let carrier = bound.or_else(|| (0..self.truck_convoys.len()).find(|&i| can_carry(self, i)));
+            match carrier {
+                Some(i) => {
+                    self.replacement_points[index].carried_by = Some(i);
+                    let c = &self.truck_convoys[i];
+                    (Some(i), c.trucks.light + c.trucks.medium + c.trucks.heavy)
+                }
+                None => return Err(CommandError::ReplacementFailed),
+            }
+        } else {
+            (None, (lift_tenths + light_inf - 1) / light_inf)
+        };
+        // §49.13/§20.45: the hauling Truck Points burn Fuel (FCF 1) = trucks × ⌈CP/5⌉. §49.18: a carrying
+        // convoy burns the Fuel it is transporting first, then draws the shortfall from a co-located
+        // Friendly Supply Dump (§49.15; a self-moving pool has no tank, so it draws entirely from the dump).
+        let fuel_cost = truck_points * (((cost + 49) / 50) as u32);
+        let from_convoy = carrier.map_or(0, |i| self.truck_convoys[i].cargo.fuel).min(fuel_cost);
+        let from_dump = fuel_cost - from_convoy;
+        if self.available_commodity_at(from, side, Commodity::Fuel) < from_dump {
+            return Err(CommandError::InsufficientFuel);
+        }
+        // Commit: draw the Fuel, advance the carrying convoy (if any) with the pool, and move the pool.
+        self.consume_commodity_at(from, side, Commodity::Fuel, from_dump);
+        if let Some(i) = carrier {
+            self.truck_convoys[i].cargo.fuel -= from_convoy;
+            self.truck_convoys[i].cpa_used += cost as u32;
+            self.truck_convoys[i].hex = to;
+        }
+        let p = &mut self.replacement_points[index];
+        p.cpa_used += cost as u32;
+        p.location = Some(crate::state::unit::UnitLocation::OnMap(to));
+        Ok(CommandOutcome::ReplacementMoved { index, hex: to })
+    }
+
+    /// §20.44 LoadReplacement: pick up a co-located Replacement-Point pool onto a free convoy, binding
+    /// the two. Both must be the active player's, on the same hex; an Infantry pool needs the convoy to
+    /// have enough §54.2 infantry lift (Tank/Gun/Recce pools self-move, so loading is a no-op offer we
+    /// still honor for display). The binding drives movement (§20.46) and §27.58 raid effects.
+    fn cmd_load_replacement(&mut self, convoy: usize, pool: usize) -> Result<CommandOutcome, CommandError> {
+        use crate::state::game::ReplacementClass;
+        self.require_phase(Phase::TruckConvoy)?;
+        let p = self.replacement_points.get(pool).ok_or(CommandError::ReplacementFailed)?;
+        let c = self.truck_convoys.get(convoy).ok_or(CommandError::ReplacementFailed)?;
+        if self.active_player != p.side || p.side != c.side {
+            return Err(CommandError::WrongPhase);
+        }
+        let phex = p.location.as_ref().and_then(|l| l.hex());
+        if phex != Some(c.hex) {
+            return Err(CommandError::ReplacementFailed);
+        }
+        if p.class == ReplacementClass::Infantry && self.convoy_inf_capacity_tenths(c) < p.count * 10 {
+            return Err(CommandError::ReplacementFailed);
+        }
+        self.replacement_points[pool].carried_by = Some(convoy);
+        Ok(CommandOutcome::ReplacementBinding { pool, convoy: Some(convoy) })
+    }
+
+    /// §20.44 UnloadReplacement: drop a pool from its carrying convoy, clearing the binding so it
+    /// becomes a standalone (stranded) counter again.
+    fn cmd_unload_replacement(&mut self, pool: usize) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::TruckConvoy)?;
+        let p = self.replacement_points.get_mut(pool).ok_or(CommandError::ReplacementFailed)?;
+        if self.active_player != p.side {
+            return Err(CommandError::WrongPhase);
+        }
+        p.carried_by = None;
+        Ok(CommandOutcome::ReplacementBinding { pool, convoy: None })
+    }
+
+    /// §24.9 ConstructSupplyDump: a co-located TOE Strength Point turns the loose supplies at its hex
+    /// into a convoy-loadable dump. A real dump costs **3 CP + 20 Store Points** (consumed from the
+    /// hex's supplies, Logistics Game); a `dummy` costs **3 CP** only. (Organization Phase.)
+    fn cmd_construct_supply_dump(&mut self, unit: UnitId, hex: HexCoord, dummy: bool) -> Result<CommandOutcome, CommandError> {
+        use crate::state::game::{Commodities, Commodity, SupplyDump};
+        use crate::state::unit::UnitLocation;
+        self.require_phase(Phase::Organization)?;
+        let u = self.unit(unit).ok_or(CommandError::UnitNotFound)?;
+        let side = u.nationality.side();
+        if self.active_player != side {
+            return Err(CommandError::WrongPhase);
+        }
+        // Must be co-located with the target hex; a real dump additionally needs a TOE Strength Point.
+        if u.hex() != Some(hex) || (!dummy && u.total_toe() == 0) {
+            return Err(CommandError::DumpConstructionIllegal);
+        }
+        if !dummy {
+            // §24.9: expend 20 Store Points in the hex (Logistics Game).
+            if self.available_commodity_at(hex, side, Commodity::Stores) < 20 {
+                return Err(CommandError::InsufficientStores);
+            }
+            self.consume_commodity_at(hex, side, Commodity::Stores, 20);
+        }
+        // §24.9: 3 Capability Points (over-CPA spend disorganizes the unit per §6.21).
+        self.expend_cp(unit, crate::reference::terrain::Fixed(30));
+        if dummy {
+            self.supply_dumps.push(SupplyDump {
+                location: UnitLocation::OnMap(hex), side, supply: Commodities::default(), dummy: true, constructed: true,
+            });
+        } else {
+            // Promote every loose pile of this side at the hex to a constructed (loadable) dump; if
+            // none exist, establish an empty constructed dump.
+            let mut promoted = false;
+            for d in self.supply_dumps.iter_mut().filter(|d| d.side == side && !d.dummy && d.location.hex() == Some(hex)) {
+                d.constructed = true;
+                promoted = true;
+            }
+            if !promoted {
+                self.supply_dumps.push(SupplyDump {
+                    location: UnitLocation::OnMap(hex), side, supply: Commodities::default(), dummy: false, constructed: true,
+                });
+            }
+        }
+        Ok(CommandOutcome::SupplyDumpConstructed { hex, dummy })
     }
 
     /// §27.72/§27.73 LandLayforce: the Layforce commando, having spent a full Game-Turn in
@@ -5220,6 +5495,43 @@ impl GameState {
                 .filter(|x| x.assigned_parent == Some(parent) && x.total_toe() > 0)
                 .count() as u32;
             if current >= cap {
+                return Err(CommandError::ReorgIllegal);
+            }
+        }
+        // §19.33 (German Formation Organization Chart) text-stated constraints — the per-slot numeric
+        // type maxima are deferred (see docs/deferred-items.md D2), but two rules are unambiguous:
+        if assigned != Some(parent) {
+            use crate::reference::units::Nationality;
+            use crate::state::unit::OrgSize;
+            let (p_nat, p_size, p_name) = {
+                let p = self.unit(parent).ok_or(CommandError::UnitNotFound)?;
+                (p.nationality, p.org_size, p.name.clone())
+            };
+            if p_nat == Nationality::German {
+                // "No Battle Group may be assigned to a division."
+                let u_size = self.unit(unit).expect("checked").org_size;
+                if u_size == OrgSize::BattleGroup && p_size == OrgSize::Division {
+                    return Err(CommandError::ReorgIllegal);
+                }
+                // "The [15th Infantry] brigade may never contain more than six battalions of infantry."
+                if p_name.contains("15th Schutzen Bde")
+                    && self.unit(unit).expect("checked").org_size == OrgSize::Battalion
+                    && self.unit_is_infantry(unit)
+                {
+                    let inf_bns = self
+                        .units
+                        .values()
+                        .filter(|x| x.assigned_parent == Some(parent) && x.org_size == OrgSize::Battalion && x.total_toe() > 0)
+                        .map(|x| x.id)
+                        .filter(|&id| self.unit_is_infantry(id))
+                        .count() as u32;
+                    if inf_bns >= 6 {
+                        return Err(CommandError::ReorgIllegal);
+                    }
+                }
+            }
+            // §19.3 Formation Organization Chart per-type maxima (German + Italian rows modeled).
+            if !self.formation_org_assign_ok(parent, unit) {
                 return Err(CommandError::ReorgIllegal);
             }
         }

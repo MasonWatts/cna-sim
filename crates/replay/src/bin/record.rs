@@ -14,7 +14,32 @@ use cna_engine::reference::ReferenceData;
 use cna_engine::state::game::GameState;
 use cna_engine::state::map::HexCoord;
 use cna_engine::state::unit::{Composition, UnitLocation, WeaponGroup};
-use cna_replay::{record_game, record_game_streaming};
+use cna_replay::{record_game, record_game_streaming, record_rp_demo, GameRecord};
+
+/// Write a finished [`GameRecord`] to `out`: JSONL (header line + one event per line, matching the
+/// streaming format the viewer prefers) when the path ends in `.jsonl`, else a single pretty JSON doc.
+fn write_record(out: &str, record: &GameRecord) {
+    if out.ends_with(".jsonl") {
+        use std::io::Write;
+        let file = std::fs::File::create(out).unwrap_or_else(|e| panic!("create {out}: {e}"));
+        let mut w = std::io::BufWriter::new(file);
+        let header = serde_json::json!({
+            "scenario": record.scenario, "seed": record.seed,
+            "commonwealth_agent": record.commonwealth_agent, "axis_agent": record.axis_agent,
+            "map": &record.map,
+        });
+        writeln!(w, "{}", serde_json::to_string(&header).unwrap()).unwrap();
+        for e in &record.events {
+            writeln!(w, "{}", serde_json::to_string(e).unwrap()).unwrap();
+        }
+        w.flush().ok();
+        eprintln!("wrote {out}: {} events", record.events.len());
+    } else {
+        let json = serde_json::to_string_pretty(record).expect("record serializes");
+        std::fs::write(out, &json).unwrap_or_else(|e| panic!("write {out}: {e}"));
+        eprintln!("wrote {out}: {} events, {} bytes", record.events.len(), json.len());
+    }
+}
 
 /// A compact skirmish: cruisers + infantry per side on a small clear board, stocked to move/fight.
 fn build_skirmish(seed: u64) -> GameState {
@@ -72,6 +97,13 @@ fn main() {
     let scenario = args.get(3).map(|s| s.as_str()).unwrap_or("skirmish");
 
     let seed = 42;
+
+    // The scripted Replacement-Point lifecycle demo (§20) isn't agent-driven — build + write it directly.
+    if scenario == "rpdemo" {
+        write_record(&out, &record_rp_demo(seed));
+        return;
+    }
+
     let (game, label) = match scenario {
         "scenario1" => (build_real(seed, data!("scenarios/italian-offensive.ron")), "The Italian Offensive (§60)"),
         "campaign" => (build_real(seed, data!("scenarios/campaign.ron")), "Campaign Game (§64)"),

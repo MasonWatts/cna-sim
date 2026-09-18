@@ -90,28 +90,55 @@ Keep this file in sync as items land. When an item is done, update the matching 
 
 ## D. Reorganization (§19, §8.12, `state/game.rs`)
 
-The §19 reorg cluster all keys off the **§19.3 Formation Organization Chart**, which is *not* in the
-digitized Charts & Tables (its own note defers "singular" formations to their OA-sheet structure).
-The engine's accepted workaround is each formation's historical `assigned_capacity` captured from the
-loaded OB. Implementing the below with guessed maxima would be *less* faithful than that, so they are
-blocked on either that chart or hierarchical-OB modeling — not on engine logic.
-- [-] **D1 — Hierarchical OB non-shell children vs OA maxima** (§9.26/§9.27). Blocked: needs
-  hierarchical OB modeling (units currently flat with parent pointers).
-- [-] **D2 — §19.3 real assignment maxima.** Resolved as approximated-by-design (2026-09-09): there
-  is **no dedicated §19.3 chart** (confirmed with the rulebook owner) — §19.3 defers each formation's
-  organization to its OA-sheet structure, which the engine already captures as `assigned_capacity`
-  (the historical assigned count) and enforces in `ReassignUnit`. This is the faithful representation,
-  not a stand-in. (Distinct from the §19.5 Maximum Attachment Chart, which *is* digitized and enforced.)
+The §19 reorg cluster all keys off the **§19.3 Formation Organization Chart**. **Correction (2026-09-13):**
+that chart *does* exist and is in the source materials — three nationality panels: **§19.31 Allied (PDF
+p135), §19.32 Italian (p174), §19.33 German (p175)**. The earlier note here ("no dedicated §19.3 chart,
+confirmed with the rulebook owner") was **wrong** and is retracted. The chart lists, per formation type,
+the maximum assigned composition — but slots are drawn at their **echelon** (e.g. a Panzergrenadier
+division's infantry slots are *regiments*, not battalions; cf. 164 Leichte's OB = 3 regiments / 9 bns)
+and use symbol-level distinctions (tank vs tank-destroyer vs anti-tank; the `(2)[⊡]` "artillery HQ +
+all its units, or any three 1-SP units" group vs the `1[⊡]` single 1-SP unit; heavy vs light AA). The
+engine already bounds each formation by its historical `assigned_capacity` (total assigned count,
+enforced in `ReassignUnit`) and by the §19.5 Maximum-Attachment type/count caps.
+- [x] **D1 — Non-shell children vs OA maxima** (§9.26/§9.27). Unblocked by the §19.3 chart data:
+  `is_shell` now implements the division and brigade/regiment clauses. A **division** is a shell when
+  ≤50% of the brigade-equivalents its chart row allows (`formation_org_max_subunits(hq, Bde)`) are
+  attached and not themselves shells; a **brigade/regiment** when <2/3 of its allowed battalions are
+  attached and non-shell (with the §9.26 two-battalion-brigade exception). §9.27 (shell children don't
+  count toward the prerequisite) falls out of the recursive `count_attached_nonshell`. Formations
+  without a chart row (pool/dynamic HQs) are never flagged. Test: `formation_org_division_shell_9_26`.
+- [x] **D2 — §19.3 real assignment maxima.** Chart located (p135/174/175), transcribed to
+  `docs/formation-org-chart-transcription.md`, and encoded in `reference::formation_org` as
+  per-formation slots `(family, echelon, max)` — echelon-aware per §9.26 (divisions cap brigade/
+  regiment sub-formations, brigades cap battalions). **Enforced for all three nationalities** in
+  `ReassignUnit` via `formation_org_assign_ok`, dispatching the family classifier by nationality
+  (`org_family_of`: German/Italian by name; Commonwealth by §4.46 `unit_type` + a tank flag, since CW
+  battalions are named after their parent regiment). Each nationality is guarded by an OB-fill
+  invariant test (`formation_org_{german,italian,commonwealth}_ob_within_maxima` — every formation's
+  historical fill ≤ its chart maxima). Plus the German text rules: "No Battle Group assigned to a
+  division" and the 15th-Inf-Bde ≤6-infantry cap. Reconciliation calls: German 15 Pz infantry = 3
+  regiments (the 15th Schützen Bde grouping); Italian/CW divisions modeled at full historical org
+  (Maletti +3rd regiment; Libyan Tank Command = the GT 1–26 "Tank Group"). Remaining refinements: CW
+  time-phasing (see D4) and counting division regiments transitively through a brigade container
+  (currently direct sub-formations of the HQ).
 - [x] **D3 — CW battalion-shuffle** (§19.26). Already supported: `ReassignUnit`/`DetachUnit`/`AttachUnit`
   let CW freely shuffle battalions within a brigade's `assigned_capacity` — the rule "falls out" of
   the general reorg commands.
-- [-] **D4 — Historical (time-phased) assignment shifts** (§19.24/§19.25). Approximated-by-design
-  (2026-09-09): with no §19.3 chart (see D2), there are no per-slot time-phased assignment maxima to
-  model; `assigned_capacity` is the OA-sheet organization. The §19.5 *attachment* caps that ARE
-  time-phased (CW armor division / Tank Brigade GT-1–67 vs 68+, Matruh/Selby GT windows) are enforced.
-- [-] **D5 — Substitution** (§19.45). Approximated-by-design (2026-09-09): needs §19.3 per-slot maxima
-  which don't exist as a chart (see D2); the general reassign/attach commands already cover the
-  observable behavior within `assigned_capacity`.
+- [x] **D4 — Historical (time-phased) assignment shifts** (§19.24/§19.25). Time-phased §19.3 rows
+  (`FormationOrgRow.gt`) are enforced and audited per Game-Turn window: German 5 Le (GT 1–57) vs 21
+  Panzer; Italian Libyan Tank Command "Tank Group" (GT 1–26); and the **Commonwealth armored brigade
+  Type I/II/III** (GT 1–18 = 3 tank; 19–70/92+ = +1 infantry; 71–91 = +1 artillery). The CW audit is
+  window-aware (counts only units present in each window via OB arrival/withdrawal). The 5th Light →
+  21st Panzer transformation is modeled in the OB (one formation, both HQ counters, arrivals 5 Le
+  GT21/3 → 21 GT58/2). Test: `formation_org_commonwealth_armored_brigade_time_phased_d4`. *Note:* the
+  CW armored-division and Support-Group Type windows remain modeled by their union composition (max
+  across periods) — a faithful upper bound; per-window gating for those would need the same
+  withdrawal-timing reconciliation and is a minor future refinement. The §19.5 *attachment* caps that
+  are time-phased (CW armor division / Tank Brigade GT 1–67 vs 68+, Matruh/Selby) are enforced.
+- [x] **D5 — Substitution** (§19.45 / §19.33). The §19.33 substitution — "The 28th Sonderverband and
+  361st Afrika regiments may be freely substituted for any 'normal' infantry regiment" — is *permissive*
+  and already falls out of the general reassign/attach commands (no per-slot type gate blocks it). The
+  paired *restriction* "No Battle Group may be assigned to a division" is now enforced in `ReassignUnit`.
 
 ## E. Prisoners & morale training (§8.13, §8.4, `state/game.rs`)
 
@@ -191,6 +218,62 @@ New shared helper `within_cp_budget` (cost-limited Dijkstra over `move_step_cost
   chart, and §4.44 "D" is a master-OB availability marker gated per-scenario (the loader only
   schedules `Arrival::Turn` units for reinforcement-only formations). Supersedes the "arrival dates
   not all transcribed" gap noted in design.md §8.8 / campaign.ron header.
+- [ ] **H4 — Ground-unit equipment refit subsystem (TODO, after OB sheets).** The §4.44 OA sheets list
+  several units in two equipment states, linked by refit rules that are not yet modeled: **11 RHA**
+  (1st Armored Div 25-pdr → **Bishop SP 25-pdr**, listed as a separate 3/92 entry in the Unassigned
+  Artillery pool), **106 RHA** (Deacon refit, §4.44a Unassigned A/T note b), and the **1st Army Tank
+  Bde RTRs** (Scorpion anti-mine tank refit for El Alamein, §4.44a note). The aircraft refit table
+  (§38.37) exists (`data/reference/aircraft-refit.ron`); there is **no ground equivalent**. Until it
+  exists, refits are represented as duplicate dated OB entries (e.g. two "11 RHA" counters coexist —
+  the 25-pdr original in 1st Armd Div and the SP version in Unassigned Artillery). Scope: a refit
+  mechanism that swaps a unit's weapon TOE in place on a trigger/turn, collapsing these duplicates to
+  one counter. **Deferred until the OB completeness pass (CW done p116–132; Axis next) is finished.**
+- [ ] **H5 — CNA Addenda (Sep 1979) rules-logic corrections (backlog).** The addenda's OB/chart *data*
+  corrections were applied 2026-09-16 (see `docs/source-materials/cna-addenda-sep79.transcribed.md`);
+  these remaining items are rules-logic or need review, not simple data edits:
+  - **§14.47/48** SP guns use their Armor Protection Rating like any other armored unit when barraging
+    "Back" (may not absorb, and are affected by Anti-Armor Fire); **a max of two TOE points of
+    "halftrack-motorized" units may be lost per Anti-Armor Fire segment** regardless of situation.
+  - **§50.12** a unit without ammunition must be *assaulted* (anti-armor/close) to surrender — simply
+    being in an Enemy ZOC or being barraged does not cause surrender.
+  - **§50.2** infantry units consume one Ammo point per TOE point used.
+  - **§49.4** infantry-in-trucks / mechanized / tank-AC-recce units with no fuel may not Close Assault
+    (defend at normal strength; two-column shift toward a defending tank-type unit with no fuel).
+  - **§8.37 (verify)** "Tracks do not cost 1 CP; they halve the terrain cost of the hex they're in."
+    `terrain.ron` Track has `cross: Cost(1)` + note [8]; confirm the along-move code halves rather than
+    charging a flat 1 (movement.rs), and fix if it charges flat.
+  - **§54.17 (verify)** the Axis-railroad table "% under −1 = 0, under +7 = 100%" is not loaded as data
+    (§54.4 is code/logistics); confirm the code matches.
+  - **§62.33 (review)** "142 Blenheim IV F's should be Blenheim IV's (not F's)" — ambiguous whether this
+    reclassifies the fighter `Blenheim Mk.IVF` reinforcement entries to the bomber `Blenheim Mk.IV`, or
+    is a one-off chart reference; left unchanged in `air-reinforcements.ron` pending source review.
+- [x] **H6 — Replacement-Point movement (§20.42/§20.45/§20.46).** `MoveReplacement` (Truck Convoy Phase)
+  moves an on-map RP pool one adjacent hex, enforcing: §20.42a no voluntary enemy-ZOC entry unless a
+  Friendly unit holds the hex; §20.42d a per-pool CPA budget (`ReplacementPoints.cpa_used`, in tenths,
+  reset each Operations Stage) capped at the **assigned unit's** `effective_cpa` — movement requires
+  `assigned_to`. **§20.44/§20.46 truck haulage (full coupling):** an **Infantry** pool moves only if a
+  co-located Friendly truck convoy has enough §54.2 infantry lift (Σ trucks × per-point capacity ≥ the
+  pool's TOE-SP, 1 RP ≈ 1 SP) and movement allowance (`truck_convoy_cpa`) for the step; that convoy
+  **travels with the pool** and its Truck Points burn the Fuel. **Tank/Gun/Recce** pools may move on
+  their own, costing the Fuel of the minimum Truck Points that would lift them. **§20.45/§49.13 Fuel:**
+  `Truck Points × FCF(1) × ⌈CP/5⌉`, drawn at the departure hex from a co-located Friendly Supply Dump
+  (§49.15); no per-hex Stores (Stores aren't a movement cost). Added 2026-09-16; test
+  `replacement_pool_moves_20_46`. §20 class-matching on absorption was **already** enforced
+  (`available_replacement_class`/`draw_replacement_class` filter by `p.class`).
+- [x] **H7 — Truck system §53/§54 completion (2026-09-17).** Closed the truck-audit gaps: **§53.24**
+  load/off-load costs 2 CP (§21.45) + one-commodity-per-Truck-Point packing (fleet commodity shares
+  sum ≤ 1); **§53.14** free-convoy load/unload at dumps (`LoadConvoy`/`UnloadConvoy` + `convoy_cargo_capacity`);
+  **§53.22/§21** free-convoy breakdown on move (terrain BP + truck BAR 2L via `resolve_convoy_breakdown`,
+  losing Truck Points); **§52.42** Truck-Point water when moved; **§8.93** inherently-motorized "+"
+  units (`Cpa.motorized_capable`) motorized without trucks; **§6.17** gun/AA motorization CPA (guns/AA
+  lifted by trucks assume the truck gun-CPA). Test `truck_system_additions`.
+- [x] **H8 — Truck system final deferred items (2026-09-17).** **§29.35** hot weather doubles a unit's
+  water requirement; **§22.13** free-convoy breakdown now sends Truck Points to `TruckConvoy.trucks_broken`
+  (recovered by the new `RepairConvoyTrucks` command / `repair_convoy_trucks`) instead of being lost;
+  **§53.25** no-leapfrogging — supplies off-loaded by a convoy during a Truck Convoy phase are locked
+  (`game.leapfrog_locked`, reset per stage) against re-loading by another convoy that phase. Test
+  `truck_deferred_items`. Remaining (minor): §21.6 towing of broken convoy trucks by another unit (field
+  repair covers recovery); §53.25 uses a same-phase drop lock rather than literal CP-inheritance accounting.
 
 ## Won't do — by design (documented deliberate decisions)
 

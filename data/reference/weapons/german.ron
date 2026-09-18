@@ -14,8 +14,9 @@
     // --- Tank Weapon Systems ---
     "Pz I":                ( kind: Tank, cpa: Some(24), anti_air: Some((value: 1)), anti_armor: Some((value: 0)), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 2), def: (value: 2))), fuel_rate: Some(2), breakdown_adjustment: Some(0) ),
     "Pz II":               ( kind: Tank, cpa: Some(35), anti_air: Some((value: 0)), anti_armor: Some((value: 1)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 2), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(0) ),
-    // TODO: Pz III E close-assault / fuel were ambiguous in the scan (confirm CA 3/3, fuel 4).
-    "Pz III E":            ( kind: Tank, cpa: Some(25), anti_air: Some((value: 1)), anti_armor: Some((value: 4)), armor_protection: Some((value: 4)), close_assault: Some((off: (value: 3), def: (value: 3))), fuel_rate: Some(4), breakdown_adjustment: Some(3) ),
+    // Pz III E resolved from CNA Addenda (Sep 1979) §4.49: "25 1 - 4 - 3 4/4 3 0" (reading across the
+    // CPA·AA·Barr·A-Arm·Vul·Armor·CA·Fuel·BAR columns) → armor 3, close-assault 4/4, fuel 3, BAR 0.
+    "Pz III E":            ( kind: Tank, cpa: Some(25), anti_air: Some((value: 1)), anti_armor: Some((value: 4)), armor_protection: Some((value: 3)), close_assault: Some((off: (value: 4), def: (value: 4))), fuel_rate: Some(3), breakdown_adjustment: Some(0) ),
     "Pz III H":            ( kind: Tank, cpa: Some(25), anti_air: Some((value: 1)), anti_armor: Some((value: 4)), armor_protection: Some((value: 4)), close_assault: Some((off: (value: 4), def: (value: 4))), fuel_rate: Some(4), breakdown_adjustment: Some(0) ),
     "Pz III J (Special)":  ( kind: Tank, cpa: Some(26), anti_air: Some((value: 1)), anti_armor: Some((value: 6)), armor_protection: Some((value: 4)), close_assault: Some((off: (value: 7), def: (value: 5))), fuel_rate: Some(3), breakdown_adjustment: Some(0) ),
     "Pz IV D":             ( kind: Tank, cpa: Some(25), anti_air: Some((value: 1)), anti_armor: Some((value: 6)), armor_protection: Some((value: 3)), close_assault: Some((off: (value: 5), def: (value: 4))), fuel_rate: Some(4), breakdown_adjustment: Some(0) ),
@@ -41,10 +42,10 @@
     "3.7cm Pak 35/36":             ( kind: AntiTank, cpa: Some(15), anti_armor: Some((value: 2)), vulnerability: Some((value: 1)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1) ),
     // TODO: 5cm Pak 38 offensive close-assault may be 1½ (scan showed a ½); encoded as 1 pending confirmation.
     "5cm Pak 38":                  ( kind: AntiTank, cpa: Some(15), anti_armor: Some((value: 5)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1), notes: ["§4.49 p173 shows close-assault off = 1½; the integer rating stores 1 (halves not modeled)"] ),
-    "7.62cm Pak(R)":               ( kind: AntiTank, anti_armor: Some((value: 9)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1), notes: ["captured Russian AT gun; air-transportable; CPA '-' on chart (uses parent CPA)"] ),
+    "7.62cm Pak(R)":               ( kind: AntiTank, cpa: Some(15), anti_armor: Some((value: 9)), vulnerability: Some((value: 2)), close_assault: Some((off: (value: 1), def: (value: 1))), fuel_rate: Some(1), notes: ["captured Russian AT gun; air-transportable; CPA 15 per CNA Addenda (Sep 1979) §4.49 (blank on chart)"] ),
     "Pzjg 1 (SP)":                 ( kind: AntiTank, cpa: Some(30), anti_armor: Some((value: 4)), vulnerability: Some((value: 2)), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 2), def: (value: 2))), fuel_rate: Some(1), breakdown_adjustment: Some(0), notes: ["PzI chassis + Czech 47mm gun"] ),
     // TODO: Marder III CPA '-' (uses parent CPA); fuel/BAR ambiguous in scan.
-    "Marder III (SP)":             ( kind: AntiTank, anti_armor: Some((value: 9)), vulnerability: Some((value: 2)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 3), def: (value: 2))), fuel_rate: Some(2), breakdown_adjustment: Some(0), notes: ["self-propelled 7.62cm Pak(R); CPA '-' on chart; verified §4.49 p173 (armor 2, CA 3/2, fuel 2, BAR 0)"] ),
+    "Marder III (SP)":             ( kind: AntiTank, cpa: Some(25), anti_armor: Some((value: 9)), vulnerability: Some((value: 2)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 3), def: (value: 2))), fuel_rate: Some(2), breakdown_adjustment: Some(0), notes: ["self-propelled 7.62cm Pak(R); CPA 25 per CNA Addenda (Sep 1979) §4.49; §4.49 p173 armor 2, CA 3/2, fuel 2, BAR 0"] ),
 
     // --- Anti-air ---
     "Light AA (20mm & 37mm Flak)": ( kind: LightAntiAir, cpa: Some(15), anti_air: Some((value: 1)), anti_armor: Some((value: 1, parenthesized: true)), vulnerability: Some((value: 1, parenthesized: true)), close_assault: Some((off: (value: 1, parenthesized: true), def: (value: 1, parenthesized: true))), fuel_rate: Some(1) ),

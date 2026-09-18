@@ -1,0 +1,648 @@
+{
+  "_README": "Historical-context entries for map place labels, keyed by the exact label text shown on the map (e.g. \"Gambut\", \"Tobruk\"). Edit/extend this file freely — it is fetched at runtime and never compiled into the viewer, so adding entries needs no code change or rebuild. Schema per entry: { title?: string (defaults to the key), description: string (a few sentences), links?: [{ label: string, url: string }] }. Keys starting with \"_\" are ignored.",
+
+  "Abassia": {
+    "title": "Abassia",
+    "description": "Abbassia (El Abbassia) is a district in the Al-Wayli area of northeastern Cairo, Egypt. During the Second World War it was an important British military garrison and depot area, hosting the Royal Armoured Corps training school; an Italian air raid struck a British Army supply depot in the district in September 1941. It served as a rear-area base and training hub supporting Commonwealth forces engaged in the Western Desert Campaign.",
+    "links": [{ "label": "Abbassia (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Abbassia" }]
+  },
+  "Aboukir": {
+    "title": "Aboukir",
+    "description": "Abu Qir (Aboukir) is a coastal town on the Abu Qir Peninsula about 23 km northeast of Alexandria, Egypt, on the Mediterranean. It was the site of RAF Aboukir, which from 1916 served as a central depot and, from 1939, a major maintenance unit (No. 103 MU) for RAF Middle East, with a nearby seaplane station at Aboukir Bay. Squadrons operating Hurricanes, Spitfires, Beaufighters, Wellingtons and Sunderland flying boats cycled through the site, making it a key logistics and support base for the Western Desert air war.",
+    "links": [
+      { "label": "Abu Qir (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Abu_Qir" },
+      { "label": "RAF Aboukir (Wikipedia)", "url": "https://en.wikipedia.org/wiki/RAF_Aboukir" }
+    ]
+  },
+  "Acroma": {
+    "title": "Acroma",
+    "description": "Acroma is a small settlement in the Butnan District of northeastern Libya, roughly 25-28 km west of Tobruk. Its surroundings saw repeated heavy fighting in the North African Campaign; a nearby track junction about 20 km west of Tobruk was codenamed \"Knightsbridge\" by Allied forces and became the focus of the Battle of Knightsbridge in June 1942. Knightsbridge War Cemetery, established near Acroma after the war, contains 3,651 Commonwealth burials from the fighting in the area.",
+    "links": [
+      { "label": "Acroma (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Acroma" },
+      { "label": "Knightsbridge War Cemetery (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Knightsbridge_War_Cemetery" }
+    ]
+  },
+  "Agadabia": {
+    "title": "Agadabia",
+    "description": "Agadabia (Ajdabiya) is a town in the Cyrenaica region of northeastern Libya, sitting on an arid plain near the eastern end of the Gulf of Sidra about 150 km south of Benghazi. As an important crossroads linking the coastal Tripoli-Benghazi road with inland desert tracks, it was strategically valuable and changed hands repeatedly during the Western Desert Campaign. British forces pushed through it during Operation Compass in February 1941, lost it to Rommel's counter-attack in April 1941, and it was retaken by the 7th Armoured Division in November 1942.",
+    "links": [{ "label": "Ajdabiya (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Ajdabiya" }]
+  },
+  "Ain Melfa": {
+    "title": "Ain Melfa",
+    "description": "Ain Melfa is an obscure desert location in the Western Desert; the name element \"Ain\" (Arabic for spring or well) indicates a water point of the kind that served as a navigational and logistical reference in the largely trackless desert during the 1940-43 campaign. No reliable dedicated source could be verified for this specific site."
+  },
+  "Alexandria": {
+    "title": "Alexandria",
+    "description": "Alexandria is Egypt's principal Mediterranean seaport, stretching along the northern coast at the western edge of the Nile Delta. During the Second World War it was the primary base of the Royal Navy's Mediterranean Fleet, from which naval operations supporting the Western Desert Campaign were mounted. Its port, rail links and proximity to the El Alamein front made it a vital logistical and strategic anchor for Commonwealth forces in North Africa.",
+    "links": [{ "label": "Alexandria (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Alexandria" }]
+  },
+  "Almaza": {
+    "title": "Almaza",
+    "description": "Almaza is an airfield in the Heliopolis area of northeastern Cairo, Egypt. Originally a 1920s civil aerodrome and the first base of the Egyptian Army Air Force (1932), it was redesignated RAF Almaza during the Second World War. It hosted numerous RAF and Commonwealth squadrons (British, Australian, Canadian and Polish units) flying types such as Spitfires, Hurricanes, Dakotas and Baltimores, serving as a rear-area air base supporting operations in the Western Desert.",
+    "links": [{ "label": "Almaza Air Base (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Almaza_Air_Base" }]
+  },
+  "Amiriya": {
+    "title": "Amiriya",
+    "description": "El Amiriya (Arabic al-Amreya) is a town on the Mediterranean coast west of Alexandria, Egypt, lying roughly 20 km from the city on the road and rail corridor running westward toward the Western Desert. During the 1940-43 campaign the area hosted large British and Commonwealth camps, transit and hospital facilities, and served as a rail/road junction anchoring the Allied rear behind the Alamein line and the approaches to the desert front.",
+    "links": [{ "label": "Amreya (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Amreya" }]
+  },
+  "Antelat": {
+    "title": "Antelat",
+    "description": "Antelat is a small village and desert airfield in Cyrenaica, Libya, situated inland north-east of Agedabia (Ajdabiya) and near Msus. Lying on the open desert plateau between the coast road and the interior, it was a repeatedly contested point during the mobile 1941-42 operations, changing hands as Commonwealth and Axis forces advanced and retreated across Cyrenaica (Operation Compass and Beda Fomm, and the subsequent Axis counter-offensives)."
+  },
+  "Apollonia": {
+    "title": "Apollonia",
+    "description": "Apollonia was the ancient Greek port serving Cyrene, sited on the Cyrenaican coast about 20 km north-east of the city at what is now Marsa Susa (Susa), Libya. Founded by Greek colonists in the 7th century BC, it grew into a major trading harbour and later became the capital of the Roman province of Libya Superior; much of its ancient port now lies submerged following earthquakes, making it an unusually well-preserved classical harbour site.",
+    "links": [{ "label": "Apollonia, Cyrenaica (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Apollonia,_Cyrenaica" }]
+  },
+  "Augila": {
+    "title": "Augila",
+    "description": "Augila (modern Awjila) is an oasis town in the Libyan desert of Cyrenaica, lying alongside the neighbouring Jalu oasis on the desert route between Ajdabiya and Kufra. A historic crossroads of east-west and north-south caravan tracks and long known for its date cultivation, its remote position on the interior desert routes made it a waypoint in the deep-desert movements of the campaign period.",
+    "links": [{ "label": "Awjila (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Awjila" }]
+  },
+  "Baltim": {
+    "title": "Baltim",
+    "description": "Baltim is a Mediterranean coastal city in Egypt's Kafr El Sheikh Governorate, on the northern edge of the Nile Delta. It sits on the low-lying delta shoreline at roughly 31.60N, 31.09E, well to the east of the Western Desert battle zone.",
+    "links": [{ "label": "Baltim (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Baltim" }]
+  },
+  "Barce": {
+    "title": "Barce",
+    "description": "Barce is the Italian-colonial name for the Cyrenaican town now called Marj, set in an upland valley behind the Jebel Akhdar hills in north-eastern Libya and long identified with the site of the ancient city of Barca. In September 1942 it was the target of the Long Range Desert Group raid codenamed Operation Caravan, in which LRDG patrols drove some 1,150 miles to attack its airfield, barracks and railway station, destroying numerous Italian aircraft before a costly return journey.",
+    "links": [
+      { "label": "Marj (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Marj" },
+      { "label": "Operation Caravan (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Operation_Caravan" }
+    ]
+  },
+  "Bardia": {
+    "title": "Bardia",
+    "description": "Bardia (Bardiyah) is a Mediterranean seaport in the Butnan District of eastern Libya, close to the Egyptian frontier. Fortified by Italian forces under General Annibale Bergonzoli, it was captured on 3-5 January 1941 by Commonwealth troops, chiefly the Australian 6th Division, during the Battle of Bardia as part of Operation Compass. The town changed hands several times thereafter, being retaken by the South African 2nd Division in early 1942 before the Axis abandoned it in late 1942 following the defeat at El Alamein.",
+    "links": [{ "label": "Bardia (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Bardia" }]
+  },
+  "Beda Fomm": {
+    "title": "Beda Fomm",
+    "description": "Beda Fomm is a location in Cyrenaica, Libya, on the coast road (Via Balbia) south of Benghazi, near Antelat and Agedabia. It was the site of the decisive Battle of Beda Fomm on 6-7 February 1941 during Operation Compass, when British Commonwealth forces (notably the 7th Armoured Division and the flying column 'Combeforce') cut off and destroyed the retreating Italian 10th Army. The battle effectively cleared Italian forces from Cyrenaica, yielding tens of thousands of prisoners, before the British advance was halted and Rommel's Afrika Korps arrived to reverse Axis fortunes.",
+    "links": [{ "label": "Battle of Beda Fomm (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Battle_of_Beda_Fomm" }]
+  },
+  "Belindah": {
+    "title": "Belindah",
+    "description": "An obscure desert location or track in the Cyrenaican/Western Desert interior of Libya used during the North African campaign. No dedicated reliable source could be verified for this place."
+  },
+  "Ben Gania": {
+    "title": "Ben Gania",
+    "description": "Ben Gania (Bir Ben Gania / Bir Bel Gania) was a desert well and track junction in the Libyan desert south of Agedabia, in the arid interior of Cyrenaica. Such wells and their connecting tracks were significant during the Western Desert Campaign as navigation and watering points for the mobile columns and long-range patrols operating away from the coast road. No dedicated reliable source could be verified for this place."
+  },
+  "Benghazi": {
+    "title": "Benghazi",
+    "description": "Benghazi is the major port city of Cyrenaica in eastern Libya, on the Gulf of Sidra, and Libya's second-largest city. Its harbour made it a key logistical objective in the Western Desert Campaign, and it changed hands several times between Axis and Allied forces between 1941 and 1942 (captured by the British in February 1941, retaken by Rommel in April 1941, contested again during Operation Crusader, and finally secured by the British Eighth Army in November 1942). The repeated fighting left the city heavily damaged.",
+    "links": [{ "label": "Benghazi (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Benghazi" }]
+  },
+  "Benina": {
+    "title": "Benina",
+    "description": "Benina is a town about 19 km (12 mi) east of Benghazi, Libya, and the site of a major airfield now known as Benina International Airport. During the North African Campaign it was a critical air base that changed hands repeatedly: it was used by the Italian Regia Aeronautica and the German Luftwaffe, and after the Axis withdrawal it was operated by the USAAF Ninth Air Force from early 1943.",
+    "links": [{ "label": "Benina International Airport (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Benina_International_Airport" }]
+  },
+  "Bilbeis": {
+    "title": "Bilbeis",
+    "description": "Bilbeis (also spelled Belbeis) is an ancient fortress town on the eastern edge of the southern Nile Delta in Egypt, roughly 50 km northeast of Cairo, historically nicknamed the 'Eastern gate of Egypt.' Its position in the Delta made it a suitable site for a rear-area Royal Air Force landing ground during the Western Desert Campaign, well behind the front lines in Egypt. The site remains in military aviation use today, with an Egyptian Air Force base and the Egyptian Air Force Academy nearby.",
+    "links": [{ "label": "Bilbeis (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Bilbeis" }]
+  },
+  "Bomba": {
+    "title": "Bomba",
+    "description": "Bomba is a coastal locality on the Gulf of Bomba in eastern Cyrenaica, Libya, situated on the Mediterranean between Derna and Tobruk. The sheltered gulf hosted an Italian seaplane and naval anchorage and was the scene of a notable early-war action on 22 August 1940, when Fairey Swordfish torpedo aircraft of the Fleet Air Arm attacked and sank Italian vessels there.",
+    "links": [{ "label": "Gulf of Bomba (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Gulf_of_Bomba" }]
+  },
+  "Buq Buq": {
+    "title": "Buq Buq",
+    "description": "Buq Buq (Buqbuq) is a small coastal locality on the Mediterranean shore of Egypt's Western Desert, lying between Sidi Barrani and the Sollum-Halfaya escarpment near the Libyan frontier. During Operation Compass in December 1940, the area was a focus of the British pursuit of retreating Italian forces after the fall of Sidi Barrani, with British armoured units advancing through the Buq Buq area and capturing large numbers of prisoners and guns. It sat astride the coastal supply route linking Egypt with Italian Cyrenaica.",
+    "links": [
+      { "label": "Buq Buq (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Buq_Buq" },
+      { "label": "Operation Compass (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Operation_Compass" }
+    ]
+  },
+  "Burg el Arab": {
+    "title": "Burg el Arab",
+    "description": "Borg El Arab (Burg el Arab) is a town in Egypt's Alexandria Governorate, situated roughly 50 km southwest of Alexandria and about 7 km inland from the Mediterranean coast near Lake Maryut. Lying in the coastal belt west of Alexandria, it falls within the rear area that anchored the British-held eastern end of the Western Desert front during the campaign.",
+    "links": [{ "label": "Borg El Arab (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Borg_El_Arab" }]
+  },
+  "Cairo": {
+    "title": "Cairo",
+    "description": "Cairo is the capital and largest city of Egypt, on the Nile near the head of the river's delta. During the Second World War it was the seat of the British General Headquarters, Middle East Command, established there in 1939, making it the principal command, administrative, and logistics hub directing British and Commonwealth operations in the Western Desert Campaign. Its position deep in the British rear made it the strategic prize that Axis forces sought to reach by driving east across the desert.",
+    "links": [
+      { "label": "Cairo (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Cairo" },
+      { "label": "Middle East Command (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Middle_East_Command" }
+    ]
+  },
+  "Carcura": {
+    "title": "Carcura",
+    "description": "Carcura is an obscure desert location in Cyrenaica, Libya, appearing on Italian-era maps as a point along the inland desert tracks below the Jebel Akhdar. Places of this kind served chiefly as track junctions and navigational reference points for the motorised columns that manoeuvred across the open desert during the 1941-42 fighting. No detailed dedicated historical source could be verified for it."
+  },
+  "Charing Cross": {
+    "title": "Charing Cross",
+    "description": "Charing Cross was a British troops' nickname for a desert track junction south of Mersa Matruh in Egypt's Western Desert, where routes running inland toward Siwa and along the coast met. Such named crossroads were important waypoints for navigation and traffic control in the featureless desert during the campaign. It has no dedicated encyclopedic entry, being known only from wartime accounts and maps."
+  },
+  "Charuba": {
+    "title": "Charuba",
+    "description": "Charuba (Charruba, also spelled Kharrubah) is a village in the Jebel Akhdar uplands of Cyrenaica in northeastern Libya, lying roughly 66 km south of Al Marj at an elevation of about 330 m. It stood on the network of inland desert tracks - including the Charruba-Timimi road - used by both sides for cross-desert movement during the see-saw Cyrenaican campaigns of 1941-42.",
+    "links": [{ "label": "Charruba (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Charruba" }]
+  },
+  "Chaulan": {
+    "title": "Chaulan",
+    "description": "Chaulan is an obscure desert location in the Cyrenaican / Western Desert interior of Libya, recorded on Italian-era maps as a minor point on the desert tracks. Like many such places it functioned as a navigational marker for the mobile columns that operated across the desert during the campaign. No reliable dedicated historical source could be verified for it."
+  },
+  "Cyrene": {
+    "title": "Cyrene",
+    "description": "Cyrene was an ancient Greek and later Roman city near modern Shahhat in the Jebel Akhdar of northeastern Libya, founded around 631 BC by colonists from Thera. As the chief city of the Pentapolis it gave the surrounding region its enduring name, Cyrenaica - the Libyan theatre repeatedly fought over during the Western Desert Campaign. Its extensive ruins are a UNESCO World Heritage Site.",
+    "links": [{ "label": "Cyrene, Libya (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Cyrene,_Libya" }]
+  },
+  "Dekheila": {
+    "title": "Dekheila",
+    "description": "Dekheila (El Dekheila) is a coastal neighborhood and port about 11 km (7 miles) west of central Alexandria, Egypt, whose large seaport functions as an extension of Alexandria's harbour. During the Second World War the area near Alexandria hosted an airfield supporting Allied naval and air operations in the eastern Mediterranean and the Western Desert Campaign. Its location just west of the main fleet base made it part of the rear-area infrastructure sustaining the Eighth Army's desert front.",
+    "links": [{ "label": "Dekheila (Egypt) (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Dekheila_(Egypt)" }]
+  },
+  "Derna": {
+    "title": "Derna",
+    "description": "Derna is a Mediterranean port city in eastern Libya's Cyrenaica region, set at the eastern edge of the Jebel Akhdar (Green Mountain) between fertile uplands, the sea, and the desert. During the Western Desert Campaign it changed hands repeatedly: captured by Australian troops on 30 January 1941, retaken by Axis forces in April 1941, and recaptured by the British in November 1942. Its airfield and the nearby Martuba landing grounds were strategic hubs for air support and anti-shipping operations in the Mediterranean.",
+    "links": [{ "label": "Derna, Libya (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Derna,_Libya" }]
+  },
+  "El Adem": {
+    "title": "El Adem",
+    "description": "El Adem is an airfield about 16 km south of Tobruk in Cyrenaica, Libya (today Gamal Abdel Nasser Airbase). It was a heavily used and repeatedly contested air base during the 1941-42 desert fighting, serving for a time as a Royal Air Force group headquarters. After the Axis retreat the RAF rebuilt it, returning it to operational status in December 1942, and it hosted numerous RAF and USAAF squadrons.",
+    "links": [{ "label": "El Adem (Wikipedia)", "url": "https://en.wikipedia.org/wiki/El_Adem" }]
+  },
+  "El Agheila": {
+    "title": "El Agheila",
+    "description": "El Agheila is a coastal town at the southern end of the Gulf of Sirte (Gulf of Sidra) in far western Cyrenaica, near the traditional boundary with Tripolitania. Flanked by sea, salt marsh, and desert, it formed a natural bottleneck and was a repeated pivot point of the Western Desert Campaign. British forces took it after Operation Compass in early 1941; Rommel launched offensives from the area in 1941 and 1942, and the Axis gave it up for the last time to the Eighth Army in December 1942.",
+    "links": [{ "label": "El Agheila (Wikipedia)", "url": "https://en.wikipedia.org/wiki/El_Agheila" }]
+  },
+  "El Al Eqs": {
+    "title": "El Al Eqs",
+    "description": "An obscure desert location in the North African theatre, known chiefly from Italianized place-names on period Western Desert Campaign maps. No detailed independent record of the site could be verified; it appears to denote a minor desert feature or track of the kind used for movement and orientation during the 1940-43 fighting."
+  },
+  "El Al Thed": {
+    "title": "El Al Thed",
+    "description": "An obscure desert location in the North African theatre, recorded mainly as an Italianized name on period Western Desert Campaign maps. No detailed independent source could be verified for it; it appears to be a minor desert feature or track in the campaign area rather than a settlement of note."
+  },
+  "El Alamein": {
+    "title": "El Alamein",
+    "description": "El Alamein is a town on Egypt's Mediterranean coast, roughly 106 km west of Alexandria, in a narrow zone hemmed in by the sea to the north and the impassable Qattara Depression to the south. This constriction made it the decisive defensive line of 1942: the First Battle of El Alamein (July 1942) halted the Axis drive on Alexandria, and the Second Battle (23 October-4 November 1942) broke the Axis line and began the long retreat toward Tunisia. The area holds Commonwealth, German, and Italian war cemeteries.",
+    "links": [{ "label": "El Alamein (Wikipedia)", "url": "https://en.wikipedia.org/wiki/El_Alamein" }]
+  },
+  "El Berca": {
+    "title": "El Berca",
+    "description": "El Berca (Berka, Al-Berka) is a central district of Benghazi in Cyrenaica, Libya. During the Western Desert Campaign the Benghazi area including Berka was the site of airfields and landing grounds used in turn by Axis and Allied air forces as the front swept back and forth across Cyrenaica between 1941 and 1943.",
+    "links": [{ "label": "Benghazi (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Benghazi" }]
+  },
+  "El Cuasc": {
+    "title": "El Cuasc",
+    "description": "An obscure desert location in Cyrenaica/North Africa whose name survives chiefly in Italianized spelling on period Western Desert Campaign maps. No reliable dedicated source could be verified; it appears to represent a minor desert locality or track used during the 1940-43 campaign."
+  },
+  "El Daba": {
+    "title": "El Daba",
+    "description": "El Daba (El Dabaa) is a town on Egypt's northern Mediterranean coast in Matrouh Governorate, west of El Alamein. A coastal railway and road station with nearby desert landing grounds, it lay on the line of the Axis retreat after the Second Battle of El Alamein in November 1942, when Rommel's forces fell back westward through the area under Eighth Army pursuit.",
+    "links": [{ "label": "El Dabaa (Wikipedia)", "url": "https://en.wikipedia.org/wiki/El_Dabaa" }]
+  },
+  "El Ebia": {
+    "title": "El Ebia",
+    "description": "A minor desert location appearing on period maps of the Western Desert (the Cyrenaica/Egypt theatre of the 1940-43 North African campaign). Like many small named points on the arid coastal plateau and pre-desert, it served chiefly as a track junction or map reference in an otherwise featureless landscape rather than a settlement of note. No dedicated reliable source could be verified for this specific place."
+  },
+  "El Ergh": {
+    "title": "El Ergh",
+    "description": "An obscure desert locality recorded on wartime maps of the Western Desert campaign zone spanning eastern Libya (Cyrenaica) and western Egypt. Such points typically marked wells, tracks, or terrain features used for navigation across the open desert. No dedicated reliable source could be verified for this specific place."
+  },
+  "El Garib": {
+    "title": "El Garib",
+    "description": "A small, obscure desert location within the Western Desert theatre of the 1940-43 North African campaign. Names of this kind, Italianized from Arabic on period Italian and British survey maps of Libya and Egypt, generally denote wells, tracks, or low ground rather than towns. No dedicated reliable source could be verified for this specific place."
+  },
+  "El Ghegab": {
+    "title": "El Ghegab",
+    "description": "An obscure desert point noted on campaign-era maps of the Western Desert (Cyrenaica/Egypt), the arid theatre fought over by Axis and Allied forces in 1940-43. Such locations were mainly significant as navigation references or track markers in the open desert. No dedicated reliable source could be verified for this specific place."
+  },
+  "El Grein": {
+    "title": "El Grein",
+    "description": "A minor, obscure desert locality in the Western Desert campaign area of eastern Libya/western Egypt. As with many small named points on period maps, it likely marked a well, depression, or track rather than a settlement. No dedicated reliable source could be verified for this specific place."
+  },
+  "El Gtafia": {
+    "title": "El Gtafia",
+    "description": "An obscure desert location shown on wartime maps of the Western Desert theatre (Cyrenaica and the Egyptian frontier region). Points like this typically functioned as terrain or track references for the mobile columns that ranged across the desert in 1940-43. No dedicated reliable source could be verified for this specific place."
+  },
+  "El Gubba": {
+    "title": "El Gubba",
+    "description": "El Gubba (Arabic Al Qubbah, also Quba) is a town in the Jebel Akhdar (Green Mountain) uplands of Cyrenaica in eastern Libya, at roughly 708 m elevation between the coastal ports of Derna and Bayda, and the largest populated place along that stretch. Under Italian colonial rule it was renamed Giovanni Berta. It lay in the Cyrenaican hinterland through which Axis and Allied forces advanced and withdrew during the see-saw Western Desert campaigns of 1941-42.",
+    "links": [{ "label": "Al Qubbah (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Al_Qubbah" }]
+  },
+  "El Hamia": {
+    "title": "El Hamia",
+    "description": "A small, obscure desert location recorded on period maps of the Western Desert campaign area (Cyrenaica/Egypt). Such minor named points generally served as wells, tracks, or map references across the open desert rather than as significant settlements. No dedicated reliable source could be verified for this specific place."
+  },
+  "El Hamman": {
+    "title": "El Hamman",
+    "description": "El Hamman (Arabic El Hamam) is a coastal town in Egypt's Matrouh Governorate on the Mediterranean, the easternmost town of the governorate, lying west of Alexandria along the coastal road and railway near El Alamein and El Dabaa. Situated just to the rear of the El Alamein position, this stretch of the coast railway formed part of the Allied lines of communication during the decisive El Alamein battles of 1942.",
+    "links": [{ "label": "El Hamam (Wikipedia)", "url": "https://en.wikipedia.org/wiki/El_Hamam" }]
+  },
+  "El Hamra": {
+    "title": "El Hamra",
+    "description": "El Hamra (Arabic for \"the red\") is a common desert place-name in Egypt and Libya, attached to several wells and terrain features (for example Bir el Hamra and Deir el Hamra) within the Western Desert campaign area. As a generic descriptive name it typically denoted reddish ground, rock, or a depression used as a navigation reference. No single dedicated reliable source could be verified for the specific location intended here."
+  },
+  "El Hosaiet": {
+    "title": "El Hosaiet",
+    "description": "El Hosaiet is an obscure desert location in the Cyrenaica region of Libya, its name preserved in the Italianized transliteration used on period military maps of the Western Desert Campaign (1940-43). No dedicated, reliable geographic or historical source could be verified for this specific place. It is best understood generically as a minor desert locality or track point in the theatre of operations rather than a settlement of independent significance."
+  },
+  "El Magrun": {
+    "title": "El Magrun",
+    "description": "El Magrun (Arabic al-Magrun) is a village in the Benghazi District of Cyrenaica, Libya, situated roughly 80 km south of Benghazi along the routes toward Ajdabiya. During Operation Compass in early February 1941 it was a waypoint on the Italian Tenth Army's retreat south of Benghazi, with Australian forces reaching El Magrun on 7 February as British units raced to cut off the Italians at Beda Fomm. In the Italian colonial era the site had earlier hosted one of the concentration camps used to intern Cyrenaican tribes and resistance members.",
+    "links": [
+      { "label": "El Magrun (Wikipedia)", "url": "https://en.wikipedia.org/wiki/El_Magrun" },
+      { "label": "Battle of Beda Fomm (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Battle_of_Beda_Fomm" }
+    ]
+  },
+  "El Mesceca": {
+    "title": "El Mesceca",
+    "description": "El Mesceca is an obscure desert location in Cyrenaica, Libya, known chiefly through the Italianized spelling used on period maps of the Western Desert Campaign. No reliable dedicated source could be verified for it. It is best described generically as a minor desert locality or map reference point in the campaign area rather than a place of independent documented significance."
+  },
+  "El Qaqa": {
+    "title": "El Qaqa",
+    "description": "El Qaqa is an obscure desert location associated with the Western Desert Campaign, its name reflecting the Italianized transliteration common on period maps of Libya/Egypt. No reliable, dedicated geographic or historical source could be verified for this specific place. It should be treated generically as a minor desert locality or track/map reference point in the theatre rather than a settlement of established significance."
+  },
+  "el-Abiar": {
+    "title": "el-Abiar",
+    "description": "El-Abiar (Al Abyar, also Abyar) is a town in the Marj District of Cyrenaica, northeastern Libya, lying roughly 50 km east of Benghazi at an elevation of about 278 m. It sat astride the inland approaches used during the see-saw advances and retreats across Cyrenaica in 1941-42, when control of the Benghazi hinterland changed hands repeatedly between Commonwealth and Axis forces. In the Italian colonial period the town was also the site of one of the concentration camps used to intern nomadic Cyrenaican tribes and members of the Libyan resistance.",
+    "links": [{ "label": "Al Abyar (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Al_Abyar" }]
+  },
+  "Emr Eivallis": {
+    "title": "Emr Eivallis",
+    "description": "Emr Eivallis is an obscure place name appearing in Italianized transliteration on period maps of the Western Desert Campaign in Cyrenaica, Libya. No reliable, dedicated source could be verified for it, and the spelling does not correspond to any well-documented modern locality. It is best described generically as a minor desert locality or map reference point in the campaign area rather than a place of independent documented significance."
+  },
+  "Er Regina": {
+    "title": "Er Regina",
+    "description": "Er Regina is the period-map rendering of Er Regima (modern Ar Rajma), a village in the Marj District of Cyrenaica about 17-27 km east of Benghazi, sited near an escarpment pass of the Jebel Akhdar that commands the approaches to the Benghazi plain. In early April 1941, during Rommel's advance in Operation Sonnenblume, Australian troops of the 9th Division fought a sharp delaying action at the Er Regima Pass before withdrawing toward Tobruk in the retreat known as the \"Benghazi Handicap.\" \"Er Regima\" is recognized as a battle honour.",
+    "links": [
+      { "label": "Ar Rajma (Er Regima) (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Ar_Rajma" },
+      { "label": "Operation Sonnenblume (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Operation_Sonnenblume" }
+    ]
+  },
+  "Fort Capuzzo": {
+    "title": "Fort Capuzzo",
+    "description": "Fort Capuzzo (Italian: Ridotta Capuzzo) was an Italian frontier fort in Libya near the Egyptian border, about 8 miles inland from Sollum, built in the 1920s-30s as part of the barrier of forts and barbed-wire (the Frontier Wire). Its position on the Libya-Egypt frontier made it a repeatedly contested objective throughout the Western Desert Campaign: it changed hands numerous times from June 1940 through 1942, figuring in Operation Compass, Operation Brevity, Operation Battleaxe, and Operation Crusader before being taken for the last time by Allied forces after the Second Battle of El Alamein.",
+    "links": [{ "label": "Fort Capuzzo (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Fort_Capuzzo" }]
+  },
+  "Fort Maddelenna": {
+    "title": "Fort Maddelenna",
+    "description": "Fort Maddalena (also Bir Scegga; \"Fort Maddelenna\" on some period maps) was an Italian frontier fort in the Libyan desert on the Egypt-Libya border, roughly 97 km (60 mi) south of Fort Capuzzo, one of the large forts anchoring the Frontier Wire. On 14 June 1940 it was captured by the 11th Hussars. Marking the southern end of the frontier post line, it served throughout the campaign as a navigation and jumping-off point in the open desert, including as a crossing point for Allied forces at the outset of Operation Crusader in 1941.",
+    "links": [{ "label": "Frontier Wire (Libya) (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Frontier_Wire_(Libya)" }]
+  },
+  "Fuka": {
+    "title": "Fuka",
+    "description": "Fuka (Fouka) is a village on the Egyptian Mediterranean coast in Matrouh Governorate, roughly 48 km east of Mersa Matruh and west of El Alamein. During the Western Desert Campaign it sat on the coastal road and railway and gave its name to a cluster of RAF landing grounds; the 'Fuka position' served as an intermediate rearguard/defensive line during the back-and-forth advances and retreats of 1941-42.",
+    "links": [{ "label": "Fouka, Egypt (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Fouka,_Egypt" }]
+  },
+  "Gabr Saleh": {
+    "title": "Gabr Saleh",
+    "description": "Gabr Saleh was a featureless desert track junction in eastern Cyrenaica, south-east of Tobruk near the Libyan frontier. At the opening of Operation Crusader in November 1941 the British XXX Corps concentrated its armour there, expecting to draw the Afrika Korps into a decisive tank battle, and the location recurs as a reference point in the mobile fighting of that offensive.",
+    "links": [{ "label": "Operation Crusader (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Operation_Crusader" }]
+  },
+  "Galal": {
+    "title": "Galal",
+    "description": "Galal was a station on the coastal railway west of El Alamein in Egypt. It was the scene of a sharp action in early November 1942 during the pursuit that followed the Second Battle of El Alamein, when advancing British armour caught and destroyed a number of retreating Italian tanks and took many prisoners."
+  },
+  "Gambut": {
+    "title": "Gambut",
+    "description": "Gambut is a (now abandoned) military airfield complex originally built by the Regia Aeronautica. The site changed hands several times, being used by the Allies during the Siege of Tobruk, then captured and used by the Luftwaffe, and finally recaptured by the Allies.",
+    "links": [{ "label": "RAF Gambut (Wikipedia)", "url": "https://en.wikipedia.org/wiki/RAF_Gambut" }]
+  },
+  "Gazala": {
+    "title": "Gazala",
+    "description": "Gazala, on the Libyan coast west of the port of Tobruk, gave its name to the Gazala Line, a series of fortified 'boxes' and minefields running inland from the coast to the Free French garrison at Bir Hakeim. It was the setting of the Battle of Gazala (26 May-21 June 1942), in which Rommel's Axis forces outflanked the British Eighth Army, a victory that led directly to the fall of Tobruk.",
+    "links": [{ "label": "Battle of Gazala (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Battle_of_Gazala" }]
+  },
+  "Gerawla": {
+    "title": "Gerawla",
+    "description": "Gerawla is a coastal locality just east of Mersa Matruh in Egypt. During the Western Desert Campaign it was used as a forward camp and landing ground; RAF fighter flights operated Gloster Gladiators from Gerawla in late 1940."
+  },
+  "Ghaza": {
+    "title": "Ghaza",
+    "description": "Ghaza appears as a minor place name in the Western Desert theatre of 1940-43. Reliable sources give no well-documented account of a distinct role for it in the campaign."
+  },
+  "Ghemines": {
+    "title": "Ghemines",
+    "description": "Ghemines (Arabic Qaminis) is a small town in the Cyrenaica region of Libya, lying near the Gulf of Sidra about 50 km south of Benghazi and a few kilometres inland from the Mediterranean. Positioned on the coastal route south of Benghazi, it was among the settlements repeatedly passed through during the advances and withdrawals of 1941-42.",
+    "links": [{ "label": "Ghemines / Qaminis (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Ghemines" }]
+  },
+  "Giarabub Oasis": {
+    "title": "Giarabub Oasis",
+    "description": "Giarabub is the Italian spelling of the Jaghbub oasis, set in a below-sea-level desert depression in far-eastern Libya near the Egyptian oasis of Siwa. A remote Senussi religious centre, it became an isolated Italian frontier outpost and, because of its water, held strategic value on the southern flank of the desert front.",
+    "links": [{ "label": "Jaghbub (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Jaghbub" }]
+  },
+  "Giarabub": {
+    "title": "Giarabub",
+    "description": "Giarabub (Jaghbub) was the site of an isolated Italian fort garrisoned by Italian and Libyan colonial troops under Colonel Salvatore Castagna. Australian and British forces isolated and then besieged the position from late 1940, cutting its supplies before a reinforced assault forced the Italian surrender on 21 March 1941.",
+    "links": [{ "label": "Siege of Giarabub (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Siege_of_Giarabub" }]
+  },
+  "Giardina": {
+    "title": "Giardina",
+    "description": "Giardina is an Italian-form place name recorded in the Libyan sector of the campaign, consistent with the Italian colonial naming used across Cyrenaica and Tripolitania. Reliable sources provide no detailed account of a specific wartime role for it."
+  },
+  "Giovanni Berta": {
+    "title": "Giovanni Berta",
+    "description": "Giovanni Berta was the Italian colonial name for the Cyrenaican town now called Al Qubbah, in the Derna District of eastern Libya. Sitting on the Jebel Akhdar between Derna and Bayda at about 700 m elevation, it appears under the Giovanni Berta name on Italian-era and wartime maps.",
+    "links": [{ "label": "Al Qubbah (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Al_Qubbah" }]
+  },
+  "Giuf el-Matar": {
+    "title": "Giuf el-Matar",
+    "description": "Giuf el-Matar is a minor desert locality in the Western Desert theatre. Reliable sources give no detailed documentation of its role during the campaign."
+  },
+  "Heliopolis": {
+    "title": "Heliopolis",
+    "description": "Heliopolis is an early-20th-century planned suburb north-east of Cairo, Egypt (now the Masr El Gedida and El Nozha districts), and is distinct from the ancient Egyptian city of the same name. During the World Wars it served as a major Allied base and military-hospital area near Cairo and was the site of a long-established aerodrome.",
+    "links": [{ "label": "Heliopolis, Cairo (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Heliopolis,_Cairo" }]
+  },
+  "Helwan": {
+    "title": "Helwan",
+    "description": "Helwan is a suburban district in the southern part of Cairo, Egypt, on the east bank of the Nile opposite the ruins of Memphis. It hosted RAF Helwan, a British airfield used during the Second World War as part of the base-area infrastructure supporting the desert front (later used by the Egyptian Air Force).",
+    "links": [{ "label": "Helwan (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Helwan" }]
+  },
+  "Idku": {
+    "title": "Idku",
+    "description": "Idku (Edku) is a town in northern Egypt on a sandy strip behind Abu Qir Bay, east of Alexandria and beside Lake Idku. It gave its name to RAF Idku, a wartime airfield from which fighter squadrons helped defend the Alexandria area and the Nile Delta.",
+    "links": [{ "label": "Edku (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Edku" }]
+  },
+  "Jalo": {
+    "title": "Jalo",
+    "description": "Jalo (the Jalo Oasis) is a large oasis in Cyrenaica, Libya, lying west of the Great Sand Sea about 250 km south-east of the Gulf of Sidra. Its water made it strategically valuable, and during the desert war it changed hands between Allied and Axis forces and served as a base for Long Range Desert Group patrols and deep raiding operations.",
+    "links": [{ "label": "Jalo Oasis (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Jalo_Oasis" }]
+  },
+  "Jebel Akhdar": {
+    "title": "Jebel Akhdar",
+    "description": "The Jebel Akhdar ('Green Mountain') is a forested upland plateau in north-eastern Libya (Cyrenaica), rising to roughly 900 m and extending about 330 km along the Mediterranean coast from near Benghazi to east of Derna. As the wettest and most vegetated part of Libya, its escarpments, wadis and passes strongly shaped the routes and defensive positions of operations in Cyrenaica.",
+    "links": [{ "label": "Jebel Akhdar (Libya) (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Jebel_Akhdar_(Libya)" }]
+  },
+  "Jebel Hamzi": {
+    "title": "Jebel Hamzi",
+    "description": "Jebel Hamzi was a desert landing ground in Egypt near the Libyan frontier used by Allied air units during the Western Desert Campaign; for example, an RAAF squadron operated from it in late 1942. It has no dedicated place entry in standard references."
+  },
+  "Kafr el Douwar": {
+    "title": "Kafr el Douwar",
+    "description": "Kafr el Douwar (Kafr El Dawwar) is an industrial town in the Nile Delta of Egypt, in Beheira Governorate about 30 km from Alexandria. Standing on the Alexandria-Cairo rail and road corridor, it lay within the rear and base area supporting the forces at the front.",
+    "links": [{ "label": "Kafr El Dawwar (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Kafr_El_Dawwar" }]
+  },
+  "Knightsbridge": {
+    "title": "Knightsbridge",
+    "description": "Knightsbridge was a British code-name for a defensive 'box' and desert track junction on the Gazala Line in 1942, held by the 201st Guards (Motor) Brigade. The intense armoured fighting around it during the Battle of Gazala was central to the engagement before the Eighth Army was forced to withdraw and Tobruk fell.",
+    "links": [{ "label": "Battle of Gazala (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Battle_of_Gazala" }]
+  },
+  "Libyan Omar": {
+    "title": "Libyan Omar",
+    "description": "Libyan Omar was one of the 'Omar' frontier strongpoints (alongside Sidi Omar) at the western end of the Libya-Egypt frontier defences near the Frontier Wire. During Operation Crusader in November 1941 it was among the westernmost Axis fortifications captured by British and Indian troops with armoured support.",
+    "links": [{ "label": "Operation Crusader (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Operation_Crusader" }]
+  },
+  "Libyan Sand Desert": {
+    "title": "Libyan Sand Desert",
+    "description": "The Libyan Sand Desert is part of the vast arid expanse of eastern Libya and western Egypt that forms the north-eastern Sahara, made up of great sand seas (including the Great Sand Sea) and stony plains. Its trackless, waterless terrain confined major operations to the coastal strip while allowing deep reconnaissance and raiding by units such as the Long Range Desert Group.",
+    "links": [{ "label": "Libyan Desert (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Libyan_Desert" }]
+  },
+  "Maaten Baggush": {
+    "title": "Maaten Baggush",
+    "description": "Maaten Baggush (Maaten Bagush) was a large British transit camp and base on the Mediterranean shore of Egypt, about 50 km east of Mersa Matruh. It lay by the fortified 'Baggush Box' defensive locality and served as a forward base and airfield area for Commonwealth forces during the desert war.",
+    "links": [{ "label": "Maaten Bagush (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Maaten_Bagush" }]
+  },
+  "Maaten Belclerbat": {
+    "title": "Maaten Belclerbat",
+    "description": "Maaten Belclerbat was a desert well or watering point ('maaten' denotes a well/cistern) in the Western Desert. Reliable sources provide no detailed account of a specific role for it in the campaign."
+  },
+  "Maaten el-Grara": {
+    "title": "Maaten el-Grara",
+    "description": "Maaten el-Grara ('maaten' meaning a desert well or cistern) was a locality in the Cyrenaican desert of Libya. It figured in the early-1941 Axis advance (Operation Sonnenblume) as an observation and rendezvous point from which ground toward Msus, to the south-east, could be watched.",
+    "links": [{ "label": "Operation Sonnenblume (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Operation_Sonnenblume" }]
+  },
+  "Maaten Groter": {
+    "title": "Maaten Groter",
+    "description": "Maaten Groter was a desert well or watering point ('maaten' denotes a well/cistern) in the Western Desert. Reliable sources provide no detailed documentation of a specific role for it in the campaign."
+  },
+  "Maddelena": {
+    "title": "Maddelena",
+    "description": "Fort Maddalena (Ridotta Maddalena) was an Italian frontier fort near the Libya-Egypt border, one of the covering strongpoints along the Frontier Wire south of Sidi Omar. It served as a desert landmark and assembly area, and the Eighth Army crossed into Libya near it at the start of Operation Crusader in November 1941.",
+    "links": [{ "label": "Frontier Wire (Libya) (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Frontier_Wire_(Libya)" }]
+  },
+  "Maradah": {
+    "title": "Maradah",
+    "description": "Maradah (Marada) is a desert oasis town in the Al Wahat District of the Cyrenaica region of northeastern Libya, lying roughly 120 km south of El Agheila. Its position deep in the interior placed it on the southern desert flank of the coastal fighting in the Western Desert Campaign, well inland of the Via Balbia coast road along which the main advances and retreats ran.",
+    "links": [{ "label": "Maradah (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Maradah" }]
+  },
+  "Maraua": {
+    "title": "Maraua",
+    "description": "Maraua (modern Marawa) is a town in the Jabal al Akhdar (Green Mountain) district of Cyrenaica in northeastern Libya, about 65 km south of Bayda, sitting at a crossroads of inland routes. Such interior tracks through the Jebel Akhdar highlands lay along the corridor across which forces repeatedly advanced and withdrew during the 1941-42 campaigns in Cyrenaica.",
+    "links": [{ "label": "Marawa (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Maraua" }]
+  },
+  "Marble Arch": {
+    "title": "Marble Arch",
+    "description": "\"Marble Arch\" was the British troops' nickname for the Arch of the Philaeni (Italian: Arco dei Fileni), a 31 m triumphal arch completed by Fascist Italy in 1937 on the Via Balbia coastal highway at the boundary between Tripolitania and Cyrenaica. Because the highway was the main east-west axis for both sides, the arch became a well-known landmark of the Western Desert Campaign; it and its nearby airfield were captured by the 2nd New Zealand Division on 17 December 1942. The monument was demolished under Muammar Gaddafi in the early 1970s.",
+    "links": [{ "label": "Arch of the Philaeni (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Arch_of_the_Philaeni" }]
+  },
+  "Martuba": {
+    "title": "Martuba",
+    "description": "Martuba is a town in the Derna District of eastern Libya, about 27 km south of Derna, best known for the Martuba airfield complex. Its airfields saw heavy fighting in 1942 and were strategically valuable because aircraft based there could provide fighter cover for Allied convoys attempting to reach Malta.",
+    "links": [{ "label": "Martuba (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Martuba" }]
+  },
+  "Mechili": {
+    "title": "Mechili",
+    "description": "Mechili is a village in the Cyrenaican desert of the Derna District, Libya, built around a former Turkish fort and long important as a desert road junction linking Tobruk and Benghazi with the interior. It changed hands repeatedly in 1941: taken from the Italians by O'Connor's Western Desert Force early in the year, its British garrison was captured by the Italian Ariete armoured division on 7 April 1941 during Rommel's first offensive, and it was retaken by the British later that year during Operation Crusader.",
+    "links": [{ "label": "Mechili (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Mechili" }]
+  },
+  "Mena": {
+    "title": "Mena",
+    "description": "Mena refers to the area of Mena House, a historic hotel at the foot of the Giza pyramids just outside Cairo, Egypt, established in 1886 from an earlier khedivial hunting lodge. During both World Wars it was associated with Australian troops, being requisitioned in 1939 and used partly as a hospital for wounded soldiers, and its location near the pyramids made the Giza/Mena area a well-known rear-area landmark for Allied forces in Egypt.",
+    "links": [{ "label": "Marriott Mena House, Cairo (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Mena_House_Hotel" }]
+  },
+  "Mersa Brega": {
+    "title": "Mersa Brega",
+    "description": "Mersa Brega (Marsa al-Brega, Brega) is a settlement on the Gulf of Sidra in Cyrenaica, Libya, set amid the low-lying Sabkhat Ghuzayyil salt flats. On 31 March 1941 the German Afrika Korps drove British forces from their partly prepared positions there at the opening of Rommel's first offensive, unlocking the advance across Cyrenaica toward Tobruk and the Egyptian frontier; the Brega-El Agheila bottleneck was fought over repeatedly through 1941-42.",
+    "links": [{ "label": "Brega (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Brega" }]
+  },
+  "Mersa Gobes": {
+    "title": "Mersa Gobes",
+    "description": "Mersa Gobes is a minor coastal anchorage on the Libyan shore (Arabic mersa meaning harbour or anchorage). It is a small, sparsely documented locality of the kind used as a navigation and landing reference along the desert coast, with no significant standalone historical record."
+  },
+  "Mersa Lucah": {
+    "title": "Mersa Lucah",
+    "description": "Mersa Lucah is a small coastal anchorage on the Libyan coast (Arabic mersa meaning harbour or anchorage). It is a minor, poorly documented locality and does not have a substantial independent historical record."
+  },
+  "Mersa Matruh": {
+    "title": "Mersa Matruh",
+    "description": "Mersa Matruh is a Mediterranean port city in northwestern Egypt, about 240 km west of Alexandria, sheltered by a natural rock bay. During the Western Desert Campaign it was a major British base and railway terminus and the focus of repeated fighting; it fell to Rommel's Axis forces at the Battle of Mersa Matruh in late June 1942 and was recaptured after the Second Battle of El Alamein.",
+    "links": [{ "label": "Mersa Matruh (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Mersa_Matruh" }]
+  },
+  "Minqar Qaim": {
+    "title": "Minqar Qaim",
+    "description": "Minqar Qaim is an escarpment feature in the desert south of Mersa Matruh, Egypt. On 27 June 1942 the 2nd New Zealand Division held positions there when 21st Panzer Division moved across its front and cut the line of retreat; that night the division broke out eastward in a fierce night action, with most of its roughly 10,000 men escaping toward the El Alamein line. Its commander, Bernard Freyberg, was wounded during the engagement.",
+    "links": [{ "label": "Battle of Mersa Matruh (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Battle_of_Mersa_Matruh" }]
+  },
+  "Msus": {
+    "title": "Msus",
+    "description": "Msus is a village in the Cyrenaican desert of eastern Libya, roughly 130 km southeast of Benghazi, sited where desert tracks converge (routes toward Suluq, Charruba and the coast). During the 1941-42 campaigns it served as a forward desert road junction, landing ground and supply point and changed hands several times, notably during Rommel's January-February 1942 counter-offensive across Cyrenaica.",
+    "links": [{ "label": "Msus (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Msus" }]
+  },
+  "Nile Delta": {
+    "title": "Nile Delta",
+    "description": "The Nile Delta is the broad, arc-shaped alluvial plain in Lower Egypt where the Nile fans out through its Damietta and Rosetta distributaries into the Mediterranean, stretching about 240 km along the coast from Alexandria to Port Said. As Egypt's fertile agricultural heartland and the seat of Cairo and Alexandria, it was the ultimate strategic prize threatened by the Axis advance to El Alamein in the summer of 1942.",
+    "links": [{ "label": "Nile Delta (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Nile_Delta" }]
+  },
+  "Nile River": {
+    "title": "Nile River",
+    "description": "The Nile is a north-flowing river of northeast Africa that empties into the Mediterranean, formed from the White Nile and Blue Nile which join at Khartoum. In Egypt it is the country's vital artery, with Cairo and the delta at its mouth; safeguarding the Nile valley and the Suez Canal that lay beyond it was the central Allied strategic concern in the Western Desert Campaign.",
+    "links": [{ "label": "Nile (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Nile" }]
+  },
+  "Nofilia": {
+    "title": "Nofilia",
+    "description": "Nofilia (An Nawfaliyah) is a small desert town in the Sirte District of Libya, west of the country's oil ports, at the time little more than a fort with a few Italian buildings, a mosque and shops. It saw a brief skirmish in late 1942 as elements of Rommel's retreating Panzer Army, some out of fuel, fell back westward in the fighting connected to the Battle of El Agheila.",
+    "links": [{ "label": "Nofilia (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Nofilia" }]
+  },
+  "Qafa": {
+    "title": "Qafa",
+    "description": "Qafa is a minor desert locality in the Egyptian-Libyan Western Desert region. It is a small, poorly documented place name of the type used as a local geographic reference in the desert and has no substantial independent historical record."
+  },
+  "Qasara": {
+    "title": "Qasara",
+    "description": "Qasara is a minor locality in the Western Desert region. It is sparsely documented and does not have a significant standalone historical record."
+  },
+  "Qatara Depression": {
+    "title": "Qatara Depression",
+    "description": "The Qatara Depression (Qattara Depression) is a vast desert basin in northwestern Egypt, dropping to about 133 m below sea level and bordered on its north by steep escarpments. Its salt marshes, soft sand and cliffs were considered impassable to tanks and heavy vehicles, so it formed the inland anchor of the El Alamein line: because the position could not be outflanked to the south between the Mediterranean and the depression, the 1942 battles there were fought as frontal actions.",
+    "links": [{ "label": "Qattara Depression (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Qattara_Depression" }]
+  },
+  "Qotifya": {
+    "title": "Qotifya",
+    "description": "Qotifya is a minor desert locality in the coastal Western Desert of Egypt. It is a sparsely documented place name with no substantial independent historical record."
+  },
+  "Ras el Ali": {
+    "title": "Ras el Ali",
+    "description": "Ras el Ali is a minor coastal point in the Western Desert region (Arabic ras meaning cape or headland). It is a small, poorly documented locality used chiefly as a local geographic reference and has no significant standalone historical record."
+  },
+  "Rosetta": {
+    "title": "Rosetta",
+    "description": "Rosetta (Arabic: Rashid) is a port city of the Nile Delta about 65 km east of Alexandria, standing at the mouth of the Nile's western (Rosetta) distributary. A historic Ottoman-era trading town, it is world-famous as the place near which the Rosetta Stone was found in 1799, and it marks the western edge of the delta's Mediterranean coast.",
+    "links": [{ "label": "Rosetta (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Rosetta" }]
+  },
+  "Rotunda Segnali": {
+    "title": "Rotunda Segnali",
+    "description": "Rotunda Segnali (Italian Rotonda Segnali) was a desert track junction and signposted navigation point in the interior of Cyrenaica, Libya, south of the Jebel Akhdar. In the largely featureless desert such marked junctions served as key waypoints for navigation and cross-desert movement, including for long-range patrol operations, but the site itself has no substantial independent historical record."
+  },
+  "Saunu": {
+    "title": "Saunu",
+    "description": "Saunu (Saunnu) is a desert locality in Cyrenaica, Libya, in the interior near Antelat and the Marada approaches. The Antelat-Saunnu area figured in the fast-moving desert manoeuvring of Rommel's January-February 1942 counter-offensive, but the place itself is only lightly documented."
+  },
+  "Sceleidima": {
+    "title": "Sceleidima",
+    "description": "Sceleidima (also rendered Scelidima) was a fortified Italian desert post in Cyrenaica, Libya, sited on the escarpment between the Benghazi plain and the interior desert near the Msus-Antelat routes, guarding an approach toward Benghazi. It featured in the advances and withdrawals across Cyrenaica during 1941-42, though it has no substantial standalone historical record."
+  },
+  "Sidi Abd el Rahman": {
+    "title": "Sidi Abd el Rahman",
+    "description": "Sidi Abd el Rahman is a small Mediterranean coastal village in Egypt's Matruh Governorate, a short distance west of El Alamein. It lay just behind the western (Axis) end of the El Alamein battlefield and was in the forward area during the 1942 fighting; the surrounding coast holds war cemeteries and, for decades afterward, extensive uncleared minefields.",
+    "links": [{ "label": "Sidi Abdel Rahman (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Sidi_Abdel_Rahman" }]
+  },
+  "Sidi Azeiz": {
+    "title": "Sidi Azeiz",
+    "description": "Sidi Azeiz is a locality in eastern Libya in the frontier zone between Bardia, Fort Capuzzo and Sollum. During Operation Crusader it was the scene of an action on 27 November 1941 in which German forces overran the headquarters of the 5th New Zealand Brigade, capturing many of its personnel."
+  },
+  "Sidi Barrani": {
+    "title": "Sidi Barrani",
+    "description": "Sidi Barrani is an Egyptian coastal town roughly 95 km east of the Libyan border. It marked the limit of the Italian invasion of Egypt launched from Libya in September 1940, after which the Italian Tenth Army built a chain of fortified camps around it. In December 1940 it was the objective of the opening British attack of Operation Compass, which routed the far larger Italian force holding the area.",
+    "links": [{ "label": "Sidi Barrani (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Sidi_Barrani" }]
+  },
+  "Sidi Brabrin": {
+    "title": "Sidi Brabrin",
+    "description": "Sidi Brabrin is a minor desert locality in the Western Desert coastal region (the prefix Sidi denoting a local shrine or place name). It is very sparsely documented and has no substantial independent historical record."
+  },
+  "Sidi Haneish": {
+    "title": "Sidi Haneish",
+    "description": "Sidi Haneish was a German-held airfield in north-western Egypt, roughly 380 km west of Cairo (known to the Germans as Haggag el Qasaba), near the coastal railway. On the night of 26-27 July 1942 it was the target of a celebrated Special Air Service (SAS) raid led by David Stirling, in which a column of armed jeeps drove onto the field and destroyed or damaged around 37 Luftwaffe aircraft.",
+    "links": [{ "label": "Raid on Sidi Haneish Airfield (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Raid_on_Sidi_Haneish_Airfield" }]
+  },
+  "Sidi Omar": {
+    "title": "Sidi Omar",
+    "description": "Sidi Omar is a locality marked by an old Senussi tomb on the Libya-Egypt frontier in Egypt's Matrouh Governorate, established as a border point by the 1925 Treaty of Jaghbub. Sitting at the southern end of the fortified frontier line, it saw fighting during Operation Compass, Operation Battleaxe and Operation Crusader.",
+    "links": [{ "label": "Sidi Omar (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Sidi_Omar" }]
+  },
+  "Sidi Rezegh": {
+    "title": "Sidi Rezegh",
+    "description": "Sidi Rezegh was a desert ridge and airfield south-east of Tobruk that became the focal point of the Battle of Sidi Rezegh during Operation Crusader (November 1941). British and Commonwealth armour seized the airfield but were then caught in heavy fighting with German panzer divisions, including the destruction of the 5th South African Brigade on 23 November, before Eighth Army forces eventually linked up with the Tobruk garrison.",
+    "links": [{ "label": "Battle of Sidi Rezegh (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Battle_of_Sidi_Rezegh" }]
+  },
+  "Sidi Suleiman": {
+    "title": "Sidi Suleiman",
+    "description": "Sidi Suleiman was a desert location on the Egyptian side of the Sollum-Halfaya frontier, a few kilometres inland from Halfaya Pass. It became a key objective during Operation Battleaxe (15-17 June 1941): Rommel's 5th Light Division reached Sidi Suleiman on 17 June, threatening to encircle the British armour and helping force the Eighth Army's withdrawal.",
+    "links": [{ "label": "Operation Battleaxe (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Operation_Battleaxe" }]
+  },
+  "Siwa": {
+    "title": "Siwa",
+    "description": "Siwa is an oasis in a below-sea-level depression in Egypt's Western Desert, lying between the Qattara Depression and the Great Sand Sea near the Libyan border. During the Western Desert Campaign it served as a forward base for the British Long Range Desert Group (LRDG), though it also changed hands with Axis forces on occasion.",
+    "links": [{ "label": "Siwa Oasis (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Siwa_Oasis" }]
+  },
+  "Sofafi": {
+    "title": "Sofafi",
+    "description": "Sofafi was a group of fortified positions on top of the escarpment in the Egyptian Western Desert, south-west of Sidi Barrani, forming the inland flank of the Italian frontier defences in late 1940. It was one of the chain of camps targeted during the opening of Operation Compass in December 1940, though its garrison largely withdrew as the neighbouring camps fell."
+  },
+  "Sollum": {
+    "title": "Sollum",
+    "description": "Sollum (Sallum) is a harbourside border town in far north-west Egypt, about 8 km east of the Libyan frontier, set below the steep Aqaba escarpment and just north of the Halfaya Pass. Its coastal road and passes made it a repeatedly contested chokepoint in the Western Desert Campaign, notably during Operations Battleaxe and Crusader in 1941; a Commonwealth war cemetery near the town holds over 2,000 graves.",
+    "links": [{ "label": "Sollum (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Sollum" }]
+  },
+  "Soluch": {
+    "title": "Soluch",
+    "description": "Soluch (modern Suluq) is a town in the Benghazi District of Cyrenaica, north-eastern Libya, lying roughly 50 km south-east of Benghazi at the inland edge of the coastal plain. It is historically notable as the site of an Italian colonial-era internment camp and the place where Libyan resistance leader Omar Mukhtar was hanged in 1931; in WWII it lay along the routes contested during the advances and retreats across Cyrenaica.",
+    "links": [{ "label": "Suluq (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Suluq" }]
+  },
+  "Tanta": {
+    "title": "Tanta",
+    "description": "Tanta is a city in the central Nile Delta of Egypt, capital of Gharbia Governorate, situated on the rail and road network roughly midway between Cairo and Alexandria. A major commercial and cotton-ginning centre, it lay well behind the front in the rear areas of Egypt during the Western Desert Campaign.",
+    "links": [{ "label": "Tanta (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Tanta" }]
+  },
+  "Tecnis": {
+    "title": "Tecnis",
+    "description": "Tecnis (Teknis) is a small inland locality in the Cyrenaican uplands of north-eastern Libya, in the hinterland behind the Barce-Benghazi coastal belt. Like many such desert landing-ground sites it featured in the movements across Cyrenaica during the campaign, but it has no significant standalone documentation."
+  },
+  "Tmimi": {
+    "title": "Tmimi",
+    "description": "Tmimi is a coastal locality in Cyrenaica, Libya, lying east of Gazala on the road between Tobruk and Derna. In the Western Desert Campaign it was the site of desert landing grounds and served as a staging and airfield area during the 1941-42 fighting around the Gazala line and Tobruk."
+  },
+  "Tobruk": {
+    "title": "Tobruk",
+    "description": "Tobruk is a fortified deep-water port on the Libyan coast of Cyrenaica whose harbour made it a prized supply base for both sides in the Western Desert Campaign. During 1941 an Allied garrison built around the Australian 9th Division - the 'Rats of Tobruk' - held its perimeter under Axis siege for 231 days until relieved during Operation Crusader; the port later fell to Rommel in June 1942 before being retaken in late 1942.",
+    "links": [{ "label": "Siege of Tobruk (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Siege_of_Tobruk" }]
+  },
+  "Tocra": {
+    "title": "Tocra",
+    "description": "Tocra (ancient Taucheira or Teuchira) is a coastal town in the Marj District of Cyrenaica, Libya, about 25 km west of Marj on the road toward Benghazi. Founded as a Greek colony of Cyrene, it was one of the cities of the Cyrenaican Pentapolis and was later fortified under the Romans and Justinian I; in WWII it lay along the coastal route repeatedly crossed during the Cyrenaican campaigns.",
+    "links": [{ "label": "Tocra (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Tocra" }]
+  },
+  "Tolmeta": {
+    "title": "Tolmeta",
+    "description": "Tolmeta (Tolmeita) is the site of ancient Ptolemais on the Cyrenaican coast of Libya, one of the five cities of the Pentapolis, developed from an earlier Greek port and likely refounded by Ptolemy III in the 3rd century BC. The modern village takes its name from the ancient city, whose extensive ruins lie on the coast between Tocra and Cyrene.",
+    "links": [{ "label": "Ptolemais, Cyrenaica (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Ptolemais,_Cyrenaica" }]
+  },
+  "Trigh el Abd": {
+    "title": "Trigh el Abd",
+    "description": "The Trigh el Abd ('trigh' meaning track or trail) was one of the old caravan tracks running across the open desert of eastern Cyrenaica, south of the Trigh Capuzzo and the coastal escarpment. In the Western Desert Campaign it served as an inland axis of movement for armoured and motorised columns manoeuvring between the Egyptian frontier and the Gazala-Tobruk area."
+  },
+  "Trigh Zueia": {
+    "title": "Trigh Zueia",
+    "description": "The Trigh Zueia ('trigh' meaning track or trail) was another of the desert tracks crossing the interior of Cyrenaica in the Libya-Egypt frontier region. Such trighs provided the route network along which forces moved and were supplied across the roadless desert during the 1941-42 campaigns."
+  },
+  "Wadi Natrun": {
+    "title": "Wadi Natrun",
+    "description": "Wadi Natrun (Wadi El Natrun) is a desert depression in northern Egypt's Beheira Governorate, lying about 23 m below sea level between Cairo and Alexandria and containing alkaline lakes rich in natron salt. Long famous for its ancient Coptic monasteries, its position on the desert edge behind the Alamein sector placed it in the Egyptian rear areas during the 1942 fighting.",
+    "links": [{ "label": "Wadi El Natrun (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Wadi_El_Natrun" }]
+  },
+  "Zagazig": {
+    "title": "Zagazig",
+    "description": "Zagazig is a city in the eastern Nile Delta of Egypt, capital of Sharqia Governorate, sitting on the Muweis Canal and near the ancient ruins of Bubastis. A hub of the cotton and grain trade, it lay in the settled Delta rear areas well behind the Western Desert front.",
+    "links": [{ "label": "Zagazig (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Zagazig" }]
+  },
+  "Zt. Tert": {
+    "title": "Zt. Tert",
+    "description": "Zt. Tert (the abbreviation 'Zt.' denoting a zawiya, a small desert shrine or waystation) is an obscure desert landmark in the Libyan-Egyptian frontier region used as a map reference point during the campaign. No significant standalone documentation of it is available."
+  },
+  "Zuetina": {
+    "title": "Zuetina",
+    "description": "Zuetina (Zuwetina / Az Zuwaytinah) is a small coastal town and port on the Gulf of Sidra in the Al Wahat District of Cyrenaica, Libya, roughly 180 km south-west of Benghazi. Lying on the low coastal road around the gulf, it sat along the axis of the advances and retreats between El Agheila and Benghazi during the desert campaign.",
+    "links": [{ "label": "Zuwetina (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Zuwetina" }]
+  }
+}

@@ -7,6 +7,7 @@
 //! rather than a single blob, so each source chart maps to its own data file.
 
 pub mod crt;
+pub mod formation_org;
 pub mod initiative;
 pub mod ob;
 pub mod off_map;

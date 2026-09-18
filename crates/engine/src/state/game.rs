@@ -367,6 +367,17 @@ pub struct SupplyDump {
     /// A dummy Supply Dump (§32.18 / §59.53) — no real supplies; removed on discovery.
     #[serde(default)]
     pub dummy: bool,
+    /// §24.9: whether this hex has an actual *constructed* Supply Dump (a TOE Strength Point spent
+    /// 3 CP + 20 Stores; a dummy spends 3 CP) versus mere *loose* supplies dropped in the hex. Loose
+    /// supplies (`constructed: false`) can still be consumed for supply and picked up by a unit's own
+    /// first-line trucks, but a free truck convoy "in convoy" may not load them. A dummy is always
+    /// `constructed: true` (it was built). Defaults to `true` so older saves read as constructed.
+    #[serde(default = "crate::state::game::default_true")]
+    pub constructed: bool,
+}
+
+pub(crate) fn default_true() -> bool {
+    true
 }
 
 /// A commodity that may be carried by Commonwealth rail supply (§54.33 — not Water).
@@ -520,6 +531,18 @@ pub struct ReplacementPoints {
     /// The unit these points are assigned to for delivery (§20.41).
     #[serde(default)]
     pub assigned_to: Option<UnitId>,
+    /// §20.42d: movement Capability Points expended this Truck Convoy Phase, in tenths of a CP
+    /// (matching `cp_expended`); reset each Operations Stage. The pool's CPA is that of its assigned
+    /// unit; it may never exceed it (§20.46 haulage).
+    #[serde(default)]
+    pub cpa_used: u32,
+    /// §20.44: index into `GameState::truck_convoys` of the free convoy currently hauling this pool,
+    /// if any. An Infantry pool must be bound to (loaded onto) a co-located convoy before it can move
+    /// (§20.46); Tank/Gun/Recce pools self-move and stay `None`. Convoys are never removed from the
+    /// Vec (only pushed), so the index is a stable handle. This binding replaces the old per-convoy
+    /// `carries_replacements` flag — §27.58 raid effects are derived from it.
+    #[serde(default)]
+    pub carried_by: Option<usize>,
 }
 
 /// A Replacement Point pool planned to arrive at a future Operations Stage (§20.21) — the Axis
@@ -554,14 +577,20 @@ pub struct TruckConvoy {
     pub side: Side,
     pub hex: HexCoord,
     pub trucks: crate::state::unit::TruckPoints,
+    /// §21/§22: Truck Points broken down (immobilized until §22.13 field-repaired).
+    #[serde(default)]
+    pub trucks_broken: crate::state::unit::TruckPoints,
     #[serde(default)]
     pub cargo: Commodities,
     /// Movement expended this Truck Convoy Phase, tenths of a CP (§8.98 CPA cap).
     #[serde(default)]
     pub cpa_used: u32,
-    /// §27.57: whether any of the hauled cargo is Replacement Points (affects the §27.58 raid roll).
+    /// §21.21/24: Breakdown Points accumulated from terrain entered this stage (reset each stage).
     #[serde(default)]
-    pub carries_replacements: bool,
+    pub breakdown_points: u32,
+    /// §21.26: the highest breakdown column already checked this stage (recheck only on a higher one).
+    #[serde(default)]
+    pub breakdown_checked_col: i32,
 }
 
 /// The two kinds of desert-raider counter (§27): the Commonwealth Long Range Desert Group (§27.1,
@@ -1037,6 +1066,11 @@ pub struct GameState {
     /// enforcing the row's lifetime total. Keyed by (side, TruckKind discriminant name).
     #[serde(default)]
     pub axis_truck_orders: Vec<PendingTruckDelivery>,
+    /// §53.25 (no leapfrogging): supplies a free convoy off-loaded into a hex during the current Truck
+    /// Convoy phase — they may not be re-loaded by another convoy the same phase (the relay the rule
+    /// forbids). Reset at the start of each Operations Stage. Keyed by hex.
+    #[serde(default)]
+    pub leapfrog_locked: std::collections::HashMap<HexCoord, Commodities>,
     /// Squadrons currently flying Combat Air Patrol (§40.2), reset at the start of each Operations
     /// Stage. Enemy missions entering an offensive patrol's coverage are intercepted (§40.26).
     #[serde(default)]
@@ -1259,6 +1293,7 @@ impl GameState {
             pending_trucks: Vec::new(),
             truck_pools: std::collections::HashMap::new(),
             axis_truck_orders: Vec::new(),
+            leapfrog_locked: std::collections::HashMap::new(),
             cap_patrols: Vec::new(),
             pilots: Vec::new(),
             airdrop_last_stage: std::collections::HashMap::new(),
@@ -1729,11 +1764,18 @@ impl GameState {
         let Some(u) = self.units.get(&id) else {
             return 0;
         };
-        match &u.composition {
-            // §52.41: the flat 1 Water Point applies to an *infantry battalion or company*.
-            // HQs and Engineers are also `Organic` but are neither, so they owe no water (they
-            // are likewise special-cased for Stores in `unit_stores_requirement`, §51.13). A
-            // non-infantry Organic unit is thus never "deprived" and never takes §52.53 attrition.
+        // §52.42: each Truck Point (like each Vehicle TOE SP) needs 1 Water Point this stage if the
+        // unit used any of its CPA (`acted`).
+        let truck_water = if acted { u.trucks.light + u.trucks.medium + u.trucks.heavy } else { 0 };
+        // §29.35: hot weather at the unit's hex doubles the whole requirement.
+        let hot = u.hex().is_some_and(|h| self.weather_at(h) == Weather::Hot);
+        let mult = if hot { 2 } else { 1 };
+        mult * match &u.composition {
+            // §52.41: the flat 1 Water Point applies to an *infantry battalion or company* (regardless
+            // of movement). HQs and Engineers are also `Organic` but are neither, so they owe no
+            // §52.41 water (they are likewise special-cased for Stores in `unit_stores_requirement`,
+            // §51.13). A non-infantry Organic unit is thus never "deprived" (never takes §52.53 attrition),
+            // but its §52.42 Truck-Point water is still owed if it moved.
             Composition::Organic { .. } => {
                 let ut = self
                     .reference
@@ -1742,14 +1784,11 @@ impl GameState {
                     .and_then(|m| m.get(&u.id_code))
                     .map(|uc| uc.unit_type.as_str())
                     .unwrap_or("");
-                if ut.contains("Headquarters") || ut.contains("Engineer") {
-                    0
-                } else {
-                    1
-                }
+                let base = if ut.contains("Headquarters") || ut.contains("Engineer") { 0 } else { 1 };
+                base + truck_water
             }
-            Composition::Weapons { .. } if acted => u.total_toe(),
-            _ => 0,
+            // §52.42: 1 per Vehicle TOE SP (if moved) + 1 per attached Truck Point (if moved).
+            Composition::Weapons { .. } => (if acted { u.total_toe() } else { 0 }) + truck_water,
         }
     }
 
@@ -1779,29 +1818,62 @@ impl GameState {
     pub fn unit_motorized_cpa(&self, id: UnitId) -> Option<i32> {
         let chart = self.reference.truck_chart.as_ref()?;
         let u = self.units.get(&id)?;
-        if !matches!(u.composition, Composition::Organic { .. }) {
-            return None;
-        }
-        if self.unit_cpa(id)? > 10 {
-            return None; // §6.17: only infantry with a basic CPA of 10 or less
-        }
-        if self.unit_truck_inf_capacity(id) < u.total_toe() {
-            return None;
-        }
         let t = &u.trucks;
-        let mut cpa: Option<i32> = None;
-        for (n, ch) in [
-            (t.light, &chart.light),
-            (t.medium, &chart.medium),
-            (t.heavy, &chart.heavy),
-        ] {
-            if n > 0 {
-                if let Some(c) = ch.cpa_inf {
-                    cpa = Some(cpa.map_or(c, |x| x.min(c)));
+        let has_trucks = t.light + t.medium + t.heavy > 0;
+        // Lowest present truck-type CPA for the given transport role (`na` types skipped).
+        let min_cpa = |pick: fn(&crate::reference::logistics::TruckCharacteristics) -> Option<i32>| -> Option<i32> {
+            [(t.light, &chart.light), (t.medium, &chart.medium), (t.heavy, &chart.heavy)]
+                .into_iter()
+                .filter(|(n, _)| *n > 0)
+                .filter_map(|(_, ch)| pick(ch))
+                .min()
+        };
+        match &u.composition {
+            Composition::Organic { .. } => {
+                let uc = self
+                    .reference
+                    .unit_characteristics
+                    .get(&u.nationality)
+                    .and_then(|m| m.get(&u.id_code));
+                // §8.93: inherently-motorized ("+" on the chart) units carry their own transport — they
+                // are motorized regardless of assigned Truck Points, moving at the light-truck infantry pace.
+                let inherent = uc.map(|c| c.cpa.motorized_capable).unwrap_or(false);
+                // §6.17: leg infantry (basic CPA ≤ 10) whose full TOE its attached Truck Points can carry.
+                let trucked = self.unit_cpa(id)? <= 10 && has_trucks && self.unit_truck_inf_capacity(id) >= u.total_toe();
+                if !inherent && !trucked {
+                    return None;
                 }
+                min_cpa(|ch| ch.cpa_inf).or(Some(chart.light.cpa_inf.unwrap_or(25)))
+            }
+            Composition::Weapons { groups } => {
+                // §6.17: gun (Artillery/Anti-tank) or Anti-air units carried by attached Truck Points
+                // assume the truck's gun CPA. Light trucks cannot carry guns/arty (`na`).
+                if !has_trucks {
+                    return None;
+                }
+                let table = self.reference.weapons_systems.get(&u.nationality);
+                let kind_of = |g: &crate::state::unit::WeaponGroup| table.and_then(|m| m.get(&g.system)).map(|w| w.kind);
+                let all_is = |f: fn(WeaponKind) -> bool| !groups.is_empty() && groups.iter().all(|g| kind_of(g).is_some_and(f));
+                let is_gun = all_is(|k| matches!(k, WeaponKind::Artillery | WeaponKind::AntiTank));
+                let is_aa = all_is(|k| matches!(k, WeaponKind::AntiAir | WeaponKind::LightAntiAir | WeaponKind::HeavyAntiAir));
+                if !is_gun && !is_aa {
+                    return None;
+                }
+                let cap_tenths = if is_aa {
+                    t.light * chart.light.toe_aa_tenths.unwrap_or(0)
+                        + t.medium * chart.medium.toe_aa_tenths.unwrap_or(0)
+                        + t.heavy * chart.heavy.toe_aa_tenths.unwrap_or(0)
+                } else {
+                    t.light * chart.light.toe_arty_tenths.unwrap_or(0)
+                        + t.medium * chart.medium.toe_arty_tenths.unwrap_or(0)
+                        + t.heavy * chart.heavy.toe_arty_tenths.unwrap_or(0)
+                };
+                if cap_tenths < u.total_toe() * 10 {
+                    return None;
+                }
+                min_cpa(|ch| ch.cpa_guns)
             }
         }
-        cpa
     }
 
     /// The CPA that governs a unit's movement this stage: the §6.17 motorized CPA (the truck's,
@@ -1863,15 +1935,28 @@ impl GameState {
     /// (§53.24 — CP cost deferred). Bounded by the trucks' remaining cargo capacity for that
     /// commodity and the dump contents. Returns the amount actually loaded.
     pub fn load_trucks(&mut self, id: UnitId, c: Commodity, amount: u32) -> u32 {
-        let cap = self.unit_truck_cargo_capacity(id).get(c);
-        let (Some(hex), Some(side), cur) = (
+        let caps = self.unit_truck_cargo_capacity(id);
+        let cap = caps.get(c);
+        let (Some(hex), Some(side), Some(cargo)) = (
             self.units.get(&id).and_then(|u| u.hex()),
             self.units.get(&id).map(|u| u.nationality.side()),
-            self.units.get(&id).map_or(0, |u| u.truck_cargo.get(c)),
+            self.units.get(&id).map(|u| u.truck_cargo.clone()),
         ) else {
             return 0;
         };
-        let mut remaining = amount.min(cap.saturating_sub(cur));
+        let cur = cargo.get(c);
+        // §53.24/§54.2: a Truck Point carries a single commodity, so the fleet's per-commodity shares
+        // (loaded / all-truck capacity) must sum to ≤ 1 — cap this load by the remaining share.
+        let other_frac: f64 = [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water]
+            .into_iter()
+            .filter(|&x| x != c)
+            .map(|x| {
+                let cx = caps.get(x);
+                if cx == 0 { 0.0 } else { cargo.get(x) as f64 / cx as f64 }
+            })
+            .sum();
+        let room_by_packing = ((cap as f64) * (1.0 - other_frac).max(0.0)).floor() as u32;
+        let mut remaining = amount.min(cap.min(room_by_packing).saturating_sub(cur));
         let mut loaded = 0;
         for d in self.supply_dumps.iter_mut().filter(|d| {
             d.side == side && !d.dummy && d.location.hex() == Some(hex)
@@ -1918,12 +2003,118 @@ impl GameState {
         } else {
             let mut supply = Commodities::default();
             *supply.get_mut(c) = n;
+            // §24.9: off-loading drops *loose* supplies, not a constructed (convoy-loadable) dump.
             self.supply_dumps.push(SupplyDump {
                 location: UnitLocation::OnMap(hex),
                 side,
                 supply,
                 dummy: false,
+                constructed: false,
             });
+        }
+        n
+    }
+
+    /// The per-commodity cargo capacity of a free truck convoy (§54.2, Σ Truck Points × per-point cargo).
+    pub fn convoy_cargo_capacity(&self, convoy: &TruckConvoy) -> Commodities {
+        let Some(chart) = self.reference.truck_chart.as_ref() else {
+            return Commodities::default();
+        };
+        let t = &convoy.trucks;
+        Commodities {
+            fuel: t.light * chart.light.cargo_fuel + t.medium * chart.medium.cargo_fuel + t.heavy * chart.heavy.cargo_fuel,
+            ammo: t.light * chart.light.cargo_ammo + t.medium * chart.medium.cargo_ammo + t.heavy * chart.heavy.cargo_ammo,
+            stores: t.light * chart.light.cargo_stores + t.medium * chart.medium.cargo_stores + t.heavy * chart.heavy.cargo_stores,
+            water: t.light * chart.light.cargo_water + t.medium * chart.medium.cargo_water + t.heavy * chart.heavy.cargo_water,
+        }
+    }
+
+    /// §27.57: whether free convoy `convoy` is currently hauling any Replacement-Point pool — derived
+    /// from the pools' `carried_by` binding rather than a stored flag, so it can never go stale.
+    pub fn convoy_carries_replacements(&self, convoy: usize) -> bool {
+        self.replacement_points.iter().any(|p| p.carried_by == Some(convoy))
+    }
+
+    /// Drop any Replacement-Point pool bound to convoy `convoy` back onto its current hex (clearing the
+    /// binding). Called when the convoy loses its last Truck Point (§27.58 raid): the pool can no longer
+    /// ride, so it becomes a standalone (stranded) counter again rather than a phantom on a truckless hull.
+    pub fn drop_convoy_replacements(&mut self, convoy: usize) {
+        for p in &mut self.replacement_points {
+            if p.carried_by == Some(convoy) {
+                p.carried_by = None;
+            }
+        }
+    }
+
+    /// §53.14/§53.24: load a commodity from a co-located Friendly Supply Dump onto a free truck convoy,
+    /// bounded by the convoy's cargo capacity and the §54.2 one-commodity-per-Truck-Point packing rule.
+    pub fn load_convoy(&mut self, convoy: usize, c: Commodity, amount: u32) -> u32 {
+        let Some(cv) = self.truck_convoys.get(convoy) else {
+            return 0;
+        };
+        let (hex, side) = (cv.hex, cv.side);
+        let caps = self.convoy_cargo_capacity(cv);
+        let cargo = cv.cargo.clone();
+        let cur = cargo.get(c);
+        let other_frac: f64 = [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water]
+            .into_iter()
+            .filter(|&x| x != c)
+            .map(|x| {
+                let cx = caps.get(x);
+                if cx == 0 { 0.0 } else { cargo.get(x) as f64 / cx as f64 }
+            })
+            .sum();
+        let room_by_packing = ((caps.get(c) as f64) * (1.0 - other_frac).max(0.0)).floor() as u32;
+        let mut remaining = amount.min(caps.get(c).min(room_by_packing).saturating_sub(cur));
+        // §53.25: supplies dropped into this hex this Truck Convoy phase may not be relayed onward — exclude them.
+        let locked = self.leapfrog_locked.get(&hex).map_or(0, |cm| cm.get(c));
+        // §24.9: a truck "in convoy" may only load from a *constructed* dump — loose supplies are off-limits.
+        let dump_total: u32 = self
+            .supply_dumps
+            .iter()
+            .filter(|d| d.side == side && !d.dummy && d.constructed && d.location.hex() == Some(hex))
+            .map(|d| d.supply.get(c))
+            .sum();
+        remaining = remaining.min(dump_total.saturating_sub(locked));
+        let mut loaded = 0;
+        for d in self.supply_dumps.iter_mut().filter(|d| d.side == side && !d.dummy && d.constructed && d.location.hex() == Some(hex)) {
+            if remaining == 0 {
+                break;
+            }
+            let take = remaining.min(d.supply.get(c));
+            *d.supply.get_mut(c) -= take;
+            remaining -= take;
+            loaded += take;
+        }
+        if loaded > 0 {
+            *self.truck_convoys[convoy].cargo.get_mut(c) += loaded;
+        }
+        loaded
+    }
+
+    /// §53.14/§53.24: off-load a commodity from a free truck convoy into a Friendly Supply Dump in its
+    /// hex (creating one if none is present). Returns the amount unloaded.
+    pub fn unload_convoy(&mut self, convoy: usize, c: Commodity, amount: u32) -> u32 {
+        let Some(cv) = self.truck_convoys.get(convoy) else {
+            return 0;
+        };
+        let (hex, side, cur) = (cv.hex, cv.side, cv.cargo.get(c));
+        let n = amount.min(cur);
+        if n == 0 {
+            return 0;
+        }
+        *self.truck_convoys[convoy].cargo.get_mut(c) -= n;
+        if let Some(d) = self.supply_dumps.iter_mut().find(|d| d.side == side && !d.dummy && d.location.hex() == Some(hex)) {
+            *d.supply.get_mut(c) += n;
+        } else {
+            let mut supply = Commodities::default();
+            *supply.get_mut(c) = n;
+            // §24.9: a convoy off-load drops *loose* supplies (not a constructed, re-loadable dump).
+            self.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(hex), side, supply, dummy: false, constructed: false });
+        }
+        // §53.25: these just-dropped supplies may not be re-loaded (relayed) by another convoy this phase.
+        if self.phase == Phase::TruckConvoy {
+            *self.leapfrog_locked.entry(hex).or_default().get_mut(c) += n;
         }
         n
     }
@@ -2054,6 +2245,47 @@ impl GameState {
                 }
             }
             2 => repair_light_or_medium(u, &mut repaired),
+            _ => {}
+        }
+        repaired
+    }
+
+    /// §22.13: field-repair a free truck convoy's broken-down Truck Points (roll 1 = one Heavy or two
+    /// Light/Medium; roll 2 = one Light/Medium; else none). Blocked in a Rainstorm/Sandstorm hex (§22.13d).
+    pub fn repair_convoy_trucks(&mut self, convoy: usize, roll: u8) -> u32 {
+        let Some(hex) = self.truck_convoys.get(convoy).map(|c| c.hex) else {
+            return 0;
+        };
+        if self.sandstorm_at(hex) || self.weather_at(hex) == Weather::Rainstorm {
+            return 0;
+        }
+        let Some(cv) = self.truck_convoys.get_mut(convoy) else {
+            return 0;
+        };
+        let mut repaired = 0;
+        let repair_lm = |cv: &mut TruckConvoy, r: &mut u32| {
+            if cv.trucks_broken.medium > 0 {
+                cv.trucks_broken.medium -= 1;
+                cv.trucks.medium += 1;
+                *r += 1;
+            } else if cv.trucks_broken.light > 0 {
+                cv.trucks_broken.light -= 1;
+                cv.trucks.light += 1;
+                *r += 1;
+            }
+        };
+        match roll {
+            1 => {
+                if cv.trucks_broken.heavy > 0 {
+                    cv.trucks_broken.heavy -= 1;
+                    cv.trucks.heavy += 1;
+                    repaired += 1;
+                } else {
+                    repair_lm(cv, &mut repaired);
+                    repair_lm(cv, &mut repaired);
+                }
+            }
+            2 => repair_lm(cv, &mut repaired),
             _ => {}
         }
         repaired
@@ -2350,6 +2582,8 @@ impl GameState {
             location,
             training_remaining,
             assigned_to,
+            cpa_used: 0,
+            carried_by: None,
         });
         self.replacement_points.len() - 1
     }
@@ -3545,6 +3779,58 @@ impl GameState {
         pct
     }
 
+    /// §21/§53.22: check a free truck convoy for breakdown after a move. Its accumulated Breakdown
+    /// Points are read on the §21.38 table with the truck BAR (2L = −2 columns; +1 hot / +1 sandstorm);
+    /// a positive result loses that percentage of the convoy's Truck Points (attrition). Rechecks only
+    /// on entering a higher breakdown column (§21.26).
+    pub fn resolve_convoy_breakdown(&mut self, idx: usize) {
+        let Some(table) = self.reference.breakdown_table.clone() else {
+            return;
+        };
+        let (bp, checked_col, hex) = match self.truck_convoys.get(idx) {
+            Some(cv) => (cv.breakdown_points / 10, cv.breakdown_checked_col, cv.hex),
+            None => return,
+        };
+        if bp <= 3 {
+            return;
+        }
+        let base_col = table.column_index(bp) as i32;
+        if base_col <= checked_col {
+            return;
+        }
+        let mut shift: i32 = -2; // §54.2 truck BAR = 2L
+        if self.weather_at(hex) == Weather::Hot {
+            shift += 1;
+        }
+        if self.sandstorm_at(hex) {
+            shift += 1;
+        }
+        let roll = self.rng.sequential_read() as u32;
+        let pct = table.percent(bp, shift, roll);
+        if let Some(cv) = self.truck_convoys.get_mut(idx) {
+            cv.breakdown_checked_col = base_col;
+            if pct > 0 {
+                let total = cv.trucks.light + cv.trucks.medium + cv.trucks.heavy;
+                let mut lost = (total * pct + 99) / 100;
+                // Broken Truck Points move to `trucks_broken` (recoverable via §22.13 field repair),
+                // not lost — take from Heavy first, then Medium, then Light.
+                for (working, broken) in [
+                    (&mut cv.trucks.heavy, &mut cv.trucks_broken.heavy),
+                    (&mut cv.trucks.medium, &mut cv.trucks_broken.medium),
+                    (&mut cv.trucks.light, &mut cv.trucks_broken.light),
+                ] {
+                    let take = lost.min(*working);
+                    *working -= take;
+                    *broken += take;
+                    lost -= take;
+                    if lost == 0 {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     /// The water source at a hex (§52.1): a Major City (a §64.73 victory-city hex) or an Oasis
     /// gives unlimited water; a Village ("Town") or Bir well gives a §52.7 draw and can deplete.
     pub fn hex_water_source(&self, hex: HexCoord) -> Option<WaterKind> {
@@ -3817,6 +4103,7 @@ impl GameState {
                     side,
                     supply,
                     dummy: false,
+                    constructed: true,
                 });
             }
         }
@@ -4428,9 +4715,10 @@ impl GameState {
         }
     }
 
-    /// §24.66 / §52.25: destroy a built Railroad stretch (air/artillery bombardment, enemy
-    /// occupation, or a destroyed railroad). The edge becomes DestroyedRailroad (inert until
-    /// rebuilt). Returns whether track was destroyed.
+    /// §24.66: destroy the built Railroad stretch on the single `a`–`b` hexside (it becomes
+    /// DestroyedRailroad, inert until rebuilt). Returns whether track was destroyed. Callers that
+    /// destroy a whole **railroad hex** (§24.66 — the paper game marks the hex, not one edge) should
+    /// use [`destroy_railroad_hex`](Self::destroy_railroad_hex) instead.
     pub fn destroy_railroad(&mut self, a: HexCoord, b: HexCoord) -> bool {
         if self.map.remove_hexside(a, b, HexsideKind::Railroad) {
             self.map.set_hexside(a, b, HexsideKind::DestroyedRailroad, None);
@@ -4438,6 +4726,22 @@ impl GameState {
         } else {
             false
         }
+    }
+
+    /// §24.66: destroy a whole railroad **hex** — every built Railroad hexside of `hex` becomes
+    /// DestroyedRailroad, so `hex_is_railroad(hex)` goes false (no rail movement / §52.22 water /
+    /// pipeline anchor). This is the effect of the paper game's "Destroyed RR Hex" marker, shared by
+    /// every destruction method (air bombardment, artillery barrage, ground demolition §24.66).
+    /// Returns whether any track was destroyed. (Note: mere enemy *occupation* does not destroy a
+    /// railroad — §52.25's enemy-presence rule applies to pipelines, and railroad-pipelines die only
+    /// when the rail itself is destroyed by these methods.)
+    pub fn destroy_railroad_hex(&mut self, hex: HexCoord) -> bool {
+        let neighbors: Vec<HexCoord> = self.map.neighbors(hex).collect();
+        let mut any = false;
+        for n in neighbors {
+            any |= self.destroy_railroad(hex, n);
+        }
+        any
     }
 
     /// §24.63 / §24.45: rebuild a DestroyedRailroad stretch. Unlike new track (§24.6), *any*
@@ -4766,8 +5070,10 @@ impl GameState {
                     self.map.remove_hexside(a, b, HexsideKind::UnfinishedRailroad);
                     self.map.set_hexside(a, b, HexsideKind::Railroad, None);
                 }
-                ConstructionKind::RailroadDemolition { a, b } => {
-                    self.destroy_railroad(a, b);
+                ConstructionKind::RailroadDemolition { .. } => {
+                    // §24.66: a qualifying unit that spent a full clean Operations Stage in the hex
+                    // destroys the whole railroad hex (the builder's hex `hex`), not just one edge.
+                    self.destroy_railroad_hex(hex);
                 }
                 ConstructionKind::Minefield { side, dummy } => {
                     self.minefields.insert(hex, Minefield { side, dummy });
@@ -5218,6 +5524,26 @@ impl GameState {
     /// per-Operations-Stage maximum). Requires the port to be blockable (§55.21) and a Friendly
     /// engineer/CW-HQ present. Returns the Ammunition/Stores cost the caller must expend, or `None`
     /// if the port is unblockable, has no engineer, or is unknown.
+    /// §55.3: seed the running port table from the Port Capacity & Efficiency chart, so each named
+    /// port's Efficiency Level / blocking is tracked (and surfaced to the viewer). Called once at
+    /// scenario load; a no-op if the table is already populated or no chart is loaded.
+    pub fn init_ports_from_chart(&mut self) {
+        if !self.ports.is_empty() {
+            return;
+        }
+        let entries: Vec<(String, crate::state::naval::Port)> = match self.reference.ports_chart.as_ref() {
+            Some(chart) => chart
+                .ports
+                .iter()
+                .map(|(name, spec)| (name.clone(), crate::state::naval::Port::from_spec(name.clone(), spec)))
+                .collect(),
+            None => return,
+        };
+        for (name, port) in entries {
+            self.ports.insert(name, port);
+        }
+    }
+
     pub fn block_harbor(&mut self, port: &str, has_engineer: bool) -> Option<(u32, u32)> {
         if !has_engineer || !crate::rules::naval::harbor_blockable(port) {
             return None;
@@ -6587,13 +6913,14 @@ impl GameState {
                 water: 0,
             },
             dummy: false,
+            constructed: true,
         });
     }
 
     /// Add a (non-dummy) Supply Dump holding an explicit set of Commodities (Fuel/Ammo/Stores/
     /// Water) — used where all four commodities matter, e.g. §64.73 supply-adequacy.
     pub fn add_supply_dump_full(&mut self, location: UnitLocation, side: Side, supply: Commodities) {
-        self.supply_dumps.push(SupplyDump { location, side, supply, dummy: false });
+        self.supply_dumps.push(SupplyDump { location, side, supply, dummy: false, constructed: true });
     }
 
     /// Add `amount` of one Commodity to a friendly non-dummy Supply Dump in `hex`, merging into an
@@ -7264,12 +7591,9 @@ impl GameState {
                 }
             }
             M::Railroad if result >= 1 => {
-                // §41.38: a positive result destroys the railroad hex — every built Railroad edge
-                // of the hex becomes DestroyedRailroad (inert until rebuilt by engineers, §24.63).
-                let neighbors: Vec<HexCoord> = self.map.neighbors(target).collect();
-                for n in neighbors {
-                    self.destroy_railroad(target, n);
-                }
+                // §41.38 / §24.66: a positive result (air bombardment or artillery barrage) destroys
+                // the whole railroad hex — every built Railroad edge becomes DestroyedRailroad.
+                self.destroy_railroad_hex(target);
             }
             _ => {}
         }
@@ -7865,6 +8189,7 @@ impl GameState {
                     water: choice.water,
                 },
                 dummy: choice.dummy,
+                constructed: true,
             });
         }
         self.pending_dump_choices.remove(index);
@@ -8322,25 +8647,72 @@ impl GameState {
         }
     }
 
-    /// Whether a unit is a "shell" (§9.26). Implemented: the battalion/company clause —
-    /// current TOE below 50% of maximum (25% for artillery). The division/brigade clauses
-    /// (non-shell children vs OA maxima, §9.26/§9.27) are deferred until hierarchical OB
-    /// and OA data exist, so larger formations are never flagged here.
+    /// Whether a unit is a "shell" (§9.26/§9.27). Battalion/company: current TOE below 50% of
+    /// maximum (25% for artillery). Division: 50% or fewer of the brigade-equivalents it may hold
+    /// (§19.3 chart) are attached and not themselves shells. Brigade/regiment: fewer than 2/3 of the
+    /// battalions it may hold are attached and non-shell — except a 2-battalion brigade with both
+    /// attached and at least one non-shell is not a shell. Formations with no §19.3 chart row (e.g.
+    /// pool/dynamic HQs) are never flagged.
     pub fn is_shell(&self, id: UnitId) -> bool {
+        use crate::reference::formation_org::Ech;
         let Some(u) = self.units.get(&id) else {
             return false;
         };
-        if !matches!(u.org_size, OrgSize::Battalion | OrgSize::Company) {
-            return false;
+        match u.org_size {
+            OrgSize::Battalion | OrgSize::Company => {
+                let Some(max) = self.unit_max_toe(id) else {
+                    return false;
+                };
+                if max == 0 {
+                    return false;
+                }
+                let threshold = if self.unit_is_artillery(id) { 25 } else { 50 };
+                u.total_toe() * 100 < threshold * max
+            }
+            OrgSize::Division => {
+                let Some(max_bde) = self.formation_org_max_subunits(id, Ech::Bde) else {
+                    return false;
+                };
+                if max_bde == 0 {
+                    return false;
+                }
+                // §9.27: shell children don't count toward the prerequisite.
+                let attached_nonshell = self.count_attached_nonshell(id, Ech::Bde);
+                attached_nonshell * 2 <= max_bde
+            }
+            OrgSize::SuperBrigade | OrgSize::StandardBrigade | OrgSize::BattleGroup => {
+                let Some(max_bn) = self.formation_org_max_subunits(id, Ech::Bn) else {
+                    return false;
+                };
+                if max_bn == 0 {
+                    return false;
+                }
+                let attached_nonshell = self.count_attached_nonshell(id, Ech::Bn);
+                // §9.26 exception: a 2-battalion brigade with both battalions attached and at least
+                // one not itself a shell is not a shell.
+                if max_bn == 2 {
+                    let attached_any = self
+                        .units
+                        .values()
+                        .filter(|c| c.attached_parent == Some(id) && Ech::of(c.org_size) == Ech::Bn)
+                        .count() as u32;
+                    if attached_any >= 2 && attached_nonshell >= 1 {
+                        return false;
+                    }
+                }
+                attached_nonshell * 3 < max_bn * 2
+            }
         }
-        let Some(max) = self.unit_max_toe(id) else {
-            return false;
-        };
-        if max == 0 {
-            return false;
-        }
-        let threshold = if self.unit_is_artillery(id) { 25 } else { 50 };
-        u.total_toe() * 100 < threshold * max
+    }
+
+    /// Count sub-units of echelon `ech` currently *attached* to `hq` that are not themselves shells
+    /// (§9.27 prerequisite count).
+    fn count_attached_nonshell(&self, hq: UnitId, ech: crate::reference::formation_org::Ech) -> u32 {
+        use crate::reference::formation_org::Ech;
+        self.units
+            .values()
+            .filter(|c| c.attached_parent == Some(hq) && Ech::of(c.org_size) == ech && !self.is_shell(c.id))
+            .count() as u32
     }
 
     /// A unit's effective organizational size for unit-size rules (§9.28): a shell is
@@ -8556,6 +8928,109 @@ impl GameState {
         true
     }
 
+    /// §19.3 Formation Organization Chart: whether assigning `unit` to `parent` stays within the
+    /// parent formation's per-type maxima (counting sub-units at their echelon — §9.26). Only the
+    /// German rows are modeled so far; a formation with no matching chart row is unconstrained here
+    /// (the flat `assigned_capacity` and §19.5 caps still apply). A unit whose type can't be
+    /// classified is not blocked. A row that lists the formation but has no slot for the unit's
+    /// (family, echelon) rejects the assignment — that type isn't part of the formation.
+    /// The §19.3 Formation-Organization-Chart row that applies to formation HQ `hq` at the current
+    /// Game-Turn (matching by nationality, HQ name and time window), if any.
+    pub fn formation_org_row(&self, hq: UnitId) -> Option<&'static crate::reference::formation_org::FormationOrgRow> {
+        use crate::reference::formation_org::{COMMONWEALTH_ROWS, GERMAN_ROWS, ITALIAN_ROWS};
+        let p = self.units.get(&hq)?;
+        let rows = match p.nationality {
+            Nationality::German => GERMAN_ROWS,
+            Nationality::Italian => ITALIAN_ROWS,
+            Nationality::Commonwealth => COMMONWEALTH_ROWS,
+        };
+        let gt = self.game_turn;
+        rows.iter()
+            .find(|r| r.hq_names.iter().any(|h| p.name.contains(h)) && r.gt.is_none_or(|(lo, hi)| gt >= lo && gt <= hi))
+    }
+
+    /// §9.26: the maximum number of sub-units of echelon `ech` the chart lets formation `hq` hold
+    /// (summed over its slots at that echelon) — the denominator of the shell test. `None` if `hq`
+    /// has no chart row.
+    pub fn formation_org_max_subunits(&self, hq: UnitId, ech: crate::reference::formation_org::Ech) -> Option<u32> {
+        let row = self.formation_org_row(hq)?;
+        Some(row.slots.iter().filter(|s| s.ech == ech).map(|s| s.max).sum())
+    }
+
+    pub fn formation_org_assign_ok(&self, parent: UnitId, unit: UnitId) -> bool {
+        use crate::reference::formation_org::Ech;
+        let (Some(_p), Some(u)) = (self.units.get(&parent), self.units.get(&unit)) else {
+            return true;
+        };
+        let Some(row) = self.formation_org_row(parent) else {
+            return true;
+        };
+        let Some(fam) = self.org_family_of(unit) else {
+            return true;
+        };
+        if !fam.is_combat_arm() {
+            return true; // HQ / TDS / generic "Unit" aren't governed by §19.3 arm slots
+        }
+        let fam = fam.slot_family(); // motorized infantry counts as infantry for §19.3
+        let ech = Ech::of(u.org_size);
+        let slots: Vec<_> = row.slots.iter().filter(|s| s.family == fam && s.ech == ech).collect();
+        if slots.is_empty() {
+            return false; // the chart lists this formation but not this type at this echelon
+        }
+        let max: u32 = slots.iter().map(|s| s.max).sum();
+        let current = self
+            .units
+            .values()
+            .filter(|x| {
+                x.assigned_parent == Some(parent)
+                    && x.total_toe() > 0
+                    && Ech::of(x.org_size) == ech
+                    && self.org_family_of(x.id).map(|f| f.slot_family()) == Some(fam)
+            })
+            .count() as u32;
+        current < max
+    }
+
+    /// The §19.3 chart unit-type family of `id`, by nationality: German/Italian classify from the
+    /// unit's name; Commonwealth from its §4.46 characteristics `unit_type` plus a tank flag (its
+    /// battalions are named after the parent regiment, not the type).
+    pub fn org_family_of(&self, id: UnitId) -> Option<crate::reference::formation_org::OrgFamily> {
+        // Prefer the explicit OB tag (the leaf type's arm); fall back to the classifier.
+        if let Some(arm) = self.units.get(&id).and_then(|u| u.unit_type).map(|t| t.arm()) {
+            return Some(arm);
+        }
+        if let Some(fam) = self.org_family_direct(id) {
+            return Some(fam);
+        }
+        // A battalion named only by its number (e.g. "I/361 Bn") carries no arm in its own name —
+        // inherit its regiment/parent's arm.
+        let u = self.units.get(&id)?;
+        let parent = u.assigned_parent.or(u.attached_parent)?;
+        if parent == id {
+            return None;
+        }
+        self.org_family_of(parent)
+    }
+
+    fn org_family_direct(&self, id: UnitId) -> Option<crate::reference::formation_org::OrgFamily> {
+        use crate::reference::formation_org::{commonwealth_family, german_family, italian_family};
+        let u = self.units.get(&id)?;
+        match u.nationality {
+            Nationality::German => german_family(&u.name),
+            Nationality::Italian => italian_family(&u.name),
+            Nationality::Commonwealth => {
+                let ut = self
+                    .reference
+                    .unit_characteristics
+                    .get(&u.nationality)
+                    .and_then(|m| m.get(&u.id_code))
+                    .map(|c| c.unit_type.as_str())
+                    .unwrap_or("");
+                commonwealth_family(ut, &u.name, self.unit_is_tank(id))
+            }
+        }
+    }
+
     /// An HQ counter with no combat units attached (§3.33/§9.12): it uses its parenthesized
     /// value — 0 Stacking Points, and it may not voluntarily attack.
     pub fn is_noncombat_hq(&self, id: UnitId) -> bool {
@@ -8740,6 +9215,15 @@ impl GameState {
         // §8.98: refresh each free truck convoy's Movement Allowance for the new Truck Convoy Phase.
         for convoy in self.truck_convoys.iter_mut() {
             convoy.cpa_used = 0;
+            convoy.breakdown_points = 0;
+            convoy.breakdown_checked_col = -1;
+        }
+        self.leapfrog_locked.clear(); // §53.25: last stage's fresh-drop locks lapse
+
+
+        // §20.42d: a Replacement-Point pool's movement CPA resets each Operations Stage.
+        for p in self.replacement_points.iter_mut() {
+            p.cpa_used = 0;
         }
         // §27.73: track how long the Layforce commando has been mustering in Alexandria.
         self.track_layforce_alexandria();

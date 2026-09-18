@@ -141,3 +141,8 @@ I=coy/battery. Qty "(N)" (absent ⇒ 1).
 - **10NZ / 13NZ** — "RR"-in-box (rail unit), strength 0.
 - A few unattached British designations (RYugGd, Selby, "A"/SpServ) and some parent tags near band
   edges are less certain; **types are high-confidence throughout**.
+- **14 (14/70 A/T Coy) and 65 (65th A/T Regt)** — both counters are drawn with the **plain artillery
+  dot**, not the AT chevron+dot. This is a **counter-art anomaly**: their §4.44a OA-sheet id codes
+  ("dd" and "aa" respectively) and 2-pounder A/T armament are authoritative, so the OB models both as
+  **AntiTank** (resolved 2026-09-16, p185 CW verification pass). Contrast their siblings 16 & 23 A/T
+  coys and the 73rd A/T Regt, which *are* drawn with the AT chevron+dot. Do not re-flag.

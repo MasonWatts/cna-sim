@@ -224,6 +224,10 @@ pub struct Unit {
     /// holds ≤3 TOE tank reserves (§22.64), and tows at 20 CP (§22.65).
     #[serde(default)]
     pub is_tds: bool,
+    /// The unit's leaf type (from the OB) for the counter glyph and §19.3 classification;
+    /// `None` falls back to the classifier in `org_family_of`.
+    #[serde(default)]
+    pub unit_type: Option<crate::reference::formation_org::UnitType>,
     /// §22.63: for an eliminated Tank Delivery Squadron, the Game-Turn it may return to play (its
     /// elimination Game-Turn + 8). `None` while in play.
     #[serde(default)]
@@ -417,6 +421,7 @@ impl Unit {
             is_hq: false,
             airdroppable: false,
             is_tds: false,
+            unit_type: None,
             tds_return_game_turn: None,
             tds_tank_reserve: 0,
             tds_repair_locked: false,

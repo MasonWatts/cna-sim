@@ -8,4 +8,10 @@ import type { MapView } from "./MapView";
  * The `#[derive(TS)]` on this and the types below generates the frontend's TypeScript types into
  * `crates/replay/bindings/` when `cargo test` runs — the `game.json` schema is single-sourced here.
  */
-export type GameRecord = { scenario: string, seed: bigint, commonwealth_agent: string, axis_agent: string, map: MapView, events: Array<Event>, };
+export type GameRecord = { scenario: string, seed: bigint, commonwealth_agent: string, axis_agent: string, map: MapView, 
+/**
+ * Every distinct counter-glyph primitive-set present across the full Order of Battle (all
+ * nationalities), for a complete, self-updating Unit Key legend — independent of what the
+ * recorded game happens to field. Each entry is a set like `["Infantry","Airborne","Heavy"]`.
+ */
+unit_types: Array<Array<string>>, events: Array<Event>, };

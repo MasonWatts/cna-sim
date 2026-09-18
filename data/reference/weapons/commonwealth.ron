@@ -10,7 +10,7 @@
 // omitted/None = not applicable (towed guns not subject to breakdown).
 {
     // --- Tank Weapon Systems ---
-    "A9 Cruiser":      ( kind: Tank, cpa: Some(25), anti_air: Some((value: 1)), anti_armor: Some((value: 3)), close_assault: Some((off: (value: 3), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(1) ),
+    "A9 Cruiser":      ( kind: Tank, cpa: Some(25), anti_air: Some((value: 1)), anti_armor: Some((value: 3)), armor_protection: Some((value: 1)), close_assault: Some((off: (value: 3), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(1) ), // armor 1 per CNA Addenda (Sep 1979) §4.47 (omitted on the printed chart)
     "A10 Cruiser":     ( kind: Tank, cpa: Some(15), anti_air: Some((value: 1)), anti_armor: Some((value: 3)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 3), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(1) ),
     "A13 Cruiser":     ( kind: Tank, cpa: Some(30), anti_air: Some((value: 0)), anti_armor: Some((value: 3)), armor_protection: Some((value: 2)), close_assault: Some((off: (value: 2), def: (value: 3))), fuel_rate: Some(2), breakdown_adjustment: Some(1) ),
     "Churchill II":    ( kind: Tank, cpa: Some(15), anti_air: Some((value: 1)), anti_armor: Some((value: 6)), armor_protection: Some((value: 7)), close_assault: Some((off: (value: 5), def: (value: 6))), fuel_rate: Some(7), breakdown_adjustment: Some(0) ),

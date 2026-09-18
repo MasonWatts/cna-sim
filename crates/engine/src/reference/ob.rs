@@ -39,10 +39,6 @@ pub struct Formation {
     /// 22nd Guards Brigade) rather than a fixed composition.
     #[serde(default)]
     pub dynamic: bool,
-    /// Deployed in a scenario setup but not individually sheeted in §4.44 (e.g. 62
-    /// Marmarica / 63 Cirene) — modeled on a standard template.
-    #[serde(default)]
-    pub abstracted: bool,
     /// §9.16a: for a garrison formation, the hex label of the city/town it garrisons — every unit
     /// deploys with `garrison_location` set to it (0 Stacking Points there). A per-unit `garrison`
     /// override wins for scattered garrisons. `None` for non-garrison formations.
@@ -102,6 +98,10 @@ pub struct ObUnit {
     pub return_at_2: Option<(u32, u32)>,
     #[serde(default)]
     pub notes: String,
+    /// The unit's leaf (most-specific) type — the physical counter's type. Explicit source of truth
+    /// for §19.3 (`arm()`) and the counter glyph (`glyph()`); `None` falls back to the classifier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit_type: Option<crate::reference::formation_org::UnitType>,
 }
 
 /// TOE composition from the chart's "TOE & Weapon System(s)" column.

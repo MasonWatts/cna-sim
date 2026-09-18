@@ -227,11 +227,12 @@ mod tests {
         assert_eq!(ws["Pz IV F2 (Special)"].anti_armor.unwrap().value, 8);
         // 88mm Flak: anti-armor 13.
         assert_eq!(ws["Heavy AA (88mm Flak)"].anti_armor.unwrap().value, 13);
-        // Captured 7.62cm Pak(R): anti-armor 9, CPA is "-" (None).
+        // Captured 7.62cm Pak(R): anti-armor 9; CPA 15 per CNA Addenda (Sep 1979) §4.49
+        // (blank/"-" on the printed chart).
         assert_eq!(ws["7.62cm Pak(R)"].anti_armor.unwrap().value, 9);
-        assert!(ws["7.62cm Pak(R)"].cpa.is_none());
-        // Pz III E carries the only non-zero tank BAR (3R).
-        assert_eq!(ws["Pz III E"].breakdown_adjustment, Some(3));
+        assert_eq!(ws["7.62cm Pak(R)"].cpa, Some(15));
+        // Pz III E BAR is 0 (CNA Addenda §4.49 corrected the ambiguous "3R" scan reading).
+        assert_eq!(ws["Pz III E"].breakdown_adjustment, Some(0));
     }
 
     #[test]
@@ -3510,9 +3511,10 @@ mod tests {
         g.load_scenario(include_str!("../../../data/scenarios/italian-offensive.ron"))
             .unwrap();
 
-        // 16 flat units + three Italian OB divisions (13 each) + CW 7th Armoured (13) +
-        // CW 4th Indian (12 deployed of 17; 7th Ind Bde & 1st Fld Arty arrive later) via placements.
-        assert_eq!(g.units.len(), 80);
+        // 16 flat units + three Italian OB divisions (Catanzaro 13 + Marmarica 13 + Cirene 14, the
+        // last incl. its 63 Brs recce coy) + CW 7th Armoured (13) + CW 4th Indian (12 deployed of 17;
+        // 7th Ind Bde & 1st Fld Arty arrive later) via placements.
+        assert_eq!(g.units.len(), 81);
         // A deployed OB division is a real hierarchy: its HQ heads a 13-unit formation.
         let cat_hq = g.units.values().find(|u| u.name == "64th Catanzaro Div HQ").unwrap().id;
         assert_eq!(g.formation_members(cat_hq).len(), 13);
@@ -4183,7 +4185,7 @@ mod tests {
             trucks: TruckPoints { light: 5, medium: 0, heavy: 0 },
             cargo: Default::default(),
             cpa_used: 0,
-            carries_replacements: false,
+            trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
         g.phase = Phase::TruckConvoy;
         assert!(g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::MoveTruckConvoy { convoy: 0, .. })),
@@ -4375,7 +4377,7 @@ mod tests {
         // A fuel-starved cruiser squadron co-located with a Commonwealth fuel dump.
         let tank = g.spawn_unit(Nationality::Commonwealth, "g", "cruisers", Composition::Weapons { groups: vec![WeaponGroup { system: "A13 Cruiser".into(), count: 4 }] });
         { let u = g.unit_mut(tank).unwrap(); u.location = Some(UnitLocation::OnMap(hex)); u.fuel = 0; }
-        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(hex), side: Side::Commonwealth, supply: Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 }, dummy: false });
+        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(hex), side: Side::Commonwealth, supply: Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 }, dummy: false, constructed: true });
 
         // In the Organization phase the enumerator offers logistics — refuelling the starved unit.
         g.phase = Phase::Organization;
@@ -4404,7 +4406,7 @@ mod tests {
         let off = HexCoord::new(0, 0);
         g.map.set_hex(tobruk, HexTerrain::MajorCity); // water source
         g.map.set_hex(off, HexTerrain::Clear);
-        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(tobruk), side: Side::Commonwealth, supply: Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 }, dummy: false });
+        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(tobruk), side: Side::Commonwealth, supply: Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 }, dummy: false, constructed: true });
 
         // No one holds anything yet.
         assert_eq!(g.scenario1_victory(Side::Commonwealth), ScenarioVictory::None);
@@ -4436,7 +4438,7 @@ mod tests {
         g.map.set_hex(off, HexTerrain::Clear);
         let stock = || Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 };
         for at in [tobruk, off] {
-            g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(at), side: Side::Commonwealth, supply: stock(), dummy: false });
+            g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(at), side: Side::Commonwealth, supply: stock(), dummy: false, constructed: true });
         }
         // A single in-supply Commonwealth combat unit; no enemy (isolates the objective term).
         let u = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 8 });
@@ -5295,12 +5297,11 @@ mod tests {
         )
         .unwrap();
         let ob = refs.orders_of_battle.get(&Nationality::Italian).unwrap();
-        assert_eq!(ob.formations.len(), 38);
+        assert_eq!(ob.formations.len(), 39); // incl. 61 Sirte / 62 Marmarica / 63 Cirene (Addenda OA sheets)
 
         let cat = ob.formation("64 Catanzaro Division").expect("Catanzaro");
         assert_eq!(cat.units.len(), 13);
         assert_eq!(cat.basic_morale, -1);
-        assert!(!cat.abstracted);
         // Div HQ is the root (no parent); a battalion parents to its regiment.
         let hq = cat.units.iter().find(|u| u.abbr == "64 Cat").unwrap();
         assert_eq!(hq.parent, "");
@@ -5312,14 +5313,13 @@ mod tests {
         let arty = cat.units.iter().find(|u| u.abbr == "203").unwrap();
         assert!(matches!(&arty.comp, ObComposition::Weapons(w) if w.len() == 3));
 
-        // The template divisions are flagged abstracted (D13).
-        assert!(ob.formation("62 Marmarica Division").unwrap().abstracted);
-        assert!(ob.formation("63 Cirene Division").unwrap().abstracted);
+        // 62 Marmarica / 63 Cirene / 61 Sirte are chart-backed from the "CNA Addenda (Sep 1979)"
+        // booklet (their §4.44b OA sheets were omitted from the rulebook).
+        assert_eq!(ob.formation("61 Sirte Division").unwrap().basic_morale, -1);
 
-        // Ariete (verified from its §4.44b sheet): a reinforcement (arrives GT18), so not
-        // abstracted and not deployed at Scenario-1 start.
+        // Ariete (verified from its §4.44b sheet): a reinforcement (arrives GT18),
+        // not deployed at Scenario-1 start.
         let ariete = ob.formation("132 Ariete Armored Division").expect("Ariete");
-        assert!(!ariete.abstracted);
         assert_eq!(ariete.units.len(), 14);
         assert!(matches!(
             ariete.units[0].arrival,
@@ -5675,6 +5675,297 @@ mod tests {
     }
 
     #[test]
+    fn truck_system_additions() {
+        // §53.24 load cost + one-commodity packing; §53.14 free-convoy load/unload; §8.93 inherent
+        // motorization; §6.17 gun motorization; §52.42 Truck-Point water.
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{Commodities, Commodity, GameState, Phase, TruckConvoy};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        g.map.set_hex(HexCoord::new(1, 1), HexTerrain::Clear);
+        let hex = HexCoord::new(1, 1);
+
+        // §8.93: an inherently-motorized ("+") infantry unit is motorized with no assigned trucks.
+        let mot = g.spawn_unit(Nationality::Commonwealth, "l", "mot inf", Composition::Organic { current_toe: 4 });
+        g.unit_mut(mot).unwrap().location = Some(UnitLocation::OnMap(hex));
+        assert!(g.unit_is_motorized(mot), "§8.93 motorized_capable unit is motorized without trucks");
+        assert!(g.unit_motorized_cpa(mot).is_some(), "§8.93 gives a motorized CPA");
+
+        // §53.24: loading a unit's first-line trucks costs 2 CP and respects one-commodity packing.
+        let u = g.spawn_unit(Nationality::Commonwealth, "h", "supply", Composition::Organic { current_toe: 5 });
+        {
+            let unit = g.unit_mut(u).unwrap();
+            unit.location = Some(UnitLocation::OnMap(hex));
+            unit.trucks = TruckPoints { light: 0, medium: 2, heavy: 0 };
+        }
+        g.add_supply_dump_full(UnitLocation::OnMap(hex), Side::Commonwealth, Commodities { fuel: 1000, ammo: 1000, stores: 0, water: 0 });
+        g.phase = Phase::Organization;
+        g.active_player = Side::Commonwealth;
+        let fuel_cap = g.unit_truck_cargo_capacity(u).fuel; // 2 medium × 120 = 240
+        // Fill fuel to capacity; the trucks are then fully committed to fuel, so no ammo fits (§53.24).
+        assert_eq!(g.apply(Command::LoadTrucks { unit: u, commodity: Commodity::Fuel, amount: fuel_cap }), Ok(CommandOutcome::TrucksLoaded(fuel_cap)));
+        assert_eq!(g.unit(u).unwrap().cp_expended.0, 0, "§6.3/§53.24 loading in the Organization Phase is free");
+        assert_eq!(g.apply(Command::LoadTrucks { unit: u, commodity: Commodity::Ammo, amount: 10 }), Ok(CommandOutcome::TrucksLoaded(0)), "fleet fully committed to fuel — no ammo fits");
+
+        // §53.14: a free convoy loads from a co-located dump and unloads back into one.
+        g.truck_convoys.push(TruckConvoy {
+            side: Side::Commonwealth, hex, trucks: TruckPoints { light: 0, medium: 3, heavy: 0 },
+            cargo: Commodities { fuel: 0, ammo: 0, stores: 0, water: 0 }, cpa_used: 0,
+            trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
+        });
+        g.phase = Phase::TruckConvoy;
+        assert_eq!(g.apply(Command::LoadConvoy { convoy: 0, commodity: Commodity::Ammo, amount: 5 }), Ok(CommandOutcome::TrucksLoaded(5)));
+        assert_eq!(g.truck_convoys[0].cargo.ammo, 5);
+        assert_eq!(g.apply(Command::UnloadConvoy { convoy: 0, commodity: Commodity::Ammo, amount: 5 }), Ok(CommandOutcome::TrucksUnloaded(5)));
+        assert_eq!(g.truck_convoys[0].cargo.ammo, 0);
+
+        // §52.42: a motorized unit that moved owes 1 Water per Truck Point (plus §52.41 infantry 1).
+        assert_eq!(g.unit_water_requirement(u, true), 1 + 2, "§52.41 infantry 1 + §52.42 two Truck Points");
+        assert_eq!(g.unit_water_requirement(u, false), 1, "no Truck-Point water if it did not move");
+    }
+
+    #[test]
+    fn truck_deferred_items() {
+        // §29.35 hot-weather water doubling; §22.13 convoy truck field repair; §53.25 no leapfrogging.
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{Commodities, Commodity, GameState, Phase, TruckConvoy, Weather};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        g.map.set_hex(HexCoord::new(1, 1), HexTerrain::Clear);
+        let hex = HexCoord::new(1, 1);
+        let empty = || Commodities { fuel: 0, ammo: 0, stores: 0, water: 0 };
+        let convoy = |medium, broken| TruckConvoy {
+            side: Side::Commonwealth, hex, trucks: TruckPoints { light: 0, medium, heavy: 0 },
+            trucks_broken: TruckPoints { light: 0, medium: broken, heavy: 0 },
+            cargo: empty(), cpa_used: 0, breakdown_points: 0, breakdown_checked_col: -1,
+        };
+
+        // §29.35: hot weather doubles a unit's water requirement.
+        let u = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 4 });
+        {
+            let unit = g.unit_mut(u).unwrap();
+            unit.location = Some(UnitLocation::OnMap(hex));
+            unit.trucks = TruckPoints { light: 0, medium: 1, heavy: 0 };
+        }
+        assert_eq!(g.unit_water_requirement(u, true), 2, "normal: §52.41 1 + §52.42 1 Truck Point");
+        g.weather_by_section.insert('A', Weather::Hot);
+        assert_eq!(g.unit_water_requirement(u, true), 4, "§29.35 hot weather doubles");
+        g.weather_by_section.remove(&'A');
+
+        // §22.13: field-repair a free convoy's broken-down Truck Points (roll 1 = one Heavy or two L/M).
+        g.truck_convoys.push(convoy(1, 2));
+        g.phase = Phase::Repair;
+        g.active_player = Side::Commonwealth;
+        assert_eq!(g.apply(Command::RepairConvoyTrucks { convoy: 0, roll: 1 }), Ok(CommandOutcome::Repaired(2)));
+        assert_eq!((g.truck_convoys[0].trucks.medium, g.truck_convoys[0].trucks_broken.medium), (3, 0));
+
+        // §53.25: supplies a convoy off-loads this phase can't be re-loaded by another convoy the same
+        // phase. §24.9: and because an off-load only drops *loose* supplies (not a constructed dump),
+        // they remain un-loadable by any convoy even after the leapfrog lock lapses — a TOE Strength
+        // Point must construct a dump first (see `supply_dump_construction_24_9`).
+        g.truck_convoys[0].cargo.ammo = 10;
+        g.truck_convoys.push(convoy(3, 0));
+        g.phase = Phase::TruckConvoy;
+        assert_eq!(g.apply(Command::UnloadConvoy { convoy: 0, commodity: Commodity::Ammo, amount: 10 }), Ok(CommandOutcome::TrucksUnloaded(10)));
+        assert!(g.supply_dumps.iter().any(|d| d.location.hex() == Some(hex) && !d.constructed), "§24.9 off-load drops loose supplies");
+        assert_eq!(g.apply(Command::LoadConvoy { convoy: 1, commodity: Commodity::Ammo, amount: 10 }), Ok(CommandOutcome::TrucksLoaded(0)), "§53.25 just-dropped supplies are locked this phase");
+        g.leapfrog_locked.clear(); // lock lapses at the next Truck Convoy phase
+        assert_eq!(g.apply(Command::LoadConvoy { convoy: 1, commodity: Commodity::Ammo, amount: 10 }), Ok(CommandOutcome::TrucksLoaded(0)), "§24.9 loose supplies still aren't convoy-loadable after the lock lapses");
+    }
+
+    #[test]
+    fn replacement_pool_moves_20_46() {
+        // §20.46: an on-map Replacement-Point pool moves one hex toward the front in the Truck Convoy
+        // Phase — §20.42a bars voluntary entry into an enemy ZOC; §20.42d caps movement at the assigned
+        // unit's CPA; §20.45/§49.13 consumes Fuel from a co-located Friendly Supply Dump.
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{Commodities, Commodity, GameState, Phase, ReplacementClass, TruckConvoy};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        for col in 0..5 {
+            g.map.set_hex(HexCoord::new(col, 1), HexTerrain::Clear);
+        }
+        let from = HexCoord::new(1, 1);
+        // The assigned unit — its CPA governs the pool (§20.42d).
+        let unit = g.spawn_unit(Nationality::Commonwealth, "h", "1 RB", Composition::Organic { current_toe: 4 });
+        g.unit_mut(unit).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(4, 1)));
+        let idx = g.add_replacement_points(ReplacementClass::Infantry, 4, Side::Commonwealth, Some(UnitLocation::OnMap(from)), Some(unit));
+        g.phase = Phase::TruckConvoy;
+        g.active_player = Side::Commonwealth;
+        let target = g.map.neighbors(from).find(|&h| g.map.terrain(h) == Some(HexTerrain::Clear) && h != from).unwrap();
+
+        // §20.44: an Infantry pool must be trucked — with no co-located convoy, the move is refused.
+        assert_eq!(g.apply(Command::MoveReplacement { index: idx, to: target }), Err(CommandError::ReplacementFailed));
+
+        // A co-located Medium truck convoy with enough §54.2 lift (5 × 1.0 = 5 ≥ 4 SP).
+        g.truck_convoys.push(TruckConvoy {
+            side: Side::Commonwealth, hex: from, trucks: TruckPoints { light: 0, medium: 5, heavy: 0 },
+            cargo: Commodities { fuel: 0, ammo: 0, stores: 0, water: 0 }, cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
+        });
+
+        // §20.45: still refused with no Supply Dump — the hauling trucks have no Fuel.
+        assert_eq!(g.apply(Command::MoveReplacement { index: idx, to: target }), Err(CommandError::InsufficientFuel));
+
+        // Provide Fuel; now the pool AND its carrying convoy move, and the trucks' Fuel is spent.
+        g.add_supply_dump_full(UnitLocation::OnMap(from), Side::Commonwealth, Commodities { fuel: 50, ammo: 0, stores: 0, water: 0 });
+        let fuel0 = g.available_commodity_at(from, Side::Commonwealth, Commodity::Fuel);
+        match g.apply(Command::MoveReplacement { index: idx, to: target }) {
+            Ok(CommandOutcome::ReplacementMoved { index, hex }) => {
+                assert_eq!((index, hex), (idx, target));
+                assert_eq!(g.replacement_points[idx].location.as_ref().and_then(|l| l.hex()), Some(target));
+                assert!(g.replacement_points[idx].cpa_used > 0, "§20.42d pool CPA was spent");
+                assert_eq!(g.truck_convoys[0].hex, target, "§20.46 the carrying convoy traveled with the pool");
+                // 5 Truck Points × ⌈2 CP / 5⌉ = 5 Fuel (§49.13).
+                assert_eq!(fuel0 - g.available_commodity_at(from, Side::Commonwealth, Commodity::Fuel), 5, "§49.13 trucks' Fuel consumed");
+                // §20.44: the move auto-bound the pool to the convoy, and §27.58 escort status is now
+                // derived from that binding (no stored flag).
+                assert_eq!(g.replacement_points[idx].carried_by, Some(0), "pool bound to its carrier");
+                assert!(g.convoy_carries_replacements(0), "§27.58 escort derived from the binding");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // §20.44 UnloadReplacement clears the binding (and thus the escort status).
+        g.phase = Phase::TruckConvoy;
+        assert!(g.apply(Command::UnloadReplacement { pool: idx }).is_ok());
+        assert_eq!(g.replacement_points[idx].carried_by, None);
+        assert!(!g.convoy_carries_replacements(0), "escort status follows the binding");
+        // A non-adjacent hex is rejected.
+        assert_eq!(
+            g.apply(Command::MoveReplacement { index: idx, to: HexCoord::new(4, 1) }),
+            Err(CommandError::ReplacementFailed)
+        );
+        // Wrong phase is rejected.
+        g.phase = Phase::Organization;
+        assert!(matches!(
+            g.apply(Command::MoveReplacement { index: idx, to: from }),
+            Err(CommandError::WrongPhase)
+        ));
+    }
+
+    #[test]
+    fn supply_dump_construction_24_9() {
+        // §24.9: off-loaded supplies are *loose* (not convoy-loadable); constructing a real dump costs
+        // 3 CP + 20 Store Points by a co-located TOE Strength Point and makes them loadable; a dummy
+        // costs 3 CP only.
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{Commodities, Commodity, GameState, Phase, SupplyDump, TruckConvoy};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        let hex = HexCoord::new(0, 1);
+        g.map.set_hex(hex, HexTerrain::Clear);
+        let unit = g.spawn_unit(Nationality::Commonwealth, "h", "1 RB", Composition::Organic { current_toe: 4 });
+        g.unit_mut(unit).unwrap().location = Some(UnitLocation::OnMap(hex));
+        // Loose supplies dropped in the hex (constructed = false): 20 Fuel + 20 Stores.
+        g.supply_dumps.push(SupplyDump {
+            location: UnitLocation::OnMap(hex), side: Side::Commonwealth,
+            supply: Commodities { fuel: 20, ammo: 0, stores: 20, water: 0 }, dummy: false, constructed: false,
+        });
+        g.truck_convoys.push(TruckConvoy {
+            side: Side::Commonwealth, hex, trucks: TruckPoints { light: 0, medium: 5, heavy: 0 },
+            cargo: Commodities::default(), cpa_used: 0, trucks_broken: TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
+        });
+
+        // §24.9: a convoy may not load loose supplies…
+        g.phase = Phase::TruckConvoy;
+        g.active_player = Side::Commonwealth;
+        assert_eq!(g.load_convoy(0, Commodity::Fuel, 5), 0, "loose supplies are not convoy-loadable");
+
+        // …but units may still consume them for supply.
+        assert_eq!(g.available_commodity_at(hex, Side::Commonwealth, Commodity::Fuel), 20, "loose supplies still count for consumption");
+
+        // Construct a real dump (Organization Phase): 3 CP + 20 Stores; the loose pile becomes loadable.
+        g.phase = Phase::Organization;
+        match g.apply(Command::ConstructSupplyDump { unit, hex, dummy: false }) {
+            Ok(CommandOutcome::SupplyDumpConstructed { hex: h, dummy: false }) => assert_eq!(h, hex),
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(g.available_commodity_at(hex, Side::Commonwealth, Commodity::Stores), 0, "§24.9 20 Stores consumed");
+        assert!(g.supply_dumps.iter().any(|d| d.location.hex() == Some(hex) && d.constructed && !d.dummy));
+
+        // Now the convoy can load the (still-present) 20 Fuel.
+        g.phase = Phase::TruckConvoy;
+        assert_eq!(g.load_convoy(0, Commodity::Fuel, 5), 5, "a constructed dump is loadable");
+
+        // A dummy dump costs 3 CP only (no Stores needed).
+        let before = g.supply_dumps.len();
+        g.phase = Phase::Organization;
+        assert!(matches!(
+            g.apply(Command::ConstructSupplyDump { unit, hex, dummy: true }),
+            Ok(CommandOutcome::SupplyDumpConstructed { dummy: true, .. })
+        ));
+        assert_eq!(g.supply_dumps.len(), before + 1);
+        assert!(g.supply_dumps.last().unwrap().dummy);
+
+        // A real dump with no Stores present is refused.
+        let hex2 = HexCoord::new(1, 1);
+        g.map.set_hex(hex2, HexTerrain::Clear);
+        let u2 = g.spawn_unit(Nationality::Commonwealth, "h", "2 RB", Composition::Organic { current_toe: 4 });
+        g.unit_mut(u2).unwrap().location = Some(UnitLocation::OnMap(hex2));
+        assert_eq!(
+            g.apply(Command::ConstructSupplyDump { unit: u2, hex: hex2, dummy: false }),
+            Err(CommandError::InsufficientStores)
+        );
+    }
+
+    #[test]
+    fn legal_commands_enumerate_logistics() {
+        // The rear-area logistics loop is now offered to agents: Organization-phase truck ops
+        // (form/release/assign/load) and Truck-Convoy-phase supply/replacement ops (load convoy, load
+        // /haul a pool).
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::Command;
+        use crate::state::game::{Commodities, Commodity, GameState, Phase, ReplacementClass, TruckConvoy};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        for col in 0..3 {
+            g.map.set_hex(HexCoord::new(col, 1), HexTerrain::Clear);
+        }
+        let hex = HexCoord::new(0, 1);
+        let u = g.spawn_unit(Nationality::Commonwealth, "h", "1 RB", Composition::Organic { current_toe: 4 });
+        {
+            let unit = g.unit_mut(u).unwrap();
+            unit.location = Some(UnitLocation::OnMap(hex));
+            unit.trucks = TruckPoints { light: 0, medium: 2, heavy: 0 };
+        }
+        // A constructed dump so first-line trucks / convoys can load.
+        g.add_supply_dump_full(UnitLocation::OnMap(hex), Side::Commonwealth, Commodities { fuel: 100, ammo: 0, stores: 0, water: 0 });
+
+        // Organization Phase: form / release / load first-line trucks are enumerated.
+        g.phase = Phase::Organization;
+        g.active_player = Side::Commonwealth;
+        let org = g.legal_commands(Side::Commonwealth);
+        assert!(org.iter().any(|c| matches!(c, Command::FormTruckConvoy { from_unit, .. } if *from_unit == u)), "FormTruckConvoy enumerated");
+        assert!(org.iter().any(|c| matches!(c, Command::ReleaseTrucks { unit, .. } if *unit == u)), "ReleaseTrucks enumerated");
+        assert!(org.iter().any(|c| matches!(c, Command::LoadTrucks { unit, commodity: Commodity::Fuel, amount } if *unit == u && *amount > 0)), "LoadTrucks enumerated");
+
+        // Truck Convoy Phase: a convoy + a co-located Infantry pool assigned to the unit.
+        g.truck_convoys.push(TruckConvoy {
+            side: Side::Commonwealth, hex, trucks: TruckPoints { light: 0, medium: 5, heavy: 0 },
+            cargo: Commodities::default(), cpa_used: 0, trucks_broken: TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
+        });
+        let pool = g.add_replacement_points(ReplacementClass::Infantry, 3, Side::Commonwealth, Some(UnitLocation::OnMap(hex)), Some(u));
+        g.phase = Phase::TruckConvoy;
+        let tc = g.legal_commands(Side::Commonwealth);
+        assert!(tc.iter().any(|c| matches!(c, Command::LoadConvoy { convoy: 0, commodity: Commodity::Fuel, amount } if *amount > 0)), "LoadConvoy enumerated");
+        assert!(tc.iter().any(|c| matches!(c, Command::LoadReplacement { convoy: 0, pool: p } if *p == pool)), "LoadReplacement enumerated");
+        assert!(tc.iter().any(|c| matches!(c, Command::MoveReplacement { index, .. } if *index == pool)), "MoveReplacement enumerated");
+    }
+
+    #[test]
     fn desert_raider_raids_27_5() {
         // §27.52 pipeline, §27.55 supply dump (unguarded + guarded), §27.57 truck convoy.
         use crate::reference::units::{Nationality, Side};
@@ -5716,7 +6007,7 @@ mod tests {
         place_raider(&mut g);
         g.supply_dumps.push(crate::state::game::SupplyDump {
             location: UnitLocation::OnMap(hex), side: Side::Axis,
-            supply: Commodities { fuel: 100, ammo: 100, stores: 100, water: 0 }, dummy: false,
+            supply: Commodities { fuel: 100, ammo: 100, stores: 100, water: 0 }, dummy: false, constructed: true,
         });
         assert_eq!(
             g.apply(Command::RaidSupplyDump { raider: 0, attack_roll: 0, destroy_roll: 1 }),
@@ -5740,7 +6031,7 @@ mod tests {
         g.units.clear(); // remove the guard so the convoy raid isn't blocked by combat units
         g.truck_convoys.push(TruckConvoy {
             side: Side::Axis, hex, trucks: TruckPoints { light: 0, medium: 4, heavy: 0 },
-            cargo: Commodities::default(), cpa_used: 0, carries_replacements: false,
+            cargo: Commodities::default(), cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
         let ci = g.truck_convoys.len() - 1;
         assert_eq!(
@@ -5748,6 +6039,29 @@ mod tests {
             Ok(CommandOutcome::RaidResolved { success: true, raider_eliminated: false })
         );
         assert_eq!(g.truck_convoys[ci].trucks.medium, 3, "one Truck Point destroyed");
+
+        // §27.58 cleanup: a raid that destroys the convoy's LAST Truck Point drops any hauled pool
+        // (binding cleared) so it becomes a standalone stranded counter rather than riding a hull.
+        place_raider(&mut g);
+        g.truck_convoys.push(TruckConvoy {
+            side: Side::Axis, hex, trucks: TruckPoints { light: 0, medium: 1, heavy: 0 },
+            // non-empty cargo ⇒ not the §27.58 "all trucks carry RP" auto-elimination case.
+            cargo: Commodities { fuel: 5, ammo: 0, stores: 0, water: 0 },
+            cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
+        });
+        let cj = g.truck_convoys.len() - 1;
+        g.replacement_points.push(crate::state::game::ReplacementPoints {
+            class: crate::state::game::ReplacementClass::Infantry, count: 3, side: Side::Axis,
+            location: Some(UnitLocation::OnMap(hex)), training_remaining: 0, assigned_to: None, cpa_used: 0, carried_by: Some(cj),
+        });
+        assert!(g.convoy_carries_replacements(cj));
+        assert_eq!(
+            g.apply(Command::RaidTruckConvoy { raider: 0, convoy: cj, roll: 1 }),
+            Ok(CommandOutcome::RaidResolved { success: true, raider_eliminated: false })
+        );
+        assert_eq!(g.truck_convoys[cj].trucks.medium, 0, "last Truck Point destroyed");
+        assert_eq!(g.replacement_points.last().unwrap().carried_by, None, "§27.58 pool dropped when trucks gone");
+        assert!(!g.convoy_carries_replacements(cj));
     }
 
     #[test]
@@ -5764,7 +6078,7 @@ mod tests {
         let hex = HexCoord::new(4, 4);
         g.supply_dumps.push(SupplyDump {
             location: UnitLocation::OnMap(hex), side: Side::Commonwealth,
-            supply: Commodities { fuel: 10, ammo: 5, stores: 0, water: 0 }, dummy: false,
+            supply: Commodities { fuel: 10, ammo: 5, stores: 0, water: 0 }, dummy: false, constructed: true,
         });
         let mk = |water: bool| Raider {
             kind: RaiderKind::Lrdg, side: Side::Commonwealth, hex: Some(hex),
@@ -5884,12 +6198,12 @@ mod tests {
         let near = g.map.neighbors(a).find(|&h| g.map.terrain(h).is_some()).unwrap();
         g.truck_convoys.push(TruckConvoy {
             side: Side::Axis, hex: near, trucks: TruckPoints { light: 0, medium: 3, heavy: 0 },
-            cargo: Commodities::default(), cpa_used: 0, carries_replacements: false,
+            cargo: Commodities::default(), cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
         g.truck_convoys.push(TruckConvoy {
             side: Side::Axis, hex: HexId::parse("E3613").unwrap().to_hex_coord(),
             trucks: TruckPoints { light: 0, medium: 3, heavy: 0 },
-            cargo: Commodities::default(), cpa_used: 0, carries_replacements: false,
+            cargo: Commodities::default(), cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
 
         // The Truck Convoy Phase is the Axis (convoy owner's) phase; the CW raider reacts.
@@ -5977,11 +6291,11 @@ mod tests {
         // §32.18: enemy dump contents/dummy hidden; own dump shown in full.
         g.supply_dumps.push(SupplyDump {
             location: UnitLocation::OnMap(hex), side: Side::Commonwealth,
-            supply: Commodities { fuel: 9, ammo: 0, stores: 0, water: 0 }, dummy: false,
+            supply: Commodities { fuel: 9, ammo: 0, stores: 0, water: 0 }, dummy: false, constructed: true,
         });
         g.supply_dumps.push(SupplyDump {
             location: UnitLocation::OnMap(hex), side: Side::Axis,
-            supply: Commodities { fuel: 7, ammo: 0, stores: 0, water: 0 }, dummy: true,
+            supply: Commodities { fuel: 7, ammo: 0, stores: 0, water: 0 }, dummy: true, constructed: true,
         });
         let dumps = g.observe_supply_dumps(Side::Commonwealth);
         assert!(dumps.iter().any(|d| d.friendly && d.contents == Some(Commodities { fuel: 9, ammo: 0, stores: 0, water: 0 })));
@@ -6978,6 +7292,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { stores: 300, ..Default::default() },
             dummy: false,
+            constructed: true,
         });
         g.expend_stores();
         assert_eq!(g.unit(inf).unwrap().turns_without_stores, 0);
@@ -7264,6 +7579,7 @@ mod tests {
             side: Side::Axis,
             supply: Commodities { fuel: 1000, water: 500, ammo: 100, stores: 200 },
             dummy: false,
+            constructed: true,
         });
         // §49.3/§52.44: 6% of Fuel and Water evaporates; Ammo and Stores are unaffected.
         g.evaporate_supplies(6);
@@ -7285,6 +7601,7 @@ mod tests {
                 side,
                 supply: Commodities { fuel: 1000, water: 1000, ammo: 100, stores: 100 },
                 dummy: false,
+                constructed: true,
             });
         }
         // §49.3: through August 1941 (GT ≤ 48) the Commonwealth spills at 9%; the Axis at 6%.
@@ -7373,6 +7690,7 @@ mod tests {
                 side,
                 supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 },
                 dummy: false,
+                constructed: true,
             });
         };
         // Rail hex `a` (touches a Railroad edge a|b); `p` is a desert neighbour of `a`.
@@ -7709,6 +8027,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 500, ..Default::default() },
             dummy: false,
+            constructed: true,
         });
 
         // Load 300 Fuel — capped at the 240 cargo capacity; dump drops to 260.
@@ -7982,6 +8301,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 8, ammo: 0, stores: 0, water: 0 },
             dummy: false,
+            constructed: true,
         });
         assert_eq!(g.field_repair_tanks(tank, 0), 2);
         assert_eq!(g.supply_dumps[0].supply.fuel, 0);
@@ -8053,6 +8373,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 },
             dummy: false,
+            constructed: true,
         });
         assert!(g.build_pipeline(hq, adj));
         assert!(g.pipelines.contains(&adj));
@@ -8070,6 +8391,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 },
             dummy: false,
+            constructed: true,
         });
         assert!(!g.build_pipeline(hq2, far));
     }
@@ -8106,6 +8428,7 @@ mod tests {
                 side: Side::Commonwealth,
                 supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 },
                 dummy: false,
+                constructed: true,
             });
             hq
         };
@@ -9089,7 +9412,7 @@ mod tests {
             trucks: crate::state::unit::TruckPoints { light: 0, medium: 20, heavy: 0 },
             cargo: Commodities { fuel: 100, ammo: 0, stores: 0, water: 0 },
             cpa_used: 0,
-            carries_replacements: false,
+            trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
         match g.apply(Command::Strafe {
             squadron: SquadronId(1), target, strafe_target: StrafeTarget::TrucksInConvoy,
@@ -13379,6 +13702,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 2, water: 0 },
             dummy: false,
+            constructed: true,
         });
 
         // §24.5: the Infantry Bn builds the road, expending 2 Stores; UnfinishedRoad becomes Road.
@@ -13420,6 +13744,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 30, water: 0 },
             dummy: false,
+            constructed: true,
         });
 
         // §24.4: start a Level 2 fort — 30 Stores expended immediately.
@@ -13471,6 +13796,7 @@ mod tests {
                 side: Side::Commonwealth,
                 supply: Commodities { fuel: 0, ammo: 0, stores: 1, water: 0 },
                 dummy: false,
+                constructed: true,
             });
         };
         let nz = |g: &mut GameState, h| {
@@ -13548,6 +13874,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 1, water: 0 },
             dummy: false,
+            constructed: true,
         });
         assert!(g.rebuild_railroad(eng, a, b));
         assert!(g.hex_is_railroad(a));
@@ -13631,6 +13958,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 15, stores: 30, water: 0 },
             dummy: false,
+            constructed: true,
         });
 
         // §24.33: a real minefield needs 15 Stores + 15 Ammo, expended at the start.
@@ -13662,6 +13990,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 15, stores: 15, water: 0 },
             dummy: false,
+            constructed: true,
         });
         assert!(!g.begin_minefield(eng2, m, false));
     }
@@ -13814,6 +14143,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 150, ammo: 0, stores: 250, water: 0 },
             dummy: false,
+            constructed: true,
         });
 
         // §24.83: 250 Stores + 150 Fuel expended; 3 Construction Segments.
@@ -13836,6 +14166,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 150, ammo: 0, stores: 250, water: 0 },
             dummy: false,
+            constructed: true,
         });
         assert!(!g.begin_temporary_facility(e2, d));
     }
@@ -13927,6 +14258,7 @@ mod tests {
             side: Side::Axis,
             supply: Commodities { fuel: 400, ammo: 0, stores: 800, water: 0 },
             dummy: false,
+            constructed: true,
         });
         // A Commonwealth-controlled hex is not eligible for Axis import.
         assert!(!g.import_rolling_stock(hs[5]));
@@ -13961,6 +14293,7 @@ mod tests {
             side: Side::Axis,
             supply: Commodities { fuel: 0, ammo: 0, stores: 50, water: 0 },
             dummy: false,
+            constructed: true,
         });
         let remaining = stock - g.axis_rail_tons_used;
         let want = remaining.min(20);
@@ -13973,6 +14306,32 @@ mod tests {
         assert!(g.axis_rail_contiguous_max() < 5);
         g.begin_operations_stage();
         assert_eq!(g.axis_rolling_stock_tons, 0);
+    }
+
+    #[test]
+    fn railroad_hex_destruction_hits_all_edges_24_66() {
+        // §24.66: every destruction method de-rails the whole hex, not one edge. `destroy_railroad`
+        // (single edge) leaves a two-edge hex still on the line; `destroy_railroad_hex` clears it.
+        use crate::reference::terrain::HexTerrain;
+        use crate::state::game::GameState;
+        use crate::state::map::{HexCoord, HexsideKind};
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        let h: Vec<HexCoord> = (0..3).map(|i| HexCoord::new(i, 0)).collect();
+        for c in &h {
+            g.map.set_hex(*c, HexTerrain::Clear);
+        }
+        g.map.set_hexside(h[0], h[1], HexsideKind::Railroad, None);
+        g.map.set_hexside(h[1], h[2], HexsideKind::Railroad, None);
+        assert!(g.hex_is_railroad(h[1]), "the middle hex has two rail edges");
+
+        // One edge gone: the hex is still a railroad hex via its surviving edge.
+        assert!(g.destroy_railroad(h[0], h[1]));
+        assert!(g.hex_is_railroad(h[1]));
+
+        // Whole-hex destruction clears every remaining edge and de-rails the hex (§24.66).
+        assert!(g.destroy_railroad_hex(h[1]));
+        assert!(!g.hex_is_railroad(h[1]), "§24.66: all edges destroyed — hex no longer a railroad");
     }
 
     #[test]
@@ -14008,6 +14367,7 @@ mod tests {
             side: Side::Axis,
             supply: Commodities { fuel: 0, ammo: 0, stores: 5, water: 0 },
             dummy: false,
+            constructed: true,
         });
 
         // §54.42: the Axis may repair only a rail hex it controls — hs[0] is not yet controlled.
@@ -14053,6 +14413,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 2000, water: 0 },
             dummy: false,
+            constructed: true,
         });
 
         // §54.32: rail Stores west, capped at 1500 tons (= 1500 Store points) for the direction.
@@ -14165,6 +14526,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 100, water: 0 },
             dummy: false,
+            constructed: true,
         });
         let u = g.spawn_unit(Nationality::Commonwealth, "h", "u", Composition::Organic { current_toe: 1 });
         g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(hs[1]));
@@ -14639,6 +15001,7 @@ mod tests {
                 side: Side::Axis,
                 supply: Commodities { fuel: 0, ammo: 0, stores, water: 0 },
                 dummy: false,
+                constructed: true,
             });
         };
         let place = |h| Command::PlaceDummyTank { hex: h, designation: "8 RTR".into() };
@@ -14757,6 +15120,307 @@ mod tests {
         assert_eq!(g.apply(Command::AttachUnit { unit: m, parent: div }), Err(CommandError::WrongPhase));
     }
 
+    /// §19.33 (German Formation Organization Chart) text-stated reassignment constraints:
+    /// "No Battle Group may be assigned to a division" and the 15th Infantry Brigade "may never
+    /// contain more than six battalions of infantry."
+    #[test]
+    fn reorganization_german_formation_org_rules_1933() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, OrgSize, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        g.active_player = Side::Axis;
+        let a = HexCoord::new(0, 0);
+        g.map.set_hex(a, HexTerrain::Clear);
+
+        // A German division and an infantry brigade HQ, both at hex `a`.
+        let div = g.spawn_unit(Nationality::German, "a", "21st Panzer Div HQ", Composition::Weapons { groups: vec![] });
+        g.unit_mut(div).unwrap().org_size = OrgSize::Division;
+        g.unit_mut(div).unwrap().location = Some(UnitLocation::OnMap(a));
+
+        // "No Battle Group may be assigned to a division." A BattleGroup-sized unit, attached to the
+        // division, is refused reassignment; a normal battalion is not.
+        let kg = g.spawn_unit(Nationality::German, "b", "Kampfgruppe HQ", Composition::Organic { current_toe: 4 });
+        g.unit_mut(kg).unwrap().org_size = OrgSize::BattleGroup;
+        g.unit_mut(kg).unwrap().location = Some(UnitLocation::OnMap(a));
+        g.unit_mut(kg).unwrap().attached_parent = Some(div);
+        assert_eq!(g.apply(Command::ReassignUnit { unit: kg, parent: div }), Err(CommandError::ReorgIllegal));
+
+        let bn = g.spawn_unit(Nationality::German, "i", "II/104 Schutzen Bn", Composition::Organic { current_toe: 4 });
+        g.unit_mut(bn).unwrap().org_size = OrgSize::Battalion;
+        g.unit_mut(bn).unwrap().location = Some(UnitLocation::OnMap(a));
+        g.unit_mut(bn).unwrap().attached_parent = Some(div);
+        assert_eq!(g.apply(Command::ReassignUnit { unit: bn, parent: div }), Ok(CommandOutcome::UnitReassigned));
+
+        // 15th Infantry Brigade "may never contain more than six battalions of infantry."
+        let bde = g.spawn_unit(Nationality::German, "b", "15th Schutzen Bde HQ", Composition::Weapons { groups: vec![] });
+        g.unit_mut(bde).unwrap().org_size = OrgSize::StandardBrigade;
+        g.unit_mut(bde).unwrap().location = Some(UnitLocation::OnMap(a));
+        // Six infantry battalions already assigned.
+        for _ in 0..6 {
+            let ib = g.spawn_unit(Nationality::German, "i", "inf bn", Composition::Organic { current_toe: 4 });
+            g.unit_mut(ib).unwrap().org_size = OrgSize::Battalion;
+            g.unit_mut(ib).unwrap().assigned_parent = Some(bde);
+        }
+        // A seventh infantry battalion (attached) is refused.
+        let seventh = g.spawn_unit(Nationality::German, "i", "inf bn 7", Composition::Organic { current_toe: 4 });
+        g.unit_mut(seventh).unwrap().org_size = OrgSize::Battalion;
+        g.unit_mut(seventh).unwrap().location = Some(UnitLocation::OnMap(a));
+        g.unit_mut(seventh).unwrap().attached_parent = Some(bde);
+        assert_eq!(g.apply(Command::ReassignUnit { unit: seventh, parent: bde }), Err(CommandError::ReorgIllegal));
+
+        // A non-infantry (artillery Weapons) battalion is *not* limited by the six-infantry cap.
+        let arty = g.spawn_unit(Nationality::German, "u", "arty bn", Composition::Weapons { groups: vec![] });
+        g.unit_mut(arty).unwrap().org_size = OrgSize::Battalion;
+        g.unit_mut(arty).unwrap().location = Some(UnitLocation::OnMap(a));
+        g.unit_mut(arty).unwrap().attached_parent = Some(bde);
+        assert_eq!(g.apply(Command::ReassignUnit { unit: arty, parent: bde }), Ok(CommandOutcome::UnitReassigned));
+    }
+
+    /// Audit one nationality's §19.3 rows against the OB: every formation's historical composition
+    /// (direct children of the HQ, by family+echelon) must fit within its chart maxima. Returns a
+    /// report of mismatches (empty = clean).
+    #[cfg(test)]
+    fn audit_formation_org_rows(
+        ob: &crate::reference::ob::OrderOfBattle,
+        rows: &[crate::reference::formation_org::FormationOrgRow],
+        classify: fn(&str) -> Option<crate::reference::formation_org::OrgFamily>,
+    ) -> String {
+        use crate::reference::formation_org::{Ech, OrgFamily};
+        use std::collections::HashMap;
+        let mut report = String::new();
+        for row in rows {
+            for hq_name in row.hq_names {
+                let Some(formation) = ob.formations.iter().find(|f| f.units.iter().any(|u| u.name == *hq_name)) else {
+                    report.push_str(&format!("MISSING HQ: {hq_name}\n"));
+                    continue;
+                };
+                let mut fill: HashMap<(OrgFamily, Ech), u32> = HashMap::new();
+                for u in formation.units.iter().filter(|u| u.parent == *hq_name) {
+                    // Classify from the explicit tag (source of truth); name classifier as fallback.
+                    match u.unit_type.map(|t| t.arm()).or_else(|| classify(&u.name)) {
+                        // Collapse via slot_family (MotInf→Infantry) to match how slots are filled.
+                        Some(fam) => *fill.entry((fam.slot_family(), Ech::of(u.org_size))).or_default() += 1,
+                        None => report.push_str(&format!("[{hq_name}] UNCLASSIFIED child: {}\n", u.name)),
+                    }
+                }
+                for ((fam, ech), n) in &fill {
+                    let matches: Vec<_> = row.slots.iter().filter(|s| s.family == *fam && s.ech == *ech).collect();
+                    if matches.is_empty() {
+                        report.push_str(&format!("[{hq_name}] no slot for {fam:?}/{ech:?} but fill {n}\n"));
+                    } else if *n > matches.iter().map(|s| s.max).sum() {
+                        let max: u32 = matches.iter().map(|s| s.max).sum();
+                        report.push_str(&format!("[{hq_name}] {fam:?}/{ech:?} fill {n} > max {max}\n"));
+                    }
+                }
+            }
+        }
+        report
+    }
+
+    /// §19.3 audit: every Commonwealth formation's historical OB composition fits its chart maxima.
+    /// CW families come from the §4.46 characteristics `unit_type` + a tank flag (weapon kind), since
+    /// CW battalions are named after their parent regiment.
+    #[test]
+    fn formation_org_commonwealth_ob_within_maxima() {
+        use crate::reference::formation_org::{commonwealth_family, Ech, OrgFamily, COMMONWEALTH_ROWS};
+        use crate::reference::units::{Nationality, WeaponKind};
+        use std::collections::HashMap;
+
+        let refs = ReferenceData::load_campaign();
+        let ob = &refs.orders_of_battle[&Nationality::Commonwealth];
+        let chars = &refs.unit_characteristics[&Nationality::Commonwealth];
+        let weps = refs.weapons_systems.get(&Nationality::Commonwealth);
+        let fam = |u: &crate::reference::ob::ObUnit| {
+            // Explicit tag first (source of truth); characteristics classifier as fallback.
+            if let Some(a) = u.unit_type.map(|t| t.arm()) {
+                return Some(a);
+            }
+            let ut = chars.get(&u.id).map(|c| c.unit_type.as_str()).unwrap_or("");
+            let is_tank = matches!(&u.comp, crate::reference::ob::ObComposition::Weapons(g)
+                if g.iter().any(|(s, _)| weps.and_then(|m| m.get(s)).map(|w| w.kind) == Some(WeaponKind::Tank)));
+            commonwealth_family(ut, &u.name, is_tank)
+        };
+        // Whether an OB unit is present during Game-Turn window [lo,hi] (arrived by hi, not
+        // withdrawn before lo). Time-phased rows (§19.31 Type I–IV) are audited per-window.
+        let present = |u: &crate::reference::ob::ObUnit, gt: Option<(u32, u32)>| match gt {
+            None => true,
+            Some((lo, hi)) => {
+                let arr = match u.arrival {
+                    crate::reference::ob::Arrival::Deployed => 1,
+                    crate::reference::ob::Arrival::Turn { game_turn, .. } => game_turn as u32,
+                };
+                arr <= hi && u.withdrawal.is_none_or(|(w, _)| w > lo)
+            }
+        };
+        let mut report = String::new();
+        for row in COMMONWEALTH_ROWS {
+            for hq_name in row.hq_names {
+                let Some(formation) = ob.formations.iter().find(|f| f.units.iter().any(|u| u.name == *hq_name)) else {
+                    report.push_str(&format!("MISSING HQ: {hq_name}\n"));
+                    continue;
+                };
+                let mut fill: HashMap<(OrgFamily, Ech), u32> = HashMap::new();
+                for u in formation.units.iter().filter(|u| u.parent == *hq_name && present(u, row.gt)) {
+                    match fam(u) {
+                        // Collapse via slot_family (MotInf→Infantry) to match how slots are filled.
+                        Some(x) => *fill.entry((x.slot_family(), Ech::of(u.org_size))).or_default() += 1,
+                        None => report.push_str(&format!("[{hq_name}] UNCLASSIFIED child: {}\n", u.name)),
+                    }
+                }
+                for ((f, ech), n) in &fill {
+                    let matches: Vec<_> = row.slots.iter().filter(|s| s.family == *f && s.ech == *ech).collect();
+                    if matches.is_empty() {
+                        report.push_str(&format!("[{hq_name}] no slot for {f:?}/{ech:?} but fill {n}\n"));
+                    } else if *n > matches.iter().map(|s| s.max).sum() {
+                        let max: u32 = matches.iter().map(|s| s.max).sum();
+                        report.push_str(&format!("[{hq_name}] {f:?}/{ech:?} fill {n} > max {max}\n"));
+                    }
+                }
+            }
+        }
+        assert!(report.is_empty(), "Commonwealth §19.3 OB-fill mismatches:\n{report}");
+    }
+
+    /// §19.31 (D4): the Commonwealth armored-brigade chart row is time-phased — Type I (GT 1–18) =
+    /// 3 tank battalions; Type II (GT 19–70) adds an infantry battalion; Type III (GT 71–91) adds an
+    /// artillery battalion.
+    #[test]
+    fn formation_org_commonwealth_armored_brigade_time_phased_d4() {
+        use crate::reference::formation_org::Ech;
+        use crate::reference::units::Nationality;
+        use crate::state::game::GameState;
+        use crate::state::unit::{Composition, OrgSize};
+
+        let make = |gt: u32| {
+            let mut g = GameState::new(ReferenceData::new(), 1);
+            g.game_turn = gt;
+            let bde = g.spawn_unit(Nationality::Commonwealth, "d", "4th Armored Bde HQ", Composition::Organic { current_toe: 4 });
+            g.unit_mut(bde).unwrap().org_size = OrgSize::StandardBrigade;
+            (g.formation_org_max_subunits(bde, Ech::Bn).unwrap(), {
+                let row = g.formation_org_row(bde).unwrap();
+                row.slots.iter().filter(|s| s.family == crate::reference::formation_org::OrgFamily::Infantry).count()
+            })
+        };
+        // Type I (GT 10): 3 tank battalions, no infantry slot.
+        assert_eq!(make(10), (3, 0));
+        // Type II (GT 40): tank + 1 infantry (max_subunits at Bn = 3 tank + 1 inf = 4).
+        assert_eq!(make(40), (4, 1));
+        // Type III (GT 80): + 1 artillery battalion (3 + 1 + 1 = 5).
+        assert_eq!(make(80).0, 5);
+    }
+
+    /// §9.26/§9.27 (D1): a division/brigade is a shell when too few of its chart-allowed
+    /// sub-formations are attached and non-shell.
+    #[test]
+    fn formation_org_division_shell_9_26() {
+        use crate::reference::units::Nationality;
+        use crate::state::game::GameState;
+        use crate::state::unit::{Composition, OrgSize};
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        // 164th Leichte: the §19.33 row allows 4 brigade-equivalents (3 infantry regts + 1 arty regt).
+        let div = g.spawn_unit(Nationality::German, "b", "164th Leichte Div HQ", Composition::Organic { current_toe: 4 });
+        g.unit_mut(div).unwrap().org_size = OrgSize::Division;
+        assert_eq!(g.formation_org_max_subunits(div, crate::reference::formation_org::Ech::Bde), Some(4));
+
+        // Nothing attached → 0 ≤ 50% → shell.
+        assert!(g.is_shell(div));
+
+        // Attach three non-shell brigade-equivalents → 3·2 = 6 > 4 → not a shell.
+        let mut bdes = vec![];
+        for _ in 0..3 {
+            let b = g.spawn_unit(Nationality::German, "b", "regt", Composition::Organic { current_toe: 4 });
+            g.unit_mut(b).unwrap().org_size = OrgSize::StandardBrigade;
+            g.unit_mut(b).unwrap().attached_parent = Some(div);
+            bdes.push(b);
+        }
+        assert!(!g.is_shell(div));
+
+        // Detach one (two attached) → 2·2 = 4 ≤ 4 → shell again.
+        g.unit_mut(bdes[0]).unwrap().attached_parent = None;
+        assert!(g.is_shell(div));
+    }
+
+    /// Every non-HQ unit in the full OB (all three nationalities) classifies to a unit-type family,
+    /// so it shows a counter glyph in the viewer (blank glyphs are only for HQs). HQ = a top-level
+    /// formation root named "…HQ" (matches `scenario.rs` `is_hq`).
+    #[test]
+    fn every_non_hq_ob_unit_has_a_type_glyph() {
+        use crate::reference::formation_org::{commonwealth_family, german_family, italian_family};
+        use crate::reference::ob::ObComposition;
+        use crate::reference::units::{Nationality, WeaponKind};
+
+        let refs = ReferenceData::load_campaign();
+        let mut report = String::new();
+        for (nat, ob) in &refs.orders_of_battle {
+            for f in &ob.formations {
+                // Classify a unit directly (by name for German/Italian; by characteristics + a tank
+                // flag for Commonwealth).
+                let classify = |u: &crate::reference::ob::ObUnit| match nat {
+                    Nationality::German => german_family(&u.name),
+                    Nationality::Italian => italian_family(&u.name),
+                    Nationality::Commonwealth => {
+                        let ut = refs.unit_characteristics.get(nat).and_then(|m| m.get(&u.id)).map(|c| c.unit_type.as_str()).unwrap_or("");
+                        let is_tank = matches!(&u.comp, ObComposition::Weapons(g)
+                            if g.iter().any(|(s, _)| refs.weapons_systems.get(nat).and_then(|m| m.get(s)).map(|w| w.kind) == Some(WeaponKind::Tank)));
+                        commonwealth_family(ut, &u.name, is_tank)
+                    }
+                };
+                for u in &f.units {
+                    if u.is_tds || (u.parent.is_empty() && u.name.contains("HQ")) {
+                        continue; // HQ counters and Tank-Delivery Squadrons are allowed to be typeless
+                    }
+                    // Walk up the parent chain: a unit inherits its regiment/parent's arm.
+                    let mut cur = u;
+                    let mut fam = classify(cur);
+                    while fam.is_none() && !cur.parent.is_empty() {
+                        match f.units.iter().find(|x| x.name == cur.parent) {
+                            Some(p) => {
+                                cur = p;
+                                fam = classify(cur);
+                            }
+                            None => break,
+                        }
+                    }
+                    if fam.is_none() {
+                        report.push_str(&format!("[{nat:?}] {} (org {:?}, parent \"{}\")\n", u.name, u.org_size, u.parent));
+                    }
+                }
+            }
+        }
+        assert!(report.is_empty(), "non-HQ OB units with no unit-type glyph:\n{report}");
+    }
+
+    /// §19.3 audit: every German formation's historical OB composition fits its chart maxima.
+    #[test]
+    fn formation_org_german_ob_within_maxima() {
+        use crate::reference::formation_org::{german_family, GERMAN_ROWS};
+        use crate::reference::units::Nationality;
+        let mut refs = ReferenceData::new();
+        refs.load_order_of_battle(Nationality::German, include_str!("../../../data/ob/german.ron")).unwrap();
+        let report = audit_formation_org_rows(&refs.orders_of_battle[&Nationality::German], GERMAN_ROWS, german_family);
+        assert!(report.is_empty(), "German §19.3 OB-fill mismatches:\n{report}");
+    }
+
+    /// §19.3 audit: every Italian formation's historical OB composition fits its chart maxima.
+    #[test]
+    fn formation_org_italian_ob_within_maxima() {
+        use crate::reference::formation_org::{italian_family, ITALIAN_ROWS};
+        use crate::reference::units::Nationality;
+        let mut refs = ReferenceData::new();
+        refs.load_order_of_battle(Nationality::Italian, include_str!("../../../data/ob/italian.ron")).unwrap();
+        let report = audit_formation_org_rows(&refs.orders_of_battle[&Nationality::Italian], ITALIAN_ROWS, italian_family);
+        assert!(report.is_empty(), "Italian §19.3 OB-fill mismatches:\n{report}");
+    }
+
     #[test]
     fn prisoners_28() {
         use crate::reference::terrain::HexTerrain;
@@ -14787,7 +15451,7 @@ mod tests {
         assert_eq!(g.captured_equipment.iter().filter(|e| e.captor == Side::Commonwealth && e.system == "Pz III H").map(|e| e.count).sum::<u32>(), 5);
 
         // §28.15: feeding drains 1 Store per 5 prisoners (ceil(6/5)=2) from the nearest CW dump.
-        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(h), side: Side::Commonwealth, supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 }, dummy: false });
+        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(h), side: Side::Commonwealth, supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 }, dummy: false, constructed: true });
         assert_eq!(g.feed_prisoners(), 2);
         assert_eq!(g.supply_dumps.iter().find(|d| d.location.hex() == Some(h)).unwrap().supply.stores, 8);
 

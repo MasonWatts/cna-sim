@@ -596,7 +596,8 @@ impl GameState {
     /// lack: reassigning and reserving units, training, voluntary withdrawal, rebuilding from
     /// replacement pools, and building forts / minefields / pipelines.
     fn legal_reorg_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
-        use crate::state::command::Command;
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::Commodity;
         use crate::state::unit::ReserveStatus;
 
         let mut own: Vec<(UnitId, HexCoord)> = self
@@ -637,9 +638,51 @@ impl GameState {
                     Command::LayMinefield { builder: unit, hex: h, dummy: false },
                     Command::LayMinefield { builder: unit, hex: h, dummy: true },
                     Command::BuildPipeline { builder: unit, hex: h },
+                    // §24.9: construct a real or dummy Supply Dump at the builder's hex.
+                    Command::ConstructSupplyDump { unit, hex: h, dummy: false },
+                    Command::ConstructSupplyDump { unit, hex: h, dummy: true },
                 ] {
                     if self.dry_run(&cmd).is_ok() {
                         out.push(cmd);
+                    }
+                }
+            }
+            // §8.97/§8.98: detach all of a unit's first-line Truck Points into a new free convoy, or
+            // release them to the side's free pool. Represented as "all of them" (one candidate each).
+            if let Some(t) = self.unit(unit).map(|u| u.trucks) {
+                if t.light + t.medium + t.heavy > 0 {
+                    for cmd in [
+                        Command::FormTruckConvoy { from_unit: unit, light: t.light, medium: t.medium, heavy: t.heavy },
+                        Command::ReleaseTrucks { unit, light: t.light, medium: t.medium, heavy: t.heavy },
+                    ] {
+                        if self.dry_run(&cmd).is_ok() {
+                            out.push(cmd);
+                        }
+                    }
+                }
+            }
+            // §8.97: assign the side's whole free Truck-Point pool to this unit's first line.
+            if let Some(pool) = self.truck_pools.get(&side).copied() {
+                if pool.light + pool.medium + pool.heavy > 0 {
+                    let cmd = Command::AssignTrucks { unit, light: pool.light, medium: pool.medium, heavy: pool.heavy };
+                    if self.dry_run(&cmd).is_ok() {
+                        out.push(cmd);
+                    }
+                }
+            }
+            // §53.14/§24.9: load a commodity onto the unit's first-line trucks from a co-located dump, or
+            // off-load one into the hex. Probe the max with a huge amount; emit the moved quantity if > 0.
+            if self.unit(unit).map(|u| u.trucks.light + u.trucks.medium + u.trucks.heavy > 0).unwrap_or(false) {
+                for cm in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
+                    if let Ok(CommandOutcome::TrucksLoaded(n)) = self.dry_run(&Command::LoadTrucks { unit, commodity: cm, amount: u32::MAX }) {
+                        if n > 0 {
+                            out.push(Command::LoadTrucks { unit, commodity: cm, amount: n });
+                        }
+                    }
+                    if let Ok(CommandOutcome::TrucksUnloaded(n)) = self.dry_run(&Command::UnloadTrucks { unit, commodity: cm, amount: u32::MAX }) {
+                        if n > 0 {
+                            out.push(Command::UnloadTrucks { unit, commodity: cm, amount: n });
+                        }
                     }
                 }
             }
@@ -906,6 +949,9 @@ impl GameState {
     fn legal_convoy_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
         use crate::state::command::Command;
 
+        use crate::state::command::CommandOutcome;
+        use crate::state::game::Commodity;
+
         let mut out = Vec::new();
         for (i, c) in self.truck_convoys.iter().enumerate() {
             if c.side != side {
@@ -915,6 +961,50 @@ impl GameState {
                 let cmd = Command::MoveTruckConvoy { convoy: i, to };
                 if self.dry_run(&cmd).is_ok() {
                     out.push(cmd);
+                }
+            }
+            // §53.14/§24.9: load a commodity from a co-located constructed dump, or off-load one into
+            // the hex. Probe the maximum with a huge amount; emit the concrete moved quantity if > 0.
+            for cm in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
+                if let Ok(CommandOutcome::TrucksLoaded(n)) = self.dry_run(&Command::LoadConvoy { convoy: i, commodity: cm, amount: u32::MAX }) {
+                    if n > 0 {
+                        out.push(Command::LoadConvoy { convoy: i, commodity: cm, amount: n });
+                    }
+                }
+                if let Ok(CommandOutcome::TrucksUnloaded(n)) = self.dry_run(&Command::UnloadConvoy { convoy: i, commodity: cm, amount: u32::MAX }) {
+                    if n > 0 {
+                        out.push(Command::UnloadConvoy { convoy: i, commodity: cm, amount: n });
+                    }
+                }
+            }
+        }
+        // §20.44/§20.46: pick up / drop / haul Replacement-Point pools during the Truck Convoy Phase.
+        for (pi, p) in self.replacement_points.iter().enumerate() {
+            if p.side != side {
+                continue;
+            }
+            let Some(phex) = p.location.as_ref().and_then(|l| l.hex()) else { continue };
+            // Move the pool one hex toward the front (self-moving classes, or an already-loaded pool).
+            for to in self.map.neighbors(phex) {
+                let cmd = Command::MoveReplacement { index: pi, to };
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            }
+            // Load the pool onto a co-located convoy (binds them), or drop it off if already carried.
+            if p.carried_by.is_some() {
+                let cmd = Command::UnloadReplacement { pool: pi };
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            } else {
+                for (ci, c) in self.truck_convoys.iter().enumerate() {
+                    if c.side == side && c.hex == phex {
+                        let cmd = Command::LoadReplacement { convoy: ci, pool: pi };
+                        if self.dry_run(&cmd).is_ok() {
+                            out.push(cmd);
+                        }
+                    }
                 }
             }
         }
@@ -961,6 +1051,17 @@ impl GameState {
                 if self.dry_run(&cmd).is_ok() {
                     out.push(cmd);
                 }
+            }
+        }
+        // §22.13: field-repair a free truck convoy's broken-down Truck Points. A representative die (4)
+        // is used — legality (broken Truck Points present) does not depend on the roll.
+        for i in 0..self.truck_convoys.len() {
+            if self.truck_convoys[i].side != side {
+                continue;
+            }
+            let cmd = Command::RepairConvoyTrucks { convoy: i, roll: 4 };
+            if self.dry_run(&cmd).is_ok() {
+                out.push(cmd);
             }
         }
         out
