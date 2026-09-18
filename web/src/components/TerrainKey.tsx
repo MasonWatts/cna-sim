@@ -1,21 +1,7 @@
 import { CREAM, HEX_STROKE, PATTERNS, edgeGlyph, featureGlyph, routeGlyph, terrainFill } from "./mapSymbols";
 import { hexPolygon } from "../hex";
 import type { InfoPanelData } from "../lore";
-
-// Prototype hybrid entry: placeholder lore + rules for the Salt Marsh terrain (§8). Real content will
-// be supplied later; this proves the reusable InfoPanel wiring from a terrain-key swatch.
-const SALT_MARSH_INFO: InfoPanelData = {
-  title: "Salt Marsh",
-  lore: {
-    description:
-      "Salt marshes — the North African sebkha — are shallow depressions floored with fine, salt-crusted sand. A firm-looking surface often hides a quicksand-like bog that could swallow a vehicle to its axles. Their impassability shaped the campaign: the vast sabkha of the Qattara Depression anchored the southern flank at El Alamein, denying any sweep around the line and forcing a head-on fight.",
-    links: [{ label: "Sabkha (Wikipedia)", url: "https://en.wikipedia.org/wiki/Sabkha" }],
-  },
-  rules: {
-    description:
-      "§8.44: treacherous salt sand — a grave for vehicles. Except Light Trucks, Recce-type units, and motorcycle infantry, vehicles may enter or leave a Salt Marsh only along a Road or Track; a prohibited vehicle that enters off-track is Abandoned (§5.33). No motorized unit or AFV may assault a defender in a Salt Marsh. Entry costs 2 CP motorized / 3 non-motorized, and a defender there shifts Close Assault one column in its favor (barrage and anti-armor are unaffected).",
-  },
-};
+import { TERRAIN_INFO } from "../terrainInfo";
 
 // A cosmetic legend mirroring the paper map's TERRAIN KEY, but drawn with our own patterns/glyphs.
 // Grouped in the same order as the printed key. Symbols we don't render (Coast, Border, Airfield,
@@ -86,11 +72,23 @@ const EDGES: [string, string][] = [
   ["MinorRiver", "Minor River"],
 ];
 
+// A fixed 4-column grid so every row lines up uniformly (cells keep their own size).
 const Row = ({ children }: { children: React.ReactNode }) => (
-  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{children}</div>
+  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 66px)", gap: 4, justifyContent: "start" }}>{children}</div>
 );
 
 export function TerrainKey({ label = "Terrain Key", onInfoHover, onInfoLeave }: { label?: string; onInfoHover?: (data: InfoPanelData, x: number, y: number) => void; onInfoLeave?: () => void }) {
+  // A legend swatch with an info entry opens the hybrid lore/rules panel on hover, anchored to the cell.
+  const mkHover = (k: string) =>
+    onInfoHover && TERRAIN_INFO[k]
+      ? {
+          onMouseEnter: (e: React.MouseEvent) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            onInfoHover(TERRAIN_INFO[k], r.left, r.bottom);
+          },
+          onMouseLeave: () => onInfoLeave?.(),
+        }
+      : undefined;
   return (
     <div className="terrain-key">
       <div className="tk-title">{label}</div>
@@ -100,31 +98,18 @@ export function TerrainKey({ label = "Terrain Key", onInfoHover, onInfoLeave }: 
       </svg>
       <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 10 }}>
         <Row>
-          {TERRAINS.map(([k, lbl]) => {
-            // Prototype: the Salt Marsh swatch opens the hybrid lore+rules panel on hover.
-            const hover =
-              k === "SaltMarsh" && onInfoHover
-                ? {
-                    onMouseEnter: (e: React.MouseEvent) => {
-                      const r = e.currentTarget.getBoundingClientRect();
-                      onInfoHover(SALT_MARSH_INFO, r.left, r.bottom);
-                    },
-                    onMouseLeave: () => onInfoLeave?.(),
-                  }
-                : undefined;
-            return (
-              <Cell key={k} label={lbl} hover={hover}>
-                {hexSwatch(terrainFill(k))}
-              </Cell>
-            );
-          })}
+          {TERRAINS.map(([k, lbl]) => (
+            <Cell key={k} label={lbl} hover={mkHover(k)}>
+              {hexSwatch(terrainFill(k))}
+            </Cell>
+          ))}
           {FEATURES.map(([k, lbl]) => {
             // Port/training glyphs carry a large map-hex offset (anchor −14, soldier +20) tuned for
             // the full board hex; in the smaller legend swatch that overshoots, so pull them back
             // toward center here (port down, training up a hair).
             const nudge = k === "Port" ? 11 : k.endsWith("TrainingArea") ? -10 : 0;
             return (
-              <Cell key={k} label={lbl}>
+              <Cell key={k} label={lbl} hover={mkHover(k)}>
                 {hexSwatch(CREAM)}
                 <g transform={`translate(${CX} ${CY + nudge})`}>{featureGlyph(k)}</g>
               </Cell>
@@ -133,14 +118,12 @@ export function TerrainKey({ label = "Terrain Key", onInfoHover, onInfoLeave }: 
         </Row>
         <Row>
           {ROUTES.map(([k, lbl]) => (
-            <Cell key={k} label={lbl} h={20}>
+            <Cell key={k} label={lbl} h={20} hover={mkHover(k)}>
               <g transform={`translate(${CX} 10)`}>{routeGlyph(k, { x: -20, y: 0 }, { x: 20, y: 0 })}</g>
             </Cell>
           ))}
-        </Row>
-        <Row>
           {EDGES.map(([k, lbl]) => (
-            <Cell key={k} label={lbl} h={36}>
+            <Cell key={k} label={lbl} h={36} hover={mkHover(k)}>
               {/* A above / B below → the shared edge (and its glyph) runs horizontally */}
               <g transform={`translate(${CX} 18)`}>{edgeGlyph(k, { x: 0, y: -16 }, { x: 0, y: 16 }, true)}</g>
             </Cell>

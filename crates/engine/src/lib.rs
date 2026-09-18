@@ -417,6 +417,33 @@ mod tests {
     }
 
     #[test]
+    fn convoy_delivery_lands_supply_at_destination_port_56_16() {
+        // §56.16: a delivered convoy's tonnage is landed as Axis supply in a constructed dump on the
+        // destination port's hex (not discarded).
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{Commodity, GameState, Phase};
+        let mut refs = ReferenceData::new();
+        refs.load_equivalent_weights(include_str!("../../../data/reference/equivalent-weights.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.map.load_section(include_str!("../../../data/maps/section-a.ron")).unwrap();
+        let hex = g.port_hex("Benghazi").expect("Benghazi is a labelled port on section A");
+        g.plan_convoy(1, "Benghazi", 5, 1000, 400, 0, 0, 25000);
+        g.phase = Phase::NavalConvoyArrival;
+        match g.apply(Command::DeliverConvoy { convoy_index: 0 }) {
+            Ok(CommandOutcome::ConvoyDelivered(_)) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert!(g.convoys.is_empty(), "convoy removed after delivery");
+        assert!(g.available_commodity_at(hex, Side::Axis, Commodity::Fuel) > 0, "fuel landed at the port");
+        assert!(g.available_commodity_at(hex, Side::Axis, Commodity::Ammo) > 0, "ammo landed at the port");
+        assert!(
+            g.supply_dumps.iter().any(|d| d.location.hex() == Some(hex) && d.side == Side::Axis && d.constructed && !d.dummy),
+            "a constructed Axis dump now sits at Benghazi",
+        );
+    }
+
+    #[test]
     fn allowable_convoy_tonnage_56_21() {
         use crate::state::game::GameState;
         let mut refs = ReferenceData::new();
@@ -4377,7 +4404,7 @@ mod tests {
         // A fuel-starved cruiser squadron co-located with a Commonwealth fuel dump.
         let tank = g.spawn_unit(Nationality::Commonwealth, "g", "cruisers", Composition::Weapons { groups: vec![WeaponGroup { system: "A13 Cruiser".into(), count: 4 }] });
         { let u = g.unit_mut(tank).unwrap(); u.location = Some(UnitLocation::OnMap(hex)); u.fuel = 0; }
-        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(hex), side: Side::Commonwealth, supply: Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 }, dummy: false, constructed: true });
+        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(hex), side: Side::Commonwealth, supply: Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 }, dummy: false, constructed: true, unlimited: false });
 
         // In the Organization phase the enumerator offers logistics — refuelling the starved unit.
         g.phase = Phase::Organization;
@@ -4406,7 +4433,7 @@ mod tests {
         let off = HexCoord::new(0, 0);
         g.map.set_hex(tobruk, HexTerrain::MajorCity); // water source
         g.map.set_hex(off, HexTerrain::Clear);
-        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(tobruk), side: Side::Commonwealth, supply: Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 }, dummy: false, constructed: true });
+        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(tobruk), side: Side::Commonwealth, supply: Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 }, dummy: false, constructed: true, unlimited: false });
 
         // No one holds anything yet.
         assert_eq!(g.scenario1_victory(Side::Commonwealth), ScenarioVictory::None);
@@ -4438,7 +4465,7 @@ mod tests {
         g.map.set_hex(off, HexTerrain::Clear);
         let stock = || Commodities { fuel: 9999, ammo: 9999, stores: 9999, water: 9999 };
         for at in [tobruk, off] {
-            g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(at), side: Side::Commonwealth, supply: stock(), dummy: false, constructed: true });
+            g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(at), side: Side::Commonwealth, supply: stock(), dummy: false, constructed: true, unlimited: false });
         }
         // A single in-supply Commonwealth combat unit; no enemy (isolates the objective term).
         let u = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 8 });
@@ -5870,7 +5897,7 @@ mod tests {
         // Loose supplies dropped in the hex (constructed = false): 20 Fuel + 20 Stores.
         g.supply_dumps.push(SupplyDump {
             location: UnitLocation::OnMap(hex), side: Side::Commonwealth,
-            supply: Commodities { fuel: 20, ammo: 0, stores: 20, water: 0 }, dummy: false, constructed: false,
+            supply: Commodities { fuel: 20, ammo: 0, stores: 20, water: 0 }, dummy: false, constructed: false, unlimited: false,
         });
         g.truck_convoys.push(TruckConvoy {
             side: Side::Commonwealth, hex, trucks: TruckPoints { light: 0, medium: 5, heavy: 0 },
@@ -6007,7 +6034,7 @@ mod tests {
         place_raider(&mut g);
         g.supply_dumps.push(crate::state::game::SupplyDump {
             location: UnitLocation::OnMap(hex), side: Side::Axis,
-            supply: Commodities { fuel: 100, ammo: 100, stores: 100, water: 0 }, dummy: false, constructed: true,
+            supply: Commodities { fuel: 100, ammo: 100, stores: 100, water: 0 }, dummy: false, constructed: true, unlimited: false,
         });
         assert_eq!(
             g.apply(Command::RaidSupplyDump { raider: 0, attack_roll: 0, destroy_roll: 1 }),
@@ -6078,7 +6105,7 @@ mod tests {
         let hex = HexCoord::new(4, 4);
         g.supply_dumps.push(SupplyDump {
             location: UnitLocation::OnMap(hex), side: Side::Commonwealth,
-            supply: Commodities { fuel: 10, ammo: 5, stores: 0, water: 0 }, dummy: false, constructed: true,
+            supply: Commodities { fuel: 10, ammo: 5, stores: 0, water: 0 }, dummy: false, constructed: true, unlimited: false,
         });
         let mk = |water: bool| Raider {
             kind: RaiderKind::Lrdg, side: Side::Commonwealth, hex: Some(hex),
@@ -6291,11 +6318,11 @@ mod tests {
         // §32.18: enemy dump contents/dummy hidden; own dump shown in full.
         g.supply_dumps.push(SupplyDump {
             location: UnitLocation::OnMap(hex), side: Side::Commonwealth,
-            supply: Commodities { fuel: 9, ammo: 0, stores: 0, water: 0 }, dummy: false, constructed: true,
+            supply: Commodities { fuel: 9, ammo: 0, stores: 0, water: 0 }, dummy: false, constructed: true, unlimited: false,
         });
         g.supply_dumps.push(SupplyDump {
             location: UnitLocation::OnMap(hex), side: Side::Axis,
-            supply: Commodities { fuel: 7, ammo: 0, stores: 0, water: 0 }, dummy: true, constructed: true,
+            supply: Commodities { fuel: 7, ammo: 0, stores: 0, water: 0 }, dummy: true, constructed: true, unlimited: false,
         });
         let dumps = g.observe_supply_dumps(Side::Commonwealth);
         assert!(dumps.iter().any(|d| d.friendly && d.contents == Some(Commodities { fuel: 9, ammo: 0, stores: 0, water: 0 })));
@@ -7015,6 +7042,7 @@ mod tests {
             water: 0,
             dummy: false,
             constraint: dump_i,
+            at: None,
         });
         assert_eq!(g.place_dump_choice(0, east), Err(DumpPlacementError::IllegalHex));
         assert_eq!(g.place_dump_choice(0, west), Ok(3));
@@ -7292,7 +7320,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { stores: 300, ..Default::default() },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
         g.expend_stores();
         assert_eq!(g.unit(inf).unwrap().turns_without_stores, 0);
@@ -7579,7 +7607,7 @@ mod tests {
             side: Side::Axis,
             supply: Commodities { fuel: 1000, water: 500, ammo: 100, stores: 200 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
         // §49.3/§52.44: 6% of Fuel and Water evaporates; Ammo and Stores are unaffected.
         g.evaporate_supplies(6);
@@ -7601,7 +7629,7 @@ mod tests {
                 side,
                 supply: Commodities { fuel: 1000, water: 1000, ammo: 100, stores: 100 },
                 dummy: false,
-                constructed: true,
+                constructed: true, unlimited: false,
             });
         }
         // §49.3: through August 1941 (GT ≤ 48) the Commonwealth spills at 9%; the Axis at 6%.
@@ -7690,7 +7718,7 @@ mod tests {
                 side,
                 supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 },
                 dummy: false,
-                constructed: true,
+                constructed: true, unlimited: false,
             });
         };
         // Rail hex `a` (touches a Railroad edge a|b); `p` is a desert neighbour of `a`.
@@ -8027,7 +8055,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 500, ..Default::default() },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
 
         // Load 300 Fuel — capped at the 240 cargo capacity; dump drops to 260.
@@ -8301,7 +8329,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 8, ammo: 0, stores: 0, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
         assert_eq!(g.field_repair_tanks(tank, 0), 2);
         assert_eq!(g.supply_dumps[0].supply.fuel, 0);
@@ -8373,7 +8401,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
         assert!(g.build_pipeline(hq, adj));
         assert!(g.pipelines.contains(&adj));
@@ -8391,7 +8419,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
         assert!(!g.build_pipeline(hq2, far));
     }
@@ -8428,7 +8456,7 @@ mod tests {
                 side: Side::Commonwealth,
                 supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 },
                 dummy: false,
-                constructed: true,
+                constructed: true, unlimited: false,
             });
             hq
         };
@@ -13702,7 +13730,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 2, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
 
         // §24.5: the Infantry Bn builds the road, expending 2 Stores; UnfinishedRoad becomes Road.
@@ -13744,7 +13772,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 30, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
 
         // §24.4: start a Level 2 fort — 30 Stores expended immediately.
@@ -13796,7 +13824,7 @@ mod tests {
                 side: Side::Commonwealth,
                 supply: Commodities { fuel: 0, ammo: 0, stores: 1, water: 0 },
                 dummy: false,
-                constructed: true,
+                constructed: true, unlimited: false,
             });
         };
         let nz = |g: &mut GameState, h| {
@@ -13874,7 +13902,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 1, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
         assert!(g.rebuild_railroad(eng, a, b));
         assert!(g.hex_is_railroad(a));
@@ -13958,7 +13986,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 15, stores: 30, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
 
         // §24.33: a real minefield needs 15 Stores + 15 Ammo, expended at the start.
@@ -13990,7 +14018,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 15, stores: 15, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
         assert!(!g.begin_minefield(eng2, m, false));
     }
@@ -14143,7 +14171,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 150, ammo: 0, stores: 250, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
 
         // §24.83: 250 Stores + 150 Fuel expended; 3 Construction Segments.
@@ -14166,7 +14194,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 150, ammo: 0, stores: 250, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
         assert!(!g.begin_temporary_facility(e2, d));
     }
@@ -14258,7 +14286,7 @@ mod tests {
             side: Side::Axis,
             supply: Commodities { fuel: 400, ammo: 0, stores: 800, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
         // A Commonwealth-controlled hex is not eligible for Axis import.
         assert!(!g.import_rolling_stock(hs[5]));
@@ -14293,7 +14321,7 @@ mod tests {
             side: Side::Axis,
             supply: Commodities { fuel: 0, ammo: 0, stores: 50, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
         let remaining = stock - g.axis_rail_tons_used;
         let want = remaining.min(20);
@@ -14367,7 +14395,7 @@ mod tests {
             side: Side::Axis,
             supply: Commodities { fuel: 0, ammo: 0, stores: 5, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
 
         // §54.42: the Axis may repair only a rail hex it controls — hs[0] is not yet controlled.
@@ -14413,7 +14441,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 2000, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
 
         // §54.32: rail Stores west, capped at 1500 tons (= 1500 Store points) for the direction.
@@ -14526,7 +14554,7 @@ mod tests {
             side: Side::Commonwealth,
             supply: Commodities { fuel: 0, ammo: 0, stores: 100, water: 0 },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
         let u = g.spawn_unit(Nationality::Commonwealth, "h", "u", Composition::Organic { current_toe: 1 });
         g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(hs[1]));
@@ -15001,7 +15029,7 @@ mod tests {
                 side: Side::Axis,
                 supply: Commodities { fuel: 0, ammo: 0, stores, water: 0 },
                 dummy: false,
-                constructed: true,
+                constructed: true, unlimited: false,
             });
         };
         let place = |h| Command::PlaceDummyTank { hex: h, designation: "8 RTR".into() };
@@ -15451,7 +15479,7 @@ mod tests {
         assert_eq!(g.captured_equipment.iter().filter(|e| e.captor == Side::Commonwealth && e.system == "Pz III H").map(|e| e.count).sum::<u32>(), 5);
 
         // §28.15: feeding drains 1 Store per 5 prisoners (ceil(6/5)=2) from the nearest CW dump.
-        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(h), side: Side::Commonwealth, supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 }, dummy: false, constructed: true });
+        g.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(h), side: Side::Commonwealth, supply: Commodities { fuel: 0, ammo: 0, stores: 10, water: 0 }, dummy: false, constructed: true, unlimited: false });
         assert_eq!(g.feed_prisoners(), 2);
         assert_eq!(g.supply_dumps.iter().find(|d| d.location.hex() == Some(h)).unwrap().supply.stores, 8);
 

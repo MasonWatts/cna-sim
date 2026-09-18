@@ -408,7 +408,7 @@ export function App() {
         <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0", width: "max-content" }}>
           {/* Variant C is drawn inside HexMap in map coordinates (see `legend`), so it pans/zooms
               with the board and sits off-shore at the map's horizontal center. */}
-          <HexMap map={record.map} units={frames[idx] ?? []} weather={weatherFrames[idx]} replacements={replacementFrames[idx] ?? []} supplyDumps={supplyDumpFrames[idx] ?? []} truckConvoys={truckConvoyFrames[idx] ?? []} raiders={raiderFrames[idx] ?? []} rommel={rommelFrames[idx] ?? []} overlays={overlayFrames[idx]} hexsides={hexsideFrames[idx]} air={airFrames[idx]} naval={navalFrames[idx]} placeLore={placeLore} onPlaceHover={onPlaceHover} onPlaceLeave={hideInfo} legend={<>
+          <HexMap map={record.map} units={frames[idx] ?? []} weather={weatherFrames[idx]} replacements={replacementFrames[idx] ?? []} supplyDumps={supplyDumpFrames[idx] ?? []} truckConvoys={truckConvoyFrames[idx] ?? []} raiders={raiderFrames[idx] ?? []} rommel={rommelFrames[idx] ?? []} overlays={overlayFrames[idx]} hexsides={hexsideFrames[idx]} air={airFrames[idx]} naval={navalFrames[idx]} placeLore={placeLore} onPlaceHover={onPlaceHover} onPlaceLeave={hideInfo} onInfoHover={showInfo} legend={<>
               <div className="legend-map"><TerrainKey onInfoHover={showInfo} onInfoLeave={hideInfo} /></div>
               <div className="legend-map compass-box"><div className="tk-title">Orientation</div><CompassRose /></div>
             </>}

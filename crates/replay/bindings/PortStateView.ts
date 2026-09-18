@@ -5,6 +5,14 @@
  */
 export type PortStateView = { name: string, efficiency: number, max_efficiency: number, 
 /**
+ * §55.3: supply tonnage/Operations Stage at full efficiency (the base capacity).
+ */
+max_tonnage: number, 
+/**
+ * Current tonnage/Operations Stage at the present efficiency (base × efficiency ÷ max_efficiency).
+ */
+throughput: number, 
+/**
  * §55.25/§55.27: an efficiency level is held down by harbour mines or a scuttled wreck.
  */
 blocked: boolean, };

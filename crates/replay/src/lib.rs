@@ -226,6 +226,8 @@ pub struct SupplyDumpView {
     /// §24.9: `true` for an actual constructed dump (convoy-loadable); `false` for loose supplies
     /// merely off-loaded in the hex (usable/consumable, but a convoy may not re-load them).
     pub constructed: bool,
+    /// §57: an effectively bottomless base (Cairo/Alexandria) — shown as ∞.
+    pub unlimited: bool,
 }
 
 /// A free (2nd/3rd-line) truck convoy (§53) — Truck Points by type, broken-down count, carried cargo,
@@ -428,6 +430,10 @@ pub struct PortStateView {
     pub name: String,
     pub efficiency: u32,
     pub max_efficiency: u32,
+    /// §55.3: supply tonnage/Operations Stage at full efficiency (the base capacity).
+    pub max_tonnage: u32,
+    /// Current tonnage/Operations Stage at the present efficiency (base × efficiency ÷ max_efficiency).
+    pub throughput: u32,
     /// §55.25/§55.27: an efficiency level is held down by harbour mines or a scuttled wreck.
     pub blocked: bool,
 }
@@ -483,7 +489,14 @@ fn naval_views(g: &GameState) -> NavalView {
     let mut ports: Vec<PortStateView> = g
         .ports
         .values()
-        .map(|p| PortStateView { name: p.name.clone(), efficiency: p.efficiency, max_efficiency: p.max_efficiency, blocked: p.mines > 0 || p.wreck_block > 0 })
+        .map(|p| PortStateView {
+            name: p.name.clone(),
+            efficiency: p.efficiency,
+            max_efficiency: p.max_efficiency,
+            max_tonnage: p.max_tonnage,
+            throughput: if p.max_efficiency > 0 { p.max_tonnage * p.efficiency / p.max_efficiency } else { 0 },
+            blocked: p.mines > 0 || p.wreck_block > 0,
+        })
         .collect();
     ports.sort_by(|a, b| a.name.cmp(&b.name));
     let mut convoys: Vec<NavalConvoyView> = g
@@ -637,6 +650,7 @@ fn supply_dump_views(g: &GameState) -> Vec<SupplyDumpView> {
                 water: d.supply.water,
                 dummy: d.dummy,
                 constructed: d.constructed,
+                unlimited: d.unlimited,
             })
         })
         .collect()
@@ -1043,7 +1057,7 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
         side: Side::Commonwealth,
         supply: Commodities { fuel: 0, ammo: 0, stores: 0, water: 0 },
         dummy: true,
-        constructed: true,
+        constructed: true, unlimited: false,
     });
     // A Medium truck convoy parked at the depot. It starts idle/unbound — it is only committed to the
     // RP haul once the pool is loaded onto it (step 5, `LoadReplacement`, §20.44/§54.2), after which the

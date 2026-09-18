@@ -158,20 +158,25 @@
         (side: Axis, at: "C0716", ammo: 100, fuel: 50, stores: 50),
         (side: Commonwealth, at: "D3714", ammo: 1000, fuel: 3000, stores: 4000), // Mersa Matruh
         (side: Commonwealth, at: "C4131", ammo: 250,  fuel: 500,  stores: 100),  // Sidi Barrani
-        (side: Commonwealth, at: "E1430", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Cairo
-        (side: Commonwealth, at: "E3613", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Alexandria
+        (side: Commonwealth, at: "E1430", unlimited: true), // Cairo — §57 home base (bottomless)
+        (side: Commonwealth, at: "E3613", unlimited: true), // Alexandria — §57 home base (bottomless)
     ],
+    // Auto-placed at fixed, sensible hexes (`at`); `constraint` still governs a manual/agent placement.
     supply_dump_choices: [
+        // Axis reserve dumps in the Tobruk rear; two dummy decoys forward toward the front.
         (side: Axis, label: "Dump 1", count: 1, ammo: 1000, fuel: 1500, stores: 1500, water: 200,
-            constraint: (section: Some('C'), not_within_of_enemy: Some(4))),
+            at: Some("C4507"), constraint: (section: Some('C'), not_within_of_enemy: Some(4))), // El Adem
         (side: Axis, label: "Dump 2", count: 1, ammo: 1000, fuel: 1500, stores: 1000, water: 200,
-            constraint: (section: Some('C'), not_within_of_enemy: Some(4))),
-        (side: Axis, label: "Axis dummies", count: 2, dummy: true,
-            constraint: (section: Some('C'), not_within_of_enemy: Some(4))),
+            at: Some("C4414"), constraint: (section: Some('C'), not_within_of_enemy: Some(4))), // Gambut
+        (side: Axis, label: "Axis dummy 1", count: 1, dummy: true,
+            at: Some("C4409"), constraint: (section: Some('C'), not_within_of_enemy: Some(4))), // Sidi Rezegh
+        (side: Axis, label: "Axis dummy 2", count: 1, dummy: true,
+            at: Some("C4218"), constraint: (section: Some('C'), not_within_of_enemy: Some(4))), // Sidi Azeiz
+        // Commonwealth forward reserve dump + a decoy behind the Matruh line.
         (side: Commonwealth, label: "Dump I", count: 1, ammo: 500, fuel: 750, stores: 500,
-            constraint: (east_of: Some("C4021"), west_of: Some("E0100"))),
+            at: Some("D3323"), constraint: (east_of: Some("C4021"), west_of: Some("E0100"))), // Fuka
         (side: Commonwealth, label: "Dump I dummy", count: 1, dummy: true,
-            constraint: (east_of: Some("C4021"), west_of: Some("E0100"))),
+            at: Some("D3329"), constraint: (east_of: Some("C4021"), west_of: Some("E0100"))), // El Daba
     ],
     repair_facilities: [
         (at: "C4807", kind: Temporary), // Tobruk (Axis)

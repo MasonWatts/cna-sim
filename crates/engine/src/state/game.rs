@@ -369,11 +369,15 @@ pub struct SupplyDump {
     pub dummy: bool,
     /// §24.9: whether this hex has an actual *constructed* Supply Dump (a TOE Strength Point spent
     /// 3 CP + 20 Stores; a dummy spends 3 CP) versus mere *loose* supplies dropped in the hex. Loose
-    /// supplies (`constructed: false`) can still be consumed for supply and picked up by a unit's own
+    /// supplies (`constructed: false, unlimited: false`) can still be consumed for supply and picked up by a unit's own
     /// first-line trucks, but a free truck convoy "in convoy" may not load them. A dummy is always
-    /// `constructed: true` (it was built). Defaults to `true` so older saves read as constructed.
+    /// `constructed: true, unlimited: false` (it was built). Defaults to `true` so older saves read as constructed.
     #[serde(default = "crate::state::game::default_true")]
     pub constructed: bool,
+    /// §57: an effectively bottomless supply source (the Commonwealth home bases at Cairo & Alexandria).
+    /// Never depletes on consumption/loading, reports unlimited availability, and shows as ∞.
+    #[serde(default)]
+    pub unlimited: bool,
 }
 
 pub(crate) fn default_true() -> bool {
@@ -466,6 +470,11 @@ pub struct PendingDumpChoice {
     pub dummy: bool,
     #[serde(default)]
     pub constraint: DumpConstraint,
+    /// Optional authored placement hex-id (e.g. `"C4507"`). `auto_place_dump_choices` places the dump
+    /// here (a fixed, sensible spot) instead of scanning for the first legal hex; `constraint` still
+    /// governs a human/agent placement via `place_dump_choice`.
+    #[serde(default)]
+    pub at: Option<String>,
 }
 
 /// Why a player-choice Supply Unit could not be placed (§59.51 / §60.92).
@@ -1956,10 +1965,18 @@ impl GameState {
             })
             .sum();
         let room_by_packing = ((cap as f64) * (1.0 - other_frac).max(0.0)).floor() as u32;
-        let mut remaining = amount.min(cap.min(room_by_packing).saturating_sub(cur));
-        let mut loaded = 0;
+        let room = cap.min(room_by_packing).saturating_sub(cur);
+        // §57: a co-located unlimited base supplies any amount; otherwise cap by the finite dumps.
+        let unlimited = self.supply_dumps.iter().any(|d| d.unlimited && d.side == side && !d.dummy && d.location.hex() == Some(hex));
+        let avail: u32 = if unlimited {
+            u32::MAX
+        } else {
+            self.supply_dumps.iter().filter(|d| d.side == side && !d.dummy && d.location.hex() == Some(hex)).map(|d| d.supply.get(c)).sum()
+        };
+        let mut remaining = amount.min(room).min(avail);
+        let loaded = remaining;
         for d in self.supply_dumps.iter_mut().filter(|d| {
-            d.side == side && !d.dummy && d.location.hex() == Some(hex)
+            d.side == side && !d.dummy && !d.unlimited && d.location.hex() == Some(hex)
         }) {
             if remaining == 0 {
                 break;
@@ -1967,7 +1984,6 @@ impl GameState {
             let take = remaining.min(d.supply.get(c));
             *d.supply.get_mut(c) -= take;
             remaining -= take;
-            loaded += take;
         }
         if loaded > 0 {
             if let Some(u) = self.unit_mut(id) {
@@ -2009,7 +2025,7 @@ impl GameState {
                 side,
                 supply,
                 dummy: false,
-                constructed: false,
+                constructed: false, unlimited: false,
             });
         }
         n
@@ -2069,22 +2085,27 @@ impl GameState {
         // §53.25: supplies dropped into this hex this Truck Convoy phase may not be relayed onward — exclude them.
         let locked = self.leapfrog_locked.get(&hex).map_or(0, |cm| cm.get(c));
         // §24.9: a truck "in convoy" may only load from a *constructed* dump — loose supplies are off-limits.
-        let dump_total: u32 = self
-            .supply_dumps
-            .iter()
-            .filter(|d| d.side == side && !d.dummy && d.constructed && d.location.hex() == Some(hex))
-            .map(|d| d.supply.get(c))
-            .sum();
+        // §57: an unlimited constructed base (Cairo/Alexandria) is a bottomless source.
+        let unlimited = self.supply_dumps.iter().any(|d| d.unlimited && d.side == side && !d.dummy && d.constructed && d.location.hex() == Some(hex));
+        let dump_total: u32 = if unlimited {
+            u32::MAX
+        } else {
+            self.supply_dumps
+                .iter()
+                .filter(|d| d.side == side && !d.dummy && d.constructed && d.location.hex() == Some(hex))
+                .map(|d| d.supply.get(c))
+                .sum()
+        };
         remaining = remaining.min(dump_total.saturating_sub(locked));
-        let mut loaded = 0;
-        for d in self.supply_dumps.iter_mut().filter(|d| d.side == side && !d.dummy && d.constructed && d.location.hex() == Some(hex)) {
+        let loaded = remaining;
+        // Draw from finite constructed dumps; any shortfall is covered by an unlimited base at the hex.
+        for d in self.supply_dumps.iter_mut().filter(|d| d.side == side && !d.dummy && !d.unlimited && d.constructed && d.location.hex() == Some(hex)) {
             if remaining == 0 {
                 break;
             }
             let take = remaining.min(d.supply.get(c));
             *d.supply.get_mut(c) -= take;
             remaining -= take;
-            loaded += take;
         }
         if loaded > 0 {
             *self.truck_convoys[convoy].cargo.get_mut(c) += loaded;
@@ -2110,7 +2131,7 @@ impl GameState {
             let mut supply = Commodities::default();
             *supply.get_mut(c) = n;
             // §24.9: a convoy off-load drops *loose* supplies (not a constructed, re-loadable dump).
-            self.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(hex), side, supply, dummy: false, constructed: false });
+            self.supply_dumps.push(SupplyDump { location: UnitLocation::OnMap(hex), side, supply, dummy: false, constructed: false, unlimited: false });
         }
         // §53.25: these just-dropped supplies may not be re-loaded (relayed) by another convoy this phase.
         if self.phase == Phase::TruckConvoy {
@@ -4103,7 +4124,7 @@ impl GameState {
                     side,
                     supply,
                     dummy: false,
-                    constructed: true,
+                    constructed: true, unlimited: false,
                 });
             }
         }
@@ -5510,6 +5531,7 @@ impl GameState {
             self.convoys.remove(convoy_index);
             return Some(Commodities::default());
         }
+        let dest = c.destination.clone();
         let delivered = Commodities {
             fuel: fuel_rate.points(c.fuel_tons),
             ammo: ammo_rate.points(c.ammo_tons),
@@ -5517,7 +5539,43 @@ impl GameState {
             water: 0,
         };
         self.convoys.remove(convoy_index);
+        // §56.16: the surviving tonnage is landed as Axis supply at the destination port — deposited
+        // into a constructed (loadable) Supply Dump on the port's hex (created if none exists yet).
+        if let Some(hex) = self.port_hex(&dest) {
+            self.deposit_supply_at(hex, Side::Axis, &delivered);
+        }
         Some(delivered)
+    }
+
+    /// The map hex of the named port (a Port-feature hex whose label matches), if any.
+    pub fn port_hex(&self, name: &str) -> Option<HexCoord> {
+        self.map.coords().find(|&c| {
+            self.map.hex(c).is_some_and(|h| h.is_port() && h.label.as_deref() == Some(name))
+        })
+    }
+
+    /// Add `c`'s commodities to `side`'s (non-dummy) Supply Dump at `hex`, marking it constructed
+    /// (loadable); creates a constructed dump if none is present.
+    pub fn deposit_supply_at(&mut self, hex: HexCoord, side: Side, c: &Commodities) {
+        if let Some(d) = self
+            .supply_dumps
+            .iter_mut()
+            .find(|d| d.side == side && !d.dummy && d.location.hex() == Some(hex))
+        {
+            d.supply.fuel += c.fuel;
+            d.supply.ammo += c.ammo;
+            d.supply.stores += c.stores;
+            d.supply.water += c.water;
+            d.constructed = true;
+        } else {
+            self.supply_dumps.push(SupplyDump {
+                location: crate::state::unit::UnitLocation::OnMap(hex),
+                side,
+                supply: c.clone(),
+                dummy: false,
+                constructed: true, unlimited: false,
+            });
+        }
     }
 
     /// §55.22/§55.24: scuttle to block `port`'s harbour, reducing its Efficiency Level by one (the
@@ -6913,14 +6971,14 @@ impl GameState {
                 water: 0,
             },
             dummy: false,
-            constructed: true,
+            constructed: true, unlimited: false,
         });
     }
 
     /// Add a (non-dummy) Supply Dump holding an explicit set of Commodities (Fuel/Ammo/Stores/
     /// Water) — used where all four commodities matter, e.g. §64.73 supply-adequacy.
     pub fn add_supply_dump_full(&mut self, location: UnitLocation, side: Side, supply: Commodities) {
-        self.supply_dumps.push(SupplyDump { location, side, supply, dummy: false, constructed: true });
+        self.supply_dumps.push(SupplyDump { location, side, supply, dummy: false, constructed: true, unlimited: false });
     }
 
     /// Add `amount` of one Commodity to a friendly non-dummy Supply Dump in `hex`, merging into an
@@ -6948,15 +7006,17 @@ impl GameState {
 
     /// Points of `commodity` available in `side`'s non-dummy Supply Dumps in `hex`.
     pub fn available_commodity_at(&self, hex: HexCoord, side: Side, commodity: Commodity) -> u32 {
-        self.supply_dumps
-            .iter()
-            .filter(|d| !d.dummy && d.side == side && d.location.hex() == Some(hex))
-            .map(|d| d.supply.amount(commodity))
-            .sum()
+        let dumps = self.supply_dumps.iter().filter(|d| !d.dummy && d.side == side && d.location.hex() == Some(hex));
+        // §57: an unlimited base (Cairo/Alexandria) supplies any amount.
+        if self.supply_dumps.iter().any(|d| d.unlimited && !d.dummy && d.side == side && d.location.hex() == Some(hex)) {
+            return u32::MAX;
+        }
+        dumps.map(|d| d.supply.amount(commodity)).sum()
     }
 
     /// Consume `amount` points of `commodity` from `side`'s non-dummy Supply Dumps in `hex`,
-    /// all-or-nothing.
+    /// all-or-nothing. Unlimited (§57) dumps never deplete; a finite shortfall drawn against an
+    /// unlimited base at the same hex is simply covered.
     pub fn consume_commodity_at(&mut self, hex: HexCoord, side: Side, commodity: Commodity, amount: u32) -> bool {
         if self.available_commodity_at(hex, side, commodity) < amount {
             return false;
@@ -6965,7 +7025,7 @@ impl GameState {
         for d in self
             .supply_dumps
             .iter_mut()
-            .filter(|d| !d.dummy && d.side == side && d.location.hex() == Some(hex))
+            .filter(|d| !d.dummy && !d.unlimited && d.side == side && d.location.hex() == Some(hex))
         {
             let slot = d.supply.amount_mut(commodity);
             let take = (*slot).min(owed);
@@ -6975,6 +7035,8 @@ impl GameState {
                 break;
             }
         }
+        // Any remainder (`owed > 0`) is covered by an unlimited base present at the hex (the
+        // availability check above already guaranteed one exists).
         true
     }
 
@@ -8189,7 +8251,7 @@ impl GameState {
                     water: choice.water,
                 },
                 dummy: choice.dummy,
-                constructed: true,
+                constructed: true, unlimited: false,
             });
         }
         self.pending_dump_choices.remove(index);
@@ -8202,13 +8264,29 @@ impl GameState {
     pub fn auto_place_dump_choices(&mut self) {
         while !self.pending_dump_choices.is_empty() {
             let choice = self.pending_dump_choices[0].clone();
-            let coords: Vec<HexCoord> = self.map.coords().collect();
-            let hex = coords
-                .into_iter()
-                .find(|&h| self.dump_choice_legal(&choice.constraint, choice.side, h));
+            // Prefer the authored placement hex; otherwise fall back to the first constraint-legal hex.
+            let hex = choice
+                .at
+                .as_deref()
+                .and_then(HexId::parse)
+                .map(|h| h.to_hex_coord())
+                .or_else(|| {
+                    let coords: Vec<HexCoord> = self.map.coords().collect();
+                    coords.into_iter().find(|&h| self.dump_choice_legal(&choice.constraint, choice.side, h))
+                });
             match hex {
                 Some(h) => {
-                    let _ = self.place_dump_choice(0, h);
+                    for _ in 0..choice.count {
+                        self.supply_dumps.push(SupplyDump {
+                            location: UnitLocation::OnMap(h),
+                            side: choice.side,
+                            supply: Commodities { fuel: choice.fuel, ammo: choice.ammo, stores: choice.stores, water: choice.water },
+                            dummy: choice.dummy,
+                            constructed: true,
+                            unlimited: false,
+                        });
+                    }
+                    self.pending_dump_choices.remove(0);
                 }
                 None => {
                     self.pending_dump_choices.remove(0);

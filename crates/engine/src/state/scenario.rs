@@ -425,6 +425,9 @@ struct SupplyDumpSpec {
     /// A dummy Supply Unit (§32.18) — no real supplies; removed on discovery.
     #[serde(default)]
     dummy: bool,
+    /// §57: an effectively bottomless base (Cairo/Alexandria) — never depletes, shows as ∞.
+    #[serde(default)]
+    unlimited: bool,
 }
 
 fn default_dump_ammo() -> u32 {
@@ -617,7 +620,7 @@ impl GameState {
                         water: d.water,
                     },
                     dummy: d.dummy,
-                    constructed: true,
+                    constructed: true, unlimited: d.unlimited,
                 });
             }
         }

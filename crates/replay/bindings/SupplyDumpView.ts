@@ -14,4 +14,8 @@ dummy: boolean,
  * §24.9: `true` for an actual constructed dump (convoy-loadable); `false` for loose supplies
  * merely off-loaded in the hex (usable/consumable, but a convoy may not re-load them).
  */
-constructed: boolean, };
+constructed: boolean, 
+/**
+ * §57: an effectively bottomless base (Cairo/Alexandria) — shown as ∞.
+ */
+unlimited: boolean, };

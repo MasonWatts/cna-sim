@@ -3122,7 +3122,7 @@ impl GameState {
         self.expend_cp(unit, crate::reference::terrain::Fixed(30));
         if dummy {
             self.supply_dumps.push(SupplyDump {
-                location: UnitLocation::OnMap(hex), side, supply: Commodities::default(), dummy: true, constructed: true,
+                location: UnitLocation::OnMap(hex), side, supply: Commodities::default(), dummy: true, constructed: true, unlimited: false,
             });
         } else {
             // Promote every loose pile of this side at the hex to a constructed (loadable) dump; if
@@ -3134,7 +3134,7 @@ impl GameState {
             }
             if !promoted {
                 self.supply_dumps.push(SupplyDump {
-                    location: UnitLocation::OnMap(hex), side, supply: Commodities::default(), dummy: false, constructed: true,
+                    location: UnitLocation::OnMap(hex), side, supply: Commodities::default(), dummy: false, constructed: true, unlimited: false,
                 });
             }
         }

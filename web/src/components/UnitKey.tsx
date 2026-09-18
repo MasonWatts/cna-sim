@@ -74,7 +74,7 @@ export function UnitKey({ label = "Unit Key", unitTypes }: { label?: string; uni
   return (
     <div className="terrain-key">
       <div className="tk-title">{label}</div>
-      <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 4 }}>
+      <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4, 60px)", gap: 4, justifyContent: "start" }}>
         {ordered.map((prims) => (
           <Cell key={key(prims)} prims={prims} label={labelFor(prims)} />
         ))}

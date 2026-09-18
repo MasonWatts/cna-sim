@@ -14,6 +14,9 @@ import type { SquadronView } from "@bindings/SquadronView";
 import type { CapView } from "@bindings/CapView";
 import type { NavalView } from "@bindings/NavalView";
 import type { ShipView } from "@bindings/ShipView";
+import type { InfoPanelData } from "../lore";
+import { WEATHER_SYSTEM_INFO, WEATHER_CONDITION_INFO } from "../weatherInfo";
+import { PORT_SYSTEM_INFO, CONVOY_SYSTEM_INFO } from "../navalInfo";
 import { hexCenter, hexPolygon, mapBounds } from "../hex";
 
 import { terrainFill, HEX_STROKE, ROUTE_DARK, ROUTE_KINDS, EDGE_KINDS, edgeGlyph, routeGlyph, featureGlyph, unitTypeGlyph, PATTERNS } from "./mapSymbols";
@@ -87,7 +90,20 @@ function weatherGlyph(kind: string): JSX.Element {
  *  Perf: `memo`'d so pan/zoom (which only change the parent's transform, not these props) skip it
  *  entirely, and the ~7k-polygon terrain layer is `useMemo`'d on `map` so scrubbing (units change)
  *  never rebuilds it — only the small units layer re-renders. */
-export const HexMap = memo(function HexMap({ map, units, weather, replacements, supplyDumps, truckConvoys, raiders, rommel, overlays, hexsides, air, naval, placeLore, onPlaceHover, onPlaceLeave, legend, unitKey }: { map: MapView; units: UnitView[]; weather?: string[]; replacements?: ReplacementView[]; supplyDumps?: SupplyDumpView[]; truckConvoys?: TruckConvoyView[]; raiders?: RaiderView[]; rommel?: RommelView[]; overlays?: MapOverlaysView; hexsides?: MapView["hexsides"]; air?: AirView; naval?: NavalView; placeLore?: Record<string, unknown>; onPlaceHover?: (name: string, x: number, y: number) => void; onPlaceLeave?: () => void; legend?: React.ReactNode; unitKey?: React.ReactNode }) {
+export const HexMap = memo(function HexMap({ map, units, weather, replacements, supplyDumps, truckConvoys, raiders, rommel, overlays, hexsides, air, naval, placeLore, onPlaceHover, onPlaceLeave, onInfoHover, legend, unitKey }: { map: MapView; units: UnitView[]; weather?: string[]; replacements?: ReplacementView[]; supplyDumps?: SupplyDumpView[]; truckConvoys?: TruckConvoyView[]; raiders?: RaiderView[]; rommel?: RommelView[]; overlays?: MapOverlaysView; hexsides?: MapView["hexsides"]; air?: AirView; naval?: NavalView; placeLore?: Record<string, unknown>; onPlaceHover?: (name: string, x: number, y: number) => void; onPlaceLeave?: () => void; onInfoHover?: (data: InfoPanelData, x: number, y: number) => void; legend?: React.ReactNode; unitKey?: React.ReactNode }) {
+  // Generic hover-attrs for an SVG element that should open the hybrid info panel, anchored to the
+  // element's on-screen box; reuses onPlaceLeave (the shared hide) for leaving.
+  const infoHover = (data: InfoPanelData) =>
+    onInfoHover
+      ? {
+          style: { cursor: "help" as const },
+          onMouseEnter: (e: React.MouseEvent) => {
+            const r = (e.currentTarget as SVGGraphicsElement).getBoundingClientRect();
+            onInfoHover(data, r.left, r.bottom);
+          },
+          onMouseLeave: () => onPlaceLeave?.(),
+        }
+      : {};
   // Routes/edge-terrain fold forward during play (rail/road built or destroyed); fall back to the
   // static header map when no delta has been threaded.
   const hexsideList = hexsides ?? map.hexsides;
@@ -465,8 +481,8 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           }
           if (t.kind === "dump") {
             const dc = [t.d.fuel ? `Fuel ${t.d.fuel}` : "", t.d.ammo ? `Ammo ${t.d.ammo}` : "", t.d.stores ? `Stores ${t.d.stores}` : "", t.d.water ? `Water ${t.d.water}` : ""].filter(Boolean).join(", ") || "empty";
-            const kind = t.d.dummy ? "Dummy dump (§32.18)" : t.d.constructed ? "Supply Dump (§24.9)" : "Loose supplies (§24.9 — not convoy-loadable)";
-            return `• ${kind} — ${t.d.dummy ? "no real supplies" : dc}`;
+            const kind = t.d.unlimited ? "Supply base (§57)" : t.d.dummy ? "Dummy dump (§32.18)" : t.d.constructed ? "Supply Dump (§24.9)" : "Loose supplies (§24.9 — not convoy-loadable)";
+            return `• ${kind} — ${t.d.unlimited ? "unlimited supply" : t.d.dummy ? "no real supplies" : dc}`;
           }
           if (t.kind === "mine") {
             return `• ${t.f.dummy ? "Dummy minefield" : "Minefield"} (§26) — ${t.f.side}${t.f.revealed ? "" : ", unspotted by the enemy"}`;
@@ -610,9 +626,9 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           // its value line reads "decoy" where a real one shows contents.
           return (
             <>
-              <text textAnchor="middle" y={-1} fontSize={8.5} fill="#fff" fontWeight={700}>{top.d.constructed ? "Depot" : "Cache"}</text>
-              <text x={-6} textAnchor="middle" y={8} fontSize={7} fill="#eef">
-                {top.d.dummy ? "decoy" : `×${top.d.fuel + top.d.ammo + top.d.stores + top.d.water}`}
+              <text textAnchor="middle" y={-1} fontSize={8.5} fill="#fff" fontWeight={700}>{top.d.unlimited ? "Base" : top.d.constructed ? "Depot" : "Cache"}</text>
+              <text x={-6} textAnchor="middle" y={8} fontSize={top.d.unlimited ? 11 : 7} fill="#eef">
+                {top.d.dummy ? "decoy" : top.d.unlimited ? "∞" : `×${top.d.fuel + top.d.ammo + top.d.stores + top.d.water}`}
               </text>
               {/* a 50-gal drum (rim ellipse + two hoop bands) beside a crate (diagonal slats) */}
               <g transform="translate(12 5)" stroke="#0d0f14" strokeWidth={0.6}>
@@ -668,22 +684,24 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
         return (
           <g>
             <rect x={px} y={py} width={WPW} height={WPH} rx={6} fill="#efe8c6" stroke="#b7a97a" strokeWidth={1} opacity={0.96} />
-            <text x={px + WPW / 2} y={py + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#2f2b22">
+            {/* Title + A–E labels explain the weather system and Region bands. */}
+            <text x={px + WPW / 2} y={py + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#2f2b22" {...infoHover(WEATHER_SYSTEM_INFO)}>
               Weather
             </text>
             {SECTION_CENTERS.map((_, i) => {
               const cx = px + 8 + cellW * (i + 0.5);
               const cond = weather?.[i] ?? "Normal";
+              const condInfo = WEATHER_CONDITION_INFO[cond] ?? WEATHER_CONDITION_INFO.Normal;
               return (
                 <g key={i}>
-                  <text x={cx} y={py + 36} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={12} fontWeight={700} fill="#5b5340">
+                  <text x={cx} y={py + 36} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={12} fontWeight={700} fill="#5b5340" {...infoHover(WEATHER_SYSTEM_INFO)}>
                     {String.fromCharCode(65 + i)}
                   </text>
-                  <g transform={`translate(${cx} ${py + 58})`}>{weatherGlyph(cond)}</g>
-                  <text x={cx} y={py + 92} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8.5} fill="#5b5340">
+                  {/* The glyph + condition name explain the current condition's effects. */}
+                  <g transform={`translate(${cx} ${py + 58})`} {...infoHover(condInfo)}>{weatherGlyph(cond)}</g>
+                  <text x={cx} y={py + 92} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8.5} fill="#5b5340" {...infoHover(condInfo)}>
                     {cond}
                   </text>
-                  <title>{`Section ${String.fromCharCode(65 + i)}: ${cond}`}</title>
                 </g>
               );
             })}
@@ -722,53 +740,52 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           </g>
         );
       })()}
-      {/* Naval panel (§55/§56): port efficiencies and scheduled Axis convoys — abstract/named naval
-          state that has no map hex, so it lives in an off-map panel (like Incoming Replacements). */}
+      {/* Naval panels (§55/§56): a Ports box (efficiencies) and, below it, an Axis Convoys box —
+          abstract/named naval state that has no map hex, so it lives in off-map panels. */}
       {naval && (naval.ports.length > 0 || naval.convoys.length > 0) && (() => {
-        const rows = naval.ports.length + naval.convoys.length + (naval.convoys.length ? 1 : 0);
-        const px = panelX - 234;
+        const boxW = 270;
+        const px = panelX - boxW - 14;
         const py = panelY + 150;
-        let y = py + 34;
+        const portsH = 28 + naval.ports.length * 14;
+        const convoyY = py + (naval.ports.length > 0 ? portsH + 10 : 0);
         return (
           <g>
-            <rect x={px} y={py} width={220} height={28 + rows * 14} rx={6} fill="#e6eef0" stroke="#7a97a0" strokeWidth={1} opacity={0.96} />
-            <text x={px + 110} y={py + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#243033">Naval (§55/§56)</text>
-            {naval.ports.map((p, i) => {
-              const yy = y + i * 14;
-              return (
-                <text key={`np${i}`} x={px + 10} y={yy} fontFamily="Courier New, monospace" fontSize={10} fill={p.blocked ? "#a33" : "#3a4b4f"}>
-                  {`${p.name}: eff ${p.efficiency}/${p.max_efficiency}${p.blocked ? " ⚠blocked" : ""}`}
-                </text>
-              );
-            })}
-            {naval.convoys.length > 0 && (() => {
-              y = py + 34 + naval.ports.length * 14;
-              return (
-                <>
-                  <text x={px + 10} y={y + 2} fontFamily="Courier New, monospace" fontSize={9} fontWeight={700} fill="#243033">Axis convoys:</text>
-                  {naval.convoys.map((c, i) => (
-                    <text key={`nc${i}`} x={px + 10} y={y + 16 + i * 14} fontFamily="Courier New, monospace" fontSize={10} fill="#3a4b4f">
-                      {`GT${c.arrival_gt} L${c.lane}→${c.destination} ${c.tons}t`}
-                    </text>
-                  ))}
-                </>
-              );
-            })()}
+            {naval.ports.length > 0 && (
+              <g>
+                <rect x={px} y={py} width={boxW} height={portsH} rx={6} fill="#e6eef0" stroke="#7a97a0" strokeWidth={1} opacity={0.96} />
+                <text x={px + boxW / 2} y={py + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#243033" {...infoHover(PORT_SYSTEM_INFO)}>Ports</text>
+                {naval.ports.map((p, i) => (
+                  <text key={`np${i}`} x={px + 10} y={py + 34 + i * 14} fontFamily="Courier New, monospace" fontSize={10} fill={p.blocked ? "#a33" : "#3a4b4f"} {...infoHover(PORT_SYSTEM_INFO)}>
+                    <tspan fontWeight={700}>{p.name}</tspan>
+                    {`: eff ${p.efficiency}/${p.max_efficiency} → ${p.throughput}/${p.max_tonnage}t${p.blocked ? " ⚠" : ""}`}
+                  </text>
+                ))}
+              </g>
+            )}
+            {naval.convoys.length > 0 && (
+              <g>
+                <rect x={px} y={convoyY} width={boxW} height={28 + naval.convoys.length * 14} rx={6} fill="#e6eef0" stroke="#7a97a0" strokeWidth={1} opacity={0.96} />
+                <text x={px + boxW / 2} y={convoyY + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#243033" {...infoHover(CONVOY_SYSTEM_INFO)}>Axis Convoys</text>
+                {naval.convoys.map((c, i) => (
+                  <text key={`nc${i}`} x={px + 10} y={convoyY + 34 + i * 14} fontFamily="Courier New, monospace" fontSize={10} fill="#3a4b4f">
+                    {`GT${c.arrival_gt} L${c.lane}→${c.destination} ${c.tons}t`}
+                  </text>
+                ))}
+              </g>
+            )}
           </g>
         );
       })()}
-      {/* Legend inset drawn in map coordinates (foreignObject) so it pans/zooms with the board. */}
-      {legend && (
-        <foreignObject x={legendX} y={legendY} width={LW} height={LH} style={{ overflow: "visible" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
-            {legend}
+      {/* Legend inset drawn in map coordinates (foreignObject) so it pans/zooms with the board.
+          Terrain Key (+ compass) on the left; Unit Key to its right. */}
+      {(legend || unitKey) && (
+        <foreignObject x={legendX} y={legendY} width={LW * 2} height={LH} style={{ overflow: "visible" }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
+              {legend}
+            </div>
+            {unitKey}
           </div>
-        </foreignObject>
-      )}
-      {/* Unit Key: below the weather panel, left of the Terrain Key. */}
-      {unitKey && (
-        <foreignObject x={panelX} y={panelY + WPH + 12} width={WPW} height={200} style={{ overflow: "visible" }}>
-          {unitKey}
         </foreignObject>
       )}
     </svg>
