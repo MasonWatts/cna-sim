@@ -5,7 +5,10 @@
 > **Provenance & method.** This document is transcribed directly from the scanned
 > rulebook page images in `The Campaign for North Africa.pdf` (192 pp.), cross-checked
 > against the third‑party OCR text `THE CAMPAIGN FOR NORTH AFRICA.txt` and the
-> September 1979 addenda (`CNA Addenda Sep 79.pdf`). Tables are encoded in Markdown,
+> September 1979 addenda (`CNA Addenda Sep 79.pdf`). **The Sep-79 addenda (errata) are folded in
+> inline** as **Erratum (Sep 1979)** notes at each affected case/chart (search `Erratum (Sep 1979)`),
+> and the three OA sheets it restores (Sirte, Marmarica, Cirene) are added to the Italian OB. Tables are
+> encoded in Markdown,
 > reusing the already‑verified table transcriptions in this directory (`crt-*.md`,
 > `terrain-effects-chart.md`, `morale-modifier-table.md`, etc.) where they exist.
 >
@@ -621,6 +624,8 @@ we feel that the involvement will be worthwhile because *CNA* allows the players
 
 ## [3.0] GLOSSARY AND UNIT DEFINITIONS
 
+> **Erratum (Sep 1979):** The definition of *Pinned* is wrong when it refers to air bombardment, especially re. placing units in reserve status — see §41.9 for the definition of Pinned vis-à-vis air bombardment.
+
 **CASES:**
 
 ### [3.1] DEFINITIONS OF TERMS
@@ -853,7 +858,11 @@ captured instantly if it is in a hex without any combat units and an Enemy comba
 places the HQ in its Zone of Control. There is no Capability Point expenditure required for
 such a capture, and the HQ is treated as one Prisoner Point.
 
+> **Erratum (Sep 1979):** This refers to HQ that have *absolutely no* combat values; an HQ with combat values in parentheses may defend, as per 15.17.
+
 ### [3.4] COMBAT UNITS
+
+> **Erratum (Sep 1979):** Parenthesized strengths are used only if the unit is attacked while alone in a hex, or with other units having only parenthesized strengths.
 
 *CNA* has a great variety of combat units — more than 25 different types, not including
 aircraft. Although the structure of the game is operational, there has been an attempt to
@@ -1011,6 +1020,8 @@ unit performing the maintenance.
 
 ### [4.1] THE GAME-MAPS
 
+> **Erratum (Sep 1979) — Maps:** On Map "D", hexside 2228/2328 should have an escarpment.
+
 The game-map takes up a great deal of space (it is almost ten feet in length), and it is
 virtually impossible to play any scenario without all the maps. This is because of the
 logistical nature of the game and the emphasis on supply lines and transport. Players will
@@ -1161,6 +1172,8 @@ Box is representing.
 
 ### [4.3] CHARTS AND TABLES
 
+> **Erratum (Sep 1979):** There are no loose sheets of paper for charts.
+
 There are an inordinate number of Charts and Tables in *CNA*. Most of them can be found in
 the Charts and Tables Booklet. However, some are located on separate loose sheets of paper or
 printed on the game-map or in the Rules booklets.
@@ -1218,6 +1231,9 @@ into those needing pilots and those not requiring pilots. Each plane is listed i
 Certain bear two or more rows of information. With these planes the owning Player may freely
 choose which line of characteristics and capabilities he will assign that plane every time he
 readies it. The explanation of the various ratings is discussed in Case 34.1 of the Air Game.
+
+> **Erratum (Sep 1979):** The Range for the Italian Cant Z.506 is 110 (corrected in the chart below).
+> [Addenda item 4.4b.]
 
 **[4.45] Organization At Arrival Charts (OA).** A great deal of time (perhaps too much time)
 was spent in arriving at the most accurate Order of Battle possible. As with any major
@@ -1313,9 +1329,13 @@ dropped from 52 to 44 when the tanks were American. This was readjusted later on
 TOE Strength Points of a specific type of tank or gun. The definitions of these
 characteristics are listed in Case 3.5. (Chart inlined in the **Reference Charts** appendix, below.)
 
+> **Erratum (Sep 1979):** (Axis Booklet) The Armor Protection Rating for the A9 Cruiser is omitted on the Axis version of the chart; it is correct on the Commonwealth version ("1"). The BAR for all standard-type units is given in Case 21.14.
+
 **[4.48] Italian Tank and Gun Characteristics Chart** (inlined in the **Reference Charts** appendix, below).
 
 **[4.49] German Tank and Gun Characteristics Chart** (inlined in the **Reference Charts** appendix, below).
+
+> **Erratum (Sep 1979):** The CPA for the 7.62cm Pak(R) is "15"; for the Marder, "25". The correct values for the German PzIIIE are 25 · 1 − 4 − 3 · 4/4 · 3 · 0 (reading across).
 
 ### [4.5] LOG SHEETS
 
@@ -1932,6 +1952,8 @@ Reaction and Retreat Before Assault are not voluntary movement in your own porti
 Operations Stage; they occur in the other player's portion of the Operations Stage. Furthermore,
 no unit with a Cohesion Level of −26 or worse may move.
 
+> **Erratum (Sep 1979):** The "%" in line three should be 150%, not 50%.
+
 **[8.18]** Second and Third Line Trucks (i.e., Truck Convoys; see Section 8.9) have their own
 Movement Phase: The Truck Convoy Movement Phase. Such trucks may *not* move (voluntarily) in the
 normal movement segments. Only trucks directly attached to, and part of, a combat unit or HQ may
@@ -1974,6 +1996,8 @@ enemy unit are free to move again. A Phasing unit that finishes its movement mor
 from an enemy combat unit may not continue to move during that Movement *Phase,* regardless of
 the number of CP's remaining, unless that is a unit that has been placed in Reserve Status (18.0).
 Players should note that Reserve Status is an exception to 8.22.
+
+> **Erratum (Sep 1979):** The internal reference should be to 8.23, not 8.22.
 
 **[8.24]** A Phasing unit that begins *any* Movement/Combat Phase in the Zone of Control of an
 Enemy unit must expend *two* CP's to break "Contact" — or *four* CP's, if such position was
@@ -2034,6 +2058,8 @@ summarized on the Terrain Effects Chart.
 
 ### [8.37] TERRAIN EFFECTS CHART
 
+> **Erratum (Sep 1979):** (Terrain Effects Chart) Footnote (4) belongs with Major City, not Swamp. Footnote (8) is correct, not the "1" printed — Tracks do *not* cost 1 CP; they halve the cost of the terrain they are in.
+
 "CP Cost to Enter or Cross" is split into *non-Mot* (non-motorized) and *Mot* (motorized) columns.
 Combat Adjustment columns (Barrage / Anti-Armor / Close Assault) give column shifts: **L** = shift
 left, **R** = shift right (number of columns), in the defender's favor unless noted. **P** = Prohibited.
@@ -2048,8 +2074,8 @@ left, **R** = shift right (number of columns), in the defender's favor unless no
 | Mountain | 4 | 6 | 12 | L2 | L2 | L3 | 3 |
 | Delta | 2 | 4 | 2 | – | – | – | 6 |
 | Desert | 3 | 4³ | 24 | – | – | – | 6 |
-| Major City | 1 | ½ | ½ | See Fortifications | See Fortifications | See Fortifications | 8 |
-| Swamp⁴ | road/rail only | road/rail only | – | – | – | – | 6 |
+| Major City⁴ | 1 | ½ | ½ | See Fortifications | See Fortifications | See Fortifications | 8 |
+| Swamp | road/rail only | road/rail only | – | – | – | – | 6 |
 | Village/Bir/Oasis | Same as terrain in hex for all purposes | | | | | | |
 | Railroad⁵ | Same as terrain in hex for all purposes | | | | | | |
 | Road | 1⁶ | ½⁶ | ½⁶ | – | – | – | 5⁷ |
@@ -2264,6 +2290,8 @@ on the game-map solely for historical purposes; it may not be used for anything 
 whatsoever on terrain or movement. (It *was* used by the Italians in 1940, but not in any way as to
 affect the game.)
 
+> **Erratum (Sep 1979):** The rail lines *may* be used by the Axis Player under §54.4 (that rule was added just as the game went to press).
+
 **[8.72]** The Commonwealth Player may use Rail Movement once per Operations Stage, in the
 Commonwealth Rail Movement Phase. He may transport units and/or supplies, and he may move one
 "stack" of these *any* distance along the rail line in each direction. Thus, a unit may be moved
@@ -2274,6 +2302,8 @@ supplies in Tobruk may be moved *east* to Matruh.
 have expended any CP's for any other reason during that Operations Stage, and it may not be in an
 Enemy ZOC. The unit is then moved to the desired point along the line where it stops. It may not
 enter an Enemy ZOC or Enemy-occupied hex at any time while using Rail Movement.
+
+> **Erratum (Sep 1979):** Units travelling by railroad may not earn any reorganization points in the Stage in which they do so.
 
 **[8.74]** The Commonwealth Player may use his railroad lines once in *each* direction. I.e., he may
 carry one unit (or stack) as far as he wishes in an easterly direction and another stack (or perhaps
@@ -2332,6 +2362,8 @@ the Tripolitania box; e.g., 5 points in hex 2802, 5 points in 2803, and 3 points
 
 **[8.86]** Reinforcements and replacements arriving in Tunis or Tripoli may not be moved from that
 box during the Operations Stage of their arrival.
+
+> **Erratum (Sep 1979):** This is a mistake — the opposite of what it should say: such reinforcements/replacements *may* move in the Stage of their arrival.
 
 **[8.87]** There are no stacking restrictions and unlimited Water in the Tripoli/Tunisia boxes and
 the In Transit boxes. In addition, the Tripoli/Tunisia boxes are considered to contain air
@@ -2408,6 +2440,8 @@ trucks completely from a unit bearing a historical designation. <!-- note: mid-c
 such a case any portion of the total number of attached trucks to that newly detached unit."
 appears incomplete in the original. -->
 
+> **Erratum (Sep 1979):** A line was dropped: a number of trucks may be detached to go along with the detached units.
+
 **[8.98]** During the owning Player's Player-Turn, trucks that are attached to units move with those
 units in the Movement and Combat Phase, and trucks that are not attached to units are moved in the
 Truck Convoy Phase. In either case, trucks may be permitted to move during the opposing Player's
@@ -2458,6 +2492,8 @@ may be in that hex at the end of any Movement Segment. These limits are listed i
 
 **[9.16]** There are three specific types of units that, on certain occasions, ignore Stacking
 restrictions:
+
+> **Erratum (Sep 1979):** The third paragraph should be "c," not "a".
 
 - a. Garrison units (those units with a "G" above their Stacking Point number) stack freely in the
   city/village to which they are assigned as a Garrison. E.g., the Italian Heavy Weapons battalion
@@ -2664,6 +2700,8 @@ strength of any type, such Friendly non-combat unit is Captured.
 
 ### [10.3] ZOC COMBAT REQUIREMENTS (HOLDING OFF)
 
+> **Erratum (Sep 1979):** This Case does *not* apply to the non-Phasing player.
+
 **[10.31]** All hexes containing Enemy units exerting Zones of Control on Friendly combat units
 must be attacked—either by Artillery Barrage or by Close Assault. **Note:** A Probe (see Case
 15.9) satisfies this requirement if the *basic* differential is −4 or better.
@@ -2869,6 +2907,8 @@ TOE Strength used ÷ 10 = Actual Strength Points.* Players should round any deci
 whole number: 11.4 = 11, 11.5 = 12. <!-- note: original prints "+ 10"; the operation is division
 (÷ 10), consistent with 11.3 and the worked examples. -->
 
+> **Erratum (Sep 1979):** The "+" in the formula (third line) should be a "×".
+
 **[11.33]** A unit that has less than .5 Actual Points (or, to state it differently, has only four or
 less Raw Points) has an Actual Strength of zero (0).
 
@@ -3070,6 +3110,8 @@ move for the remainder of that Combat Segment, nor may they engage in Anti-Armor
 Pinned units are subject to casualties (see Case 15.12). Place a Pinned marker on all Pinned units;
 remove the marker at the end of the Combat Segment. "Pin" results from Barrage do not occur against
 Gun-class units or Artillery HQ units.
+
+> **Erratum (Sep 1979):** "Entire target unit" means the battalion-level equivalent fired at — so a Pinned result pins only that battalion, not the division. Artillery fire is always against specific targets (battalion-equivalents), never the hex.
 
 **[12.45]** A number as a result (*e.g.,* 1 or 2) indicates the number of TOE Strength Points destroyed
 by the Barrage. Casualties are taken after all Barrages are completed.
@@ -3314,10 +3356,14 @@ represents (see Case 14.5).
 Protection Rating *plus* their Vulnerability Rating (modified if necessary if the point is engaging in
 anti-armor fire, etc.)
 
+> **Erratum (Sep 1979):** This case is wrong. SP guns use their Armor Protection Ratings the same as any other armored unit. However, if such an SP Gun is barraging "Back", it may not be used to absorb, nor is it affected by, Anti-Armor Fire.
+
 **[14.48]** If the owning Player's only TOE Strength Points in the hex (assaulting or defending against
 assault) that could be affected by anti-armor fire are halftracks (i.e., certain *motorized* axis leg
 infantry units), the halftracks double their Armor Protection Rating. Note that losses of halftracks
 involve not only the infantry TOE Strength Point but its transporting Truck Point(s) as well.
+
+> **Erratum (Sep 1979):** A maximum of two TOE points of "halftrack-motorized" units may be lost in any given segment of Anti-Armor Fire, regardless of the situation.
 
 ### [14.5] CAPTURING ENEMY DESTROYED TANKS
 
@@ -3480,6 +3526,8 @@ available TOE Strength Points, that Close Assault is automatically considered a 
 Assault. You *must* Close Assault with 50% or more of your available strength (although some of those
 Points may be directed elsewhere) to attack with a normal Close Assault (see Section 16.0).
 
+> **Erratum (Sep 1979):** (Example) In the third line the other 4 Points are withheld.
+
 **Example:** A unit with a TOE Strength of 7 uses 2 Points to assault Hex A and 1 Point to assault Hex B,
 withholding the other Point because of ammunition problems. Neither assault is a full Close Assault; both
 are Probes. If he used 3 Points against Hex A instead of 2, both would be considered Full Assaults, as he
@@ -3491,6 +3539,8 @@ non-Phasing Player now subtracts his total from that of the attacking, Phasing P
 Basic Assault Differential. Thus, if the Attacker has 6 points and the Defender eight, the Basic Assault
 Differential would be −2.
 
+> **Erratum (Sep 1979):** The Case reference in the 4th line should be to Cases 11.32 and 11.35.
+
 **[15.27]** The Basic Assault Differential is now adjusted, where necessary, for Terrain Effects (Case
 15.3), Morale (Case 15.6), or Units Size Differential (Case 15.5). These effects result in an adjustment
 of the Differential *Column* (not the Differential number) either one way or the other, and the
@@ -3498,6 +3548,8 @@ cumulative effect of all these upon the Assault Differential produces an Adjuste
 which is then used to determine the results of the Assault. Consult the Procedure, Section 15.0.
 Remember, the two dice are read sequentially (6 and 2 = 62) *not* mathematically (6 and 2 = 8) in Assault
 Combat.
+
+> **Erratum (Sep 1979):** The last sentence is incomplete: the same diceroll is also *added* (6+2=8) to determine retreats, surrenders, etc.
 
 **[15.28]** In Close Assault (and Probe) *only,* if one Player has *fewer than 5* Raw Assault Points, he
 is considered to have *zero* Close Assault Points, and the Differential is determined from that figure.
@@ -3557,6 +3609,8 @@ up-Escarpment hex (−3) would have an adjustment of −2 (−3 +1 = −2) in fa
 
 ### [15.4] COMBINED ARMS EFFECT ON ASSAULT
 
+> **Erratum (Sep 1979):** In the fourth-from-last line, the "...Close Assault Strength would be reduced to *one*."
+
 The term "Combined Arms" is used to describe the mutual support of tanks and infantry. Tanks (and tanks
 only — *not* recce or self-propelled artillery, etc.) must be supported by an equal number of infantry to
 be completely effective. Thus, for each TOE Strength Point of tanks engaging in Close Assault, there must
@@ -3593,6 +3647,8 @@ shift benefitting the side with the larger unit. Unit equivalents apply here (se
 **[15.53]** The column adjustments for Organizational Size Difference, always in favor of the larger unit
 size, are as follows:
 
+> **Erratum (Sep 1979):** The word "Brigade," printed under the Adjustment column, belongs under the Smaller Side column.
+
 | Larger Side | Smaller Side | Adjustment |
 |---|---|---|
 | Division | 3-point Brigade | 1 |
@@ -3616,6 +3672,10 @@ Case 15.51 does *not* apply to this situation.
 (counter) is attached to the division. For example, a Commonwealth infantry division with nine infantry
 battalions and no infantry brigade headquarters attached is a shell in Close Assault. Note that the two
 Italian infantry brigade counters (ID Code "m") represent the entire brigade.
+
+> **Erratum (Sep 1979) — new case [15.56]:** If all defending units in a hex are pinned and that hex is
+> assaulted, the units defend with a strength of "0". In addition, there is a two-column shift to the
+> right (to account for the effects of 15.51).
 
 ### [15.6] EFFECTS OF MORALE ON CLOSE ASSAULT
 
@@ -3715,6 +3775,8 @@ method of determining losses, they will find that the Assault Combat Results Tab
 wide variety of results.
 
 ### [15.79] CLOSE ASSAULT COMBAT RESULTS TABLE
+
+> **Erratum (Sep 1979):** Under Defender Losses, +4 differential, 10% line, the dice-roll should read 34-45.
 
 Columns = Final Close Assault Differential. Loss-% rows use the two-dice read (11–66); the
 **Capt / Eng / Retreat** rows use the dice *sum*. The `−11` and `+17` columns are the extreme
@@ -3839,6 +3901,8 @@ this is allowed.
 **[15.88]** A Player may always voluntarily *Surrender* his units, rather than have them slaughtered.
 Furthermore, units out of Ammunition or with a −17 or worse Cohesion Level that are assaulted
 automatically Surrender (see also Case 17.25).
+
+> **Erratum (Sep 1979):** Understand this vis-à-vis Case 6.26: a unit with a −17 cohesion level that is *assaulted* surrenders automatically; if an Enemy unit merely moves adjacent it would *not* surrender — but a −26 unit *would*, in that latter case.
 
 ### [15.89] PRISONERS CAPTURED RESULTS TABLES
 
@@ -3990,6 +4054,8 @@ To patrol, the Phasing Player announces the number of Patrol Points he wishes to
 
 **[16.11]** Only Recce-type, Light Tank (Italian CV/33's, British Mark VI Lights, or German Panzer I's), or Motorized Infantry may supply Patrol Points for Reconnaissance.
 
+> **Erratum (Sep 1979):** Add to the units that may patrol: Italian L/6's, Commonwealth Stuarts, and anyone's mechanized infantry (or Panzergrenadiers).
+
 **[16.12]** The Phasing Player subtracts — or rather detaches — TOE Strength Points from the unit/TOE types allowable (Case 16.11) and designates them as Patrol Points. **Example:** a Phasing Player detaches two Recce TOE Strength Points from a Recce battalion in Hex A and assigns them as Patrol Points to Reconnoiter Enemy-occupied Hex B. The Player notes on his TOE Log sheets the assignment and any resultant casualties.
 
 **[16.13]** No more than 2 TOE Strength Points may be assigned as Patrol Points from any one *hex,* regardless of the number of units in that hex.
@@ -4124,9 +4190,13 @@ b. The Enemy unit(s) has *at least* 3 times the Strength (Enemy Raw Offensive As
 
 **[17.28]** Axis units stacked with *General Rommel* at the instant of Assault have their *Adjusted Morale Rating* further adjusted by +1. Thus a unit with an Adjusted Morale Rating of 0 that is assaulting under the direct command of Rommel has an Adjusted Morale Rating of +1.
 
+> **Erratum (Sep 1979):** It is possible for a unit to have a final Morale of +4.
+
 <!-- note: counter illustrated near [17.28]: "0 [HQ/envelope symbol] Rommel / DAK", size XXXX -->
 
 ### [17.3] TRAINING
+
+> **Erratum (Sep 1979):** The Axis Training Centers are used only to train Replacement Points (Cf. 20.43), not actual units.
 
 Several of the Commonwealth units arrived in Egypt ill-prepared to fight a desert campaign. Therefore, their Morale Rating on arrival is lower than their assigned Basic Morale. In order to reach their assigned Basic Morale they must undergo *Training.*
 
@@ -4292,6 +4362,8 @@ Each unit represented by a counter in the game is either *independent* or *assig
 
 **[19.14]** It is possible for the same unit to be a Parent Formation and to simultaneously be, in turn, assigned and/or attached to another (higher level) Parent Formation. Note that the units attached to a particular Parent Formation may affect whether or not it can be attached in turn to another unit.
 
+> **Erratum (Sep 1979):** (Example) The last line should read "...attached to one unit (NZ) and assigned to another (7th Armrd)."
+
 **Example:** If the 1st Kings Royal Rifle Corps is detached from the 7th Armored Division (its assigned Parent Formation) and sent to support the 2nd New Zealand Division, the 1st KRRC, when absorbed by the 2nd NZ would become attached to one units and assigned to another.
 
 ### [19.2] UNIT ASSIGNMENTS
@@ -4356,6 +4428,8 @@ Any units assigned to a particular Parent Formation may freely be attached to or
 For example, the 132nd Regimente Corazzate and the Nizza Cavelleria Regiment are detached from the Ariete Division. The N.C. Rgt. may be attached to the 132nd R.C. at this point without any additional expenditures.
 
 ### [19.5] MAXIMUM ATTACHMENT CHART
+
+> **Erratum (Sep 1979):** Parent Units may exceed their normal *assigned* unit levels (19.3) by *attaching* (not assigning) smaller units above those levels; the numbers/types allowed are on this chart, carried in addition to normally-assigned units.
 
 **Allied**
 
@@ -4512,6 +4586,8 @@ Replacement Points are designated by Class as follows: Infantry Points, Gun Poin
 
 ### [20.3] REPLACEMENT POINT CONVERSION CHART
 
+> **Erratum (Sep 1979):** The last item on this chart is the SGSU — ignore that reference; SGSU's come in as desired (per 34.82) and require no Replacement Points.
+
 | One Replacement TOE Strength Point of | Requires — Replacement Points |
 |---|---|
 | Any Headquarters Unit | 2 Inf |
@@ -4611,6 +4687,8 @@ Italian and German Replacement Points enter the game from the Axis Replacement P
 
 **[20.62]** The Axis Player may bring in *any* number of Replacement Points of any and all Classes during any one OpStage (see Case 20.23) limited of course by the pool restrictions. However, each Replacement Point is counted against the Shipping Tonnage allowance for that Game-Turn (see Case 51.5). The equivalent tonnage of each Point is given in the Pool Table. Thus, if the Axis Player wishes to bring in 10 Italian Infantry Replacement Points, he would need 350 Tons of Shipping availability.
 
+> **Erratum (Sep 1979):** In the example at the end of the Case, the Axis Player would need *300* (not 350) tons.
+
 **[20.63]** All Axis Replacement Points coming from the Axis Replacement Pool must be Planned for at least two turns in advance. In other words, Axis Planned Replacements for July, 1941 must be determined in the Naval Convoy Arrival Phase of the 1/III Game-Turn of June, 1941. Replacement planned in June III may arrive in any OP Stage Navel Convoy Arrival Phase of July I.
 
 **[20.64]** Replacement Points have priority in Shipping Space over any type of supplies. The Axis Logistics Commander thus has to keep a close watch (and tight rein) on what he is shipping at what time, as he rarely knows that far in advance exactly how much shipping he will have available (see Section 51.0). Remember, Axis Shipping is subject to Commonwealth air Raid, so keep an eye on Malta and the location of Commonwealth airfields.
@@ -4630,6 +4708,8 @@ Italian and German Replacement Points enter the game from the Axis Replacement P
 **[20.71]** Most Commonwealth units and some of their Replacements arrive via the Reinforcement Track. However, most Replacements — mostly "drafts" and transport — arrive somewhat randomly as mandated by the Commonwealth Production Tables (20.78).
 
 **[20.72]** The Commonwealth Player must plan *two* months in advance (unless specified in a given Scenario) for the arrival of Replacement Points via Production. Thus, for Points required for August, 1942, the Commonwealth Player must plan — using the Production Systems — in the first Naval Convoy Schedule Phase of July, 1942. However, the Commonwealth Player always uses the Production Table for the month (one months in the future) in which he wishes his units to arrive — not the month in which he is consulting it.
+
+> **Erratum (Sep 1979):** The first line should state the CW must plan *one* month in advance (not two); the Production Tables are used for the Month/Turn in which the CW Player *plants* his arrivals.
 
 **[20.73]** The Commonwealth Production System functions like the Axis Pools except for Infantry and Truck Points. The Player uses a random dice roll to determine what Infantry and Truck Points he receives per turn, depending upon the date of arrival.
 
@@ -4654,6 +4734,8 @@ During the Desert Campaign, Commonwealth units were often withdrawn and sent els
 **[20.82]** When a Withdrawal is listed by type, the unit chosen for Withdrawl must be at 75% maximum TOE Strength (at least), or, if no units are up to that level, the highest TOE Strength-level unit of its type available.
 
 **[20.83]** Units to be Withdrawn must be moved to Cairo or Alexandria on or before the Game-Turn or Stage they are to be withdrawn. If they are not present or at required TOE Strength (20.75) by that time, they may be eliminated. (This is a play mechanism to forestall procrastination.) Units so eliminated may not return (as many Withdrawls do, later in the game).
+
+> **Erratum (Sep 1979):** Ignore the reference to 20.75.
 
 **[20.84]** Once the units have reached Cairo or Alexandria, they are simply removed from play.
 
@@ -4680,6 +4762,8 @@ Essentially, all vehicles, except motorcycles and those vehicles assigned (abstr
 **[21.11]** Only the following vehicles are subject to Breakdown: Truck Points, tank, armored reconnaissance/armored car and self-propelled gun TOE Strength Points whether they comprise part of a unit or are Replacement Points.
 
 **[21.12]** Each specific type of TOE Strength Point has its own *Breakdown Adjustment Rating* (BAR). BAR's are listed below and in the various Tank & Gun Characteristics Charts. For example, an Italian M 13/40 has a BAR of 2R while the Commonwealth Sherman has a BAR of zero.
+
+> **Erratum (Sep 1979):** Italian M13/40's have a BAR of *1R*, as listed on the charts.
 
 **[21.13]** The Breakdown Adjustment Rating is used to adjust the Breakdown Points column to the left or right when rolling to determine Breakdown.
 
@@ -4878,6 +4962,8 @@ d. The Weather is Rainstorm or Sandstorm for that hex. This does not apply to Ma
 
 **[22.34]** For each type of *Brokendown vehicle* the Player rolls one die and consults the Broken Down Vehicle Repair Table (22.8) under the correct column (Temporary or Major Facility). The dieroll may be modified by the effects of bombing on the Fortification Level of the city (see Case 22.35). The result of the dieroll is the percentage of that type of vehicle that may be Repaired (see Case 22.25 for details). See Case 22.4 for Destroyed Tanks.
 
+> **Erratum (Sep 1979):** Ignore the reference to 22.35.
+
 a. If the Repair Facility is in a Major City and the Enemy Player succeeds in reducing the Fortification Level of that City by *one* (see Air Bombardment Table) add one to the dieroll. If the level is reduced by two or three add two to the dieroll (whether reduced by Air Bombardment and/or Barrage).
 
 b. If the Repair Facility is not in a Major City and the Enemy Player delivers enough Air Bombs or Artillery Barrage that, when/if using Air Bombardment Table, to reduce a Fortification one Level, that Repair Facility is neutralized for that OpStage. It may not repair any vehicles.
@@ -4948,6 +5034,8 @@ The German Mobile Tank Repair Squad is treated exactly the same as the Commonwea
 
 ### [22.8] BROKEN DOWN VEHICLE REPAIR TABLE
 
+> **Erratum (Sep 1979):** The last two sentences of the Table explanation (additions to the dierolls) are wrong — see Case 22.34 for the correct dieroll modifications.
+
 Column groups: **Field** = Truck / AC-R / Tank-SPA-TD; **Repair Facility** = Temporary / Major.
 
 | Die | Truck (Field) | AC/R (Field) | Tank/SPA/TD (Field) | Temporary (Facility) | Major (Facility) |
@@ -4982,6 +5070,8 @@ In *CNA* Engineer units are used to aid in construction of a variety of items, a
 ### [23.1] ENGINEER UNITS
 
 **[23.11]** Engineer counters have no real combat value, nor do they exert Zones of Control. They are not combat units in any way, shape, or form. Engineer units may never enter Enemy-controlled hexes voluntarily, and they may use their parenthesized strength only if they are stacked with a Friendly combat unit.
+
+> **Erratum (Sep 1979):** Engineers may use parenthesized strengths only if *not* stacked with a Friendly combat unit. Engineers may always enter Friendly-occupied, Enemy-controlled hexes.
 
 **[23.12]** Engineer units may be replaced even if eliminated. Engineer units are rebuilt according to the schedule in Case 20.3.
 
@@ -5022,6 +5112,8 @@ Fortifications, minefields, air facilities, repair facilities, roads, railroads 
 **[24.14]** In addition to supplies expended for construction, *units* involved in construction expend all normal supplies as required (Stores, Fuel, etc.)
 
 **[24.15]** No more than one project may be under construction by a given unit at any one time, and units involved in construction are subject to all stacking rules.
+
+> **Erratum (Sep 1979):** Case 24.12 is an exception to the last sentence.
 
 **[24.16]** A unit may always voluntarily cease construction without any penalty other than that construction is halted.
 
@@ -5170,6 +5262,8 @@ There are two railroad lines on the game-maps: the rail complex that crisscrosse
 
 **[24.72]** Airfields and flying boat basins may be constructed only by Engineer battalions. Air landing strips and flying boat alighting areas may be constructed by Engineer battalions, Engineer companies, or Squadron Ground Support Units.
 
+> **Erratum (Sep 1979):** Commonwealth SGSU's and HQ's with Engineer capability may also construct Airfields and basins.
+
 **[24.73]** Air fields or strips may be constructed in clear terrain, rough, major cities, desert or sand/gravel hexes. They may not be constructed in an Enemy-controlled hex. Flying boat facilities may be constructed only in coastal hexes, regardless of the terrain.
 
 **[24.74]** Airfields and Flying Boat Basins require three Construction Segments to complete, while air landing strips and flying boat alighting areas require one Construction Segment to complete.
@@ -5227,6 +5321,8 @@ All major cities in the game are considered fortifications. In addition, Players
 **[25.14]** Fortifications may be reduced in Level strength by air bombardment (see Case 39.37) or artillery barrage (Case 12.5). No other type of combat affects fortifications. Reduced fortifications may be rebuilt.
 
 **[25.15]** Reduced Fortification Levels may affect the rate of repair of a repair facility (see Case 22.35).
+
+> **Erratum (Sep 1979):** The reference should be to 22.34.
 
 **[25.16]** Major cities and fortifications may be reduced to a Fortification Level of zero. (**Note:** The "zero" level has no effect in the Land Game, except to mean that the fortification can be more easily rebuilt. However, see the Strafing Table, Case 40.8).
 
@@ -5296,6 +5392,8 @@ On an operational level, Desert Raiders (The Long Range Desert Group and Die Son
 
 **[27.16]** If an LRDG unit is eliminated, a new one may be formed (from that eliminated counter) *four* Game-Turns later. Thus, an LRDG unit eliminated in Operations Stage 2 of the July II Game-Turn would be formed in the Organization Phase of the 3rd Operations Stage of the August II Game-Turn.
 
+> **Erratum (Sep 1979):** LRDG's, when returning, are formed per Case 27.13. (The dating system in the example was an abandoned testing convention.)
+
 ### [27.2] DIE SONDERKOMMANDO ALMASY
 
 The Axis desert raiders were a small group under the command of Count Laslo von Almasy. DSA operates in the same way — and is formed in the same way — as LRDG units, with two exceptions:
@@ -5323,6 +5421,8 @@ When either one of the above occurs, the desert raider counter is placed on the 
 **[27.35]** Desert raider units need supplies but not the same as normal units. *Once* a week — during a given Game-Turn (not Operations Stage) — they must pass through a Friendly supply dump, oasis or bir (well). As it passes through the supply dump, it picks up (and expends) from the supply dump *one* Ammunition Point and *two* Fuel Points. If such supply is not available, the desert raider unit must wait until it becomes available. It may not travel without those two Fuel Points per Game-Turn. Water is taken on in the same way, but can come from any oasis or bir. If a desert raider has not drawn water by the end of a given Game-Turn, it is eliminated. (Players will note that they can go 5 Operations Stages without resupplying, by getting supplies in Stage 1 of a Game-Turn, then resupplying in Stage 3 of the *following* Game-Turn.
 
 **[27.36]** If necessary, desert raiders have Reaction capability (see Case 27.44).
+
+> **Erratum (Sep 1979):** Desert Raiders may use Reaction *after* any Spotting attempt.
 
 **[27.37]** Raiders may never exceed their 50 point Capability Point Allowance. If for any reason they are forced to do so, they are eliminated.
 
@@ -5416,6 +5516,8 @@ The Commonwealth Special Air Service Brigade (SAS) was a specially-trained unit 
 
 **[27.88]** The SAS Brigade may move after a raid as far as it wishes, within the parameters of continual movement and cohesion. However, if the Commonwealth Player stacks that SAS Brigade unit with an LRDG unit at any time the SAS Brigade increases its Capability Point Allowance to 30, is removed from "physical sight" (in the fashion of an LRDG unit; see Case 00.00) and moves as an LRDG unit. The LRDG unit must escort the SAS unit to the point where it (the SAS Brigade) is placed on the game-map — i.e., it has returned home.
 
+> **Erratum (Sep 1979):** The reference should be to 27.32.
+
 **[27.89]** The SAS Brigade may replace eliminated TOE Strength Points, three Infantry Replacement Points trained for a 12 OpStage period for every TOE point needing replacement. If the SAS Brigade is eliminated entirely, it may not be received or replaced in any way.
 
 ### [27.9] DESERT RAIDER RAIDS TABLES
@@ -5486,6 +5588,8 @@ At any time that a unit surrenders, it becomes a prisoner. Every infantry TOE St
 **[28.16]** Prisoners can be dealt with by captors in any fashion they wish, as long as they are fed and kept alive. The best course, however, is to get them off the game-map. To do this they are marched to Departure Points. The Axis Departure Point is the Sirte box on game-map A; for the Commonwealth, the Departure Point for prisoners is either Alexandria or Cairo. As soon as Prisoner Points enter their Point of Departure they are removed from the game — permanently. (They will not be used in factories to promote *your* war effort.)
 
 **[28.17]** Each detention camp requires the presence of *one* Guard Point (see Case 28.2). When moving, one Guard Point is requried for each 1 Prisoner Points. Any prisoners without a guard "escape" (see Case 28.23).
+
+> **Erratum (Sep 1979):** The number "1" in line four should be "5".
 
 **[28.18]** Prisoners may be transported by trucks, if you are feeling profligate with your transport.
 
@@ -5585,6 +5689,10 @@ Sudden downpours in the desert were a lot more common than is supposed. Aside fr
 **[29.58]** No vehicle or motorized unit may enter a delta hex, unless it is on a road or railroad. Units in a delta hex at the start of a rainstorm must remain there for that Operations Stage, unless they are on a road or railroad.
 
 ### [29.6] WEATHER TABLE
+
+> **Erratum (Sep 1979) — [29.61]:** the printed Weather Table is backwards; the correct seasonal
+> sequence is per §29.1 (Spring runs from the 4th week of March to the end of the 3rd week of June, and
+> so forth). The table as reproduced here follows §29.1.
 
 Roll two dice (larger×10 + smaller, 11…66) and read the row for the current season. (Printed as the
 [29.61] Weather Table in the Charts booklet.)
@@ -5687,6 +5795,8 @@ In one of the most daring raids of the war, six men of the Italian 10th Light Fl
 
 ### [30.5] NAVAL TRANSPORT OF TROOPS
 
+> **Erratum (Sep 1979):** The reference in the first paragraph should be to 56.0. (This Case is a bit garbled — read the following corrections carefully.)
+
 Only the Commonwealth has the ability to transport troops by sea; the Axis had little viable coastal shipping in North Africa. What they had was used for supplies. This section applies only to personnel; transporting of supplies by sea is covered in Case 00.00.
 
 **[30.51]** The Commonwealth may transfer units from one port to another, dependent on the personnel capacity of the port. Furthermore, ports may be incapacitated as a result of Enemy Air Bombardment (Case 39.3), in which event they are incapable of receiving or shipping out any personnel.
@@ -5699,13 +5809,21 @@ Only the Commonwealth has the ability to transport troops by sea; the Axis had l
 
 **[30.55]** To be transferred, a unit or units must start the Operations Stage in the port of debarkation. It may expend *no* Capability Points during the Phases prior to the Truck Convoy Segment. In the Truck Convoy Segment, it is transferred to the port of embarkation, where it is landed at a cost in Capability Points equivalent to its Capability Point Allowance.
 
+> **Erratum (Sep 1979):** Exception to the CP-expenditure restriction: a unit that has undergone barrage/bombardment may still be transferred.
+
 **[30.56]** Transfers may not take place between ports when one is incapacitated because of Enemy Air Bombardment (see Case 39.3). Transfer may take place between any Friendly-controlled Ports. (Control means the last Player to occupy the hex.)
 
 **[30.57]** Whenever a Player transports troops by way of a port, the ability of that port to handle supplies is reduced by the percentage listed in Case 30.59. Thus, if Benghazi brought in *any* troops, its supply transport capacity (reduced or maximum level) is reduced by 25% for that Operations Stage.
 
+> **Erratum (Sep 1979):** Ignore the reference to 30.59. The rule: for every Stacking Point transported, reduce the Maximum Tonnage for that stage by 10% (SP's shipped *out* have no effect). For ports with a 1-SP maximum, shipping supplies in has no effect.
+
 **[30.58]** Ports may be blocked by mines, etc. (see Case 50.2). This does not affect a port's capacity to receive personnel (as above) until and unless that port is reduced to *less than* 2/3 (67%) capacity, rounded up. In such case, the port may not receive or send any personnel. Any port that is totally incapacitated by bombing may not, of course, receive or send personnel.
 
+> **Erratum (Sep 1979):** The reference in line two should be to 55.2.
+
 **[30.59] Port Capacity Chart** (see separate sheet)
+
+> **Erratum (Sep 1979):** There is no 30.59 chart; that chart is now Case 55.3.
 
 
 ### [30.6] COMMONWEALTH FLEET REINFORCEMENT SCHEDULE
@@ -5729,6 +5847,8 @@ In addition to the above, there is a chance that Rommel has been called back to 
 A brief Designer's Note: The inclusion of Rommel as a counter (without using other specific commanders) was a pure design decision. While Rommel did have a great affect on tactical operations and decisions, including only him in the game is a Design Affectation, pure and simple. However, the effect of the Rommel counter *is* historical.
 
 ## [32.0] ABSTRACT LOGISTICS AND AIR RULES
+
+> **Erratum (Sep 1979):** (Very important) The abstract rules — everywhere in the game — have *never* been tested. They should work, but may not.
 
 **COMMENTARY:**
 
@@ -6120,6 +6240,8 @@ appendix, below.
 
 **[34.72]** Planes on the ground are not represented by the Squadron Ground Support Unit counter (see Section 35.0). The actual types and numbers of plane in that squadron are kept on the Squadron Composition Sheet. No aircraft counters are needed.
 
+> **Erratum (Sep 1979):** The SGSU represents where the grounded planes are; it does not literally represent the planes themselves.
+
 **[34.73]** When placing a squadron or squadrons (or part of a squadron) of planes in a target hex (the hex in which the mission will occur) the Player simply places one aircraft counter for each class of planes (fighter, bomber, transport) in the target hex to denote that planes of that class are in the hex. The counters are lettered so that the Players can note which planes/squadrons are represented by what counters.
 
 **[34.74]** If any planes are eliminated, the Player simply reflects those losses by adjusting that total on his sheet, not by changing counters. The counter representing the planes remains in place.
@@ -6212,6 +6334,8 @@ Squadrons — specifically the SGSU's — are used to maintain and supply the ai
 Planes reassigned to a new squadron are given a transfer mission (to fly to their new base), unless the new SGSU is in the same hex as the plane.
 
 **[35.23]** The number of planes that may be assigned to a squadron is limited and dependent on the nationality of the squadron. Each squadron's limit is the maximum number of *ready* planes it can handle; a squadron can always keep ⅓ more in reserve (whether ready or not). Thus, a squadron with a capacity of 12 may contain 16 planes: 12 ready to fly, and 4 (⅓ of 12) in reserve (and incapable of performing a mission). The capacities are as follows:
+
+> **Erratum (Sep 1979):** The rulesbook is wrong; the chart book is right — British initial squadron capacity is 12/4, not 15/5.
 
 | Nationality | Ready Capacity | Reserve Capacity |
 |---|---|---|
@@ -6332,6 +6456,8 @@ Flight is movement of aircraft. Flight is handled operationally: planes are simp
 ### [37.3] EMERGENCY FLIGHT
 
 **[37.31]** If an Enemy land combat unit moves adjacent to a Friendly air facility that has readied planes on the ground, and those planes are in danger of being destroyed or captured by that Enemy unit, the readied planes may attempt an emergency flight to escape such danger. Emergency flight is a transfer mission
+
+> **Erratum (Sep 1979):** Planes in facilities located in major cities may always fly any mission even if an Enemy unit is adjacent; facilities in major cities are immune to Enemy combat units moving adjacent.
 
 **[37.32]** Only fueled planes — including reserves — may make an emergency flight.
 
@@ -6572,6 +6698,8 @@ Most missions involve different planes going after different types of targets. H
 
 **[39.11]** Unless a plane is attempting emergency flight (see Case 37.3), no plane may fly unless it has been assigned a specific mission. Nor may any plane be flown if an Enemy land combat unit is adjacent (see 37.3).
 
+> **Erratum (Sep 1979):** See the addenda for 37.31.
+
 **[39.12]** Each Player may use any shorthand he wishes to note which mission is which. Each Squadron Composition Sheet has a section for listing the mission that a specific plane is undertaking in a given Operations Stage or Strategic Air Phase. The Player simply writes the mission next to the plane, and that plane will attempt that mission.
 
 **[39.13]** There are two major areas of missions: strategic air missions and Tactical Land Support. The former refers to any Commonwealth Missions flown against Axis Naval Convoys as well as any Axis Missions flown *against* Malta. Both of these Missions are flown *only* in the Strategic Air Phase of the Sequence of Play; moreover, they are flown only once per Game-Turn.
@@ -6665,6 +6793,8 @@ Players assign each fighter/fighter-bomber or squadron a mission in a specific h
 
 **[40.15]** The Pilot Rating is his capability. Pilot Rating's are either 1,2,3,4, or 6. (The 6 pilot) represents the infamous Hans-Joachim Marsielles, the German Desert Ace. The Pilot Ratings are added to the plane's TacAir Rating when that plane is involved in *any* air-to-air combat. Thus an ME Bf109F with Marseilles would have a TacAir Rating of 14.
 
+> **Erratum (Sep 1979):** The last number is wrong — it should be "12", as Bf109F's have a TacAir of "6."
+
 **[40.16]** As Pilots are assigned to squadrons, the Player may have them fly any plane within that squadron (remember Case 40.14). Any plane that does not have a pilot assigned for a mission is considered to have a zero-rated pilot. There is an unlimited supply of zero-rated pilots.
 
 **[40.17]** If a fighter is shot down, there is a chance that the pilot bailed out and can be recovered (see 45.65). If the pilot has been recovered, he may fly again three Operations Stages after his Recovery. He is returned to his squadron of assignment.
@@ -6688,6 +6818,8 @@ The Axis Player wishes to bomb Tobruk. He sends two squadrons of Ju88's to accom
 **[40.26]** Using the example in Case 40.25 we can best illustrate the differences between offensive and defensive CAP. If the Commonwealth planes were flying defensive CAP they would, first off, have *no* air Zone of Control (40.23). They would also not automatically initiate air-to-air combat. However, the Axis Squadrons would have to get through the defensive CAP to perform their Mission. If the Hurricanes were flying offensive CAP, they would have an air Zone of Control and they could initiate combat against the Axis planes. There is one additional — and important — difference. If fighters are flying offensive CAP, they would *have to* attack any Enemy planes entering their hex or any hex in their Zone of Control to perform a mission in that hex; they could not decide to not have combat. Exception: only Enemy planes in one such hex must be attacked. Defensive CAP planes may decline combat and abort; offensive CAP planes may not.
 
 **[40.27]** Fighters flying Offensive CAP *may intercept* Enemy planes whose paths of flight enter the hex they are in or their air ZOC. After all plane counters have been placed to indicate their mission target hex, but before revealing the numbers of planes involved, a Player with fighters on offensive CAP may ask to see a path of flight. If that path coincides with his fighters, the Player with the offensive CAP *may* choose to intercept the Enemy mission right there. If so, air-to-air combat will take place, and any surviving planes may continue their mission. Fighters on offensive CAP may intercept only one mission per Operations Stage.
+
+> **Erratum (Sep 1979):** A mission of planes may be intercepted, have air-to-air, fly on, be attacked again, etc.; the only requirement is that each hex be different.
 
 ### [40.3] SCRAMBLE
 
@@ -6796,7 +6928,11 @@ Columns = TacAir Points.
 
 **[40.93]** Planes on offensive CAP have no 20C at night.
 
+> **Erratum (Sep 1979):** That "20C" should be "ZOC".
+
 **[40.94]** Any CAP must be designated as being flown at night, and such CAP/Escort has no effect on other missions.
+
+> **Erratum (Sep 1979):** There is no effect on other *Day* missions.
 
 ## [41.0] BOMBING MISSIONS
 
@@ -6838,6 +6974,8 @@ All Land Support bombing missions except "mining harbors" are resolved using the
 
 **[41.31]** *Bombing Personnel (B-CU):* The effect of the anti-personnel bombing mission is to *Pin* a number of units (battalion-equivalent) in the target hex; see Case 41.9 for the explanation of Air bombardment pins. The Player totals his bomb total and consults the Air Bombardment CRT. He rolls two dice, reads the results sequentially, and cross-references that dieroll with the bombload tonnage. The result is the number of battalion-equivalent units Pinned. However,for this purpose, each tank or gun (artillery/anti-tank) unit is worth *two* units (AA/Flak units may be pinned in the way). The choice of units to be Pinned is determined the same as an artillery barrage (See 12.2). There is one exception to this section: Units in *Major Cities* may not be bombed unless and until the fortification level of the city is reduced to one (1) or less.
 
+> **Erratum (Sep 1979):** The end sentence does not apply to fortification counters. Units in fortifications with a "2" level (other than major cities) may be bombed, with proper column adjustments (1L).
+
 **[41.32]** *Bombing Truck Convoys (B-TC):* The results are given in the number of truck units destroyed. The defending Player must divide the losses as evenly as possible amongst type of trucks and types of cargo. Trucks in major cities may not be bombed by air until the city is reduced to zero ('O'). In addition, first line trucks (attached) may be bombed in similar fashion, except that first line trucks may be bombed only by planes with a "D" capability. The method and results are the same, however.
 
 **[41.33]** *Flak Destruction (B-FS):* The results are in terms of the number of TOE strength points with an Anti-Air rating that are destroyed. Flak/AA may also be pinned; see B-CU above. Flak destruction bombing takes place *after* flak fire, unlike fighter flak suppression.
@@ -6845,6 +6983,8 @@ All Land Support bombing missions except "mining harbors" are resolved using the
 **[41.34]** *Bombing Ships (B-CF):* The result is the number of Damage Points inflicted on the ships in the hex (See 30.34). Bombing of the Commonwealth Fleet may not be undertaken at night. Torpedoes may be used against ships. See also 41.6. Axis coastal shipping may not be bombed.
 
 **[41.35]** *Bombing Supply Dumps (B-SD):* The result is the percentage of each type of supply in that dump that is destroyed. In addition, if there are any unattached trucks in the hex, for every 10% of supplies destroyed, one Truck Point is lost, choice of defender, dividing losses as evenly as possible.
+
+> **Erratum (Sep 1979):** Round all numbers upwards.
 
 **[41.36]** *Bombing Air Facilities (B-AF):* The result is the number of capacity levels. That that facility is reduced. In addition, for every level destroyed, remove 10% of the planes on the ground (e.g., 2 levels, 20% planes), rounded down.
 
@@ -6878,6 +7018,8 @@ All Land Support bombing missions except "mining harbors" are resolved using the
 
 **[41.46]** Only Night Fighters may Scramble against a Night Bombing Mission (see Case 40.9). Fighters without NF capability may be given an offensive CAP versus night missions, but have no ZOC, and may only search for (and thus attack) Enemy planes with a mission in the same hex (see Case 41.96). Night fighters also go through the search procedure in 41.96
 
+> **Erratum (Sep 1979):** Both references to 41.96 should be to 41.47.
+
 **[41.47]** Fighters of CAP as well as Enemy night fighters scrambling against night bombers must go through a search procedure in order to find the bombers. The Player rolls one die for each Squadron; if he rolls a '1' the fighters have found the bombers (and any NF escort) '2' from any search die roll involving squadrons of night fighters (at night). If the die roll is not good, search is unsuccessful and the fighters go home. Any air-to-air combat proceeds normally.
 
 **[41.48]** Flak/AA fire against night missions is adjusted one column to the left. If already in the lowest column, the flak fire is considered ineffective.
@@ -6885,6 +7027,8 @@ All Land Support bombing missions except "mining harbors" are resolved using the
 **[41.49]** Night bombers do *not* get any benefits from formation flying (45.36).
 
 ### [41.5] AIR BOMBARDMENT AND SECONDARY BARRAGE TARGETS TABLE
+
+> **Erratum (Sep 1979):** (Air Bombardment) The "Barrage Points" row was mis-set (7,8,9,10 over one column); each column should carry only two numbers — move 9,10 to the next column, shift the rest one column right, and the last column should read 21+ (not 1+). Also "Flak Suppression" should read "Flak Destruction". (This document's table already reflects the corrected layout.)
 
 Each result column is keyed by one of three weapon-point scales. The data sub-tables below are labeled by
 **Bomb Points** range; use this legend for the Torpedo / Barrage equivalents:
@@ -7140,7 +7284,11 @@ Although there were several airborne units in the desert campaign (The Ramcke Br
 
 **[42.46]** Airdropped units require and use supplies the same as any unit: they are *not* commandos. Thus, only certain types of supplies may be airdropped: ammunition and stores may be airdropped (using the precepts of 42.42 and 42.43). Supplies may be airdropped into a *Friendly-occupied hex* even if it is in an Enemy Zone of Control. In the latter case, there is no need to use the recognizable land feature provision of the airdrop rule. Airdropped supplies may be used as soon as they arrive, unlike transported supplies (42.35).
 
+> **Erratum (Sep 1979):** Fuel may *not* be air-dropped.
+
 **[42.47]** Airdropped combat units may move and fight normally, with one exception: they may not voluntarily exceed their CPA in the Operations Stage in which they are dropped.
+
+> **Erratum (Sep 1979):** Units that have been air-dropped are considered to have used 5 CP's already.
 
 **[42.48]** There is no limit to the number of TOE Strength Points that may be dropped (within the limits of how many transport planes you can muster). However, no unit may be airdropped more than once a month (every 12 Operations Stages).
 
@@ -7151,6 +7299,8 @@ Although there were several airborne units in the desert campaign (The Ramcke Br
 **[42.52]** The Commonwealth Player must assign each reconnoitering plane to a specific Convoy Lane. A plane may only be assigned to a naval recon mission if it posses Recon capability (R). A plane may be assigned to any Lane within its range. The distances to the convoy lanes are listed in the Axis Naval Convoy Air Distance Chart (Case 56.18). A plane flying a recon mission from North Africa must possess a range at least equal to the distance from its air facility to one of the key cities listed on the chart *plus* the distance from that city to the Lane.
 
 **[42.53]** Naval recon missions are resolved on the Air Reconnaissance of Axis Naval Convoys Table. If a successful reconnaissance of the convoy lane has been made the Axis Player must indicate whether or not a convoy is assigned to that lane this game-turn; and if so, its approximate tonnage.
+
+> **Erratum (Sep 1979):** There is a chart for this case, located in the CW Chart Booklet.
 
 **[42.54]** Planes flying naval recon missions may not be attacked in air-to-air combat or by anti-aircraft fire.
 
@@ -7169,6 +7319,8 @@ The Northern "shore" of the Mediterranean was almost exclusively controlled by t
 **[43.11]** At least 75% of all German He 111's, Ju88D's and FW220's *must* be based in Mediterranean Bases.
 
 **[43.12]** Until 1/35 Game-Turn 1941, 75% of all German bombers must be based in Italy/Sicily.
+
+> **Erratum (Sep 1979):** The German bombers referred to are He111's, Ju88D's, and FW220's.
 
 **[43.13]** From June 1/35 Game-Turn 1941 to the end of the game at least 50% of all He111's, Ju88's, and FW220's must be based in Crete; the remaining 25% may be based in Sicily/Italy or in Crete.
 
@@ -7217,6 +7369,8 @@ No flak counters are placed on the Malta map; the Commonwealth Player simply not
 
 ### [44.2] AXIS AIR RAIDS ON MALTA
 
+> **Erratum (Sep 1979):** (Note) A very confusing system: "new" planes are always based on a *percentage* of the planes actually in play placed in the Italy/Sicily boxes.
+
 **[44.21]** Axis bombers based in Italy/Sicily as well as any Africa-based Axis planes that can reach the island can raid Malta, bombing the Maltese air facilities to reduce their capability to refit planes.
 
 **[44.22]** In addition, to 44.21 the Axis may draw on Italian and German aircraft based *permanently* in Italy and Sicily (and otherwise not available to the Axis Player). These planes are reflected by the Axis Malta Availability Levels. (See 44.41.)
@@ -7255,9 +7409,13 @@ Realizing the importance of Malta to the Axis supply effort, the German High Com
 ### [44.5] MALTA AIR FACILITY CONSTRUCTION TABLE
 (see the Reference Charts appendix)
 
+> **Erratum (Sep 1979):** This chart, used by the CW, is found in the Axis Booklet.
+
 (See the Reference Charts appendix.)
 
 ## [45.0] AIR-TO-AIR COMBAT
+
+> **Erratum (Sep 1979):** Figure B is missing some planes (unnecessary to the example); ignore the references to choosing pilots randomly in the paragraphs below the charts.
 
 **GENERAL RULE:**
 
@@ -7542,6 +7700,8 @@ aircraft shift one column right).
 
 ### [46.4] FLAK ADJUSTMENT CHART
 
+> **Erratum (Sep 1979):** This chart is wrong; the notes at the bottom of Case 46.3 are correct.
+
 | Nr. non-Fighter Planes | Columns Adjusted in Favor of Player Firing AA |
 |---|---|
 | 1 to 23 | 0 |
@@ -7779,13 +7939,19 @@ Players must keep track of the amount of fuel they have available. This may be d
 
 ### [49.1] FUEL CONSUMPTION RATES
 
+> **Erratum (Sep 1979):** The Fuel Consumption Rate for Trucks and Recce/AC units is "1".
+
 **[49.11]** All Fuel is considered in terms of Fuel Points. The Fuel Point is the basic unit of consumption. A Fuel Point is roughly equivalent to 250 pounds or 35 gallons of gasoline and auxiliary petroleum products. (This rate does not apply to the Air Game, where fuel usage has been abstracted because of the decrease in the true number of sorties flown.)
 
 **[49.12]** Every vehicle in the game consumes fuel when it moves, except where specifically noted. (e.g. desert raiders and patrols among others, have slightly different rules.) Fuel users include HQ's with non-parenthesized TOE Strength Points and all gun class units. They do not include motorcycles or the towing of tanks and trucks back to repair facilities.
 
 **[49.13]** Every TOE Strength Point of vehicles has a fuel consumption rate and a fuel capability rating. The fuel consumption factor is the number of Fuel Points consumed for every *five* Capability Points (or fraction thereof) expended by the TOE Strength Point for movement (or any type). **Note:** Fuel is *not* consumed when CP's are expended for combat or any other action that does not involve actual movement from one hex to another. *Example:* One TOE Strength Point of tanks with a fuel consumption rate of "4" that moved in such a way that expends 12 Capability Points would consume 12 Fuel Points—"4", the fuel consumption rate multiplied by "3", the number of groups of 5 CP's expended.
 
+> **Erratum (Sep 1979):** The "Note" refers only to land units.
+
 **[49.14]** The fuel capacity rating is the number of Fuel Points a TOE Strength Point may have, so to speak, in its gas tanks. All vehicles' fuel capacity ratings are determined according to the following formula:
+
+> **Erratum (Sep 1979):** Units are not strictly limited by Fuel Capacity — they may always take fuel from a source (dump, truck, etc.) in the same hex, and may move beyond their "fuel capacity" limits provided they have expended the fuel necessary to that movement segment.
 
 > **Fuel capacity rating = CPA × 1/5 × fuel consumption rate**
 
@@ -7829,6 +7995,12 @@ Fuel may be transported from one place to another by trucks, trains and, in some
 
 Fuel is subject to loss through evaporation and spillage, regardless of where it is kept. During the Stores Expenditure Stage of each game-turn, each Player reduces *all* fuel levels on the game-map (*not* in convoys at sea) by six percent (6%), rounded *down*. In addition, if the weather for an operations stage is "hot weather", an additional reduction of five per-cent (5%) is taken as soon as the hot weather is determined. There is one exception to these rates: from Sept., 1940 until the last Game-Turn (inclusive) in August, 1941, the Commonwealth spillage and evaporation rate is nine percent (9%) per Game-turn. This is due to the poorly constructed containers used by the British; it wasn't until the British copied that German "jerry can" that their rate was reduced (This rule also applies to certain sources of water, see 52.44.)
 
+> **Erratum (Sep 1979) — new case [49.4]:** Infantry-type units in trucks (motorized) that have no fuel
+> may not Close Assault unless they get out of the trucks (they then use their non-motorized CPA); such
+> units may defend at normal strength. Mechanized and tank/AC/recce units may not Close Assault or Armor
+> Assault without Fuel; they defend at normal strength, but there is a two-column adjustment in favor of
+> the attacker if the defending tank-type units have no fuel.
+
 ## [50.0] AMMUNITION
 
 **GENERAL RULE:**
@@ -7843,6 +8015,8 @@ Land units that use their TOE Strength Points in combat expend ammunition, as do
 
 **[50.12]** Whenever a land unit uses its barrage strength, its anti-armour strength, its AA points, or any of its assault strengths it consumes ammunition. A unit without ammunition of any type is useless in combat; it may not even defend against assault if it finds itself in an Enemy Zone of Control and/or it is fired upon by an Enemy unit, it surrenders and is captured. (Units without ammunition have NO ZOC.) A unit without ammunition may not enter an Enemy ZOC unless stacked with (or entering a hex occupied by) a Friendly unit with ammunition or a supply dump.
 
+> **Erratum (Sep 1979):** For a unit without ammunition to surrender, it must be *assaulted* (anti-armor or close); merely being in an Enemy ZOC or being barraged does not cause surrender.
+
 **[50.13]** Each combat function has an ammunition consumption rate, listed in 50.2. Units, such as tanks, that have several types of strengths (anti-armour as well as assault) use the ammunition consumption rate of on the combat function chosen.
 
 **[50.14]** The ammunition consumption rate is the number of Ammunition Points expended for each *TOE Strength Point* being used in combat. Ammunition is expended by guns barraging (or firing flak), anti-armour fire, and offensive *and* defensive assault. Thus, four TOE Strength Points of German 150mm guns would expend 16 Ammunition Points (4 TOE times the artillery consumption rate of 4 = 16), regardless of how many Actual Barrage Points are being applied. Thus, a Player may choose to conserve ammunition by only firing, say, 3 out of 6 available TOE Strength Points.
@@ -7854,6 +8028,8 @@ Land units that use their TOE Strength Points in combat expend ammunition, as do
 **[50.17]** Ammunition may be transported by trucks or aircraft; it may be airdropped. It is available for use when in first line trucks or supply dumps. Ammunition with truck convoys may not be used until off-loaded. Combat units may carry enough ammo to fire once.
 
 ### [50.2] AMMUNITION CONSUMPTION RATES CHART
+
+> **Erratum (Sep 1979):** Infantry units consume *one* Ammo point per TOE point used.
 
 **Logistics Game Played** (Ammo Points per TOE Strength Point performing the action):
 
@@ -7930,6 +8106,8 @@ A somewhat ironic fact of the Desert Campaign was that, although water is the si
 **[52.12]** The amount of water available from a given source is given in the Water Availability Table, (52.7). The Table also gives the depletion possibilities for each source.
 
 **[52.13]** To obtain water, a unit moves into a hex with a well. The Player then expends *one* CP and throws a die to draw water (the die roll is unnecessary in Major Cities and oases.). He consults the Water Availability Table under the correct column (village or bir) and cross-references the dieroll with the source. The result is the number of Water Points drawn, as well as whether the source is depleted or not. Players should note that wells in major cities and oases have *unlimited* water; they may not be depleted and they may *not* be poisoned.
+
+> **Erratum (Sep 1979):** The Case is wrong, the table is right — you must roll a "1" to deplete a well. You may draw as much water as you can carry in a major city or oasis.
 
 **[52.14]** When a well becomes depleted, the Player who drew the water notes this on a piece of paper. He does not have to tell the opposing Player that the well is depleted. However, if an opposing Player's units enter a hex with a depleted well, and attempts to draw water the Player then tells him that it is depleted (after he has expended the one CP!). When a depleted well is revealed, a depleted marker is placed in that hex.
 
@@ -8089,6 +8267,8 @@ To blow a dump, the Player expends the necessary CPAs and rolls one die and modi
 
 **[54.17]** *Supply Dump Demolition Table*
 
+> **Erratum (Sep 1979):** The % under −1 should be "0"; under +7, "100%".
+
 | DIE | −2 | −1 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 or more |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | % Supplies | 0 | 33 | 0 | 10 | 20 | 33 | 50 | 75 | 100 | 33 | 100 |
@@ -8195,6 +8375,8 @@ Under certain conditions the Axis Player may make use of the coastal railline ex
 
 **[55.11]** There are two types of ports: *major ports* and *minor ports*. Major ports may receive both men and supplies; minor ports may receive only supplies. Both types of ports may ship *out* men and supplies.
 
+> **Erratum (Sep 1979):** The charts are right, the Case wrong — follow the chart (55.3) for what you can ship in and out, not this case.
+
 **[55.12]** Every port in the game has an Efficiency Level, which is an abstract number assigned to that port. For example, Tobruk has an Efficiency Level of 5. This Efficiency Level indicates the level of efficiency at which the port is operating. The Efficiency Level of the port may be reduced by various Enemy activities, all discussed previously.
 
 **[55.13]** In addition to its Efficiency Level, each port has a specific limit (capacity) as to the number of TOE Strength Points and/or tons of supplies that may enter and leave that port; this is called the port capacity. (See the Port Capacity and Efficiency Level Chart, 55.3.)
@@ -8230,6 +8412,8 @@ Either Player may reduce the effectiveness of a port he actually occupies by scu
 **[55.28]** CW ships in an Axis port hex have no effect on Convoy arrivals. (This is somewhat of an abstraction; attempts to block the ports during the day would not have worked due to Axis air power.)
 
 ### [55.3] PORT CAPACITY AND EFFICIENCY LEVEL CHART
+
+> **Erratum (Sep 1979):** It is feasible that in Game-Turns where Axis Shipping Capacity is "G," ports cannot handle the total tonnage arriving (even with CW bombing); any excess over the usual limit may come in at Tripoli.
 
 Stacking Points columns = {In, Out} per Operations Stage.
 
@@ -8306,6 +8490,8 @@ Many different methods of determining arrival rates and times of Axis convoys we
 **[56.24]** The Axis Player may also have planned to ship replacements from Italy/Greece. These take up space and weight, and their tonnage equivalencies are given in the Equivalent Weight Chart (54.5). Only Replacement Points *not* arriving via the Reinforcement Schedule affect shipping tonnage; reinforcements and scheduled replacements do not use convoys and do not affect shipping tonnage. Thus if the Axis Player had planned to send 10 Infantry Points in the Game-Turn 55 convoys, this would subtract 300 tons from the available tonnage for that Game-Turn.
 
 **[56.25]** After determining what tonnage he has available and what he wishes to ship, the Axis Player then, at the same time, allocates his available tonnage to the lanes — and ports — he wants them to use. He cannnot change lanes and destinations once chosen (see Case 56.1).
+
+> **Erratum (Sep 1979):** The Axis Player may allocate arriving tonnage to any OpStage within that turn, unless it has already been so designated elsewhere.
 
 **[56.26]** Axis convoys — and their cargoes — may undergo Commonwealth bombardment.
 
@@ -10049,7 +10235,7 @@ Mission Capability columns: F S R D.
 | Beaufighter Mk. VIF | 135 | 12 | 31 | − | 3 | N | ! | . | . |  |
 | Blenheim Mk. IVF | 146 | 5 | 30 | − | 3 | N | 0 | . | . | Bristol |
 | Fulmar Mk. II | 74 | 4 | 29 | − | 1 | N | ! | . | . | Fairey |
-| Gladiator Mk. II | 44 | 2 | 27 | − | − | ! | ! | . | . | Gloster |
+| Gladiator Mk. II | 44 | 2 | 27 | − | 1 | ! | ! | . | . | Gloster |
 | Hurricane Mk. I | 52 | 4 | 32 | − | 1 | ! | ! | . | . | Hawker |
 | Hurricane Mk. IIA | 88* | 4 | 25 | − | 2 | ! | . | . | . | Hawker |
 | Hurricane Mk. IIA (or) | 44 | 4 | 36 | − | 1 | ! | ! | . | . |  |
@@ -10181,7 +10367,7 @@ Mission Capability columns: D R B Transport.
 | Ca 309 Ghibli | 84 | (2) | 9 | 4 | 2 | − | ! | ! | 0 or ½ | Caproni |
 | Ca 311 | 108 | (2) | 10 | 4 | 2 | − | ! | ! | − | Caproni |
 | Cant Z. 501 Gabbiano | 130 | (2) | 7 | 7 | 2 | − | ! | ! | − | CRDA |
-| Cant Z. 506B Airone/35 |  | (3) | 14 | 11/T8 | 3 | − | ! | ! | − | CRDA |
+| Cant Z. 506B Airone/35 | 110 | (3) | 14 | 11/T8 | 3 | − | ! | ! | − | CRDA |
 | Cant Z. 1007bis Alcione | 120 | (3) | 23 | 15/T10 | 4 | − | − | ! | − | CRDA |
 | Ro 37bis | 93 | (2) | 20 | 2 | 2 | − | ! | ! | − | IMAM |
 | S.M. 79 Sparviero | 120 | (4) | 19 | 12/T6 | 3 | − | − | ! | − | Savoia-Marchet |
@@ -10193,6 +10379,8 @@ Mission Capability columns: D R B Transport.
 ---
 
 ### [4.44c] GERMAN AIRCRAFT CHARACTERISTICS CHART
+
+> **Erratum (Sep 1979):** The Bf.109E should *not* have "D" capability. The Bf.110 as a fighter has a Maneuver rating of 32 only on Night missions; otherwise its rating is 30.
 
 *(Note: the section header on page 145 is misprinted as "[4.44b] German Aircraft Characteristics Chart (cont.)"; the German chart is [4.44c].)*
 
@@ -10597,7 +10785,7 @@ Benghazi and Benina.
 |---|---|---|---|---|---|---|---|---|---|
 | PZ I | 24 | 1 | − | 0 | − | 1 | 2/2 | 2 | 0 |
 | Pz II | 35 | 0 | − | 1 | − | 2 | 2/3 | 2 | 0 |
-| Pz III E | 25 | 1 | − | 4 | 3 | 4/4 | 3 | 4/4 | 3 |
+| Pz III E | 25 | 1 | − | 4 | − | 3 | 4/4 | 3 | 0 |
 | Pz III H | 25 | 1 | − | 4 | − | 4 | 4/4 | 3 | 0 |
 | Pz III J(Special) | 26 | 1 | − | 6 | − | 4 | 7/5 | 3 | 0 |
 | Pz IV D | 25 | 1 | − | 6 | − | 3 | 5/4 | 4 | 0 |
@@ -11864,6 +12052,20 @@ Bn"). Both flagged for verification. -->
 # ORDER OF BATTLE — ORGANIZATION AT ARRIVAL (OA) CHARTS
 
 The OA/OB sheets list every formation's composition, arrival schedule (Game-Turn/Operations Stage), counter abbreviations, ID codes (cross-referenced to the Unit Characteristics Charts), and TOE/weapon systems. Column key: **Notes | Unit | Counter Abbreviation | ID Code | TOE & Weapon System(s) | Arrives**.
+
+> **Errata (Sep 1979) — OB omissions/corrections [4.44a]:**
+> 1. The OA sheets for three entire Italian Divisions — **Sirte, Cirene and Marmarica** — were left out
+>    of the original rulebook; they are included at the end of the Italian charts below. (Ignore them if
+>    not playing any scenario before February 1941, as they were gone by then.)
+> 2. The **1st Buffs** and **1st Hampshires** (CW) start the Campaign and Italian scenarios assigned to
+>    the Matruh Garrison.
+> 3. The **French Motor Marine Company** arrival should be **"D"** (Deployed).
+> 4. On the CW Aircraft Characteristics Chart, the legend "F = Reconnaissance" should read
+>    **"R = Reconnaissance."**
+> 5. The Italian **Re.2000** appears in no scenario or reinforcement track (its characteristics were left
+>    in the table by accident).
+> 6. Under German Non-Divisional Artillery, the **362 Artillery Battery** ID Code should be **"x"** (not
+>    "w", which is anti-tank equipment). *(Already shown as `x` below.)*
 
 ## [4.44B] Commonwealth Organization at Arrival Charts
 
@@ -13473,6 +13675,78 @@ Footnotes:
 - d = Arrives attached to the 25th Infantry Division.
 - e = Arrives attached to the 27th Infantry Division.
 - b&c = During their initial attachment the regiments may acquire two and one infantry battalions respectively, regardless of whether or not this causes the parent division to exceed its formation organization and/or maximum attachment limits.
+
+### Addenda (Sep 1979): Omitted OA Sheets — Sirte, Marmarica, Cirene
+
+*These three Italian binary infantry divisions were left out of the original rulebook and are supplied on
+pp3–4 of the September 1979 Addenda. All were gone by February 1941, so they matter only to earlier
+scenarios.*
+
+**61st "Sirte" Division (Semi-motorized)** — Basic Morale: −1
+
+| Notes | Unit | Counter Abbreviation | ID Code | TOE & Weapon System(s) | Arrives |
+|---|---|---|---|---|---|
+| | 61st Sirte Div HQ | 61 Srt | b | N | 3/10 |
+| | 69th Infantry Regt HQ | 69 | h | 1×65/17 Gun | 3/10 |
+| | I/69 Infantry Bn | I/69 | u | N | 3/10 |
+| | II/69 Infantry Bn | II/69 | u | N | 3/10 |
+| | III/69 Infantry Bn | III/69 | u | N | 3/10 |
+| | 70th Infantry Regt HQ | 70 | h | 1×65/17 Gun | 3/10 |
+| | I/70 Infantry Bn | I/70 | u | N | 3/10 |
+| | II/70 Infantry Bn | II/70 | u | N | 3/10 |
+| | III/70 Infantry Bn | III/70 | u | N | 3/10 |
+| | 61st Machinegun Bn | 61 | bb | N | 3/10 |
+| | 61st Anti-tank Coy | 61 | rr | 2×47/32 Gun | 3/10 |
+| | 43rd Artillery Regt | 43 | kk | 6×75/27 Gun, 3×100/17 Howitzer, 6×Light AA | 3/10 |
+| | 61st Engineer Bn | 61 | bbb | N | 3/10 |
+| | 61st Bersaglieri Mitrg Coy | 61 Brs | aaa | N | 3/10 |
+
+(No attached tank battalion on the Sirte sheet.)
+
+**62nd "Marmarica" Division (Semi-motorized)** — Basic Morale: −1
+
+| Notes | Unit | Counter Abbreviation | ID Code | TOE & Weapon System(s) | Arrives |
+|---|---|---|---|---|---|
+| | 62nd Marmarica Div HQ | 62 Mrm | b | N | D |
+| | 115th Infantry Regt HQ | 115 | h | 1×65/17 Gun | D |
+| | I/115 Infantry Bn | I/115 | u | N | D |
+| | II/115 Infantry Bn | II/115 | u | N | D |
+| | III/115 Infantry Bn | III/115 | u | N | D |
+| | 116th Infantry Regt HQ | 116 | h | 1×65/17 Gun | D |
+| | I/116 Infantry Bn | I/116 | u | N | D |
+| | II/116 Infantry Bn | II/116 | u | N | D |
+| | III/116 Infantry Bn | III/116 | u | N | D |
+| | 62nd Machinegun Bn | 62 | bb | N | D |
+| | 62nd Anti-tank Coy | 62 | rr | 2×47/32 Gun | D |
+| | 44th Artillery Regt | 44 | kk | 6×75/27 Gun, 3×105/28 Gun, 3×Light AA | D |
+| | 62nd Engineer Bn | 62 | bbb | N | D |
+| a | LXII(L) Tank Bn | LXII(L) | — | | D |
+
+a = The LXII(L) tank battalion is officially part of the Libyan Tank Command; it begins the campaign
+attached to the 62nd Marmarica.
+
+**63rd "Cirene" Division (Semi-motorized)** — Basic Morale: −1
+
+| Notes | Unit | Counter Abbreviation | ID Code | TOE & Weapon System(s) | Arrives |
+|---|---|---|---|---|---|
+| | 63rd Cirene Div HQ | 63 Cir | b | N | D |
+| | 157th Infantry Regt HQ | 157 | h | 1×65/17 Gun | D |
+| | I/157 Infantry Bn | I/157 | u | N | D |
+| | II/157 Infantry Bn | II/157 | u | N | D |
+| | III/157 Infantry Bn | III/157 | u | N | D |
+| | 158th Infantry Regt HQ | 158 | h | 1×65/17 Gun | D |
+| | I/158 Infantry Bn | I/158 | u | N | D |
+| | II/158 Infantry Bn | II/158 | u | N | D |
+| | III/158 Infantry Bn | III/158 | u | N | D |
+| | 63rd Machinegun Bn | 63 | bb | N | D |
+| | 63rd Anti-tank Coy | 63 | rr | 2×47/32 Gun | D |
+| | 45th Artillery Regt | 45 | kk | 6×75/18 Gun-Howitzer, 3×100/17 Howitzer, 3×Light AA | D |
+| | 63rd Engineer Bn | 63 | bbb | N | D |
+| | 63rd Bersaglieri Mitrg Coy | 63 Brs | aaa | N | D |
+| a | LXIII(L) Tank Bn | LXIII(L) | — | | D |
+
+a = The LXIII(L) tank battalion is officially part of the Libyan Tank Command; it begins the campaign
+attached to the 63rd Cirene.
 
 ## [4.45c] German Organization at Arrival Charts
 
