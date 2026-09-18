@@ -19,7 +19,7 @@ import { WEATHER_SYSTEM_INFO, WEATHER_CONDITION_INFO } from "../weatherInfo";
 import { PORT_SYSTEM_INFO, CONVOY_SYSTEM_INFO } from "../navalInfo";
 import { hexCenter, hexPolygon, mapBounds } from "../hex";
 
-import { terrainFill, HEX_STROKE, ROUTE_DARK, ROUTE_KINDS, EDGE_KINDS, edgeGlyph, routeGlyph, featureGlyph, unitTypeGlyph, PATTERNS } from "./mapSymbols";
+import { terrainFill, HEX_STROKE, ROUTE_DARK, ROUTE_KINDS, EDGE_KINDS, edgeGlyph, routeGlyph, featureGlyph, unitTypeGlyph, squadronGlyph, PATTERNS } from "./mapSymbols";
 
 
 // Rank org sizes so the largest formation in a stack is shown as the "top" counter.
@@ -32,6 +32,21 @@ const ORG_RANK: Record<string, number> = {
   Company: 1,
 };
 const orgRank = (o: string) => ORG_RANK[o] ?? 0;
+
+// A counter title that shrinks its font size to fit the counter's width (±19 → ~34px usable). Short
+// titles keep the base size; a long one (e.g. a historical German squadron name like "8/III JG 27")
+// scales down uniformly instead of being clipped. Uses an estimated glyph width (~0.6 × size for the
+// bold sans face) so no DOM measurement is needed; floored at 5px so it never vanishes.
+function TileTitle({ text, y = -1, size = 8.5, max = 34, fill = "#fff" }: { text: string; y?: number; size?: number; max?: number; fill?: string }) {
+  const factor = 0.6;
+  const est = text.length * size * factor;
+  const fs = est > max ? Math.max(5, max / (text.length * factor)) : size;
+  return (
+    <text textAnchor="middle" y={y} fontSize={fs} fill={fill} fontWeight={700}>
+      {text}
+    </text>
+  );
+}
 
 // The 5 map sections span contiguous global-column bands (A=1–33, B=34–66, C=67–99, D=100–132,
 // E=133–165), the same `(col-1)/33` split the weather engine uses.
@@ -439,9 +454,10 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
         // state — a subordinate tile's status lives in the tooltip, not painted over the representative.
         const topBroken = (top.kind === "unit" && top.u.broken) || (top.kind === "convoy" && top.c.broken > 0);
         const topTraining = (top.kind === "unit" && top.u.in_training) || (top.kind === "rp" && top.r.training_remaining > 0);
-        // 0-TOE HQ cadre (§19.62/§19.67) or a still-training pool render with a dashed (provisional)
-        // border. A §32.18 dummy dump is deliberately indistinguishable from a real one (solid border,
-        // same glyph) — only its value line reads "decoy" for the omniscient viewer.
+        // A 0-TOE HQ (a pure command counter with no organic Strength Points, e.g. the Indian
+        // "Headquarters" units) renders like any other unit — solid border/fill, type glyph — but its
+        // TOE reads "-" (not applicable). A still-training pool is dashed; a §32.18 dummy dump is
+        // deliberately indistinguishable from a real one (only "decoy" gives it away).
         const isCadre = top.kind === "unit" && top.u.toe === 0;
         const isTrainingRp = top.kind === "rp" && top.r.training_remaining > 0;
         // §24.9: loose supplies (not a constructed dump) render provisional too. A dummy dump is built,
@@ -456,7 +472,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
         const isUnsuppliedSqn = top.kind === "squadron" && !top.sq.supplied;
         // A scuttled wreck (San Giorgio) draws provisional.
         const isWreck = top.kind === "ship" && top.sh.wreck;
-        const dashed = isCadre || isTrainingRp || isLooseDump || isHiddenRaider || isProvisionalMine || isUnsuppliedSqn || isWreck;
+        const dashed = isTrainingRp || isLooseDump || isHiddenRaider || isProvisionalMine || isUnsuppliedSqn || isWreck;
         const isRommel = top.kind === "rommel";
         const clsShort = (c: string) => (c === "Infantry" ? "Inf" : c);
         const moraleStr = (u: UnitView) =>
@@ -503,11 +519,11 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           if (top.kind === "unit") {
             return (
               <>
-                <text textAnchor="middle" y={-1} fontSize={9} fill="#fff" fontWeight={700}>{top.u.name.slice(0, 7)}</text>
-                <text x={isCadre ? 0 : -9.5} textAnchor="middle" y={8} fontSize={isCadre ? 7 : 8} fill="#eef" fontStyle={isCadre ? "italic" : "normal"}>
-                  {isCadre ? "cadre" : top.u.toe}
+                <TileTitle text={top.u.abbr || top.u.name} y={-1} size={9} />
+                <text x={-9.5} textAnchor="middle" y={8} fontSize={8} fill="#eef">
+                  {isCadre ? "-" : top.u.toe}
                 </text>
-                {!isCadre && top.u.unit_type.length > 0 && <g transform="translate(9.5 5)">{unitTypeGlyph(top.u.unit_type)}</g>}
+                {top.u.unit_type.length > 0 && <g transform="translate(9.5 5)">{unitTypeGlyph(top.u.unit_type)}</g>}
               </>
             );
           }
@@ -577,11 +593,14 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           if (top.kind === "squadron") {
             return (
               <>
-                <text textAnchor="middle" y={-1} fontSize={8} fill="#fff" fontWeight={700}>{top.sq.designation.slice(0, 8)}</text>
-                <text x={-9.5} textAnchor="middle" y={8} fontSize={7} fill="#eef">{`✈${top.sq.planes}`}</text>
-                {/* a small plane silhouette */}
-                <g transform="translate(9.5 5)" fill="#e9e4cf" stroke="#0d0f14" strokeWidth={0.4}>
-                  <path d="M0,-3.5 L1,-0.5 L5,1 L1,1.5 L0.7,4 L-0.7,4 L-1,1.5 L-5,1 L-1,-0.5 Z" />
+                {/* Title = squadron designation; the class is conveyed by the glyph + tooltip. Drop the
+                    redundant leading nationality/side word (already shown by tile color) — e.g.
+                    "Commonwealth SGSU 51" → "SGSU 51"; a historical name without such a prefix is kept. */}
+                <TileTitle text={top.sq.designation.replace(/^(Commonwealth|Axis|Italian|German)\s+/, "")} y={-1} size={8.5} />
+                <text x={-9.5} textAnchor="middle" y={8} fontSize={7} fill="#eef">{`x${top.sq.planes}`}</text>
+                {/* class-specific top-down plane silhouette (§35.21) */}
+                <g transform="translate(9.5 4.5) scale(0.62)" fill="#e9e4cf" stroke="#0d0f14" strokeWidth={0.5}>
+                  {squadronGlyph(top.sq.class)}
                 </g>
               </>
             );
@@ -612,7 +631,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           if (top.kind === "ship") {
             return (
               <>
-                <text textAnchor="middle" y={-1} fontSize={8} fill="#fff" fontWeight={700}>{top.sh.wreck ? "Wreck" : top.sh.name.slice(0, 8)}</text>
+                <TileTitle text={top.sh.wreck ? "Wreck" : top.sh.name} y={-1} size={8} />
                 <text x={-9.5} textAnchor="middle" y={8} fontSize={7} fill="#eef">{`⚓${top.sh.gun}`}</text>
                 {/* a ship hull silhouette */}
                 <g transform="translate(9.5 5)" fill="#e9e4cf" stroke="#0d0f14" strokeWidth={0.4}>
@@ -656,7 +675,6 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
               height={22}
               rx={3}
               fill={fill}
-              fillOpacity={isCadre ? 0.45 : 1}
               stroke={isRommel ? "#e8c04a" : topBroken ? "#e7b53a" : "#0d0f14"}
               strokeWidth={isRommel || topBroken ? 2 : 1}
               strokeDasharray={dashed ? "3 2" : undefined}
@@ -757,7 +775,8 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
                 {naval.ports.map((p, i) => (
                   <text key={`np${i}`} x={px + 10} y={py + 34 + i * 14} fontFamily="Courier New, monospace" fontSize={10} fill={p.blocked ? "#a33" : "#3a4b4f"} {...infoHover(PORT_SYSTEM_INFO)}>
                     <tspan fontWeight={700}>{p.name}</tspan>
-                    {`: eff ${p.efficiency}/${p.max_efficiency} → ${p.throughput}/${p.max_tonnage}t${p.blocked ? " ⚠" : ""}`}
+                    <tspan x={px + 100}>{`${p.efficiency}/${p.max_efficiency}`}</tspan>
+                    <tspan x={px + 140}>{`→ ${p.throughput}/${p.max_tonnage}t${p.blocked ? " ⚠" : ""}`}</tspan>
                   </text>
                 ))}
               </g>

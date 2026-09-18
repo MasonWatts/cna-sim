@@ -1,5 +1,14 @@
 import type { InfoPanelData } from "./lore";
 
+// Overview shown on the "Terrain Key" heading itself.
+export const TERRAIN_KEY_INFO: InfoPanelData = {
+  title: "The Map (§8)",
+  rules: {
+    description:
+      "The board is a hex grid — each hex is roughly 8 km across, and one Game-Turn is one week of real time. Every hex has a terrain type (the swatches below) that sets its movement cost, vehicle-breakdown risk, stacking limit, and combat-column effects; the shared edges between hexes carry their own features (rivers, ridges, escarpments, slopes, wadis) and routes (roads, tracks, railroads) that modify crossing. Hover any swatch for its specific effects.",
+  },
+};
+
 // Hybrid info (lore + rules) for Terrain-Key entries, keyed by the legend's terrain / route / edge
 // keys. Rules text is grounded in the Terrain Effects Chart (data/reference/terrain.ron, §8.37) and
 // §8.4x / §15.3x. Combat "shifts" move columns in the named player's favor. Lore is optional per

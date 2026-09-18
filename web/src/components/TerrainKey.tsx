@@ -1,7 +1,7 @@
 import { CREAM, HEX_STROKE, PATTERNS, edgeGlyph, featureGlyph, routeGlyph, terrainFill } from "./mapSymbols";
 import { hexPolygon } from "../hex";
 import type { InfoPanelData } from "../lore";
-import { TERRAIN_INFO } from "../terrainInfo";
+import { TERRAIN_INFO, TERRAIN_KEY_INFO } from "../terrainInfo";
 
 // A cosmetic legend mirroring the paper map's TERRAIN KEY, but drawn with our own patterns/glyphs.
 // Grouped in the same order as the printed key. Symbols we don't render (Coast, Border, Airfield,
@@ -91,7 +91,14 @@ export function TerrainKey({ label = "Terrain Key", onInfoHover, onInfoLeave }: 
       : undefined;
   return (
     <div className="terrain-key">
-      <div className="tk-title">{label}</div>
+      <div
+        className="tk-title"
+        style={onInfoHover ? { cursor: "help" } : undefined}
+        onMouseEnter={onInfoHover ? (e) => { const r = e.currentTarget.getBoundingClientRect(); onInfoHover(TERRAIN_KEY_INFO, r.left, r.bottom); } : undefined}
+        onMouseLeave={onInfoLeave}
+      >
+        {label}
+      </div>
       {/* pattern defs (self-contained so the key renders even if the map isn't mounted) */}
       <svg width={0} height={0} style={{ position: "absolute" }} aria-hidden>
         {PATTERNS}

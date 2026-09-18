@@ -208,6 +208,11 @@ pub struct Unit {
     pub id_code: String,
     /// Historical designation (e.g. "8th Panzer Regiment").
     pub name: String,
+    /// §4.44 Counter Abbreviation — the short unit-identification line as printed on the counter
+    /// (e.g. "2 Bays", "11 RHA", "4 In"). Set from the OB; empty for units without one (falls back
+    /// to `name` for display).
+    #[serde(default)]
+    pub abbr: String,
     /// Organizational equivalent (drives stacking points, §9.4).
     #[serde(default)]
     pub org_size: OrgSize,
@@ -417,6 +422,7 @@ impl Unit {
             nationality,
             id_code: id_code.into(),
             name: name.into(),
+            abbr: String::new(),
             org_size: OrgSize::Battalion,
             is_hq: false,
             airdroppable: false,

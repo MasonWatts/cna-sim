@@ -178,6 +178,50 @@ export function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: nu
 /** Point-feature glyph centered at (0,0) — the caller translates it to the hex center.
  *  Oasis (palms on a pool) and Port (anchor in a ring) mimic the paper legend; Bir and Village are
  *  a small filled dot for now (text labels to differentiate/identify come later). */
+// Top-down plane silhouette per SquadronClass (§35.21), recreating the rulebook's air-unit art:
+// Fighter = sleek single-engine with swept, tapered wings and no nacelles; Bomber = wide straight
+// wings with four engine nacelles and a broad cruciform tail; Transport = wide wings, a bulkier
+// fuselage, and two engine nacelles. Nose points up; drawn to fit roughly a ±6 × ±5 box. The caller
+// supplies fill/stroke (a light silhouette on the counter). Unknown classes fall back to Fighter.
+export function squadronGlyph(cls: string): JSX.Element {
+  if (cls === "Bomber") {
+    return (
+      <g>
+        {/* long fuselage */}
+        <path d="M0,-5 L0.9,-4 L0.9,4 L0,5 L-0.9,4 L-0.9,-4 Z" />
+        {/* wide, near-straight wings */}
+        <path d="M-6.2,0.6 L-1,-0.4 L1,-0.4 L6.2,0.6 L6.2,1.7 L-6.2,1.7 Z" />
+        {/* broad tailplane */}
+        <path d="M-3.2,3.3 L3.2,3.3 L3.2,4.4 L-3.2,4.4 Z" />
+        {/* four engine nacelles on the wing leading edge */}
+        <rect x={-4.6} y={-1.1} width={1.1} height={1.9} rx={0.3} />
+        <rect x={-2.3} y={-1.3} width={1.1} height={2.0} rx={0.3} />
+        <rect x={1.2} y={-1.3} width={1.1} height={2.0} rx={0.3} />
+        <rect x={3.5} y={-1.1} width={1.1} height={1.9} rx={0.3} />
+      </g>
+    );
+  }
+  if (cls === "Transport") {
+    return (
+      <g>
+        {/* bulkier fuselage */}
+        <path d="M0,-4.6 L1.3,-3.2 L1.3,2.4 L1,4 L-1,4 L-1.3,2.4 L-1.3,-3.2 Z" />
+        {/* wide wings */}
+        <path d="M-6,0.5 L-1,-0.4 L1,-0.4 L6,0.5 L6,1.6 L-6,1.6 Z" />
+        {/* tailplane */}
+        <path d="M-2.9,3 L2.9,3 L2.9,4 L-2.9,4 Z" />
+        {/* two engine nacelles */}
+        <rect x={-3.2} y={-1.1} width={1.2} height={2.0} rx={0.3} />
+        <rect x={2.0} y={-1.1} width={1.2} height={2.0} rx={0.3} />
+      </g>
+    );
+  }
+  // Fighter (default): sleek single-engine, swept tapered wings, small cruciform tail, no nacelles.
+  return (
+    <path d="M0,-5 L0.7,-3.2 L0.7,-0.8 L5,0.7 L0.9,1.5 L0.8,3.1 L2.4,4.1 L0.5,4.6 L0,5 L-0.5,4.6 L-2.4,4.1 L-0.8,3.1 L-0.9,1.5 L-5,0.7 L-0.7,-0.8 L-0.7,-3.2 Z" />
+  );
+}
+
 export function featureGlyph(feature: string): JSX.Element | null {
   switch (feature) {
     case "Bir":

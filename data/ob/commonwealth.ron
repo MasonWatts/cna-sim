@@ -113,7 +113,7 @@
                 (name: "6th Royal Tank Regt", abbr: "6 RTR", id: "g", comp: Weapons([("Mark VI Light", 10)]), org_size: Battalion, arrival: Deployed, parent: "4th Armored Bde HQ", unit_type: Some(Armor)),
                 (name: "7th Queens Own Hussars", abbr: "7 Hus", id: "g", comp: Weapons([("Mark VI Light", 10)]), org_size: Battalion, arrival: Deployed, parent: "4th Armored Bde HQ", unit_type: Some(Armor)),
                 (name: "7th Armored Bde HQ", abbr: "7", id: "d", comp: Weapons([("A9 Cruiser", 1)]), org_size: StandardBrigade, arrival: Deployed, parent: "7th Armored Div HQE", withdrawal: Some((67,1)), unit_type: Some(Armor)),
-                (name: "1st Royal Tank Regt", abbr: "1RTR", id: "g", comp: Weapons([("A9 Cruiser", 7)]), org_size: Battalion, arrival: Deployed, parent: "7th Armored Bde HQ", unit_type: Some(Armor)),
+                (name: "1st Royal Tank Regt", abbr: "1 RTR", id: "g", comp: Weapons([("A9 Cruiser", 7)]), org_size: Battalion, arrival: Deployed, parent: "7th Armored Bde HQ", unit_type: Some(Armor)),
                 (name: "8th Hussars", abbr: "8 Hus", id: "g", comp: Weapons([("A10 Cruiser", 7)]), org_size: Battalion, arrival: Deployed, parent: "7th Armored Bde HQ", unit_type: Some(Armor)),
                 // Withdrawn at 2/68 when redesignated the 7th Motor Bde (7 Mtr), which arrives the same
                 // turn to fill the division's support-group slot (§4.44B p117 note c; counter swap).

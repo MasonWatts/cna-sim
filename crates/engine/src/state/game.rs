@@ -6,7 +6,7 @@
 //! (movement, combat) are built.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::reference::terrain::{Fixed, HexTerrain, MoveCost};
 use crate::reference::ob::Arrival;
@@ -839,10 +839,14 @@ pub struct GameState {
     /// cost. Mutate (during setup, to load extra charts) only via `reference_mut`.
     pub reference: std::rc::Rc<ReferenceData>,
     pub map: Map,
-    pub units: HashMap<UnitId, Unit>,
-    /// Squadron Ground Support Units — the Air Game's base counters (§35).
+    /// Keyed by `UnitId` in a `BTreeMap` so iteration is deterministic (key order) — the simulation's
+    /// §3.7 reproducibility depends on order-stable unit iteration (a `HashMap`'s randomized order
+    /// desyncs the RNG stream across runs).
+    pub units: BTreeMap<UnitId, Unit>,
+    /// Squadron Ground Support Units — the Air Game's base counters (§35). `BTreeMap` for the same
+    /// determinism reason as `units`.
     #[serde(default)]
-    pub sgsus: HashMap<SquadronId, Sgsu>,
+    pub sgsus: BTreeMap<SquadronId, Sgsu>,
     /// §34.84/§34.85: each nationality's pool of received-but-unassigned planes, by aircraft type.
     /// Grows each Game-Turn from the reinforcement schedule; drawn down when planes are assigned to
     /// squadrons (§35.2).
@@ -1234,8 +1238,8 @@ impl GameState {
         Self {
             reference: std::rc::Rc::new(reference),
             map: Map::new(),
-            units: HashMap::new(),
-            sgsus: HashMap::new(),
+            units: BTreeMap::new(),
+            sgsus: BTreeMap::new(),
             plane_pool: HashMap::new(),
             pilot_pool: HashMap::new(),
             available_sgsu: HashMap::new(),

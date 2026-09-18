@@ -45,10 +45,90 @@
     rommel: Some((hex: "A4827", arrival_game_turn: 26)),
 
     // ---- §60.0 initial deployment (Sept 1940) — the campaign start (§64.3) ----
+    // Every §60.31/§60.41 chart line deploys its full OB formation here (placeholders retired
+    // 2026-09-18). A formation places only its `arrival: Deployed` members at GT1; `Turn` members
+    // auto-register as reinforcements at this entry. `unit_hexes` disperses named members (on-map
+    // hexes only); the base `hex` may be an off-map node ("Tripoli"/"Tripolitania", §8.8). Chart
+    // trucks/motorization and cross-formation attachments (§60.31 "Att:") are positional-only here
+    // (co-located via unit_hexes), not modeled as truck pools or organic attachment.
     placements: [
+        // ===== §60.31 Italian Initial Deployment =====
         (nationality: Italian, formation: "64 Catanzaro Division", hex: "C4707"),
         (nationality: Italian, formation: "62 Marmarica Division",  hex: "C3918"),
         (nationality: Italian, formation: "63 Cirene Division",     hex: "C4120"),
+        (nationality: Italian, formation: "1st CCNN Division",      hex: "C4218"),
+        (nationality: Italian, formation: "4th CCNN Division",      hex: "C4507"),
+        (nationality: Italian, formation: "1st Libyan Infantry Division", hex: "C4020"),
+        (nationality: Italian, formation: "2nd Libyan Infantry Division", hex: "C3920"),
+        (nationality: Italian, formation: "Gruppo Maletti",         hex: "C3617"),
+        // 2nd/3rd CCNN Divisions set up at Tripoli (off-map §8.8 node).
+        (nationality: Italian, formation: "2nd CCNN Division", hex: "Tripoli"),
+        (nationality: Italian, formation: "3rd CCNN Division", hex: "Tripoli"),
+        // Libyan Tank Command: HQ at Tobruk; Aresca Regt (keeps its XXI bn) at C3919; Trivioli Regt
+        // group at Bardia; detached tank bns co-locate with the division each supports (§60.31 Att).
+        (nationality: Italian, formation: "Libyan Tank Command", hex: "C4807", unit_hexes: [
+            ("Aresca (1st) Regt HQ",  "C3919"),
+            ("XXI(L) Tank Bn",        "C3919"),
+            ("LXII(L) Tank Bn",       "C3918"),  // -> 62 Marmarica
+            ("LXIII(L) Tank Bn",      "C4120"),  // -> 63 Cirene
+            ("I(M) Tank Bn",          "C4218"),  // -> 1 CCNN
+            ("Trivioli (2nd) Regt HQ","C4321"),  // Bardia
+            ("XX(L) Tank Bn",         "C4321"),
+            ("LX(L) Tank Bn",         "C4321"),
+            ("LXI(L) Tank Bn",        "C4321"),
+            ("IX(L) Tank Bn",         "C3920"),  // -> 2 Libyan
+            ("II(M) Tank Bn",         "C3617"),  // -> Maletti
+        ]),
+        // Fortress / port garrisons.
+        (nationality: Italian, formation: "Tobruk Garrison",   hex: "C4807"),
+        (nationality: Italian, formation: "Bardia Garrison",   hex: "C4321"),
+        (nationality: Italian, formation: "Benghazi Garrison", hex: "A4827"),  // §60.31 prints "B4827" (typo); OB garrison_hex, supply dump & Rommel fallback all use A4827
+        (nationality: Italian, formation: "Derna Garrison",    hex: "B5925"),
+        (nationality: Italian, formation: "Giariabub Oasis Garrison", hex: "C1014"),
+        // Minor garrisons — each outpost battalion at its own hex.
+        (nationality: Italian, formation: "Minor Garrison Units", hex: "A4130", unit_hexes: [
+            ("Sceferzen Oasis Garrison Bn", "C3419"),
+            ("Fort Maddalenna Garrison Bn", "C3019"),
+            ("EGUG Garrison Bn",            "C1715"),
+            ("Benina AA Battery",           "A4829"),
+            ("Mechili Garrison Bn",         "B4921"),
+            ("Soluch Garrison AT Coy",      "A4130"),
+            ("Soluch Garrison Arty Regt",   "A4130"),
+        ]),
+        // Corps / unassigned artillery. Base = Tripoli (off-map) so XXII & XXIII Corps land there
+        // per chart; all other members are overridden on-map. X Corps -> Soluch (chart). The
+        // "anywhere in Libya" (Arty Rgppmnto bns, XXI/XXVI Corps) and "anywhere Map A/B" (GaF arty,
+        // Artiglieri bns) units have no fixed hex -> AUTO-PLACED at rear hubs (Tobruk / Benghazi),
+        // player-repositionable.
+        (nationality: Italian, formation: "Unassigned Gun Units", hex: "Tripoli", unit_hexes: [
+            ("X Corps Artillery Regt",     "A4130"),  // Soluch (chart)
+            ("6th Gaf S di C Arty Regt",   "A4827"),  // Map A/B -> Benghazi (auto)
+            ("16th Gaf S di C Arty Regt",  "A4827"),
+            ("22nd Gaf S di C Arty Regt",  "A4827"),
+            ("42nd Gaf S di C Arty Regt",  "A4827"),
+            ("350th Gaf S di C Arty Regt", "A4827"),
+            ("131st Artiglieri Bn",        "A4827"),
+            ("147th Artiglieri Bn",        "A4827"),
+            ("5th Bn, 1st Artiglieri",     "A4827"),
+            ("2nd Bn, 24th Artiglieri",    "A4827"),
+            ("1st Bn, 1 Arty Rgppmnto",    "C4807"),  // "anywhere in Libya" -> Tobruk rear (auto)
+            ("2nd Bn, 1 Arty Rgppmnto",    "C4807"),
+            ("3rd Bn, 1 Arty Rgppmnto",    "C4807"),
+            ("4th Bn, 1 Arty Rgppmnto",    "C4807"),
+            ("XXI Corps Artillery Regt",   "C4807"),
+            ("XXVI Corps Artillery Regt",  "C4807"),
+        ]),
+        // XVIII & XXXII Libyan Bn ("anywhere Map A/B") -> Benghazi rear (auto, player-repositionable).
+        (nationality: Italian, formation: "Assigned Units without a Parent Formation", hex: "A4827"),
+        // Libyan Parachute Regt group at Barce (B5504); 4th Fanterie Mtr Regt (4/10 Army) at
+        // Tripolitania (off-map, = base).
+        (nationality: Italian, formation: "Unassigned Infantry and Reconnaissance Units", hex: "Tripolitania", unit_hexes: [
+            ("Libyan Parachute Regt HQ", "B5504"),
+            ("1st Libyan Parachute Bn",  "B5504"),
+            ("1st Carabinieri (CCRR) Bn","B5504"),
+        ]),
+
+        // ===== §60.41 Commonwealth Initial Deployment =====
         (nationality: Commonwealth, formation: "7th Armored Division", hex: "D3612", unit_hexes: [
             ("1st KRRC",           "C3922"),
             ("4th Ryl Horse Arty", "C3922"),
@@ -60,27 +140,37 @@
         (nationality: Commonwealth, formation: "4th Indian Division", hex: "D3615", unit_hexes: [
             ("31st Field Artillery Regt", "C4131"),
         ]),
+        // Mersa Matruh garrison (Selby Force) + the two 23rd-Bde battalions attached to it.
+        (nationality: Commonwealth, formation: "Selby Force / The Matruh Garrison", hex: "D3714"),
+        (nationality: Commonwealth, formation: "70th Infantry Division", hex: "E1829", unit_hexes: [
+            ("1st Essex",           "D3714"),  // attached to Matruh garrison
+            ("1st Durham Light Inf","D3714"),
+        ]),
+        // Rear-area formations (Alexandria / Cairo).
+        (nationality: Commonwealth, formation: "2nd New Zealand Division", hex: "E3613"),  // Alexandria
+        (nationality: Commonwealth, formation: "6th Australian Division",  hex: "E1430"),  // Cairo / Helwan (in training)
+        // Unassigned British infantry: border battalions forward, the rest at Cairo (= base).
+        (nationality: Commonwealth, formation: "Unassigned British Infantry-type Units", hex: "E1430", unit_hexes: [
+            ("2nd Scots Guards",        "C4131"),
+            ("3rd Coldstream Guards",   "C3922"),
+            ("1st RNF MG Bn",           "C3721"),
+            ("1st South Staffordshires","D3714"),  // attached to Matruh garrison
+        ]),
+        // Unassigned artillery: 7th Medium fwd (C3922), 8th Field at Cairo, 8th Medium ("anywhere
+        // Map D/E") auto at Cairo (= base, player-repositionable).
+        (nationality: Commonwealth, formation: "Unassigned Artillery Units", hex: "E1430", unit_hexes: [
+            ("7th Medium Artillery Regt", "C3922"),
+        ]),
+        // AT / AA regiments ("anywhere Map D/E") -> Cairo (auto, player-repositionable).
+        (nationality: Commonwealth, formation: "Unassigned Anti-tank Regiments", hex: "E1430"),
+        (nationality: Commonwealth, formation: "Unassigned Anti-aircraft Units", hex: "E1430"),
+        // 1st Welch Regt (Cairo).
+        (nationality: Commonwealth, formation: "Unassigned Indian Units", hex: "E1430"),
+        // 1st Company, Fr Mtr Marine (C3926). (Removed from `reinforcements` — placement registers
+        // this pool's later arrivals.)
+        (nationality: Commonwealth, formation: "Unassigned Allied Units", hex: "C3926"),
     ],
-    units: [
-        // ---- Italian border force (§60.31) ----
-        (nationality: Italian, id_code: "p", name: "1 CCNN Division",   org_size: Division, hex: "C4218", composition: Organic(current_toe: 12), trucks: (light: 10, medium: 25, heavy: 10), unit_type: Some(Infantry)),
-        (nationality: Italian, id_code: "p", name: "1 Libyan Division",  org_size: Division, hex: "C4020", composition: Organic(current_toe: 12), trucks: (light: 10, medium: 15), unit_type: Some(Infantry)),
-        (nationality: Italian, id_code: "p", name: "2 Libyan Division",  org_size: Division, hex: "C3920", composition: Organic(current_toe: 12), trucks: (light: 15, medium: 15), unit_type: Some(Infantry)),
-        (nationality: Italian, id_code: "k", name: "Aresca Tank Regiment", org_size: StandardBrigade, hex: "C3919", composition: Weapons(groups: [(system: "M 11/39", count: 6)]), trucks: (medium: 5, heavy: 5), unit_type: Some(Armor)),
-        (nationality: Italian, id_code: "p", name: "Maletti Group", org_size: StandardBrigade, is_hq: true, hex: "C3617", composition: Organic(current_toe: 1), trucks: (light: 5, medium: 30, heavy: 5), unit_type: Some(Infantry)),
-        (nationality: Italian, id_code: "k", name: "Maletti Tank Bn",     org_size: Battalion, composition: Weapons(groups: [(system: "M 11/39", count: 6)]), attached_to: "Maletti Group", unit_type: Some(Armor)),
-        (nationality: Italian, id_code: "p", name: "1st Libyan Battalion", org_size: Battalion, composition: Organic(current_toe: 5), attached_to: "Maletti Group", unit_type: Some(Infantry)),
-        (nationality: Italian, id_code: "p", name: "2nd Libyan Battalion", org_size: Battalion, composition: Organic(current_toe: 5), attached_to: "Maletti Group", unit_type: Some(Infantry)),
-        (nationality: Italian, id_code: "p", name: "4 CCNN Division", org_size: Division, hex: "C4507", composition: Organic(current_toe: 12), trucks: (light: 10, medium: 25, heavy: 10), unit_type: Some(Infantry)),
-        (nationality: Italian, id_code: "p", name: "Bardia Garrison", org_size: StandardBrigade, hex: "C4321", composition: Organic(current_toe: 6), trucks: (medium: 20), unit_type: Some(Infantry)),
-        (nationality: Italian, id_code: "p", name: "Tobruk Garrison", org_size: StandardBrigade, hex: "C4807", composition: Organic(current_toe: 4), trucks: (medium: 5), unit_type: Some(Infantry)),
-        // ---- Commonwealth border force (§60.41) not part of 7th Armoured ----
-        (nationality: Commonwealth, id_code: "h", name: "2nd Scots Guards", org_size: Battalion, hex: "C4131", composition: Organic(current_toe: 4), basic_morale: 1, trucks: (medium: 10), unit_type: Some(Infantry)),
-        (nationality: Commonwealth, id_code: "h", name: "1st French Motor Marines", org_size: Battalion, hex: "C3926", composition: Organic(current_toe: 2), trucks: (medium: 2), unit_type: Some(MotorMarineInfantry)),
-        (nationality: Commonwealth, id_code: "h", name: "3rd Coldstream Guards", org_size: Battalion, hex: "C3922", composition: Organic(current_toe: 4), basic_morale: 1, trucks: (medium: 15, heavy: 5), unit_type: Some(Infantry)),
-        (nationality: Commonwealth, id_code: "x", name: "7th Medium Artillery Regt", org_size: Battalion, hex: "C3922", composition: Weapons(groups: [(system: "4.5\" Gun", count: 3)]), unit_type: Some(Artillery)),
-        (nationality: Commonwealth, id_code: "h", name: "1st Royal Northumberland Fusiliers", org_size: Battalion, hex: "C3721", composition: Organic(current_toe: 4), basic_morale: 1, trucks: (light: 5, medium: 5), unit_type: Some(Infantry)),
-    ],
+    units: [],
 
     // ---- §64 reinforcement schedule: formations that arrive after Game-Turn 1 (all OB units
     //      carry explicit `Turn` arrivals). They debark at their nationality point (§20.14/§20.15)
@@ -138,7 +228,8 @@
         (nationality: Commonwealth, formation: "2nd Free French Brigade"),
         (nationality: Commonwealth, formation: "1st Greek Infantry Brigade Group"),
         (nationality: Commonwealth, formation: "The Polish (Carpathian) Brigade"),
-        (nationality: Commonwealth, formation: "Unassigned Allied Units"),
+        // NOTE: "Unassigned Allied Units" moved to `placements` (its French Marine Coy deploys at
+        // GT1); the placement already registers its later arrivals, so it must not also appear here.
     ],
 
     // ---- §20.8/§20.81 by-type Mandatory Withdrawal choices ([4.43a]) — units named by type, not

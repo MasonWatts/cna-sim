@@ -152,6 +152,9 @@ pub struct Event {
 pub struct UnitView {
     pub id: u32,
     pub name: String,
+    /// §4.44 Counter Abbreviation — the short counter name the viewer shows as the tile title.
+    /// Empty when the OB gives none (the viewer falls back to `name`).
+    pub abbr: String,
     pub nationality: String,
     pub side: String,
     /// `[col, row]` of the unit's effective hex (attached units ride their parent), or `None`.
@@ -572,6 +575,7 @@ fn unit_views(g: &GameState) -> Vec<UnitView> {
         .map(|u| UnitView {
             id: u.id.0,
             name: u.name.clone(),
+            abbr: u.abbr.clone(),
             nationality: format!("{:?}", u.nationality),
             side: format!("{:?}", u.nationality.side()),
             hex: g.effective_hex(u.id).map(|h| [h.col, h.row]),

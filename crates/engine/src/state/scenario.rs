@@ -67,13 +67,26 @@ impl GameState {
         hex: HexCoord,
         unit_hexes: &std::collections::HashMap<String, HexCoord>,
     ) -> Result<Vec<UnitId>, DeployError> {
-        // Deploy the units on the map at the start of the game (Arrival::Deployed).
-        let ids = self.deploy_ob_units(nationality, formation_name, UnitLocation::OnMap(hex), unit_hexes, |a| {
+        self.deploy_formation_dispersed_at(nationality, formation_name, UnitLocation::OnMap(hex), unit_hexes)
+    }
+
+    /// As [`Self::deploy_formation_dispersed`], but the concentration point may be an off-map node
+    /// (§8.8 — e.g. Tripoli) as well as an on-map hex. Used by the initial-deployment `placements`
+    /// loader so §60.31/§60.41 chart lines that set up at Tripoli/Tripolitania can be honored.
+    pub fn deploy_formation_dispersed_at(
+        &mut self,
+        nationality: Nationality,
+        formation_name: &str,
+        entry: UnitLocation,
+        unit_hexes: &std::collections::HashMap<String, HexCoord>,
+    ) -> Result<Vec<UnitId>, DeployError> {
+        // Deploy the units at the start of the game (Arrival::Deployed).
+        let ids = self.deploy_ob_units(nationality, formation_name, entry.clone(), unit_hexes, |a| {
             matches!(a, Arrival::Deployed)
         })?;
         // Register the formation's later-arriving units as pending reinforcements, reusing
-        // this placement's hex + dispersion so they rejoin the formation on arrival.
-        self.register_pending_arrivals(nationality, formation_name, UnitLocation::OnMap(hex), unit_hexes);
+        // this placement's entry + dispersion so they rejoin the formation on arrival.
+        self.register_pending_arrivals(nationality, formation_name, entry, unit_hexes);
         Ok(ids)
     }
 
@@ -175,6 +188,7 @@ impl GameState {
             let id = self.spawn_unit(nationality, u.id.clone(), u.name.clone(), placeholder);
             {
                 let unit = self.unit_mut(id).expect("just spawned");
+                unit.abbr = u.abbr.clone(); // §4.44 Counter Abbreviation (short counter name)
                 unit.org_size = u.org_size;
                 unit.basic_morale = arrival_morale;
                 unit.basic_morale_reference = form.basic_morale;
@@ -456,6 +470,9 @@ struct ScenarioUnit {
     nationality: Nationality,
     id_code: String,
     name: String,
+    /// §4.44 Counter Abbreviation — short counter name; empty falls back to `name` for display.
+    #[serde(default)]
+    abbr: String,
     #[serde(default)]
     org_size: OrgSize,
     /// Whether this counter is an HQ with a parenthesized Stacking Point value (§9.12).
@@ -531,6 +548,7 @@ impl GameState {
                 u.composition.clone(),
             );
             let unit = self.unit_mut(id).expect("just spawned");
+            unit.abbr = u.abbr.clone(); // §4.44 Counter Abbreviation
             unit.org_size = u.org_size;
             unit.is_hq = u.is_hq;
             unit.unit_type = u.unit_type;
@@ -570,9 +588,11 @@ impl GameState {
 
         // Deploy OB formations (§4.44) at their hexes.
         for p in &data.placements {
-            let coord = HexId::parse(&p.hex)
-                .ok_or_else(|| ScenarioError::BadHex(p.hex.clone()))?
-                .to_hex_coord();
+            // A placement's concentration point may be an on-map hex-id or an off-map node
+            // name (§8.8 — e.g. "Tripoli"); per-unit overrides remain on-map hexes.
+            let entry = self
+                .resolve_entry(&p.hex)
+                .ok_or_else(|| ScenarioError::BadHex(p.hex.clone()))?;
             let mut unit_hexes = std::collections::HashMap::new();
             for (name, h) in &p.unit_hexes {
                 let c = HexId::parse(h)
@@ -580,7 +600,7 @@ impl GameState {
                     .to_hex_coord();
                 unit_hexes.insert(name.clone(), c);
             }
-            self.deploy_formation_dispersed(p.nationality, &p.formation, coord, &unit_hexes)
+            self.deploy_formation_dispersed_at(p.nationality, &p.formation, entry, &unit_hexes)
                 .map_err(ScenarioError::Deploy)?;
         }
         // Whole-formation reinforcements (§20): register them to enter at their nationality

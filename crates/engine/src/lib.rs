@@ -5334,7 +5334,7 @@ mod tests {
         assert_eq!(hq.parent, "");
         assert!(matches!(hq.comp, ObComposition::Organic(Toe::Normal)));
         assert!(matches!(hq.arrival, Arrival::Deployed));
-        let bn = cat.units.iter().find(|u| u.abbr == "1/141").unwrap();
+        let bn = cat.units.iter().find(|u| u.abbr == "I/141").unwrap();
         assert_eq!(bn.parent, "141st Infantry Regt HQ");
         // Artillery regiment carries explicit weapon groups.
         let arty = cat.units.iter().find(|u| u.abbr == "203").unwrap();
