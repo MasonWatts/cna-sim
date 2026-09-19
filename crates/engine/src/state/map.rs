@@ -331,6 +331,17 @@ impl Map {
         Rc::make_mut(&mut self.hexes).insert(coord, Hex { terrain, features, label: None });
     }
 
+    /// Place (or overwrite) a hex with base terrain, point features, and a place label.
+    pub fn set_hex_labeled(
+        &mut self,
+        coord: HexCoord,
+        terrain: HexTerrain,
+        features: Vec<Feature>,
+        label: Option<String>,
+    ) {
+        Rc::make_mut(&mut self.hexes).insert(coord, Hex { terrain, features, label });
+    }
+
     pub fn hex(&self, coord: HexCoord) -> Option<&Hex> {
         self.hexes.get(&coord)
     }

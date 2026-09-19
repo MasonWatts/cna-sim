@@ -328,6 +328,10 @@ struct ScenarioData {
     /// arrivals. Each seeds `GameState.fleet` (Deployed) or `pending_ships` (a Turn arrival).
     #[serde(default)]
     ships: Vec<ShipSpec>,
+    /// §44.1: the Malta air facilities (Takali/Luqa/Safi/Hal Far airfields, Kalafrana basin, Valetta
+    /// alighting area). Seeds `GameState.malta_bases`.
+    #[serde(default)]
+    malta_bases: Vec<MaltaBaseSpec>,
     /// Initial plane pools (§60.32 Italian / §60.42 Commonwealth): the aircraft each nationality has
     /// available at Game-Turn 1, which the player assigns to squadrons/airfields (§35.2). Seeds
     /// `GameState.plane_pool`.
@@ -422,6 +426,14 @@ struct ShipSpec {
     valetta: bool,
     #[serde(default)]
     arrival: crate::reference::ob::Arrival,
+}
+
+/// §44.1: a Malta air facility — name, §36 kind, and its (full) capacity level.
+#[derive(Deserialize)]
+struct MaltaBaseSpec {
+    name: String,
+    kind: crate::state::air::AirFacilityKind,
+    capacity: u32,
 }
 
 /// A fortification placed at setup: hex label + level.
@@ -755,6 +767,10 @@ impl GameState {
                     });
                 }
             }
+        }
+        // §44.1: the Malta air facilities (start at full capacity).
+        for m in &data.malta_bases {
+            self.malta_bases.push(crate::state::air::MaltaAirBase::new(m.name.clone(), m.kind, m.capacity, m.capacity));
         }
         // §60.32/§60.42: seed each side's starting plane pool.
         for p in &data.initial_planes {

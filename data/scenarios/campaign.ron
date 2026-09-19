@@ -320,6 +320,17 @@
         (name: "Naiad",           gun: 2, aa: 6,  arrival: Turn(game_turn: 33, stage: 1)), // CLAA
     ],
 
+    // §44.1: Malta air facilities (start at full capacity). Four land airfields (cap 6), the
+    // Kalafrana flying-boat basin (cap 3), and the Valetta flying-boat alighting area (cap 1).
+    malta_bases: [
+        (name: "Takali",    kind: Airfield,                capacity: 6),
+        (name: "Luqa",      kind: Airfield,                capacity: 6),
+        (name: "Safi",      kind: Airfield,                capacity: 6),
+        (name: "Hal Far",   kind: Airfield,                capacity: 6),
+        (name: "Kalafrana", kind: FlyingBoatBasin,         capacity: 3),
+        (name: "Valetta",   kind: FlyingBoatAlightingArea, capacity: 1),
+    ],
+
     // ---- Initial air: starting plane pools (§60.32 Italian / §60.42 Commonwealth). No German air
     //      at start (the Luftwaffe arrives with the DAK, GT26+). Planes are assigned to the side's
     //      SGSU counters and based at airfields by the player/AI (§35.2) within capacity. The

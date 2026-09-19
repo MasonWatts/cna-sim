@@ -26,6 +26,13 @@ pub struct Port {
     /// Tobruk). Cleared when the wreck is finally removed by engineers (§30.17).
     #[serde(default)]
     pub wreck_block: u32,
+    /// §55.11/§55.13: personnel (TOE Stacking-Point) capacity that may be received per Operations
+    /// Stage. `Some(0)` = a minor port that may not receive men (§55.11); `None` = uncharted.
+    #[serde(default)]
+    pub stacking_in: Option<u32>,
+    /// §55.13: personnel (TOE Stacking-Point) capacity that may be shipped out per Operations Stage.
+    #[serde(default)]
+    pub stacking_out: Option<u32>,
 }
 
 impl Port {
@@ -39,6 +46,8 @@ impl Port {
             max_tonnage: spec.max_tonnage,
             mines: 0,
             wreck_block: spec.starts_blocked,
+            stacking_in: spec.stacking_in,
+            stacking_out: spec.stacking_out,
         }
     }
 

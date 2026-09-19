@@ -140,6 +140,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_airfield_kind() -> AirFacilityKind {
+    AirFacilityKind::Airfield
+}
+
 impl Sgsu {
     /// An SGSU expends one Stores Point per Game-Turn for itself (§35.14).
     pub const STORES_UPKEEP_PER_TURN: u32 = 1;
@@ -631,16 +635,30 @@ impl AirFacility {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MaltaAirBase {
     pub name: String,
+    /// §36 facility type — Airfield (the four land fields), FlyingBoatBasin (Kalafrana), or
+    /// FlyingBoatAlightingArea (Valetta). Governs what may base there (§36.3 seaplanes only).
+    #[serde(default = "default_airfield_kind")]
+    pub kind: AirFacilityKind,
     /// Standard maximum capacity level (the ceiling for construction, §44.13).
     pub max_levels: u32,
     /// Current effective capacity level (0..=max_levels); 0 = bombed out (§44.12).
     pub levels: u32,
-    /// AA/Flak points diverted to this base (§44.18); Malta-wide these total at most 48.
-    #[serde(default)]
-    pub aa_points: u32,
     /// §44.13: whether the Construction Table has already been used on this base this Game-Turn.
     #[serde(default)]
     pub constructed_this_turn: bool,
+    /// §44.14: planes based here (aircraft type → count). Malta uses planes directly, not SGSUs;
+    /// total may not exceed `plane_capacity()` (levels × 18).
+    #[serde(default)]
+    pub planes: Vec<(String, u32)>,
+    /// §44.18: Light AA/Flak points diverted here. Tracked per-base because a raid draws only the
+    /// raided field's flak (§44.24), and light points may be suppressed by escorting fighters
+    /// (§40.74). Freely movable between Malta fields (§44.15). Malta-wide light+heavy total ≤ 48.
+    #[serde(default)]
+    pub flak_light: u32,
+    /// §44.18: Heavy AA/Flak points diverted here (each Heavy Replacement Point → 4). Heavy flak may
+    /// never be suppressed by fighters (§40.74).
+    #[serde(default)]
+    pub flak_heavy: u32,
 }
 
 impl MaltaAirBase {
@@ -649,13 +667,51 @@ impl MaltaAirBase {
     /// Malta-wide maximum diverted AA points (§44.18).
     pub const MAX_AA_POINTS: u32 = 48;
 
-    pub fn new(name: impl Into<String>, max_levels: u32, levels: u32) -> Self {
-        MaltaAirBase { name: name.into(), max_levels, levels: levels.min(max_levels), aa_points: 0, constructed_this_turn: false }
+    pub fn new(name: impl Into<String>, kind: AirFacilityKind, max_levels: u32, levels: u32) -> Self {
+        MaltaAirBase { name: name.into(), kind, max_levels, levels: levels.min(max_levels), constructed_this_turn: false, planes: Vec::new(), flak_light: 0, flak_heavy: 0 }
+    }
+
+    /// §44.18: total diverted flak points at this base (light + heavy).
+    pub fn flak_total(&self) -> u32 {
+        self.flak_light + self.flak_heavy
+    }
+
+    /// §36.18/§36.3: every air facility (airfield, basin, or alighting area) has one intrinsic
+    /// anti-aircraft Strength Point — usable *only* against planes on strafing/dive-bombing missions.
+    pub fn intrinsic_aa(&self) -> u32 {
+        1
     }
 
     /// §44.14: planes this base can currently handle (levels × 18).
     pub fn plane_capacity(&self) -> u32 {
         self.levels * Self::LEVEL_CAPACITY
+    }
+
+    /// Total planes currently based here (§44.14).
+    pub fn plane_count(&self) -> u32 {
+        self.planes.iter().map(|(_, n)| n).sum()
+    }
+
+    /// Add `count` planes of `ty` (merging into an existing entry).
+    pub fn add_planes(&mut self, ty: &str, count: u32) {
+        if let Some(e) = self.planes.iter_mut().find(|(t, _)| t == ty) {
+            e.1 += count;
+        } else {
+            self.planes.push((ty.to_string(), count));
+        }
+    }
+
+    /// Remove `count` planes of `ty`; returns false (unchanged) if fewer than `count` are present.
+    pub fn remove_planes(&mut self, ty: &str, count: u32) -> bool {
+        let Some(i) = self.planes.iter().position(|(t, _)| t == ty) else { return false };
+        if self.planes[i].1 < count {
+            return false;
+        }
+        self.planes[i].1 -= count;
+        if self.planes[i].1 == 0 {
+            self.planes.remove(i);
+        }
+        true
     }
 
     /// §44.12: Axis bombing reduces capacity levels (never below zero; the base is not destroyed).
@@ -688,7 +744,7 @@ mod malta_tests {
     #[test]
     fn malta_base_capacity_bomb_and_construct_44() {
         // Luqa: standard max 6 levels, starting at 4 (scenario, §44.13).
-        let mut luqa = MaltaAirBase::new("Luqa", 6, 4);
+        let mut luqa = MaltaAirBase::new("Luqa", AirFacilityKind::Airfield, 6, 4);
         assert_eq!(luqa.plane_capacity(), 72); // 4 × 18 (§44.14)
 
         // §44.12: bombing reduces levels but never destroys the base.

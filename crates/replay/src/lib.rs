@@ -382,6 +382,68 @@ pub struct AirView {
     pub facilities: Vec<AirFacilityView>,
     pub squadrons: Vec<SquadronView>,
     pub caps: Vec<CapView>,
+    /// §43: the off-map Axis Mediterranean bomber bases (Italy/Sicily and Crete) and the squadrons
+    /// based in each. Always both boxes, even when empty. These squadrons have no map hex.
+    #[serde(default)]
+    pub med_bases: Vec<MedAirBaseView>,
+    /// §44: the Malta air facilities — kind, capacity levels, based-plane count, and diverted flak.
+    #[serde(default)]
+    pub malta: Vec<MaltaBaseView>,
+    /// §36.53: the Commonwealth off-map air facilities (the Canal-zone boxes + Ethiopia) and the
+    /// squadrons based in each. Always every chart facility, even when empty.
+    #[serde(default)]
+    pub cw_off_map: Vec<CwOffMapBaseView>,
+}
+
+/// A §44 Malta air facility for the viewer.
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct MaltaBaseView {
+    pub name: String,
+    /// `"Airfield"` | `"FlyingBoatBasin"` | `"FlyingBoatAlightingArea"`.
+    pub kind: String,
+    pub levels: u32,
+    pub max_levels: u32,
+    /// §44.14 planes currently based here (capacity = levels × 18).
+    pub planes: u32,
+    /// §44.18 diverted Light flak points at this field.
+    pub flak_light: u32,
+    /// §44.18 diverted Heavy flak points at this field.
+    pub flak_heavy: u32,
+}
+
+/// A squadron based off-map in a §43 Mediterranean box (no hex; otherwise like `SquadronView`).
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct MedSquadronView {
+    pub side: String,
+    pub class: String,
+    pub designation: String,
+    pub planes: u32,
+    pub supplied: bool,
+}
+
+/// A §43 off-map Mediterranean bomber base and its based squadrons.
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct MedAirBaseView {
+    /// `"Italy/Sicily"` or `"Crete"`.
+    pub name: String,
+    pub squadrons: Vec<MedSquadronView>,
+}
+
+/// A §36.53 Commonwealth off-map air facility (a Canal-zone box or Ethiopia) and its based squadrons.
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct CwOffMapBaseView {
+    pub name: String,
+    /// The on-map entry/exit hex (e.g. `"E1833"`).
+    pub entry_hex: String,
+    /// Printed squadron capacity; `null` = unlimited (Ethiopia).
+    pub max_squadrons: Option<u32>,
+    /// A flying-boat basin (§36.3 — Port Said).
+    pub flying_boat: bool,
+    pub squadrons: Vec<MedSquadronView>,
 }
 
 fn air_views(g: &GameState) -> AirView {
@@ -414,7 +476,77 @@ fn air_views(g: &GameState) -> AirView {
         .map(|c| CapView { hex: [c.center.col, c.center.row], side: format!("{:?}", c.side), cap_type: format!("{:?}", c.cap_type) })
         .collect();
     caps.sort_by_key(|c| (c.hex[0], c.hex[1]));
-    AirView { facilities, squadrons, caps }
+    // §43 off-map Mediterranean bomber bases — always both boxes, populated from med-based SGSUs.
+    use cna_engine::state::air::MedBase;
+    let med_squadrons = |base: MedBase| -> Vec<MedSquadronView> {
+        let mut v: Vec<MedSquadronView> = g
+            .sgsus
+            .values()
+            .filter(|s| s.med_base == Some(base))
+            .map(|s| MedSquadronView {
+                side: format!("{:?}", s.nationality.side()),
+                class: format!("{:?}", s.class),
+                designation: s.designation.clone(),
+                planes: s.planes.iter().map(|p| p.count).sum(),
+                supplied: s.supplied,
+            })
+            .collect();
+        v.sort_by(|a, b| a.designation.cmp(&b.designation));
+        v
+    };
+    let med_bases = vec![
+        MedAirBaseView { name: "Italy/Sicily".into(), squadrons: med_squadrons(MedBase::ItalySicily) },
+        MedAirBaseView { name: "Crete".into(), squadrons: med_squadrons(MedBase::Crete) },
+    ];
+    let malta: Vec<MaltaBaseView> = g
+        .malta_bases
+        .iter()
+        .map(|b| MaltaBaseView {
+            name: b.name.clone(),
+            kind: format!("{:?}", b.kind),
+            levels: b.levels,
+            max_levels: b.max_levels,
+            planes: b.plane_count(),
+            flak_light: b.flak_light,
+            flak_heavy: b.flak_heavy,
+        })
+        .collect();
+    // §36.53 Commonwealth off-map facilities — always every chart row, populated from CW SGSUs whose
+    // `off_map_box` names that facility.
+    let cw_off_map: Vec<CwOffMapBaseView> = g
+        .reference
+        .off_map_air_facilities
+        .as_ref()
+        .map(|chart| {
+            chart
+                .facilities
+                .iter()
+                .map(|f| {
+                    let mut squadrons: Vec<MedSquadronView> = g
+                        .sgsus
+                        .values()
+                        .filter(|s| s.off_map_box.as_deref() == Some(f.name.as_str()))
+                        .map(|s| MedSquadronView {
+                            side: format!("{:?}", s.nationality.side()),
+                            class: format!("{:?}", s.class),
+                            designation: s.designation.clone(),
+                            planes: s.planes.iter().map(|p| p.count).sum(),
+                            supplied: s.supplied,
+                        })
+                        .collect();
+                    squadrons.sort_by(|a, b| a.designation.cmp(&b.designation));
+                    CwOffMapBaseView {
+                        name: f.name.clone(),
+                        entry_hex: f.entry_hex.clone(),
+                        max_squadrons: f.max_squadrons,
+                        flying_boat: f.flying_boat,
+                        squadrons,
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    AirView { facilities, squadrons, caps, med_bases, malta, cw_off_map }
 }
 
 /// A warship on the map (§30): a Commonwealth fleet unit assigned to a sea/coastal hex, or the scuttled
@@ -443,6 +575,10 @@ pub struct PortStateView {
     pub throughput: u32,
     /// §55.25/§55.27: an efficiency level is held down by harbour mines or a scuttled wreck.
     pub blocked: bool,
+    /// §55.13: personnel (TOE Stacking Point) capacity in / out per Operations Stage. `None` where
+    /// the chart leaves it unspecified.
+    pub stacking_in: Option<u32>,
+    pub stacking_out: Option<u32>,
 }
 
 /// A scheduled/in-transit Axis naval convoy (§56) for the panel; cancelled convoys are omitted.
@@ -503,6 +639,8 @@ fn naval_views(g: &GameState) -> NavalView {
             max_tonnage: p.max_tonnage,
             throughput: if p.max_efficiency > 0 { p.max_tonnage * p.efficiency / p.max_efficiency } else { 0 },
             blocked: p.mines > 0 || p.wreck_block > 0,
+            stacking_in: p.stacking_in,
+            stacking_out: p.stacking_out,
         })
         .collect();
     ports.sort_by(|a, b| a.name.cmp(&b.name));
@@ -1225,7 +1363,7 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
 
     // 0 — STAGE: a pool is planned to arrive at a future Naval Convoy Arrival Phase (§20.21).
     game.pending_replacements.push(PendingReplacement {
-        class: ReplacementClass::Infantry, count: 4, side: Side::Commonwealth,
+        class: ReplacementClass::Infantry, sub: None, count: 4, side: Side::Commonwealth,
         game_turn: 3, stage: 1, location: None, assigned_to: Some(unit), tonnage: 0,
     });
     frame(&game, &mut step, "Staged: Infantry replacement pool planned (§20.21)", String::new(), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
@@ -1233,7 +1371,7 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
     // 1 — ARRIVE: it lands on-map at a port hex and begins Training (§20.21 → §20.43).
     game.pending_replacements.clear();
     game.replacement_points.push(ReplacementPoints {
-        class: ReplacementClass::Infantry, count: 4, side: Side::Commonwealth,
+        class: ReplacementClass::Infantry, sub: None, count: 4, side: Side::Commonwealth,
         location: Some(UnitLocation::OnMap(HexCoord::new(0, 1))), training_remaining: 3, assigned_to: Some(unit), cpa_used: 0, carried_by: None,
     });
     frame(&game, &mut step, "Arrived: pool on-map at the port, training begins (§20.21/§20.43)", "ReplacementArrived".into(), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
@@ -1386,7 +1524,7 @@ mod tests {
         // An in-port ship is omitted from the map tiles.
         g.fleet.push(Ship { name: "HMS Port".into(), max_gun: 5, gun_rating: 5, max_aa: 2, location: ShipLocation::Alexandria, at_sea_stages: 0, repair_stages: 0, fired_this_stage: false, rest_owed: 0 });
         g.place_san_giorgio(HexCoord::new(43, 21), "Tobruk", 3, 2);
-        g.ports.insert("Tobruk".into(), Port { name: "Tobruk".into(), max_efficiency: 3, efficiency: 1, max_tonnage: 100, mines: 0, wreck_block: 2 });
+        g.ports.insert("Tobruk".into(), Port { name: "Tobruk".into(), max_efficiency: 3, efficiency: 1, max_tonnage: 100, mines: 0, wreck_block: 2, stacking_in: Some(1), stacking_out: Some(3) });
         g.convoys.push(Convoy { lane: 3, destination: "Benghazi".into(), arrival_gt: 3, fuel_tons: 20, ammo_tons: 20, stores_tons: 20, replacement_tons: 0, cancelled: false });
         g.convoys.push(Convoy { lane: 1, destination: "Tripoli".into(), arrival_gt: 2, fuel_tons: 10, ammo_tons: 0, stores_tons: 0, replacement_tons: 0, cancelled: true });
 
@@ -1452,17 +1590,17 @@ mod tests {
         g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(1, 1)));
         // Trained pool, on-map at the unit's hex, assigned for delivery (§20.41/§20.49).
         g.replacement_points.push(ReplacementPoints {
-            class: ReplacementClass::Infantry, count: 3, side: Side::Commonwealth,
+            class: ReplacementClass::Infantry, sub: None, count: 3, side: Side::Commonwealth,
             location: Some(UnitLocation::OnMap(HexCoord::new(1, 1))), training_remaining: 0, assigned_to: Some(u), cpa_used: 0, carried_by: None,
         });
         // Pool still in training at a training area (§20.43).
         g.replacement_points.push(ReplacementPoints {
-            class: ReplacementClass::Tank, count: 2, side: Side::Commonwealth,
+            class: ReplacementClass::Tank, sub: None, count: 2, side: Side::Commonwealth,
             location: Some(UnitLocation::OnMap(HexCoord::new(0, 1))), training_remaining: 4, assigned_to: None, cpa_used: 0, carried_by: None,
         });
         // Staged future arrival, not yet on the map (§20.21).
         g.pending_replacements.push(PendingReplacement {
-            class: ReplacementClass::Gun, count: 1, side: Side::Commonwealth,
+            class: ReplacementClass::Gun, sub: None, count: 1, side: Side::Commonwealth,
             game_turn: 5, stage: 2, location: None, assigned_to: None, tonnage: 0,
         });
         let mut cw = GreedyAgent::new(1);

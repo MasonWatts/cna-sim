@@ -15,4 +15,9 @@ throughput: number,
 /**
  * §55.25/§55.27: an efficiency level is held down by harbour mines or a scuttled wreck.
  */
-blocked: boolean, };
+blocked: boolean, 
+/**
+ * §55.13: personnel (TOE Stacking Point) capacity in / out per Operations Stage. `None` where
+ * the chart leaves it unspecified.
+ */
+stacking_in: number | null, stacking_out: number | null, };

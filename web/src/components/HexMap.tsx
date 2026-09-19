@@ -16,11 +16,11 @@ import type { NavalView } from "@bindings/NavalView";
 import type { ShipView } from "@bindings/ShipView";
 import type { InfoPanelData } from "../lore";
 import { WEATHER_SYSTEM_INFO, WEATHER_CONDITION_INFO } from "../weatherInfo";
-import { PORT_SYSTEM_INFO, CONVOY_SYSTEM_INFO, OFF_MAP_INFO } from "../navalInfo";
+import { PORT_SYSTEM_INFO, CONVOY_SYSTEM_INFO, OFF_MAP_INFO, MED_BASE_INFO, MALTA_INFO, CW_OFF_MAP_INFO } from "../navalInfo";
 import type { OffMapView } from "@bindings/OffMapView";
 import { hexCenter, hexPolygon, mapBounds } from "../hex";
 
-import { terrainFill, HEX_STROKE, ROUTE_DARK, ROUTE_KINDS, EDGE_KINDS, edgeGlyph, routeGlyph, featureGlyph, unitTypeGlyph, squadronGlyph, shipGlyph, PATTERNS } from "./mapSymbols";
+import { terrainFill, HEX_STROKE, ROUTE_DARK, ROUTE_KINDS, EDGE_KINDS, edgeGlyph, routeGlyph, featureGlyph, unitTypeGlyph, squadronGlyph, shipGlyph, airfieldGlyph, PATTERNS } from "./mapSymbols";
 
 
 // Rank org sizes so the largest formation in a stack is shown as the "top" counter.
@@ -618,14 +618,10 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
             const short = top.af.kind === "Airfield" ? "Airfield" : top.af.kind.includes("Strip") ? "Airstrip" : top.af.kind.includes("Boat") ? "Seaplane" : "Airfield";
             return (
               <>
-                <text textAnchor="middle" y={-1} fontSize={8} fill="#fff" fontWeight={700}>{short}</text>
+                <TileTitle text={short} y={-1} size={8} />
                 <text x={-9.5} textAnchor="middle" y={8} fontSize={7} fill="#eef">{`cap ${top.af.capacity}`}</text>
-                {/* a runway with center dashes */}
-                <g transform="translate(9.5 5)" stroke="#e9e4cf" strokeWidth={1.2} strokeLinecap="round">
-                  <line x1={-5} y1={2.5} x2={5} y2={-2.5} />
-                  <line x1={-2} y1={0.6} x2={-0.5} y2={-0.3} strokeWidth={0.7} />
-                  <line x1={1} y1={-0.2} x2={2.5} y2={-1.1} strokeWidth={0.7} />
-                </g>
+                {/* §36 paper-map facility symbol (triangle / anchor+triangle / anchor+crossed) */}
+                <g transform="translate(9.5 5)">{airfieldGlyph(top.af.kind)}</g>
               </>
             );
           }
@@ -761,7 +757,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
       {/* Naval panels (§55/§56): a Ports box (efficiencies) and, below it, an Axis Convoys box —
           abstract/named naval state that has no map hex, so it lives in off-map panels. */}
       {naval && (naval.ports.length > 0 || naval.convoys.length > 0) && (() => {
-        const boxW = 270;
+        const boxW = 340;
         const px = panelX - boxW - 14;
         const py = panelY + 150;
         const portsH = 28 + naval.ports.length * 14;
@@ -775,8 +771,9 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
                 {naval.ports.map((p, i) => (
                   <text key={`np${i}`} x={px + 10} y={py + 34 + i * 14} fontFamily="Courier New, monospace" fontSize={10} fill={p.blocked ? "#a33" : "#3a4b4f"} {...infoHover(PORT_SYSTEM_INFO)}>
                     <tspan fontWeight={700}>{p.name}</tspan>
-                    <tspan x={px + 100}>{`${p.efficiency}/${p.max_efficiency}`}</tspan>
-                    <tspan x={px + 140}>{`→ ${p.throughput}/${p.max_tonnage}t${p.blocked ? " ⚠" : ""}`}</tspan>
+                    <tspan x={px + 96}>{`${p.efficiency}/${p.max_efficiency}`}</tspan>
+                    <tspan x={px + 132}>{`→ ${p.throughput}/${p.max_tonnage}t`}</tspan>
+                    <tspan x={px + 250}>{`⇅ ${p.stacking_in ?? "-"}/${p.stacking_out ?? "-"} SP${p.blocked ? " ⚠" : ""}`}</tspan>
                   </text>
                 ))}
               </g>
@@ -824,6 +821,135 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
               );
             })}
             <text x={ox + 8} y={oy + 32 + rows * 14 + 8} fontFamily="Courier New, monospace" fontSize={9} fontStyle="italic" fill="#7a5c2a">↘ Nofilia (A2802)</text>
+          </g>
+        );
+      })()}
+      {/* §43 Axis Mediterranean bomber bases: a manila swatch per off-map box holding a stack of
+          squadron counters. Italy/Sicily above Region A, Crete above the top-left of Section C
+          (roughly their paper-map positions). Empty until the Luftwaffe arrives (GT26+). */}
+      {(air?.med_bases?.length ? air.med_bases : [{ name: "Italy/Sicily", squadrons: [] }, { name: "Crete", squadrons: [] }]).map((mb) => {
+        const bw = 152;
+        const bh = 60;
+        const cx = mb.name === "Crete" ? hexCenter(72, 1).x : hexCenter(17, 1).x;
+        const bx = cx - bw / 2;
+        // Crete sits in the top margin; Italy/Sicily drops below the "Region A" label (44px, baseline
+        // ~minY-12) so it clears it.
+        const by = mb.name === "Crete" ? minY - 46 : minY + 2;
+        const shown = mb.squadrons.slice(0, 5);
+        const extra = mb.squadrons.length - shown.length;
+        const title = `${mb.name.replace("/", " & ")} Air Bases`;
+        return (
+          <g key={mb.name}>
+            <rect x={bx} y={by} width={bw} height={bh} rx={5} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.97} />
+            <text x={bx + bw / 2} y={by + 15} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={10} fontWeight={700} fill="#4a3d16" {...infoHover(MED_BASE_INFO)}>{title}</text>
+            {shown.length === 0 ? (
+              <text x={bx + bw / 2} y={by + 40} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={9} fontStyle="italic" fill="#8a7a3a">— no squadrons —</text>
+            ) : (
+              shown.map((s, i) => (
+                <g key={i} transform={`translate(${bx + 22 + i * 17} ${by + 38})`}>
+                  <rect x={-11} y={-8} width={22} height={16} rx={2} fill="var(--axis)" stroke="#0d0f14" strokeWidth={0.7} />
+                  <g transform="translate(0 -1) scale(0.5)" fill="#e9e4cf" stroke="#0d0f14" strokeWidth={0.6}>{squadronGlyph(s.class)}</g>
+                  <text x={0} y={7} textAnchor="middle" fontSize={5} fill="#fff">{`x${s.planes}`}</text>
+                </g>
+              ))
+            )}
+            {extra > 0 && <text x={bx + bw - 6} y={by + 42} textAnchor="end" fontFamily="Courier New, monospace" fontSize={9} fontWeight={700} fill="#4a3d16">{`+${extra}`}</text>}
+          </g>
+        );
+      })}
+      {/* §44 Malta box — the air facilities (Takali/Luqa/Safi/Hal Far airfields, Kalafrana basin,
+          Valetta alighting area) with their §36 kind, live capacity level, based-plane count
+          (§44.14, capacity = level × 18), and any diverted AA (§44.18). Driven by the `air.malta`
+          delta layer; falls back to the static roster before the first AirView.
+          Positioned in the sea between Sicily and the African coast. */}
+      {(() => {
+        const kindAbbr = (k: string): string =>
+          k === "FlyingBoatBasin" ? "fb-basin"
+          : k === "FlyingBoatAlightingArea" ? "fb-alight"
+          : k === "AirLandingStrip" ? "strip"
+          : "airfield";
+        // §44.18 flak is held per-field (a raid draws only the raided field's flak, §44.24); shown
+        // per row as AA<total> with the Heavy portion in parens (Heavy can't be fighter-suppressed).
+        const flakLabel = (light: number, heavy: number): string => {
+          const total = light + heavy;
+          if (total === 0) return "";
+          return heavy > 0 ? `AA${total} (${heavy}H)` : `AA${total}`;
+        };
+        // Live facilities when available, else the static seed roster.
+        const bases = air?.malta?.length
+          ? air.malta.map((b) => ({
+              name: b.name,
+              meta: `${kindAbbr(b.kind)} · ${b.levels}/${b.max_levels}`,
+              planes: `${b.planes}/${b.levels * 18}`,
+              flak: flakLabel(b.flak_light, b.flak_heavy),
+            }))
+          : ([
+              ["Takali", "airfield · 6"], ["Luqa", "airfield · 6"], ["Safi", "airfield · 6"],
+              ["Hal Far", "airfield · 6"], ["Kalafrana", "fb-basin · 3"], ["Valetta", "fb-alight · 1"],
+            ] as [string, string][]).map(([name, meta]) => ({ name, meta, planes: "", flak: "" }));
+        const maltaAaTotal = air?.malta?.reduce((s, b) => s + b.flak_light + b.flak_heavy, 0) ?? 0;
+        const bw = 210;
+        const bh = 24 + bases.length * 11 + 6;
+        // Sit just right of the Italy/Sicily Med box (centre hexCenter(17,1).x, width 152, top minY+2),
+        // tops aligned, with a 12px gutter.
+        const bx = hexCenter(17, 1).x + 76 + 12;
+        const by = minY + 2;
+        return (
+          <g>
+            <rect x={bx} y={by} width={bw} height={bh} rx={5} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.97} />
+            <text x={bx + bw / 2} y={by + 15} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={11} fontWeight={700} fill="#4a3d16" {...infoHover(MALTA_INFO)}>{maltaAaTotal > 0 ? `Malta §44 · AA${maltaAaTotal}/48` : "Malta §44"}</text>
+            {bases.map((b, i) => (
+              <text key={b.name} x={bx + 8} y={by + 31 + i * 11} fontFamily="Courier New, monospace" fontSize={8.5} fill="#4a3f22">
+                <tspan fontWeight={700}>{b.name}</tspan>
+                <tspan x={bx + 66}>{b.meta}</tspan>
+                {b.planes && <tspan x={bx + 118}>{`✈${b.planes}`}</tspan>}
+                {b.flak && <tspan x={bx + bw - 6} textAnchor="end" fontWeight={700}>{b.flak}</tspan>}
+              </text>
+            ))}
+          </g>
+        );
+      })()}
+      {/* §36.53 Commonwealth off-map air facilities — one manila box per Canal-zone box + Ethiopia,
+          in a horizontal strip across the top of Region E, just below the "Region E" label. Each box
+          shows the field, its on-map entry hex, and its squadron/plane occupancy. */}
+      {(() => {
+        // Live facilities when available, else the static §36.53 roster so the strip renders pre-play.
+        const STATIC: NonNullable<AirView["cw_off_map"]> = [
+          { name: "Port Said", entry_hex: "E4033", max_squadrons: 3, flying_boat: true, squadrons: [] },
+          { name: "Abu Seier", entry_hex: "E3433", max_squadrons: 9, flying_boat: false, squadrons: [] },
+          { name: "Ismailia", entry_hex: "E3433", max_squadrons: 9, flying_boat: false, squadrons: [] },
+          { name: "Fayid", entry_hex: "E1833", max_squadrons: 9, flying_boat: false, squadrons: [] },
+          { name: "Deversoir", entry_hex: "E1833", max_squadrons: 9, flying_boat: false, squadrons: [] },
+          { name: "Kabrit", entry_hex: "E1833", max_squadrons: 9, flying_boat: false, squadrons: [] },
+          { name: "Ethiopia", entry_hex: "E0127", max_squadrons: null, flying_boat: false, squadrons: [] },
+        ];
+        const list = air?.cw_off_map?.length ? air.cw_off_map : STATIC;
+        const bw = 96;
+        const bh = 46;
+        const gap = 8;
+        const total = list.length * bw + (list.length - 1) * gap;
+        const startX = hexCenter(SECTION_CENTERS[4], 0).x - total / 2;
+        const by = minY + 2; // below the Region E label (baseline ~minY-12)
+        return (
+          <g>
+            {list.map((f, i) => {
+              const bx = startX + i * (bw + gap);
+              const used = f.squadrons.length;
+              const planes = f.squadrons.reduce((s, sq) => s + sq.planes, 0);
+              const cap = f.max_squadrons == null ? "∞" : String(f.max_squadrons);
+              return (
+                <g key={f.name}>
+                  <rect x={bx} y={by} width={bw} height={bh} rx={5} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.97} />
+                  <text x={bx + bw / 2} y={by + 14} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={9} fontWeight={700} fill="#4a3d16" {...infoHover(CW_OFF_MAP_INFO)}>
+                    {f.name}{f.flying_boat ? " ⚓" : ""}
+                  </text>
+                  <text x={bx + bw / 2} y={by + 26} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={7.5} fill="#8a7a3a">{f.entry_hex}</text>
+                  <text x={bx + bw / 2} y={by + 40} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8.5} fill="#4a3f22">
+                    {used === 0 ? `— · ${cap} sq` : `${used}/${cap} sq · ✈${planes}`}
+                  </text>
+                </g>
+              );
+            })}
           </g>
         );
       })()}

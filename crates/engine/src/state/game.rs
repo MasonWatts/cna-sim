@@ -522,11 +522,27 @@ pub enum ReplacementClass {
     Recce,
 }
 
+/// A finer sub-type carried on a Gun-class Replacement Point. §20.2 pools at the Class level, but a
+/// few mechanics need the distinction: §44.18 diverts Light/Heavy AA points to Malta, and §20.3
+/// pins airborne rebuilds to ParaArt (airdroppable artillery, incl. the German 7.5cm Lt Gun) or
+/// Lt AT (airdroppable anti-tank). Ordinary gun/artillery/AT/AA rebuilds ignore this (§20.3 Key:
+/// "Gun = Artillery, anti-tank or anti-air"), so most Gun points carry `None`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GunSub {
+    LightAa,
+    HeavyAa,
+    ParaArt,
+    LtAt,
+}
+
 /// A pool of Replacement Points (§20.2) — restore losses when absorbed into a unit (§20.49).
 /// Must complete Training (§20.43) before absorption.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReplacementPoints {
     pub class: ReplacementClass,
+    /// §44.18/§20.3 Gun sub-type (Light/Heavy AA, ParaArt, Lt AT); `None` for an ordinary point.
+    #[serde(default)]
+    pub sub: Option<GunSub>,
     pub count: u32,
     /// Owning side — selects which §20.43 training areas count (CW §17.32 list vs Axis Tripoli / any
     /// major city).
@@ -559,6 +575,9 @@ pub struct ReplacementPoints {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingReplacement {
     pub class: ReplacementClass,
+    /// §44.18/§20.3 Gun sub-type, carried onto the pool when it arrives; `None` for ordinary points.
+    #[serde(default)]
+    pub sub: Option<GunSub>,
     pub count: u32,
     /// Owning side (carried onto the pool when it arrives — see `ReplacementPoints::side`).
     pub side: Side,
@@ -723,6 +742,23 @@ pub fn replacement_class_for_item(item: &str) -> Option<ReplacementClass> {
     }
     // The remainder are guns, howitzers, AA, anti-tank, and paratroop artillery → Gun.
     Some(ReplacementClass::Gun)
+}
+
+/// The §20.3/§44.18 Gun sub-type of a production item (only meaningful for Gun-class items):
+/// Light AA / Heavy AA (feed the §44.18 Malta diversion), ParaArt and the German 7.5cm Lt Gun
+/// (airdroppable artillery), and Lt AT (airdroppable anti-tank). Ordinary guns return `None`.
+pub fn replacement_gun_sub_for_item(item: &str) -> Option<GunSub> {
+    if item.contains("Heavy AA") {
+        Some(GunSub::HeavyAa)
+    } else if item.contains("Light AA") {
+        Some(GunSub::LightAa)
+    } else if item.contains("ParaArt") || item.contains("7.5cm Lt Gun") {
+        Some(GunSub::ParaArt)
+    } else if item.contains("47/32") || item.contains("2.8cm") || item.contains("2.8/2 Pak") || item.contains("28/20") {
+        Some(GunSub::LtAt)
+    } else {
+        None
+    }
 }
 
 /// Default scenario identifier (serde) — the full Campaign Game.
@@ -890,6 +926,10 @@ pub struct GameState {
     /// The Maltese air facilities (§44.1), printed permanently on the map.
     #[serde(default)]
     pub malta_bases: Vec<crate::state::air::MaltaAirBase>,
+    /// §44.18: the month key (year*12 + month) of the last AA diversion to Malta — at most one per
+    /// month is allowed. `None` = none yet.
+    #[serde(default)]
+    pub malta_aa_diverted_month: Option<u32>,
     pub rng: Rng,
     next_unit_id: u32,
 
@@ -1049,6 +1089,10 @@ pub struct GameState {
     /// Reset each stage.
     #[serde(default)]
     pub anti_armor_hexes_this_stage: std::collections::HashSet<HexCoord>,
+    /// §30.52: names of ports that have been an origin or destination of a Commonwealth naval troop
+    /// transfer this Operations Stage — one transfer per port per stage. Reset each stage.
+    #[serde(default)]
+    pub ports_transferred_this_stage: std::collections::HashSet<String>,
     /// §16.4: Dummy Tank Formations in play (≤3 per side, ≤1 per hex). No real counter — a bluff
     /// worth nothing in combat that may be disclosed as a real tank battalion during reconnaissance
     /// (§16.45) and is eliminated by close assault / armorless anti-armor (§16.46).
@@ -1265,6 +1309,7 @@ impl GameState {
             pending_ships: Vec::new(),
             san_giorgio: None,
             malta_bases: Vec::new(),
+            malta_aa_diverted_month: None,
             rng: Rng::new(seed),
             next_unit_id: 0,
             game_turn: 1,
@@ -1312,6 +1357,7 @@ impl GameState {
             barraged_hexes_this_stage: std::collections::HashSet::new(),
             close_assaulted_hexes_this_stage: std::collections::HashSet::new(),
             anti_armor_hexes_this_stage: std::collections::HashSet::new(),
+            ports_transferred_this_stage: std::collections::HashSet::new(),
             dummy_tanks: Vec::new(),
             prisoner_groups: Vec::new(),
             captured_equipment: Vec::new(),
@@ -2616,6 +2662,7 @@ impl GameState {
         let training_remaining = Self::replacement_training_stages(class);
         self.replacement_points.push(ReplacementPoints {
             class,
+            sub: None,
             count,
             side,
             location,
@@ -2643,6 +2690,7 @@ impl GameState {
     ) -> usize {
         self.pending_replacements.push(PendingReplacement {
             class,
+            sub: None,
             count,
             side,
             game_turn,
@@ -2669,7 +2717,8 @@ impl GameState {
             }
         }
         for p in due {
-            self.add_replacement_points(p.class, p.count, p.side, p.location, p.assigned_to);
+            let pi = self.add_replacement_points(p.class, p.count, p.side, p.location, p.assigned_to);
+            self.replacement_points[pi].sub = p.sub; // carry the §20.3/§44.18 Gun sub-type
         }
     }
 
@@ -3247,8 +3296,13 @@ impl GameState {
         if rp.training_remaining > 0 {
             return None;
         }
-        if matches!(rp.assigned_to, Some(a) if a != unit) {
-            return None;
+        // §20.41: a pool assigned to a *different* unit blocks absorption — unless that unit has
+        // been removed (eliminated/withdrawn, `location` None) or no longer exists, in which case
+        // the assignment is dangling and the pool is free for this unit.
+        if let Some(a) = rp.assigned_to {
+            if a != unit && self.units.get(&a).is_some_and(|u| u.location.is_some()) {
+                return None;
+            }
         }
         let unit_hex = self.units.get(&unit)?.hex()?;
         if rp.location.and_then(|l| l.hex()) != Some(unit_hex) {
@@ -3284,12 +3338,15 @@ impl GameState {
                 Some(std::collections::HashMap::new())
             } else {
                 entry.options.iter().find_map(|opt| {
-                    let mut need: std::collections::HashMap<ReplacementClass, u32> = std::collections::HashMap::new();
+                    // Key on (class, required sub) so airdroppable rebuilds pin to ParaArt / Lt AT
+                    // (§20.3) while ordinary gun rebuilds accept any Gun point.
+                    let mut need: std::collections::HashMap<(ReplacementClass, Option<GunSub>), u32> = std::collections::HashMap::new();
                     for req in opt {
-                        *need.entry(Self::conversion_class_for_kind(&req.kind)).or_insert(0) += req.count;
+                        let key = (Self::conversion_class_for_kind(&req.kind), Self::conversion_sub_for_kind(&req.kind));
+                        *need.entry(key).or_insert(0) += req.count;
                     }
                     need.iter()
-                        .all(|(&c, &n)| self.available_replacement_class(c, unit, unit_hex) >= n)
+                        .all(|(&(c, sub), &n)| self.available_replacement_class(c, sub, unit, unit_hex) >= n)
                         .then_some(need)
                 })
             };
@@ -3298,8 +3355,8 @@ impl GameState {
                 break;
             }
             // Commit: draw the points, spend Stores, and rebuild one TOE Strength Point.
-            for (&class, &n) in &cost {
-                self.draw_replacement_class(class, unit, unit_hex, n);
+            for (&(class, sub), &n) in &cost {
+                self.draw_replacement_class(class, sub, unit, unit_hex, n);
                 consumed += n;
             }
             if entry.supplies {
@@ -3403,10 +3460,10 @@ impl GameState {
         }
         // Draw the AT points from co-located, trained Gun-class Replacement pools (§19.83).
         let hex = self.units.get(&hq).and_then(|u| u.hex()).ok_or(CommandError::UnitNotOnMap)?;
-        if self.available_replacement_class(ReplacementClass::Gun, hq, hex) < count {
+        if self.available_replacement_class(ReplacementClass::Gun, None, hq, hex) < count {
             return Err(CommandError::AntiTankAugmentIllegal);
         }
-        self.draw_replacement_class(ReplacementClass::Gun, hq, hex, count);
+        self.draw_replacement_class(ReplacementClass::Gun, None, hq, hex, count);
         *self.replacements_used.entry(Side::Axis).or_insert(0) += count;
         self.replacement_points.retain(|p| p.count > 0);
         // §19.83: add the AT gun TOE to the HQ.
@@ -3500,10 +3557,10 @@ impl GameState {
         }
         // §19.95: draw the AT points from co-located, trained Gun-class Replacement pools.
         let hex = self.units.get(&battalion).and_then(|u| u.hex()).ok_or(CommandError::UnitNotOnMap)?;
-        if self.available_replacement_class(ReplacementClass::Gun, battalion, hex) < count {
+        if self.available_replacement_class(ReplacementClass::Gun, None, battalion, hex) < count {
             return Err(CommandError::AntiTankAugmentIllegal);
         }
-        self.draw_replacement_class(ReplacementClass::Gun, battalion, hex, count);
+        self.draw_replacement_class(ReplacementClass::Gun, None, battalion, hex, count);
         *self.replacements_used.entry(Side::Commonwealth).or_insert(0) += count;
         self.replacement_points.retain(|p| p.count > 0);
         // §19.93: attach the AT gun TOE alongside the infantry (a second weapons system).
@@ -3558,16 +3615,16 @@ impl GameState {
         // §20.53: draw one upgrade point — a Tank Replacement Point (CW Stuart / German Pz II /
         // Italian M11-L6), or for the Italians an armored recce/AC (Recce-class) point.
         let hex = self.units.get(&unit).and_then(|u| u.hex()).ok_or(CommandError::UnitNotOnMap)?;
-        let class = if self.available_replacement_class(ReplacementClass::Tank, unit, hex) >= 1 {
+        let class = if self.available_replacement_class(ReplacementClass::Tank, None, unit, hex) >= 1 {
             ReplacementClass::Tank
         } else if self.units.get(&unit).map(|u| u.nationality) == Some(Nationality::Italian)
-            && self.available_replacement_class(ReplacementClass::Recce, unit, hex) >= 1
+            && self.available_replacement_class(ReplacementClass::Recce, None, unit, hex) >= 1
         {
             ReplacementClass::Recce
         } else {
             return Err(CommandError::RecceUpgradeIllegal); // no eligible replacement point co-located
         };
-        self.draw_replacement_class(class, unit, hex, 1);
+        self.draw_replacement_class(class, None, unit, hex, 1);
         let side = self.units.get(&unit).map(|u| u.nationality.side()).unwrap_or(Side::Axis);
         *self.replacements_used.entry(side).or_insert(0) += 1;
         self.replacement_points.retain(|p| p.count > 0);
@@ -3601,15 +3658,33 @@ impl GameState {
 
     /// Replacement Points of `class` available to rebuild `unit` at `hex`: those in co-located,
     /// trained pools assigned to this unit or unassigned (§20.41/§20.43).
-    pub(crate) fn available_replacement_class(&self, class: ReplacementClass, unit: UnitId, hex: HexCoord) -> u32 {
+    /// §20.41: replacement pools assigned to a unit that has since been removed (eliminated /
+    /// withdrawn — its `location` is `None`) or no longer exists are treated as free again, so
+    /// another unit may take them. Returns the set of such dangling assignment targets.
+    fn dangling_assignments(&self) -> std::collections::HashSet<UnitId> {
+        self.replacement_points
+            .iter()
+            .filter_map(|p| p.assigned_to)
+            .filter(|a| self.units.get(a).map_or(true, |u| u.location.is_none()))
+            .collect()
+    }
+
+    /// Trained, co-located Replacement Points of `class` (and, when `sub` is `Some`, only points
+    /// carrying that Gun sub-type — §20.3/§44.18) available to `unit`: unassigned, assigned to it,
+    /// or §20.41-dangling. `sub = None` counts every point of the class (any sub).
+    pub(crate) fn available_replacement_class(&self, class: ReplacementClass, sub: Option<GunSub>, unit: UnitId, hex: HexCoord) -> u32 {
+        let dangling = self.dangling_assignments();
         let pools: u32 = self
             .replacement_points
             .iter()
             .filter(|p| {
                 p.class == class
+                    && (sub.is_none() || p.sub == sub)
                     && p.training_remaining == 0
                     && p.location.as_ref().and_then(|l| l.hex()) == Some(hex)
-                    && (p.assigned_to.is_none() || p.assigned_to == Some(unit))
+                    && (p.assigned_to.is_none()
+                        || p.assigned_to == Some(unit)
+                        || p.assigned_to.is_some_and(|a| dangling.contains(&a)))
             })
             .map(|p| p.count)
             .sum();
@@ -3630,14 +3705,20 @@ impl GameState {
 
     /// Remove `n` Replacement Points of `class` for `unit` at `hex` (pools assigned to this unit
     /// first, then unassigned).
-    pub(crate) fn draw_replacement_class(&mut self, class: ReplacementClass, unit: UnitId, hex: HexCoord, n: u32) {
+    pub(crate) fn draw_replacement_class(&mut self, class: ReplacementClass, sub: Option<GunSub>, unit: UnitId, hex: HexCoord, n: u32) {
+        let dangling = self.dangling_assignments();
         let mut owed = n;
         for assigned_first in [true, false] {
             for p in self.replacement_points.iter_mut().filter(|p| {
                 p.class == class
+                    && (sub.is_none() || p.sub == sub)
                     && p.training_remaining == 0
                     && p.location.as_ref().and_then(|l| l.hex()) == Some(hex)
-                    && if assigned_first { p.assigned_to == Some(unit) } else { p.assigned_to.is_none() }
+                    && if assigned_first {
+                        p.assigned_to == Some(unit)
+                    } else {
+                        p.assigned_to.is_none() || p.assigned_to.is_some_and(|a| dangling.contains(&a))
+                    }
             }) {
                 if owed == 0 {
                     break;
@@ -3776,6 +3857,17 @@ impl GameState {
             "Tank" | "Lt Tank" => ReplacementClass::Tank,
             "ArmR" => ReplacementClass::Recce,
             _ => ReplacementClass::Gun,
+        }
+    }
+
+    /// §20.3: the Gun sub-type a rebuild kind *requires* — airdroppable artillery pins to ParaArt
+    /// (the chart's "ParaArt" and German "7.5cm Lt Gun"), airdroppable anti-tank to Lt AT. Ordinary
+    /// gun/artillery/AT/AA kinds return `None` (any Gun point serves, §20.3 Key).
+    fn conversion_sub_for_kind(kind: &str) -> Option<GunSub> {
+        match kind {
+            "ParaArt" | "7.5cm Lt Gun" => Some(GunSub::ParaArt),
+            "Lt AT" => Some(GunSub::LtAt),
+            _ => None,
         }
     }
 
@@ -7918,13 +8010,28 @@ impl GameState {
         best
     }
 
-    /// §37.12: a squadron's flight distance to `target` — hex distance from its on-map base, or the
-    /// §37.4 chart distance from its off-map Box. `None` if unbased or no route exists.
+    /// §36.53/§37.4: air distance in hexes from a Commonwealth off-map facility (a Canal-zone box or
+    /// Ethiopia) to a `target` hex — the chart's facility→entry-hex distance plus the on-map hex
+    /// distance from that entry hex to the target. `None` if the chart is unloaded, the facility is
+    /// unknown, or its entry hex does not parse.
+    pub fn off_map_facility_flight_distance(&self, facility: &str, target: HexCoord) -> Option<u32> {
+        let chart = self.reference.off_map_air_facilities.as_ref()?;
+        let fac = chart.facilities.iter().find(|f| f.name == facility)?;
+        let entry = HexId::parse(&fac.entry_hex)?.to_hex_coord();
+        Some(fac.distance + entry.distance(target))
+    }
+
+    /// §37.12: a squadron's flight distance to `target` — hex distance from its on-map base, the
+    /// §37.4 chart distance from its off-map Mediterranean Box (Axis), or the §36.53 chart distance
+    /// from its Commonwealth off-map facility. `None` if unbased or no route exists.
     pub fn flight_distance(&self, squadron: SquadronId, target: HexCoord) -> Option<u32> {
         let s = self.sgsus.get(&squadron)?;
         match s.location {
             Some(hex) => Some(hex.distance(target)),
-            None => self.box_flight_distance(s.med_base?, target),
+            None => match &s.off_map_box {
+                Some(facility) => self.off_map_facility_flight_distance(facility, target),
+                None => self.box_flight_distance(s.med_base?, target),
+            },
         }
     }
 
@@ -7944,11 +8051,12 @@ impl GameState {
         opstage_of_month <= 4
     }
 
-    /// Whether a squadron has any flight base (on-map or an off-map Box).
+    /// Whether a squadron has any flight base (on-map, an Axis off-map Box, or a §36.53 Commonwealth
+    /// off-map facility).
     pub fn squadron_is_based(&self, squadron: SquadronId) -> bool {
         self.sgsus
             .get(&squadron)
-            .is_some_and(|s| s.location.is_some() || s.med_base.is_some())
+            .is_some_and(|s| s.location.is_some() || s.med_base.is_some() || s.off_map_box.is_some())
     }
 
     /// §43.0: total planes based in a Mediterranean Box (`region`) across all Axis squadrons — the
@@ -9376,6 +9484,7 @@ impl GameState {
         self.barraged_hexes_this_stage.clear();
         self.close_assaulted_hexes_this_stage.clear();
         self.anti_armor_hexes_this_stage.clear();
+        self.ports_transferred_this_stage.clear(); // §30.52 one naval troop transfer per port per stage
         self.recon_revealed.clear(); // §42.27 recon reveals are a per-stage snapshot
         // §8.62: In-Contact status is derived from enemy ZOCs at the start of the Movement Segment;
         // §8.67 clears any Engagement no longer held by an adjacent opposing combat unit.

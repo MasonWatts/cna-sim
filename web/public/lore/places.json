@@ -435,7 +435,8 @@
   "Marble Arch": {
     "title": "Marble Arch",
     "description": "\"Marble Arch\" was the British troops' nickname for the Arch of the Philaeni (Italian: Arco dei Fileni), a 31 m triumphal arch completed by Fascist Italy in 1937 on the Via Balbia coastal highway at the boundary between Tripolitania and Cyrenaica. Because the highway was the main east-west axis for both sides, the arch became a well-known landmark of the Western Desert Campaign; it and its nearby airfield were captured by the 2nd New Zealand Division on 17 December 1942. The monument was demolished under Muammar Gaddafi in the early 1970s.",
-    "links": [{ "label": "Arch of the Philaeni (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Arch_of_the_Philaeni" }]
+    "links": [{ "label": "Arch of the Philaeni (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Arch_of_the_Philaeni" }],
+    "rules": { "description": "§8.19: no Commonwealth land unit may ever be moved west of Marble Arch (A2109) — it is the fixed western limit of the Allied advance." }
   },
   "Martuba": {
     "title": "Martuba",

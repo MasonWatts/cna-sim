@@ -726,6 +726,33 @@ impl GameState {
                 }
             }
         }
+        // §44.18: the Commonwealth may divert AA (Light = +1 / Heavy = +4) to a specific Malta base —
+        // once per month, capped at 48 Malta-wide — and (§44.15) freely redistribute already-diverted
+        // flak between fields. dry_run enforces timing, cap, and availability; move candidates are
+        // enumerated at single-point granularity per ordered field pair.
+        if side == Side::Commonwealth {
+            for base_index in 0..self.malta_bases.len() {
+                for heavy in [false, true] {
+                    let cmd = Command::DivertMaltaAA { base_index, heavy };
+                    if self.dry_run(&cmd).is_ok() {
+                        out.push(cmd);
+                    }
+                }
+            }
+            for from_base in 0..self.malta_bases.len() {
+                for to_base in 0..self.malta_bases.len() {
+                    if from_base == to_base {
+                        continue;
+                    }
+                    for (light, heavy) in [(1, 0), (0, 1)] {
+                        let cmd = Command::MoveMaltaFlak { from_base, to_base, light, heavy };
+                        if self.dry_run(&cmd).is_ok() {
+                            out.push(cmd);
+                        }
+                    }
+                }
+            }
+        }
         out.extend(self.legal_air_setup_commands(side));
         out.extend(self.legal_reorg_commands(side));
         out
@@ -1154,6 +1181,34 @@ impl GameState {
                 let cmd = Command::MovePrisoners { from: g.hex, to };
                 if self.dry_run(&cmd).is_ok() {
                     out.push(cmd);
+                }
+            }
+        }
+        // §30.51/§30.52: transfer a Commonwealth combat unit by sea between ports — each own combat
+        // unit sitting in a port to every other men-capable, operable port. dry_run enforces the
+        // capacity / one-per-port-per-stage / operability rules.
+        if side == Side::Commonwealth {
+            let dests: Vec<String> = self
+                .ports
+                .values()
+                .filter(|p| p.is_operable() && p.stacking_in.unwrap_or(0) > 0)
+                .map(|p| p.name.clone())
+                .collect();
+            if !dests.is_empty() {
+                for u in self.units.values() {
+                    if u.nationality.side() != side || !self.is_combat_unit(u.id) {
+                        continue;
+                    }
+                    let Some(hex) = self.effective_hex(u.id) else { continue };
+                    if !self.ports.values().any(|p| self.port_hex(&p.name) == Some(hex)) {
+                        continue; // not in a port
+                    }
+                    for to_port in &dests {
+                        let cmd = Command::NavalTransferTroops { unit: u.id, to_port: to_port.clone() };
+                        if self.dry_run(&cmd).is_ok() {
+                            out.push(cmd);
+                        }
+                    }
                 }
             }
         }

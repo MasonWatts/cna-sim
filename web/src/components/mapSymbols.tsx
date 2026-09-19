@@ -267,6 +267,38 @@ export function squadronGlyph(cls: string): JSX.Element {
   );
 }
 
+/** The §36 air-facility map symbols, copied from the paper map: a right triangle (Airfield / air
+ *  landing strip); an anchor beside that triangle (Flying Boat Basin); an anchor beside two crossed
+ *  strokes (Flying Boat Alighting Area). Drawn as light strokes centered at the origin (~12px box) so
+ *  it reads on the slate counter; `kind` is the `AirFacilityView.kind` string. */
+export function airfieldGlyph(kind: string): JSX.Element {
+  const S = { stroke: "#e9e4cf", strokeWidth: 1.2, fill: "none", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  // Right triangle: short left vertical, horizontal base, hypotenuse sloping to a point at the right.
+  const triangle = (ox: number, s: number) => (
+    <path d={`M${ox - 5 * s},${-4 * s} L${ox - 5 * s},${3 * s} L${ox + 6 * s},${3 * s} Z`} />
+  );
+  // The alighting-area lane: the Airfield triangle mirrored horizontally with the (now right-hand)
+  // vertical edge removed — i.e. its base plus its hypotenuse (which now slopes up to the right).
+  const crossed = (ox: number, s: number) => (
+    <>
+      <line x1={ox - 6 * s} y1={3 * s} x2={ox + 5 * s} y2={-4 * s} />
+      <line x1={ox - 6 * s} y1={3 * s} x2={ox + 5 * s} y2={3 * s} />
+    </>
+  );
+  // A small anchor: ring, shank, stock crossbar, and a shallow fluke arc.
+  const anchor = (ox: number) => (
+    <>
+      <circle cx={ox} cy={-3.2} r={0.75} />
+      <line x1={ox} y1={-2.5} x2={ox} y2={2.2} />
+      <line x1={ox - 1.3} y1={-1.3} x2={ox + 1.3} y2={-1.3} />
+      <path d={`M${ox - 1.7},0.6 Q${ox},2.8 ${ox + 1.7},0.6`} />
+    </>
+  );
+  if (kind === "FlyingBoatBasin") return <g {...S}>{anchor(-5)}{triangle(1.5, 0.72)}</g>;
+  if (kind === "FlyingBoatAlightingArea") return <g {...S}>{anchor(-5)}{crossed(1.5, 0.72)}</g>;
+  return <g {...S}>{triangle(0, 1)}</g>; // Airfield / AirLandingStrip
+}
+
 export function featureGlyph(feature: string): JSX.Element | null {
   switch (feature) {
     case "Bir":

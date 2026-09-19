@@ -2030,8 +2030,8 @@ mod tests {
         // §22.64: the TDS's tank reserves count as co-located Tank Replacement Points, and drawing
         // pulls them down.
         g.unit_mut(tds).unwrap().tds_tank_reserve = 3;
-        assert_eq!(g.available_replacement_class(ReplacementClass::Tank, with_tds, a), 3);
-        g.draw_replacement_class(ReplacementClass::Tank, with_tds, a, 2);
+        assert_eq!(g.available_replacement_class(ReplacementClass::Tank, None, with_tds, a), 3);
+        g.draw_replacement_class(ReplacementClass::Tank, None, with_tds, a, 2);
         assert_eq!(g.unit(tds).unwrap().tds_tank_reserve, 1);
 
         // §22.63: an eliminated TDS (return GT set) comes back at Cairo when its recovery elapses.
@@ -3678,6 +3678,202 @@ mod tests {
     }
 
     #[test]
+    fn naval_troop_transfer_30_5() {
+        // §30.51/§30.52: the Commonwealth ships a combat unit by sea between ports in the Truck
+        // Convoy Phase — one transfer per port per stage, only to a men-capable operable port.
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::{Feature, HexCoord};
+        use crate::state::naval::Port;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        let (alex, tobruk, bardia) = (HexCoord::new(1, 1), HexCoord::new(5, 1), HexCoord::new(9, 1));
+        for (c, name) in [(alex, "Alex"), (tobruk, "Tobruk"), (bardia, "Bardia")] {
+            g.map.set_hex_labeled(c, HexTerrain::Clear, vec![Feature::Port], Some(name.into()));
+        }
+        let port = |name: &str, sin: u32, sout: u32| Port {
+            name: name.into(), max_efficiency: 5, efficiency: 5, max_tonnage: 1000,
+            mines: 0, wreck_block: 0, stacking_in: Some(sin), stacking_out: Some(sout),
+        };
+        g.ports.insert("Alex".into(), port("Alex", 6, 6));
+        g.ports.insert("Tobruk".into(), port("Tobruk", 6, 6));
+        g.ports.insert("Bardia".into(), port("Bardia", 0, 1)); // minor: may not receive men (§55.11)
+
+        let unit = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 6 });
+        g.unit_mut(unit).unwrap().location = Some(UnitLocation::OnMap(alex));
+        g.phase = Phase::TruckConvoy;
+        g.active_player = Side::Commonwealth;
+
+        let to = |p: &str| Command::NavalTransferTroops { unit, to_port: p.into() };
+        // Minor destination (Bardia, stacking_in 0) is rejected.
+        assert_eq!(g.apply(to("Bardia")), Err(CommandError::PortTransferUnavailable));
+        // An inoperable destination is rejected.
+        g.ports.get_mut("Tobruk").unwrap().efficiency = 0;
+        assert_eq!(g.apply(to("Tobruk")), Err(CommandError::PortCannotTransfer));
+        g.ports.get_mut("Tobruk").unwrap().efficiency = 5;
+        // Enumerated as a legal Commonwealth action in this phase.
+        assert!(
+            g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::NavalTransferTroops { to_port, .. } if to_port == "Tobruk")),
+            "naval transfer enumerated"
+        );
+        // The transfer succeeds and moves the unit; both ports are now used for the stage.
+        assert_eq!(g.apply(to("Tobruk")), Ok(CommandOutcome::TroopsTransferred));
+        assert_eq!(g.effective_hex(unit), Some(tobruk));
+        // §30.52: a second transfer touching either used port this stage is rejected.
+        assert_eq!(g.apply(Command::NavalTransferTroops { unit, to_port: "Alex".into() }), Err(CommandError::PortTransferUnavailable));
+    }
+
+    #[test]
+    fn divert_malta_aa_44_18() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GunSub, Phase, ReplacementClass};
+        let mut g = build_campaign_game();
+        g.active_player = Side::Commonwealth;
+        g.phase = Phase::Organization;
+        // §44.18: with no AA replacement points in the pool, diversion has no source and is rejected.
+        assert_eq!(g.apply(Command::DivertMaltaAA { base_index: 0, heavy: false }), Err(CommandError::MaltaAaUnavailable));
+        // Seed one Light and one Heavy AA point (Gun class, AA sub) into the CW pool.
+        let li = g.add_replacement_points(ReplacementClass::Gun, 1, Side::Commonwealth, None, None);
+        g.replacement_points[li].sub = Some(GunSub::LightAa);
+        let hi = g.add_replacement_points(ReplacementClass::Gun, 1, Side::Commonwealth, None, None);
+        g.replacement_points[hi].sub = Some(GunSub::HeavyAa);
+        assert!(
+            g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::DivertMaltaAA { .. })),
+            "AA diversion enumerated once a source point exists"
+        );
+        // Light diversion → +1 Light flak on base 0, consuming the Light AA point.
+        assert_eq!(g.apply(Command::DivertMaltaAA { base_index: 0, heavy: false }), Ok(CommandOutcome::MaltaAaDiverted(1)));
+        assert_eq!(g.malta_bases[0].flak_light, 1);
+        assert_eq!(g.malta_bases[0].flak_heavy, 0);
+        assert!(!g.replacement_points.iter().any(|p| p.sub == Some(GunSub::LightAa)), "Light AA point consumed");
+        // A second diversion the same month is rejected (§44.18 one per month).
+        assert_eq!(g.apply(Command::DivertMaltaAA { base_index: 1, heavy: true }), Err(CommandError::MaltaAaUnavailable));
+        // A new month allows another; Heavy → +4 Heavy flak on base 1.
+        g.game_turn = 7; // October 1940
+        assert_eq!(g.apply(Command::DivertMaltaAA { base_index: 1, heavy: true }), Ok(CommandOutcome::MaltaAaDiverted(4)));
+        assert_eq!(g.malta_bases[1].flak_heavy, 4);
+        assert!(!g.replacement_points.iter().any(|p| p.sub == Some(GunSub::HeavyAa)), "Heavy AA point consumed");
+        // §44.15: redistribute the Light point from base 0 to base 1; the Malta-wide total is unchanged.
+        assert_eq!(
+            g.apply(Command::MoveMaltaFlak { from_base: 0, to_base: 1, light: 1, heavy: 0 }),
+            Ok(CommandOutcome::MaltaFlakMoved { light: 1, heavy: 0 })
+        );
+        assert_eq!(g.malta_bases[0].flak_light, 0);
+        assert_eq!(g.malta_bases[1].flak_light, 1);
+        // Moving more than a field holds is rejected.
+        assert_eq!(
+            g.apply(Command::MoveMaltaFlak { from_base: 0, to_base: 1, light: 5, heavy: 0 }),
+            Err(CommandError::MaltaAaUnavailable)
+        );
+    }
+
+    #[test]
+    fn campaign_seeds_malta_air_bases_44_1() {
+        use crate::state::air::AirFacilityKind;
+        let g = build_campaign_game();
+        assert_eq!(g.malta_bases.len(), 6, "six Malta facilities");
+        let by = |n: &str| g.malta_bases.iter().find(|b| b.name == n).unwrap();
+        for n in ["Takali", "Luqa", "Safi", "Hal Far"] {
+            let b = by(n);
+            assert_eq!((b.kind, b.max_levels, b.levels), (AirFacilityKind::Airfield, 6, 6), "{n} airfield cap 6, full");
+        }
+        assert_eq!((by("Kalafrana").kind, by("Kalafrana").max_levels), (AirFacilityKind::FlyingBoatBasin, 3));
+        assert_eq!((by("Valetta").kind, by("Valetta").max_levels), (AirFacilityKind::FlyingBoatAlightingArea, 1));
+    }
+
+    #[test]
+    fn base_malta_planes_44_14() {
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::Phase;
+        let mut g = build_campaign_game();
+        g.active_player = Side::Commonwealth;
+        g.phase = Phase::Organization;
+        // Takali (index 0) is a 6-level airfield → capacity 6 × 18 = 108 planes.
+        let takali = g.malta_bases.iter().position(|b| b.name == "Takali").unwrap();
+        assert_eq!(g.malta_bases[takali].plane_capacity(), 108);
+        // Basing without planes in the pool is rejected.
+        assert_eq!(
+            g.apply(Command::BaseMaltaPlanes { base_index: takali, aircraft_type: "Hurricane Mk.I".into(), count: 18 }),
+            Err(CommandError::InsufficientPlanePool)
+        );
+        // Seed the CW pool and base a squadron's worth.
+        g.plane_pool.entry(Nationality::Commonwealth).or_default().insert("Hurricane Mk.I".into(), 40);
+        assert_eq!(
+            g.apply(Command::BaseMaltaPlanes { base_index: takali, aircraft_type: "Hurricane Mk.I".into(), count: 18 }),
+            Ok(CommandOutcome::MaltaPlanesBased(18))
+        );
+        assert_eq!(g.malta_bases[takali].plane_count(), 18);
+        assert_eq!(g.pool_planes(Nationality::Commonwealth, "Hurricane Mk.I"), 22);
+        // §44.14 capacity is enforced across the whole facility.
+        assert_eq!(
+            g.apply(Command::BaseMaltaPlanes { base_index: takali, aircraft_type: "Hurricane Mk.I".into(), count: 100 }),
+            Err(CommandError::MaltaCapacityExceeded)
+        );
+        // §44.15: planes move freely between facilities of a compatible kind.
+        let luqa = g.malta_bases.iter().position(|b| b.name == "Luqa").unwrap();
+        assert_eq!(
+            g.apply(Command::MoveMaltaPlanes { from_base: takali, to_base: luqa, aircraft_type: "Hurricane Mk.I".into(), count: 10 }),
+            Ok(CommandOutcome::MaltaPlanesMoved(10))
+        );
+        assert_eq!(g.malta_bases[takali].plane_count(), 8);
+        assert_eq!(g.malta_bases[luqa].plane_count(), 10);
+        // Moving more than the source holds is rejected.
+        assert_eq!(
+            g.apply(Command::MoveMaltaPlanes { from_base: takali, to_base: luqa, aircraft_type: "Hurricane Mk.I".into(), count: 99 }),
+            Err(CommandError::InsufficientPlanePool)
+        );
+    }
+
+    #[test]
+    fn flying_boat_basing_36_3() {
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::air::AirFacilityKind;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::Phase;
+        let mut g = build_campaign_game();
+        g.active_player = Side::Commonwealth;
+        g.phase = Phase::Organization;
+        g.plane_pool.entry(Nationality::Commonwealth).or_default().insert("Sunderland".into(), 6);
+        g.plane_pool.entry(Nationality::Commonwealth).or_default().insert("Hurricane Mk.I".into(), 6);
+        let takali = g.malta_bases.iter().position(|b| b.name == "Takali").unwrap();
+        let kalafrana = g.malta_bases.iter().position(|b| b.name == "Kalafrana").unwrap();
+        assert_eq!(g.malta_bases[takali].kind, AirFacilityKind::Airfield);
+        assert_eq!(g.malta_bases[kalafrana].kind, AirFacilityKind::FlyingBoatBasin);
+        // §36.3: a flying-boat may not base on an airfield…
+        assert_eq!(
+            g.apply(Command::BaseMaltaPlanes { base_index: takali, aircraft_type: "Sunderland".into(), count: 2 }),
+            Err(CommandError::WrongAircraftForFacility)
+        );
+        // …and a land plane may not base on a flying-boat basin.
+        assert_eq!(
+            g.apply(Command::BaseMaltaPlanes { base_index: kalafrana, aircraft_type: "Hurricane Mk.I".into(), count: 2 }),
+            Err(CommandError::WrongAircraftForFacility)
+        );
+        // The matching pairings are legal.
+        assert_eq!(
+            g.apply(Command::BaseMaltaPlanes { base_index: kalafrana, aircraft_type: "Sunderland".into(), count: 2 }),
+            Ok(CommandOutcome::MaltaPlanesBased(2))
+        );
+        assert_eq!(
+            g.apply(Command::BaseMaltaPlanes { base_index: takali, aircraft_type: "Hurricane Mk.I".into(), count: 2 }),
+            Ok(CommandOutcome::MaltaPlanesBased(2))
+        );
+        // §36.3 also blocks moving a flying-boat onto an airfield.
+        let luqa = g.malta_bases.iter().position(|b| b.name == "Luqa").unwrap();
+        assert_eq!(
+            g.apply(Command::MoveMaltaPlanes { from_base: kalafrana, to_base: luqa, aircraft_type: "Sunderland".into(), count: 1 }),
+            Err(CommandError::WrongAircraftForFacility)
+        );
+    }
+
+    #[test]
     fn commonwealth_fleet_roster_and_arrivals_30_6() {
         // §30/§30.6: 11 ships deploy at GT1 (Alexandria); 8 more arrive on schedule (5 at GT8/OS3,
         // 3 at GT33/OS1).
@@ -3827,6 +4023,19 @@ mod tests {
         assert_eq!(g.sgsus[&SquadronId(1)].off_map_box.as_deref(), Some("Deversoir"));
         assert_eq!(g.sgsus[&SquadronId(1)].location, None);
         assert_eq!(g.off_map_north_african_planes(), 20);
+        // §36.53/§37.4: an off-map-based squadron still has a computable flight distance — the chart's
+        // facility→entry-hex distance (Deversoir = 12, entry E1833) plus the on-map hex distance from
+        // that entry hex to the target — and counts as based (previously it was combat-inert).
+        assert!(g.squadron_is_based(SquadronId(1)));
+        {
+            use crate::state::map::HexId;
+            let entry = HexId::parse("E1833").unwrap().to_hex_coord();
+            let target = HexId::parse("E3512").unwrap().to_hex_coord(); // Dekheila
+            assert_eq!(
+                g.flight_distance(SquadronId(1), target),
+                Some(12 + entry.distance(target)),
+            );
+        }
         // Now the North African off-map facilities are at printed capacity → §34.82C is satisfied.
         assert!(g.may_create_extra_sgsu(Nationality::Commonwealth));
 
@@ -6149,7 +6358,7 @@ mod tests {
         });
         let cj = g.truck_convoys.len() - 1;
         g.replacement_points.push(crate::state::game::ReplacementPoints {
-            class: crate::state::game::ReplacementClass::Infantry, count: 3, side: Side::Axis,
+            class: crate::state::game::ReplacementClass::Infantry, sub: None, count: 3, side: Side::Axis,
             location: Some(UnitLocation::OnMap(hex)), training_remaining: 0, assigned_to: None, cpa_used: 0, carried_by: Some(cj),
         });
         assert!(g.convoy_carries_replacements(cj));
@@ -8815,7 +9024,7 @@ mod tests {
         refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
         refs.load_malta_construction(include_str!("../../../data/reference/malta-construction.ron")).unwrap();
         let mut g = GameState::new(refs, 1);
-        g.malta_bases.push(MaltaAirBase::new("Luqa", 6, 6));
+        g.malta_bases.push(MaltaAirBase::new("Luqa", crate::state::air::AirFacilityKind::Airfield, 6, 6));
         let mut sq = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 54", 5, Some(HexCoord::new(1, 1)));
         sq.add_planes("Ju.88A", AircraftClass::Bomber, 12, 1);
         g.sgsus.insert(SquadronId(1), sq);
@@ -8827,7 +9036,7 @@ mod tests {
         // §44.24: the raid happens in the Malta Raid Phase.
         let raid = Command::BombMaltaBase {
             squadron: SquadronId(1), planes: 12, bombload_per_plane: 20, base_index: 0,
-            interceptors: None,
+            interceptors: None, flak_suppression: 0,
         };
         assert_eq!(g.apply(raid.clone()), Err(CommandError::WrongPhase));
         let mut guard = 0;
@@ -8863,6 +9072,60 @@ mod tests {
         }
         // §44.13: only once per Game-Turn per base.
         assert_eq!(g.apply(Command::ConstructMaltaFacility { base_index: 0 }), Ok(CommandOutcome::MaltaFacilityConstructed(0)));
+    }
+
+    // §40.74/§44.24: a Malta raid draws only the raided field's flak; escorting fighters suppress
+    // Light flak (one point per three) but never Heavy.
+    #[test]
+    fn malta_raid_flak_suppression_40_74() {
+        use crate::state::air::{AirFacilityKind, MaltaAirBase, Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::aircraft::AircraftClass;
+
+        // Build a raid on a field with `light`/`heavy` flak, `suppression` escorting fighters, and a
+        // forced flak-destroy roll of 55; return the bombers destroyed by flak.
+        let destroyed_with = |light: u32, heavy: u32, suppression: u32| -> u32 {
+            let mut refs = ReferenceData::new();
+            refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+            refs.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+            let mut g = GameState::new(refs, 1);
+            let mut base = MaltaAirBase::new("Luqa", AirFacilityKind::Airfield, 6, 6);
+            base.flak_light = light;
+            base.flak_heavy = heavy;
+            g.malta_bases.push(base);
+            let mut sq = Sgsu::new(SquadronId(1), Nationality::German, SquadronClass::Bomber, "KG 54", 5, Some(HexCoord::new(1, 1)));
+            sq.add_planes("Ju.88A", AircraftClass::Bomber, 12, 1);
+            g.sgsus.insert(SquadronId(1), sq);
+            for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+            let mut guard = 0;
+            while g.phase != Phase::MaltaRaid {
+                g.advance_phase();
+                guard += 1;
+                assert!(guard < 60, "never reached MaltaRaid");
+            }
+            g.rng.force([5, 5, 1, 1, 1, 1]); // flak-destroy 55, abort 11, bomb 11
+            match g.apply(Command::BombMaltaBase {
+                squadron: SquadronId(1), planes: 12, bombload_per_plane: 20, base_index: 0,
+                interceptors: None, flak_suppression: suppression,
+            }) {
+                Ok(CommandOutcome::MaltaBaseBombed { mission, .. }) => mission.destroyed,
+                other => panic!("unexpected: {other:?}"),
+            }
+        };
+
+        // 6 Light flak, roll 55 → destroys bombers.
+        let base_loss = destroyed_with(6, 0, 0);
+        assert!(base_loss >= 1, "6 flak points should down at least one bomber on a 55");
+        // 18 fighters suppress all 6 Light points (§40.74) → no flak, no losses.
+        assert_eq!(destroyed_with(6, 0, 18), 0, "all Light flak suppressed → no bombers downed");
+        // The same 18 fighters cannot touch Heavy flak (§40.74) → losses unchanged.
+        assert_eq!(destroyed_with(0, 6, 18), base_loss, "Heavy flak is never suppressed");
     }
 
     #[test]

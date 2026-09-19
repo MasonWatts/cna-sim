@@ -149,7 +149,7 @@ export function App() {
     (name: string, x: number, y: number) => {
       const entry = placeLore[name];
       if (!entry) return;
-      showInfo({ title: entry.title ?? name, lore: { description: entry.description, links: entry.links } }, x, y);
+      showInfo({ title: entry.title ?? name, lore: { description: entry.description, links: entry.links }, rules: entry.rules }, x, y);
     },
     [placeLore, showInfo],
   );
@@ -297,7 +297,7 @@ export function App() {
   const airFrames = useMemo<AirView[]>(() => {
     if (!record) return [];
     const out: AirView[] = [];
-    let cur: AirView = { facilities: [], squadrons: [], caps: [] };
+    let cur: AirView = { facilities: [], squadrons: [], caps: [], med_bases: [], malta: [], cw_off_map: [] };
     for (const e of record.events) {
       if (e.air) cur = e.air;
       out.push(cur);

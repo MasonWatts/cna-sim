@@ -16,6 +16,16 @@ use crate::state::game::{GameState, Phase};
 use crate::state::map::HexCoord;
 use crate::state::unit::UnitId;
 
+/// §36.3: may a plane of `class` base at a facility of `kind`? Flying-boats need a basin/alighting
+/// area; every other class needs a normal airfield/strip.
+fn facility_serves(kind: crate::state::air::AirFacilityKind, class: crate::reference::aircraft::AircraftClass) -> bool {
+    if class == crate::reference::aircraft::AircraftClass::FlyingBoat {
+        kind.serves_flying_boats()
+    } else {
+        kind.serves_normal_aircraft()
+    }
+}
+
 /// Which broken-down component to repair (§22).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RepairKind {
@@ -455,6 +465,10 @@ pub enum Command {
     /// §30.37: repair a warship one stage toward its next Gun level (Commonwealth Fleet Phase;
     /// only in Alexandria).
     RepairShip { ship_index: usize },
+    /// §30.51/§30.52: transfer a Commonwealth combat `unit` by sea from the port it is in to another
+    /// port `to_port` (Truck Convoy Movement Phase). One transfer per port per Operations Stage;
+    /// limited by the ports' personnel (Stacking-Point) capacity; inoperable ports may not be used.
+    NavalTransferTroops { unit: UnitId, to_port: String },
     /// §30.2: off-shore bombardment by a Commonwealth warship at sea against an enemy combat unit
     /// in its coastal hex (any ship) or an adjacent hex (heavy ships only, at half strength).
     /// Fired in a Barrage Step of the Movement & Combat Phase; the Gun Rating is used directly as
@@ -485,10 +499,29 @@ pub enum Command {
         bombload_per_plane: u32,
         base_index: usize,
         interceptors: Option<crate::state::game::Flight>,
+        /// §40.74: Axis fighters flying flak suppression against the field's AA. Every 3 suppress
+        /// one *light* flak point; heavy flak (§40.74) is never suppressed.
+        #[serde(default)]
+        flak_suppression: u32,
     },
     /// §44.13: the Commonwealth builds capacity levels on a Maltese air facility using the Malta
     /// Air Facility Construction Table (Organization Phase; once per Game-Turn per base).
     ConstructMaltaFacility { base_index: usize },
+    /// §44.18: (Commonwealth) divert one AA Replacement Point to a specific Malta base — Light = 1 AA
+    /// point, Heavy (`heavy: true`) = 4 — consuming one matching Light/Heavy AA point from the
+    /// Commonwealth replacement pool. Points are held per-base (§44.24) but the Malta-wide light+heavy
+    /// total is capped at 48; at most one diversion per month (Organization Phase).
+    DivertMaltaAA { base_index: usize, heavy: bool },
+    /// §44.15/§44.18: (Commonwealth) redistribute already-diverted flak points between two Malta
+    /// fields (a free, out-of-sequence move, like §44.15 plane moves). Organization Phase.
+    MoveMaltaFlak { from_base: usize, to_base: usize, light: u32, heavy: u32 },
+    /// §44.14: (Commonwealth) base `count` planes of `aircraft_type` from the CW plane pool onto a
+    /// Malta facility (Organization Phase). Capped at the base's plane capacity (levels × 18) and
+    /// gated by §36.3 (flying-boats only at basins/alighting areas; land planes only at airfields).
+    BaseMaltaPlanes { base_index: usize, aircraft_type: String, count: u32 },
+    /// §44.15: (Commonwealth) move `count` planes of `aircraft_type` between two Malta facilities,
+    /// free of cost (Organization Phase); capacity- and §36.3-checked at the destination.
+    MoveMaltaPlanes { from_base: usize, to_base: usize, aircraft_type: String, count: u32 },
     /// §30.34/§41.34: bomb a Commonwealth warship (Land Support Air Phase, not at night). Resolves
     /// as a bombing mission on the "units" CRT group; the result is applied as Gun-Rating damage.
     BombShip {
@@ -897,10 +930,19 @@ pub enum CommandOutcome {
     ShipRepaired(u32),
     /// §30.34/§30.35/§30.39: Gun-Rating Damage Points inflicted on a warship by gunfire.
     ShipDamaged(i32),
+    /// §30.51/§30.52: a Commonwealth combat unit was transferred by sea from one port to another.
+    TroopsTransferred,
     /// §44.24: a resolved Axis raid on a Maltese air base (with capacity levels lost).
     MaltaBaseBombed { mission: crate::state::game::BombingMissionOutcome, levels_lost: u32 },
     /// §44.13: capacity levels built on a Maltese air facility.
     MaltaFacilityConstructed(u32),
+    /// §44.18: AA points added to a Malta base by a diversion.
+    MaltaAaDiverted(u32),
+    /// §44.15/§44.18: flak points redistributed between two Malta fields.
+    MaltaFlakMoved { light: u32, heavy: u32 },
+    /// §44.14: planes based onto / moved between Malta facilities.
+    MaltaPlanesBased(u32),
+    MaltaPlanesMoved(u32),
     /// §20.66/§20.78C: a production order was accepted — the points arrive on `arrival_game_turn`
     /// as `class` Replacement Points and require `tonnage` Axis Naval Convoy tons (0 for CW).
     ProductionPlanned {
@@ -1170,6 +1212,14 @@ pub enum CommandError {
     /// §44.23/§44.41: this Malta Availability Level is not allowed for the scenario, or has already
     /// been used its maximum number of Game-Turns.
     MaltaLevelUnavailable,
+    /// §44.18: AA can't be diverted to Malta now — already diverted this month, or the 48-point cap
+    /// is full.
+    MaltaAaUnavailable,
+    /// §44.14: the Malta facility can't hold that many more planes (levels × 18 capacity).
+    MaltaCapacityExceeded,
+    /// §36.3: this aircraft class may not base at this facility kind (flying-boats need a
+    /// basin/alighting area; land planes need an airfield/strip).
+    WrongAircraftForFacility,
     /// §43.11: the transfer would drop German strategic bombers below the 75% Mediterranean basing
     /// requirement.
     BasingRequirementViolated,
@@ -1190,6 +1240,11 @@ pub enum CommandError {
     DumpConstructionIllegal,
     /// §35.14: the SGSU lacks its own upkeep and may not repair (refit) its planes this stage.
     SgsuUnsupplied,
+    /// §30.51: the unit is not at a port, the destination is not a port, or a port is inoperable.
+    PortCannotTransfer,
+    /// §30.52/§55.11: the port's personnel capacity can't take the unit (minor port / over capacity),
+    /// or a port has already made its one transfer this Operations Stage.
+    PortTransferUnavailable,
     /// §30: the referenced warship does not exist.
     NoSuchShip,
     /// §30.36: the ship is below 50% Gun Rating and may not leave port until repaired.
@@ -1631,6 +1686,7 @@ impl GameState {
                 self.require_phase(Phase::CommonwealthFleet)?;
                 self.cmd_assign_ship(ship_index, location)
             }
+            Command::NavalTransferTroops { unit, to_port } => self.cmd_naval_transfer_troops(unit, &to_port),
             Command::RepairShip { ship_index } => {
                 self.require_phase(Phase::CommonwealthFleet)?;
                 let ship = self.fleet.get_mut(ship_index).ok_or(CommandError::NoSuchShip)?;
@@ -1663,7 +1719,7 @@ impl GameState {
                 Ok(CommandOutcome::ShipDamaged(self.resolve_gun_hit_on_ship(points, ship_index, roll)))
             }
             Command::BombMaltaBase {
-                squadron, planes, bombload_per_plane, base_index, interceptors,
+                squadron, planes, bombload_per_plane, base_index, interceptors, flak_suppression,
             } => {
                 self.require_phase(Phase::MaltaRaid)?;
                 if base_index >= self.malta_bases.len() {
@@ -1676,8 +1732,13 @@ impl GameState {
                 let flak_destroy_roll = self.rng.sequential_read() as u32;
                 let flak_abort_roll = self.rng.sequential_read() as u32;
                 let bomb_roll = self.rng.sequential_read() as u32;
-                // §44.24: the raid uses the base's own diverted AA/Flak (§44.18) for flak.
-                let flak_points = self.malta_bases[base_index].aa_points;
+                // §44.24: the raid draws only the *raided* field's diverted flak (§44.18). §40.74:
+                // escorting fighters suppress one Light point per three planes; Heavy flak is never
+                // suppressed. The intrinsic §36.18 AA point fires only vs strafing/dive-bombing, so it
+                // does not add to this level-bombing (AirfieldPortStrip) raid.
+                let base = &self.malta_bases[base_index];
+                let suppressed = (flak_suppression / 3).min(base.flak_light);
+                let flak_points = base.flak_heavy + (base.flak_light - suppressed);
                 let mission = self
                     .resolve_bombing_mission(
                         squadron, planes, bombload_per_plane,
@@ -1702,6 +1763,82 @@ impl GameState {
                     .levels_built(die);
                 let base = self.malta_bases.get_mut(base_index).ok_or(CommandError::NoSuchMaltaBase)?;
                 Ok(CommandOutcome::MaltaFacilityConstructed(base.construct(levels)))
+            }
+            Command::DivertMaltaAA { base_index, heavy } => {
+                self.require_phase(Phase::Organization)?;
+                if self.active_player != Side::Commonwealth {
+                    return Err(CommandError::WrongPhase);
+                }
+                if base_index >= self.malta_bases.len() {
+                    return Err(CommandError::NoSuchMaltaBase);
+                }
+                let d = crate::state::game::date_of(self.game_turn);
+                let month_key = d.year * 12 + d.month;
+                if self.malta_aa_diverted_month == Some(month_key) {
+                    return Err(CommandError::MaltaAaUnavailable); // §44.18: one diversion per month
+                }
+                // §44.18: the 48-point cap is Malta-wide (sum of every field's light + heavy).
+                let total: u32 = self.malta_bases.iter().map(|b| b.flak_total()).sum();
+                let room = crate::state::air::MaltaAirBase::MAX_AA_POINTS.saturating_sub(total);
+                if room == 0 {
+                    return Err(CommandError::MaltaAaUnavailable); // §44.18: 48-point Malta cap
+                }
+                // §44.18: consume one Commonwealth AA Replacement Point of the matching type from the
+                // pool (Light or Heavy). Each Light → 1 Malta AA point, each Heavy → 4.
+                let want = if heavy {
+                    crate::state::game::GunSub::HeavyAa
+                } else {
+                    crate::state::game::GunSub::LightAa
+                };
+                let src = self.replacement_points.iter_mut().find(|p| {
+                    p.side == Side::Commonwealth
+                        && p.class == crate::state::game::ReplacementClass::Gun
+                        && p.sub == Some(want)
+                        && p.count > 0
+                });
+                let Some(src) = src else {
+                    return Err(CommandError::MaltaAaUnavailable); // no AA replacement point to divert
+                };
+                src.count -= 1;
+                let add = if heavy { 4 } else { 1 };
+                let added = add.min(room);
+                if heavy {
+                    self.malta_bases[base_index].flak_heavy += added;
+                } else {
+                    self.malta_bases[base_index].flak_light += added;
+                }
+                self.malta_aa_diverted_month = Some(month_key);
+                self.replacement_points.retain(|p| p.count > 0);
+                Ok(CommandOutcome::MaltaAaDiverted(added))
+            }
+            Command::MoveMaltaFlak { from_base, to_base, light, heavy } => {
+                self.require_phase(Phase::Organization)?;
+                if self.active_player != Side::Commonwealth {
+                    return Err(CommandError::WrongPhase);
+                }
+                let n = self.malta_bases.len();
+                if from_base >= n || to_base >= n || from_base == to_base {
+                    return Err(CommandError::NoSuchMaltaBase);
+                }
+                if light == 0 && heavy == 0 {
+                    return Err(CommandError::MaltaAaUnavailable); // nothing to move
+                }
+                // §44.15/§44.18: a free redistribution — only limited by what the source field holds.
+                let src = &self.malta_bases[from_base];
+                if src.flak_light < light || src.flak_heavy < heavy {
+                    return Err(CommandError::MaltaAaUnavailable);
+                }
+                self.malta_bases[from_base].flak_light -= light;
+                self.malta_bases[from_base].flak_heavy -= heavy;
+                self.malta_bases[to_base].flak_light += light;
+                self.malta_bases[to_base].flak_heavy += heavy;
+                Ok(CommandOutcome::MaltaFlakMoved { light, heavy })
+            }
+            Command::BaseMaltaPlanes { base_index, aircraft_type, count } => {
+                self.cmd_base_malta_planes(base_index, &aircraft_type, count)
+            }
+            Command::MoveMaltaPlanes { from_base, to_base, aircraft_type, count } => {
+                self.cmd_move_malta_planes(from_base, to_base, &aircraft_type, count)
             }
             Command::BombShip {
                 squadron, planes, bombload_per_plane, ship_index, interceptors, interceptor_squadron,
@@ -1894,6 +2031,57 @@ impl GameState {
         }
         ship.location = location;
         Ok(CommandOutcome::ShipAssigned)
+    }
+
+    /// §30.51/§30.52 NavalTransferTroops: move a Commonwealth combat unit by sea from the port it
+    /// occupies to `to_port` (Truck Convoy Movement Phase). Only the Commonwealth ships troops by
+    /// sea (§30.5). Both ports must be operable; the destination must be able to receive men (a
+    /// major port, `stacking_in > 0`) and the origin to ship them out, with the unit's Stacking
+    /// Points fitting within each port's personnel capacity (§30.52/§55.11/§55.13); and neither port
+    /// may already have made its one transfer this Operations Stage (§30.52). (§30.53 supply-shipment
+    /// interaction is deferred.)
+    fn cmd_naval_transfer_troops(&mut self, unit: UnitId, to_port: &str) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::TruckConvoy)?;
+        let side = self.unit(unit).ok_or(CommandError::UnitNotFound)?.nationality.side();
+        if side != Side::Commonwealth || !self.is_combat_unit(unit) {
+            return Err(CommandError::PortCannotTransfer);
+        }
+        let hex = self.effective_hex(unit).ok_or(CommandError::PortCannotTransfer)?;
+        // Origin = the port whose hex the unit currently occupies.
+        let port_names: Vec<String> = self.ports.keys().cloned().collect();
+        let origin = port_names
+            .into_iter()
+            .find(|n| self.port_hex(n) == Some(hex))
+            .ok_or(CommandError::PortCannotTransfer)?;
+        if origin == to_port {
+            return Err(CommandError::PortCannotTransfer);
+        }
+        let dest_hex = self.port_hex(to_port).ok_or(CommandError::PortCannotTransfer)?;
+        // Copy out the port capacities/operability (scalars) so the ports borrow ends before mutation.
+        let (origin_out, origin_op) = {
+            let p = self.ports.get(&origin).ok_or(CommandError::PortCannotTransfer)?;
+            (p.stacking_out.unwrap_or(0), p.is_operable())
+        };
+        let (dest_in, dest_op) = {
+            let p = self.ports.get(to_port).ok_or(CommandError::PortCannotTransfer)?;
+            (p.stacking_in.unwrap_or(0), p.is_operable())
+        };
+        if !origin_op || !dest_op {
+            return Err(CommandError::PortCannotTransfer);
+        }
+        let sp = self.effective_stacking_points(unit);
+        // §55.11: a minor port (stacking_in 0) can't receive men; §30.52/§55.13 capacity must fit.
+        if dest_in == 0 || dest_in < sp || origin_out < sp {
+            return Err(CommandError::PortTransferUnavailable);
+        }
+        // §30.52: one transfer per port per Operations Stage (either end).
+        if self.ports_transferred_this_stage.contains(&origin) || self.ports_transferred_this_stage.contains(to_port) {
+            return Err(CommandError::PortTransferUnavailable);
+        }
+        self.unit_mut(unit).expect("unit exists").location = Some(crate::state::unit::UnitLocation::OnMap(dest_hex));
+        self.ports_transferred_this_stage.insert(origin);
+        self.ports_transferred_this_stage.insert(to_port.to_string());
+        Ok(CommandOutcome::TroopsTransferred)
     }
 
     /// §30.2 off-shore bombardment: a warship at sea fires its Gun Rating (as Actual Barrage
@@ -2185,6 +2373,9 @@ impl GameState {
         // §20.62: record the Axis convoy tonnage on the pending pool so an over-committed arrival
         // can be deferred against the turn's actual rolled allowance (§20.64).
         self.pending_replacements[idx].tonnage = tonnage;
+        // §20.3/§44.18: tag the Gun sub-type (Light/Heavy AA, ParaArt, Lt AT) so the arrived pool
+        // feeds Malta AA diversion and pins airborne rebuilds.
+        self.pending_replacements[idx].sub = crate::state::game::replacement_gun_sub_for_item(item);
         Ok(CommandOutcome::ProductionPlanned { arrival_game_turn, class, tonnage })
     }
 
@@ -4123,6 +4314,16 @@ impl GameState {
         self.require_phase(Phase::Organization)?;
         let gt = self.game_turn;
         let nationality = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?.nationality;
+        // §36.3: a squadron based on the map may only take planes its facility kind can service —
+        // flying-boats need a basin/alighting area, land planes need an airfield/strip. Off-map /
+        // Med-based squadrons (no on-map hex) are unrestricted here.
+        if let Some(hex) = self.sgsus.get(&squadron).and_then(|s| s.location) {
+            if let Some(f) = self.air_facilities.iter().find(|f| f.hex == hex) {
+                if !facility_serves(f.kind, class) {
+                    return Err(CommandError::WrongAircraftForFacility);
+                }
+            }
+        }
         // §35.2: planes come from the nationality's pool (the §60.32/§60.42 starting pool plus
         // §34.84/§34.85 reinforcements). Draw only what is available.
         if self.pool_planes(nationality, aircraft_type) < count {
@@ -4139,6 +4340,71 @@ impl GameState {
             }
         }
         Ok(CommandOutcome::SquadronPlanesAssigned)
+    }
+
+    /// §44.14: base Commonwealth planes on a Malta facility, from the CW plane pool.
+    fn cmd_base_malta_planes(&mut self, base_index: usize, aircraft_type: &str, count: u32) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::units::Nationality;
+        self.require_phase(Phase::Organization)?;
+        if self.active_player != Side::Commonwealth {
+            return Err(CommandError::WrongPhase);
+        }
+        let base = self.malta_bases.get(base_index).ok_or(CommandError::NoSuchMaltaBase)?;
+        let class = self
+            .reference
+            .aircraft_charts
+            .get(&Nationality::Commonwealth)
+            .and_then(|c| c.get(aircraft_type))
+            .map(|ac| ac.class)
+            .ok_or(CommandError::WrongAircraftForFacility)?;
+        if !facility_serves(base.kind, class) {
+            return Err(CommandError::WrongAircraftForFacility); // §36.3
+        }
+        if base.plane_count() + count > base.plane_capacity() {
+            return Err(CommandError::MaltaCapacityExceeded); // §44.14
+        }
+        if self.pool_planes(Nationality::Commonwealth, aircraft_type) < count {
+            return Err(CommandError::InsufficientPlanePool);
+        }
+        if let Some(m) = self.plane_pool.get_mut(&Nationality::Commonwealth) {
+            if let Some(n) = m.get_mut(aircraft_type) {
+                *n -= count;
+            }
+        }
+        self.malta_bases[base_index].add_planes(aircraft_type, count);
+        Ok(CommandOutcome::MaltaPlanesBased(count))
+    }
+
+    /// §44.15: move planes between two Malta facilities (free), capacity- and §36.3-checked.
+    fn cmd_move_malta_planes(&mut self, from: usize, to: usize, aircraft_type: &str, count: u32) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::units::Nationality;
+        self.require_phase(Phase::Organization)?;
+        if self.active_player != Side::Commonwealth {
+            return Err(CommandError::WrongPhase);
+        }
+        if from == to || from >= self.malta_bases.len() || to >= self.malta_bases.len() {
+            return Err(CommandError::NoSuchMaltaBase);
+        }
+        let class = self
+            .reference
+            .aircraft_charts
+            .get(&Nationality::Commonwealth)
+            .and_then(|c| c.get(aircraft_type))
+            .map(|ac| ac.class)
+            .ok_or(CommandError::WrongAircraftForFacility)?;
+        if !facility_serves(self.malta_bases[to].kind, class) {
+            return Err(CommandError::WrongAircraftForFacility); // §36.3
+        }
+        let have = self.malta_bases[from].planes.iter().find(|(t, _)| t == aircraft_type).map(|(_, n)| *n).unwrap_or(0);
+        if have < count {
+            return Err(CommandError::InsufficientPlanePool);
+        }
+        if self.malta_bases[to].plane_count() + count > self.malta_bases[to].plane_capacity() {
+            return Err(CommandError::MaltaCapacityExceeded); // §44.14
+        }
+        self.malta_bases[from].remove_planes(aircraft_type, count);
+        self.malta_bases[to].add_planes(aircraft_type, count);
+        Ok(CommandOutcome::MaltaPlanesMoved(count))
     }
 
     /// §41.36 BombAirFacility: gated to the Land Support Air Phase.

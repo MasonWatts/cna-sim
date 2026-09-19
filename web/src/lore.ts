@@ -12,6 +12,8 @@ export type LoreEntry = {
   description: string;
   /** Optional external "read more" links. */
   links?: LoreLink[];
+  /** Optional rules note for this place (shown in the panel's gavel section, below the lore). */
+  rules?: InfoSection;
 };
 
 /** A lore dataset keyed by the subject's name (place label / unit designation). */
