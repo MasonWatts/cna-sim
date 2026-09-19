@@ -16,3 +16,11 @@ export const CONVOY_SYSTEM_INFO: InfoPanelData = {
       "Axis reinforcements and supply arrive by scheduled Naval Convoys (§56): each is planned to a destination port with an arrival Game-Turn (listed as GT, lane, destination, and tonnage), and on arrival its surviving tonnage is landed there as supply.",
   },
 };
+
+export const OFF_MAP_INFO: InfoPanelData = {
+  title: "Off-Map: Tripoli/Tunisia (§8.8)",
+  rules: {
+    description:
+      "An Axis-only chain of off-board boxes — Tunis, Gabes, Tripoli, Tripolitania — where seaborne reinforcements and supply arrive at the ports of Bizerta (Tunis) and Tripoli. Units are not on the map yet: they march one Operations Stage at a time (spending their full CPA, §8.84) through the boxes toward the map, entering the board at the Nofilia junction (hex A2802). The boxes have unlimited stacking, water, and supply, and no breakdown checks.",
+  },
+};

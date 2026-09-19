@@ -288,6 +288,38 @@
         (at: "E1430", kind: Airfield), // Cairo (Commonwealth)
     ],
 
+    // §30.17/§55.25: the Italian cruiser San Giorgio, scuttled to block Tobruk harbour (already
+    // reflected in Tobruk's starting efficiency via the port chart). Barrage 4 vs ships / AA 6 (§60 c).
+    san_giorgio: Some((at: "C4807", blocks: "Tobruk", gun: 4, aa: 6)),
+
+    // §30/§30.6: the Commonwealth Mediterranean Fleet (Gun/AA ratings from the counters). All home
+    // to Alexandria (the §30.6 Valetta option is not exercised). Deploy = GT1; the rest arrive on
+    // their scheduled stage/turn. Ship tiles only render once a ship is assigned to sea (§30.2).
+    ships: [
+        // Deploy — Game-Turn 1, Alexandria.
+        (name: "Valiant",   gun: 6, aa: 12), // BB
+        (name: "Arethusa",  gun: 3, aa: 6),  // CL
+        (name: "Dido",      gun: 2, aa: 6),  // CLAA
+        (name: "Euryalus",  gun: 2, aa: 6),  // CLAA
+        (name: "Airedale",  gun: 1, aa: 1),  // DD
+        (name: "Bedouin",   gun: 1, aa: 3),  // DD
+        (name: "Jervis",    gun: 1, aa: 2),  // DD
+        (name: "Lance",     gun: 1, aa: 2),  // DD
+        (name: "Ledbury",   gun: 1, aa: 2),  // DD
+        (name: "Mohawk",    gun: 1, aa: 2),  // DD
+        (name: "Nubian",    gun: 1, aa: 2),  // DD
+        // Arrive Ops Stage 3 of Game-Turn 8.
+        (name: "Barham",    gun: 6, aa: 12, arrival: Turn(game_turn: 8, stage: 3)), // BB
+        (name: "York",      gun: 4, aa: 8,  arrival: Turn(game_turn: 8, stage: 3)), // CA
+        (name: "Ajax",      gun: 3, aa: 6,  arrival: Turn(game_turn: 8, stage: 3)), // CL
+        (name: "Marne",     gun: 1, aa: 3,  arrival: Turn(game_turn: 8, stage: 3)), // DD
+        (name: "Partridge", gun: 1, aa: 2,  arrival: Turn(game_turn: 8, stage: 3)), // DD
+        // Arrive Ops Stage 1 of Game-Turn 33.
+        (name: "Queen Elizabeth", gun: 6, aa: 12, arrival: Turn(game_turn: 33, stage: 1)), // BB
+        (name: "Fiji",            gun: 4, aa: 8,  arrival: Turn(game_turn: 33, stage: 1)), // CA
+        (name: "Naiad",           gun: 2, aa: 6,  arrival: Turn(game_turn: 33, stage: 1)), // CLAA
+    ],
+
     // ---- Initial air: starting plane pools (§60.32 Italian / §60.42 Commonwealth). No German air
     //      at start (the Luftwaffe arrives with the DAK, GT26+). Planes are assigned to the side's
     //      SGSU counters and based at airfields by the player/AI (§35.2) within capacity. The

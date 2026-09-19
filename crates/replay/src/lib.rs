@@ -145,6 +145,10 @@ pub struct Event {
     /// when it changes. Fold forward.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub naval: Option<NavalView>,
+    /// The off-map §8.8 Tripoli/Tunisia layer — boxes + occupants. **Delta**: `Some` only when it
+    /// changes. Fold forward.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub off_map: Option<OffMapView>,
 }
 
 #[derive(Serialize, TS, Clone, PartialEq)]
@@ -512,6 +516,64 @@ fn naval_views(g: &GameState) -> NavalView {
     NavalView { ships, ports, convoys }
 }
 
+/// A unit sitting in or transiting an off-map §8.8 box (Tripoli/Tunisia complex).
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct OffMapUnitView {
+    pub name: String,
+    pub abbr: String,
+    pub side: String,
+    /// Operations Stages already spent on the current leg (§8.84); 0 = resting in the box.
+    pub transit: u8,
+    /// Heading toward the map (Nofilia) rather than inland.
+    pub toward_map: bool,
+}
+
+/// One off-map node (box) and its occupants.
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct OffMapNodeView {
+    pub name: String,
+    pub units: Vec<OffMapUnitView>,
+}
+
+/// The off-map Tripoli/Tunisia complex (§8.8): the Axis-only chain of boxes and their occupants,
+/// in MAP ORDER (nearest the map/Nofilia first). Every node appears even when empty so the panel
+/// is stable.
+#[derive(Serialize, TS, Clone, PartialEq, Default)]
+#[ts(export)]
+pub struct OffMapView {
+    pub nodes: Vec<OffMapNodeView>,
+}
+
+fn off_map_views(g: &GameState) -> OffMapView {
+    use cna_engine::state::unit::UnitLocation;
+    // Map order: nearest the map (Nofilia) first, extending inland/west.
+    const NODES: [&str; 4] = ["Tripolitania", "Tripoli", "Gabes", "Tunis"];
+    let nodes = NODES
+        .iter()
+        .map(|&node| {
+            let mut units: Vec<OffMapUnitView> = g
+                .units
+                .values()
+                .filter_map(|u| match &u.location {
+                    Some(UnitLocation::OffMap { node: n, transit, toward_map }) if n == node => Some(OffMapUnitView {
+                        name: u.name.clone(),
+                        abbr: if u.abbr.is_empty() { u.name.clone() } else { u.abbr.clone() },
+                        side: format!("{:?}", u.nationality.side()),
+                        transit: *transit,
+                        toward_map: *toward_map,
+                    }),
+                    _ => None,
+                })
+                .collect();
+            units.sort_by(|a, b| a.name.cmp(&b.name));
+            OffMapNodeView { name: node.to_string(), units }
+        })
+        .collect();
+    OffMapView { nodes }
+}
+
 /// The eight phases in which agents act (mirrors `agent::self_play`).
 fn is_decision_phase(p: Phase) -> bool {
     matches!(
@@ -743,6 +805,7 @@ fn delta_frame(
     prev_hexsides: &mut Vec<HexsideView>,
     prev_air: &mut AirView,
     prev_naval: &mut NavalView,
+    prev_off_map: &mut OffMapView,
 ) -> Event {
     let cur = unit_views(game);
     let cur_ids: std::collections::HashSet<u32> = cur.iter().map(|u| u.id).collect();
@@ -820,6 +883,13 @@ fn delta_frame(
     } else {
         None
     };
+    let omv = off_map_views(game);
+    let off_map = if omv != *prev_off_map {
+        *prev_off_map = omv.clone();
+        Some(omv)
+    } else {
+        None
+    };
     Event {
         step,
         game_turn: game.game_turn,
@@ -841,6 +911,7 @@ fn delta_frame(
         hexsides,
         air,
         naval,
+        off_map,
     }
 }
 
@@ -869,7 +940,8 @@ pub fn record_game(
     let mut prev_hexsides: Vec<HexsideView> = hexside_views(&game);
     let mut prev_air: AirView = AirView::default();
     let mut prev_naval: NavalView = NavalView::default();
-    let mut events = vec![delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval)];
+    let mut prev_off_map: OffMapView = OffMapView::default();
+    let mut events = vec![delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map)];
     let mut step = 0u32;
     let mut guard = 0u64;
     while game.game_turn <= max_turns {
@@ -899,7 +971,7 @@ pub fn record_game(
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         if let Ok(outcome) = game.apply(cmd) {
                             step += 1;
-                            events.push(delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval));
+                            events.push(delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map));
                             progress = true;
                         }
                         acted += 1;
@@ -969,7 +1041,8 @@ pub fn record_game_streaming(
     let mut prev_hexsides: Vec<HexsideView> = hexside_views(&game);
     let mut prev_air: AirView = AirView::default();
     let mut prev_naval: NavalView = NavalView::default();
-    let start = delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval);
+    let mut prev_off_map: OffMapView = OffMapView::default();
+    let start = delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map);
     writeln!(out, "{}", serde_json::to_string(&start)?)?;
 
     let mut step = 0u32;
@@ -1002,7 +1075,7 @@ pub fn record_game_streaming(
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         if let Ok(outcome) = game.apply(cmd) {
                             step += 1;
-                            let ev = delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval);
+                            let ev = delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map);
                             writeln!(out, "{}", serde_json::to_string(&ev)?)?;
                             progress = true;
                         }
@@ -1126,6 +1199,7 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
     let mut prev_hexsides: Vec<HexsideView> = hexside_views(&game);
     let mut prev_air: AirView = AirView::default();
     let mut prev_naval: NavalView = NavalView::default();
+    let mut prev_off_map: OffMapView = OffMapView::default();
     let mut events: Vec<Event> = Vec::new();
     let mut step = 0u32;
     let frame = |game: &GameState,
@@ -1143,8 +1217,9 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
                      prev_hexsides: &mut Vec<HexsideView>,
                      prev_air: &mut AirView,
                      prev_naval: &mut NavalView,
+                     prev_off_map: &mut OffMapView,
                      events: &mut Vec<Event>| {
-        events.push(delta_frame(game, *step, "Commonwealth", action.into(), outcome, Vec::new(), prev, prev_weather, prev_rp, prev_dumps, prev_convoys, prev_raiders, prev_rommel, prev_overlays, prev_hexsides, prev_air, prev_naval));
+        events.push(delta_frame(game, *step, "Commonwealth", action.into(), outcome, Vec::new(), prev, prev_weather, prev_rp, prev_dumps, prev_convoys, prev_raiders, prev_rommel, prev_overlays, prev_hexsides, prev_air, prev_naval, prev_off_map));
         *step += 1;
     };
 
@@ -1153,7 +1228,7 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
         class: ReplacementClass::Infantry, count: 4, side: Side::Commonwealth,
         game_turn: 3, stage: 1, location: None, assigned_to: Some(unit), tonnage: 0,
     });
-    frame(&game, &mut step, "Staged: Infantry replacement pool planned (§20.21)", String::new(), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut events);
+    frame(&game, &mut step, "Staged: Infantry replacement pool planned (§20.21)", String::new(), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
 
     // 1 — ARRIVE: it lands on-map at a port hex and begins Training (§20.21 → §20.43).
     game.pending_replacements.clear();
@@ -1161,12 +1236,12 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
         class: ReplacementClass::Infantry, count: 4, side: Side::Commonwealth,
         location: Some(UnitLocation::OnMap(HexCoord::new(0, 1))), training_remaining: 3, assigned_to: Some(unit), cpa_used: 0, carried_by: None,
     });
-    frame(&game, &mut step, "Arrived: pool on-map at the port, training begins (§20.21/§20.43)", "ReplacementArrived".into(), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut events);
+    frame(&game, &mut step, "Arrived: pool on-map at the port, training begins (§20.21/§20.43)", "ReplacementArrived".into(), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
 
     // 2-4 — TRAIN: the pool trains down (§20.43) at the training area.
     for remaining in [2u32, 1, 0] {
         game.replacement_points[0].training_remaining = remaining;
-        frame(&game, &mut step, "Training replacement pool (§20.43)", format!("Training: {remaining} stage(s) left"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut events);
+        frame(&game, &mut step, "Training replacement pool (§20.43)", format!("Training: {remaining} stage(s) left"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
     }
 
     // 5 — LOAD: in the Truck Convoy phase, the convoy commits to the haul — the trained pool is loaded
@@ -1175,7 +1250,7 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
     game.active_player = Side::Commonwealth;
     let picked = game.apply(Command::LoadReplacement { convoy: 0, pool: 0 });
     let loaded = game.apply(Command::LoadConvoy { convoy: 0, commodity: Commodity::Fuel, amount: 30 });
-    frame(&game, &mut step, "Convoy loads the pool + Fuel at the depot (§20.44/§53.14)", format!("{picked:?}; {loaded:?}"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut events);
+    frame(&game, &mut step, "Convoy loads the pool + Fuel at the depot (§20.44/§53.14)", format!("{picked:?}; {loaded:?}"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
 
     // 6-9 — TRAVEL: the pool moves one hex per step toward its unit via §20.46 MoveReplacement; the
     // carrying convoy burns its own carried Fuel (§49.18), so no en-route dumps are needed. Each step
@@ -1183,12 +1258,12 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
     for hex in [1i16, 2, 3, 4] {
         game.replacement_points[0].cpa_used = 0; // new stage's Truck Convoy Phase
         let outcome = game.apply(Command::MoveReplacement { index: 0, to: HexCoord::new(hex, 1) });
-        frame(&game, &mut step, "Delivering replacement pool toward its unit (§20.46)", format!("{outcome:?}"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut events);
+        frame(&game, &mut step, "Delivering replacement pool toward its unit (§20.46)", format!("{outcome:?}"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
     }
 
     // 7 — ABSORB: co-located and trained, the pool is absorbed and the unit's TOE jumps (§20.49).
     let added = game.absorb_replacement(0, unit).unwrap_or(0);
-    frame(&game, &mut step, "Absorbed into the unit (§20.49)", format!("ReplacementAbsorbed({added})"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut events);
+    frame(&game, &mut step, "Absorbed into the unit (§20.49)", format!("ReplacementAbsorbed({added})"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
 
     // 8 — DEMOLISH: the NZ Rail Coy at (3,1) demolishes its own railroad hex (§24.66 scorched earth) via
     // a real `DemolishRailroad` command; completing the one-stage project flips both rail edges of the
@@ -1197,7 +1272,7 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
     game.active_player = Side::Commonwealth;
     let started = game.apply(Command::DemolishRailroad { builder: sapper, a: HexCoord::new(3, 1), b: HexCoord::new(4, 1) });
     game.advance_construction();
-    frame(&game, &mut step, "NZ Rail Coy demolishes the railroad at (3,1) (§24.66)", format!("{started:?}"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut events);
+    frame(&game, &mut step, "NZ Rail Coy demolishes the railroad at (3,1) (§24.66)", format!("{started:?}"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
 
     GameRecord {
         scenario: "Replacement-Point Lifecycle Demo (§20)".into(),

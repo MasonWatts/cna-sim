@@ -12,6 +12,7 @@ import type { MapOverlaysView } from "@bindings/MapOverlaysView";
 import type { HexsideView } from "@bindings/HexsideView";
 import type { AirView } from "@bindings/AirView";
 import type { NavalView } from "@bindings/NavalView";
+import type { OffMapView } from "@bindings/OffMapView";
 import { mapBounds } from "./hex";
 import { HexMap } from "./components/HexMap";
 import { Scrubber } from "./components/Scrubber";
@@ -316,6 +317,18 @@ export function App() {
     return out;
   }, [record]);
 
+  // Off-map layer (§8.8 Tripoli/Tunisia boxes) — one delta object; fold forward.
+  const offMapFrames = useMemo<OffMapView[]>(() => {
+    if (!record) return [];
+    const out: OffMapView[] = [];
+    let cur: OffMapView = { nodes: [] };
+    for (const e of record.events) {
+      if (e.off_map) cur = e.off_map;
+      out.push(cur);
+    }
+    return out;
+  }, [record]);
+
   // Node structures for each grouping level (Month/Week/Op-Stage/Phase), for level-aware navigation.
   const nodesByLevel = useMemo<Record<Exclude<Level, "step">, Node[]>>(
     () => ({
@@ -408,7 +421,7 @@ export function App() {
         <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0", width: "max-content" }}>
           {/* Variant C is drawn inside HexMap in map coordinates (see `legend`), so it pans/zooms
               with the board and sits off-shore at the map's horizontal center. */}
-          <HexMap map={record.map} units={frames[idx] ?? []} weather={weatherFrames[idx]} replacements={replacementFrames[idx] ?? []} supplyDumps={supplyDumpFrames[idx] ?? []} truckConvoys={truckConvoyFrames[idx] ?? []} raiders={raiderFrames[idx] ?? []} rommel={rommelFrames[idx] ?? []} overlays={overlayFrames[idx]} hexsides={hexsideFrames[idx]} air={airFrames[idx]} naval={navalFrames[idx]} placeLore={placeLore} onPlaceHover={onPlaceHover} onPlaceLeave={hideInfo} onInfoHover={showInfo} legend={<>
+          <HexMap map={record.map} units={frames[idx] ?? []} weather={weatherFrames[idx]} replacements={replacementFrames[idx] ?? []} supplyDumps={supplyDumpFrames[idx] ?? []} truckConvoys={truckConvoyFrames[idx] ?? []} raiders={raiderFrames[idx] ?? []} rommel={rommelFrames[idx] ?? []} overlays={overlayFrames[idx]} hexsides={hexsideFrames[idx]} air={airFrames[idx]} naval={navalFrames[idx]} offMap={offMapFrames[idx]} placeLore={placeLore} onPlaceHover={onPlaceHover} onPlaceLeave={hideInfo} onInfoHover={showInfo} legend={<>
               <div className="legend-map"><TerrainKey onInfoHover={showInfo} onInfoLeave={hideInfo} /></div>
               <div className="legend-map compass-box"><div className="tk-title">Orientation</div><CompassRose /></div>
             </>}

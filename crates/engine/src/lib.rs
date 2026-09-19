@@ -408,6 +408,10 @@ mod tests {
         .unwrap();
         let mut g = GameState::new(refs, 1);
         g.plan_convoy(2, "Tripoli", 5, 8000, 4000, 500, 0, 25000);
+        // §56.16: not deliverable before its arrival turn (planned GT5, now GT1) — stays in transit.
+        assert!(g.deliver_convoy(0).is_none(), "convoy not deliverable before arrival turn");
+        assert_eq!(g.convoys.len(), 1, "undelivered convoy remains in transit");
+        g.game_turn = 5; // reach the convoy's scheduled arrival turn (§56.16)
         // Surviving tonnage -> supply points via §54.5: Fuel x8, Ammo /4, Stores x1.
         let delivered = g.deliver_convoy(0).unwrap();
         assert_eq!(delivered.fuel, 64000); // 8000 * 8
@@ -429,6 +433,7 @@ mod tests {
         g.map.load_section(include_str!("../../../data/maps/section-a.ron")).unwrap();
         let hex = g.port_hex("Benghazi").expect("Benghazi is a labelled port on section A");
         g.plan_convoy(1, "Benghazi", 5, 1000, 400, 0, 0, 25000);
+        g.game_turn = 5; // reach the convoy's scheduled arrival turn (§56.16)
         g.phase = Phase::NavalConvoyArrival;
         match g.apply(Command::DeliverConvoy { convoy_index: 0 }) {
             Ok(CommandOutcome::ConvoyDelivered(_)) => {}
@@ -3314,6 +3319,14 @@ mod tests {
             g.apply(Command::AntiArmor { attackers: vec![far], target_hex: hex_d, withheld: vec![] }),
             Err(CommandError::NotAdjacent)
         );
+        // §14: anti-armor at an adjacent hex with no enemy present is rejected (regression — firing
+        // into a hex a Close Assault had emptied previously resolved as a null result).
+        let empty = HexCoord::new(2, 0);
+        g.map.set_hex(empty, HexTerrain::Clear);
+        assert_eq!(
+            g.apply(Command::AntiArmor { attackers: vec![atk], target_hex: empty, withheld: vec![] }),
+            Err(CommandError::NoTargets)
+        );
     }
 
     #[test]
@@ -3648,6 +3661,48 @@ mod tests {
     }
 
     #[test]
+    fn legal_commands_enumerate_off_map_march_8_8() {
+        // §8.8: the Axis off-map units (2nd/3rd CCNN, 4/10 Army in the Tripoli/Tunisia boxes) can be
+        // marched toward the map — the action is now enumerated, so an agent can bring them on.
+        use crate::reference::units::Side;
+        use crate::state::command::Command;
+        use crate::state::game::{OffMapDir, Phase};
+        let mut g = build_campaign_game();
+        g.active_player = Side::Axis;
+        g.phase = Phase::MovementAndCombat;
+        let legal = g.legal_commands(Side::Axis);
+        assert!(
+            legal.iter().any(|c| matches!(c, Command::MoveOffMap { direction: OffMapDir::TowardMap, .. })),
+            "off-map units enumerate a march toward the map (Nofilia)"
+        );
+    }
+
+    #[test]
+    fn commonwealth_fleet_roster_and_arrivals_30_6() {
+        // §30/§30.6: 11 ships deploy at GT1 (Alexandria); 8 more arrive on schedule (5 at GT8/OS3,
+        // 3 at GT33/OS1).
+        let mut g = build_campaign_game();
+        assert_eq!(g.fleet.len(), 11, "GT1 deployed fleet");
+        assert!(g.fleet.iter().any(|s| s.name == "Valiant" && s.max_gun == 6 && s.max_aa == 12));
+        assert_eq!(g.pending_ships.len(), 8, "scheduled arrivals");
+
+        // Reach GT8/OS3 → the 5 GT8 ships (Barham/York/Ajax/Marne/Partridge) join the fleet.
+        g.game_turn = 8;
+        g.operations_stage = 3;
+        g.process_ship_arrivals();
+        assert_eq!(g.fleet.len(), 16);
+        assert!(g.fleet.iter().any(|s| s.name == "York" && s.max_gun == 4 && s.max_aa == 8));
+        assert_eq!(g.pending_ships.len(), 3);
+
+        // Reach GT33/OS1 → the last 3 (Queen Elizabeth/Fiji/Naiad) arrive.
+        g.game_turn = 33;
+        g.operations_stage = 1;
+        g.process_ship_arrivals();
+        assert_eq!(g.fleet.len(), 19);
+        assert!(g.pending_ships.is_empty());
+    }
+
+    #[test]
     fn campaign_seeds_initial_air_pool() {
         use crate::reference::units::Nationality;
         // §60.32/§60.42 starting plane pools are seeded at GT1 (before any reinforcement accrual).
@@ -3685,6 +3740,10 @@ mod tests {
         let mut g = GameState::new(ReferenceData::new(), 1);
         let field = HexCoord::new(4, 4);
         g.add_air_facility(AirFacility::new(AirFacilityKind::Airfield, field));
+        // A separate field for the Italian squadron: a squadron may not base where the enemy's
+        // squadrons already operate (§36 basing gate), so the two sides use different airfields.
+        let field2 = HexCoord::new(8, 8);
+        g.add_air_facility(AirFacility::new(AirFacilityKind::Airfield, field2));
         g.available_sgsu.insert(Nationality::Commonwealth, 5);
         g.available_sgsu.insert(Nationality::Italian, 5);
         g.plane_pool.entry(Nationality::Commonwealth).or_default().insert("Gladiator Mk.II".into(), 12);
@@ -3713,7 +3772,7 @@ mod tests {
         assert!(!g.sgsu_cap_exceeded(Nationality::Commonwealth));
 
         // Axis has no +2 cushion: ⌈planes/10⌉. One empty Italian SGSU exceeds the 0 cap…
-        let it = match g.apply(Command::DeploySgsu { nationality: Nationality::Italian, class: SquadronClass::Fighter, at: field }) {
+        let it = match g.apply(Command::DeploySgsu { nationality: Nationality::Italian, class: SquadronClass::Fighter, at: field2 }) {
             Ok(CommandOutcome::SgsuDeployed(id)) => id,
             other => panic!("expected SgsuDeployed, got {other:?}"),
         };
@@ -4967,7 +5026,7 @@ mod tests {
         let ca = Command::CloseAssault { attackers: vec![UnitId(0)], target: HexCoord::new(0, 0) };
         assert_eq!(ca.rule_refs(), &["§15"]);
         // A variant not in the map returns empty (the map is extensible, not exhaustive).
-        let well = Command::PoisonWell { hex: HexCoord::new(0, 0), die: 1 };
+        let well = Command::PoisonWell { hex: HexCoord::new(0, 0) };
         assert!(well.rule_refs().is_empty());
     }
 
@@ -5172,7 +5231,7 @@ mod tests {
         }
         // §20.78A: works only because load_campaign loaded the Commonwealth Truck Production table.
         assert!(matches!(
-            g.apply(Command::ProduceCommonwealthTrucks { light_die: 3, medium_die: 3, heavy_die: 3 }),
+            g.apply(Command::ProduceCommonwealthTrucks {}),
             Ok(CommandOutcome::TrucksProduced { .. })
         ));
         // §20.66: PlanProduction needs the German production chart AND the Convoy Level Chart for the
@@ -5544,7 +5603,8 @@ mod tests {
 
         let controlled = g.hex_in_zoc_of(target, Side::Axis);
         // A non-6 spot roll: the raider moves (through the ZOC) and survives.
-        match g.apply(Command::MoveRaider { raider: idx, to: target, spot_roll: 1 }) {
+        g.rng.force([1]);
+        match g.apply(Command::MoveRaider { raider: idx, to: target }) {
             Ok(CommandOutcome::RaiderMoved { hex, eliminated, .. }) => {
                 assert_eq!(hex, target);
                 assert!(!eliminated);
@@ -5555,11 +5615,13 @@ mod tests {
         if controlled {
             // §27.43: a 6 while in an enemy-controlled hex spots and eliminates the raider.
             let back = base;
-            match g.apply(Command::MoveRaider { raider: idx, to: back, spot_roll: 1 }) {
+            g.rng.force([1]);
+            match g.apply(Command::MoveRaider { raider: idx, to: back }) {
                 Ok(CommandOutcome::RaiderMoved { .. }) => {}
                 other => panic!("unexpected: {other:?}"),
             }
-            match g.apply(Command::MoveRaider { raider: idx, to: target, spot_roll: 6 }) {
+            g.rng.force([6]);
+            match g.apply(Command::MoveRaider { raider: idx, to: target }) {
                 Ok(CommandOutcome::RaiderMoved { eliminated, .. }) => assert!(eliminated),
                 other => panic!("unexpected: {other:?}"),
             }
@@ -5604,18 +5666,20 @@ mod tests {
             g.rommel_raid_ai3_until_gt = 0;
         };
 
-        // Roll 12: "AI perm 3" — Rommel is captured and removed from the maps.
+        // Roll 12: "AI perm 3" — Rommel is captured and removed from the maps. (2d6 forced.)
         reset(&mut g);
+        g.rng.force([6, 6]);
         assert_eq!(
-            g.apply(Command::RaidRommel { raider: 0, roll: 12 }),
+            g.apply(Command::RaidRommel { raider: 0 }),
             Ok(CommandOutcome::RommelRaided { raider_eliminated: false, rommel_removed: true, axis_temp3: false })
         );
         assert!(g.rommel.is_none());
 
         // Roll 2: "AI temp 3" — Rommel stays, but the Axis rating is 3 for the next two Game-Turns.
         reset(&mut g);
+        g.rng.force([1, 1]);
         assert_eq!(
-            g.apply(Command::RaidRommel { raider: 0, roll: 2 }),
+            g.apply(Command::RaidRommel { raider: 0 }),
             Ok(CommandOutcome::RommelRaided { raider_eliminated: false, rommel_removed: false, axis_temp3: true })
         );
         assert!(g.rommel_on_map());
@@ -5626,26 +5690,28 @@ mod tests {
 
         // Roll 9 "LRDG elim": survives when Rommel is alone; eliminated when combat/HQ units share.
         reset(&mut g);
+        g.rng.force([4, 5]);
         assert_eq!(
-            g.apply(Command::RaidRommel { raider: 0, roll: 9 }),
+            g.apply(Command::RaidRommel { raider: 0 }),
             Ok(CommandOutcome::RommelRaided { raider_eliminated: false, rommel_removed: false, axis_temp3: false })
         );
         reset(&mut g);
         let guard = g.spawn_unit(Nationality::German, "k", "guard", Composition::Organic { current_toe: 5 });
         g.unit_mut(guard).unwrap().location = Some(UnitLocation::OnMap(hex));
+        g.rng.force([4, 5]);
         assert_eq!(
-            g.apply(Command::RaidRommel { raider: 0, roll: 9 }),
+            g.apply(Command::RaidRommel { raider: 0 }),
             Ok(CommandOutcome::RommelRaided { raider_eliminated: true, rommel_removed: false, axis_temp3: false })
         );
         assert_eq!(g.raiders_in_play(RaiderKind::Lrdg), 0);
 
-        // §27.64: at most four Raids on Rommel per campaign.
+        // §27.64: at most four Raids on Rommel per campaign. (Roll value irrelevant to accept/reject.)
         reset(&mut g);
         g.units.clear();
         for _ in 0..4 {
-            assert!(g.apply(Command::RaidRommel { raider: 0, roll: 5 }).is_ok());
+            assert!(g.apply(Command::RaidRommel { raider: 0 }).is_ok());
         }
-        assert_eq!(g.apply(Command::RaidRommel { raider: 0, roll: 5 }), Err(CommandError::RaiderCannotMove));
+        assert_eq!(g.apply(Command::RaidRommel { raider: 0 }), Err(CommandError::RaiderCannotMove));
     }
 
     #[test]
@@ -5789,7 +5855,8 @@ mod tests {
         g.truck_convoys.push(convoy(1, 2));
         g.phase = Phase::Repair;
         g.active_player = Side::Commonwealth;
-        assert_eq!(g.apply(Command::RepairConvoyTrucks { convoy: 0, roll: 1 }), Ok(CommandOutcome::Repaired(2)));
+        g.rng.force([1]);
+        assert_eq!(g.apply(Command::RepairConvoyTrucks { convoy: 0 }), Ok(CommandOutcome::Repaired(2)));
         assert_eq!((g.truck_convoys[0].trucks.medium, g.truck_convoys[0].trucks_broken.medium), (3, 0));
 
         // §53.25: supplies a convoy off-loads this phase can't be re-loaded by another convoy the same
@@ -6024,8 +6091,9 @@ mod tests {
         // §27.52: blow a pipeline (a 1-4 succeeds); the pipeline is removed.
         place_raider(&mut g);
         g.pipelines.insert(hex);
+        g.rng.force([3]);
         assert_eq!(
-            g.apply(Command::RaidPipeline { raider: 0, roll: 3 }),
+            g.apply(Command::RaidPipeline { raider: 0 }),
             Ok(CommandOutcome::RaidResolved { success: true, raider_eliminated: false })
         );
         assert!(!g.pipelines.contains(&hex));
@@ -6036,8 +6104,9 @@ mod tests {
             location: UnitLocation::OnMap(hex), side: Side::Axis,
             supply: Commodities { fuel: 100, ammo: 100, stores: 100, water: 0 }, dummy: false, constructed: true, unlimited: false,
         });
+        g.rng.force([1, 1, 1]); // unguarded: attack roll unused; destroy die = 1 (hit)
         assert_eq!(
-            g.apply(Command::RaidSupplyDump { raider: 0, attack_roll: 0, destroy_roll: 1 }),
+            g.apply(Command::RaidSupplyDump { raider: 0 }),
             Ok(CommandOutcome::RaidResolved { success: true, raider_eliminated: false })
         );
         let d = g.supply_dumps.last().unwrap();
@@ -6047,7 +6116,8 @@ mod tests {
         place_raider(&mut g);
         let guard = g.spawn_unit(Nationality::German, "k", "guard", Composition::Organic { current_toe: 5 });
         g.unit_mut(guard).unwrap().location = Some(UnitLocation::OnMap(hex));
-        match g.apply(Command::RaidSupplyDump { raider: 0, attack_roll: 2, destroy_roll: 1 }) {
+        g.rng.force([1, 1, 1]); // attack roll 2 (≤ guards' defence) → raider eliminated
+        match g.apply(Command::RaidSupplyDump { raider: 0 }) {
             Ok(CommandOutcome::RaidResolved { success: false, raider_eliminated: true }) => {}
             other => panic!("unexpected: {other:?}"),
         }
@@ -6061,8 +6131,9 @@ mod tests {
             cargo: Commodities::default(), cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
         let ci = g.truck_convoys.len() - 1;
+        g.rng.force([1]);
         assert_eq!(
-            g.apply(Command::RaidTruckConvoy { raider: 0, convoy: ci, roll: 1 }),
+            g.apply(Command::RaidTruckConvoy { raider: 0, convoy: ci }),
             Ok(CommandOutcome::RaidResolved { success: true, raider_eliminated: false })
         );
         assert_eq!(g.truck_convoys[ci].trucks.medium, 3, "one Truck Point destroyed");
@@ -6082,8 +6153,9 @@ mod tests {
             location: Some(UnitLocation::OnMap(hex)), training_remaining: 0, assigned_to: None, cpa_used: 0, carried_by: Some(cj),
         });
         assert!(g.convoy_carries_replacements(cj));
+        g.rng.force([1]);
         assert_eq!(
-            g.apply(Command::RaidTruckConvoy { raider: 0, convoy: cj, roll: 1 }),
+            g.apply(Command::RaidTruckConvoy { raider: 0, convoy: cj }),
             Ok(CommandOutcome::RaidResolved { success: true, raider_eliminated: false })
         );
         assert_eq!(g.truck_convoys[cj].trucks.medium, 0, "last Truck Point destroyed");
@@ -6236,14 +6308,15 @@ mod tests {
         // The Truck Convoy Phase is the Axis (convoy owner's) phase; the CW raider reacts.
         g.phase = Phase::TruckConvoy;
         g.active_player = Side::Axis;
+        g.rng.force([1]);
         assert_eq!(
-            g.apply(Command::InterceptTruckConvoy { raider: 0, convoy: 0, roll: 1 }),
+            g.apply(Command::InterceptTruckConvoy { raider: 0, convoy: 0 }),
             Ok(CommandOutcome::RaidResolved { success: true, raider_eliminated: false })
         );
         assert_eq!(g.truck_convoys[0].trucks.medium, 2, "one Truck Point destroyed");
-        // The far convoy is out of interception range.
+        // The far convoy is out of interception range (roll value irrelevant to the range reject).
         assert_eq!(
-            g.apply(Command::InterceptTruckConvoy { raider: 0, convoy: 1, roll: 1 }),
+            g.apply(Command::InterceptTruckConvoy { raider: 0, convoy: 1 }),
             Err(CommandError::RaiderCannotMove)
         );
     }
@@ -6274,13 +6347,14 @@ mod tests {
         g.active_player = Side::Commonwealth;
 
         // §27.86: a d6 of 3 → 25% of the 12 grounded planes destroyed (3).
+        g.rng.force([3]);
         assert_eq!(
-            g.apply(Command::RaidAirfieldSas { unit: sas, roll: 3 }),
+            g.apply(Command::RaidAirfieldSas { unit: sas }),
             Ok(CommandOutcome::SasRaided { planes_pct: 25 })
         );
         assert_eq!(g.sgsus[&SquadronId(1)].plane_count(), 9);
-        // §27.87: a second raid within six Operations Stages is refused.
-        assert_eq!(g.apply(Command::RaidAirfieldSas { unit: sas, roll: 3 }), Err(CommandError::SasCannotAct));
+        // §27.87: a second raid within six Operations Stages is refused (roll irrelevant).
+        assert_eq!(g.apply(Command::RaidAirfieldSas { unit: sas }), Err(CommandError::SasCannotAct));
 
         // §27.88: stacked with an LRDG, the SAS Brigade moves as an LRDG (CPA 30).
         assert_eq!(g.effective_cpa(sas), Some(10), "base infantry CPA");
@@ -8753,7 +8827,7 @@ mod tests {
         // §44.24: the raid happens in the Malta Raid Phase.
         let raid = Command::BombMaltaBase {
             squadron: SquadronId(1), planes: 12, bombload_per_plane: 20, base_index: 0,
-            interceptors: None, flak_destroy_roll: 11, flak_abort_roll: 11, bomb_roll: 66,
+            interceptors: None,
         };
         assert_eq!(g.apply(raid.clone()), Err(CommandError::WrongPhase));
         let mut guard = 0;
@@ -8762,6 +8836,7 @@ mod tests {
             guard += 1;
             assert!(guard < 60, "never reached MaltaRaid");
         }
+        g.rng.force([1, 1, 1, 1, 6, 6]); // flak 11/11, bomb 66 (sequential_read pairs)
         match g.apply(raid) {
             Ok(CommandOutcome::MaltaBaseBombed { levels_lost, .. }) => {
                 assert!(levels_lost >= 1, "a heavy raid should reduce the base");
@@ -8778,7 +8853,8 @@ mod tests {
             guard += 1;
             assert!(guard < 60, "never reached Organization");
         }
-        match g.apply(Command::ConstructMaltaFacility { base_index: 0, die: 6 }) {
+        g.rng.force([6]);
+        match g.apply(Command::ConstructMaltaFacility { base_index: 0 }) {
             Ok(CommandOutcome::MaltaFacilityConstructed(built)) => {
                 assert_eq!(built, (6 - before).min(2));
                 assert_eq!(g.malta_bases[0].levels, before + built);
@@ -8786,7 +8862,7 @@ mod tests {
             other => panic!("unexpected: {other:?}"),
         }
         // §44.13: only once per Game-Turn per base.
-        assert_eq!(g.apply(Command::ConstructMaltaFacility { base_index: 0, die: 6 }), Ok(CommandOutcome::MaltaFacilityConstructed(0)));
+        assert_eq!(g.apply(Command::ConstructMaltaFacility { base_index: 0 }), Ok(CommandOutcome::MaltaFacilityConstructed(0)));
     }
 
     #[test]
@@ -8837,6 +8913,10 @@ mod tests {
         // the barrage ammo check may block; seed a dump so the fire resolves).
         g.unit_mut(arty).unwrap().location = Some(UnitLocation::OnMap(ship_hex));
         g.add_supply_dump(UnitLocation::OnMap(ship_hex), crate::reference::units::Side::Axis, 999, 0);
+        // Both attacks are now enumerated as legal Axis combat actions (§30.35/§30.39).
+        let legal = g.legal_commands(crate::reference::units::Side::Axis);
+        assert!(legal.iter().any(|c| matches!(c, Command::SanGiorgioAttackShip { ship_index: 0 })), "San Giorgio attack enumerated");
+        assert!(legal.iter().any(|c| matches!(c, Command::ArtilleryBombardShip { ship_index: 0, .. })), "artillery-vs-ship enumerated");
         let before = g.fleet[0].gun_rating;
         match g.apply(atk) {
             Ok(CommandOutcome::ShipDamaged(d)) => {
@@ -8962,10 +9042,11 @@ mod tests {
         while g.phase != Phase::LandSupportAir {
             g.advance_phase();
         }
-        // 12 bombers x 20 = 240 bomb points, no flak, roll 66 -> a "units" result of some damage.
+        // 12 bombers x 20 = 240 bomb points, no flak, bomb roll 66 -> a "units" result of some damage.
+        g.rng.force([1, 1, 1, 1, 6, 6]); // flak 11/11 (unused, no flak pts), bomb 66
         match g.apply(Command::BombShip {
             squadron: SquadronId(1), planes: 12, bombload_per_plane: 20, ship_index: 0,
-            interceptors: None, interceptor_squadron: None, flak_points: 0, flak_destroy_roll: 11, flak_abort_roll: 11, bomb_roll: 66,
+            interceptors: None, interceptor_squadron: None, flak_points: 0,
         }) {
             Ok(CommandOutcome::BombingMission(o)) => {
                 assert!(o.result >= 1, "heavy raid should score damage");
@@ -9052,9 +9133,10 @@ mod tests {
         while g.phase != Phase::LandSupportAir {
             g.advance_phase();
         }
+        g.rng.force([1, 1, 1, 1, 6, 6]); // flak 11/11 (unused), bomb 66
         match g.apply(Command::FlyBombingMission {
             squadron: SquadronId(1), planes: 12, bombload_per_plane: 20, mission: BombingMission::Personnel,
-            interceptors: Some(cap), interceptor_squadron: Some(cw_sq), flak_points: 0, flak_destroy_roll: 11, flak_abort_roll: 11, bomb_roll: 66, night: false,
+            interceptors: Some(cap), interceptor_squadron: Some(cw_sq), flak_points: 0, night: false,
         }) {
             Ok(CommandOutcome::BombingMission(o)) => {
                 assert_eq!(o.flown, 12);
@@ -9176,12 +9258,13 @@ mod tests {
         let mission = Command::FlyBombingMission {
             squadron: SquadronId(1), planes: 12, bombload_per_plane: 20, mission: BombingMission::Personnel,
             interceptors: None, interceptor_squadron: None,
-            flak_points: 6, flak_destroy_roll: 66, flak_abort_roll: 66, bomb_roll: 66, night: false,
+            flak_points: 6, night: false,
         };
         assert_eq!(g.apply(mission.clone()), Err(CommandError::WrongPhase));
         while g.phase != Phase::LandSupportAir {
             g.advance_phase();
         }
+        g.rng.force([6, 6, 6, 6, 6, 6]); // flak 66/66, bomb 66
         match g.apply(mission) {
             Ok(CommandOutcome::BombingMission(o)) => {
                 assert_eq!(o.flown, 12);
@@ -10485,7 +10568,7 @@ mod tests {
         g.scenario_name = "Crusader".to_string(); // Level III = Turns(2), Level II = Turns(4)
         g.phase = Phase::MaltaAvailabilityDetermination;
 
-        let avail = |level| Command::DetermineMaltaAvailability { level, roll: 7 };
+        let avail = |level| Command::DetermineMaltaAvailability { level };
         // §44.23: Level III may be used at most 2 Game-Turns in Crusader.
         assert!(matches!(g.apply(avail(3)), Ok(CommandOutcome::MaltaAvailability { .. })));
         assert!(matches!(g.apply(avail(3)), Ok(CommandOutcome::MaltaAvailability { .. })));
@@ -10893,7 +10976,8 @@ mod tests {
         g.phase = Phase::MaltaAvailabilityDetermination;
         // §44.25/§43.0: Level III / roll 6 → (50% map, 100% strategic) of the 12 Italy/Sicily
         // bombers = 6 + 12 = 18 planes available.
-        match g.apply(Command::DetermineMaltaAvailability { level: 3, roll: 6 }) {
+        g.rng.force([3, 3]); // 2d6 sum = 6
+        match g.apply(Command::DetermineMaltaAvailability { level: 3 }) {
             Ok(CommandOutcome::MaltaAvailability { percentages, planes_available }) => {
                 assert_eq!(percentages, Some((50, 100)));
                 assert_eq!(planes_available, 18);
@@ -11281,7 +11365,7 @@ mod tests {
             g.advance_phase();
         }
         assert_eq!(
-            g.apply(Command::PoisonWell { hex, die: 1 }),
+            g.apply(Command::PoisonWell { hex }),
             Ok(CommandOutcome::WellPoisoned(false))
         );
         // RailMove is a Commonwealth Rail Phase action; wrong here (Movement & Combat).
@@ -11330,14 +11414,15 @@ mod tests {
         while g.phase != Phase::MaltaAvailabilityDetermination {
             g.advance_phase();
         }
+        g.rng.force([3, 3]); // 2d6 sum = 6
         assert_eq!(
-            g.apply(Command::DetermineMaltaAvailability { level: 3, roll: 6 }),
+            g.apply(Command::DetermineMaltaAvailability { level: 3 }),
             // No Italy/Sicily-based bombers here, so the absolute count is 0.
             Ok(CommandOutcome::MaltaAvailability { percentages: Some((50, 100)), planes_available: 0 })
         );
-        // Wrong phase for recon here.
+        // Wrong phase for recon here (roll drawn but irrelevant to the phase reject).
         assert_eq!(
-            g.apply(Command::ReconConvoyLane { lane: 2, planes: 1, roll: 12 }),
+            g.apply(Command::ReconConvoyLane { lane: 2, planes: 1 }),
             Err(CommandError::WrongPhase)
         );
 
@@ -11354,13 +11439,15 @@ mod tests {
         // 1 plane reveals on 2d6 <= 12; a convoy of 5000 t is present. §42.53: the Axis reveals only
         // a size class, not the tonnage — 5000 t is legally Small or Medium, so the adversarial Axis
         // reports the more concealing Medium.
+        g.rng.force([1, 2]); // two_dice_raw = 12
         assert_eq!(
-            g.apply(Command::ReconConvoyLane { lane: 2, planes: 1, roll: 12 }),
+            g.apply(Command::ReconConvoyLane { lane: 2, planes: 1 }),
             Ok(CommandOutcome::ConvoyRecon { revealed: true, size: Some(crate::rules::naval::ConvoySize::Medium) })
         );
         // Roll 13 fails to reveal.
+        g.rng.force([1, 3]); // two_dice_raw = 13
         assert_eq!(
-            g.apply(Command::ReconConvoyLane { lane: 2, planes: 1, roll: 13 }),
+            g.apply(Command::ReconConvoyLane { lane: 2, planes: 1 }),
             Ok(CommandOutcome::ConvoyRecon { revealed: false, size: None })
         );
 
@@ -11436,8 +11523,9 @@ mod tests {
         while g.phase != Phase::Repair {
             g.advance_phase();
         }
+        g.rng.force([2]);
         assert_eq!(
-            g.apply(Command::RemoveHarborMine { port: "Benghazi".into(), die: 2 }),
+            g.apply(Command::RemoveHarborMine { port: "Benghazi".into() }),
             Ok(CommandOutcome::HarborMineRemoved(true))
         );
         assert_eq!(g.ports["Benghazi"].mines, 0);
@@ -11527,15 +11615,16 @@ mod tests {
 
         let plan = Command::PlanConvoy {
             lane: 2, destination: "Tripoli".into(), arrival_gt: 55,
-            fuel_tons: 10000, ammo_tons: 8000, stores_tons: 1000, replacement_tons: 0, die: 4,
+            fuel_tons: 10000, ammo_tons: 8000, stores_tons: 1000, replacement_tons: 0,
         };
         // Wrong phase (still Initiative Determination) is rejected.
         assert_eq!(g.apply(plan.clone()), Err(CommandError::WrongPhase));
 
-        // Advance to the Naval Convoy Schedule Phase, then plan (allowable = 21,000 for GT55/E/4).
+        // Advance to the Naval Convoy Schedule Phase, then plan (allowable = 21,000 for GT55/E, die 4).
         while g.phase != Phase::NavalConvoySchedule {
             g.advance_phase();
         }
+        g.rng.force([4]);
         assert_eq!(g.apply(plan), Ok(CommandOutcome::ConvoyPlanned));
         assert_eq!(g.convoys.len(), 1);
 
@@ -11543,16 +11632,18 @@ mod tests {
         while g.phase != Phase::ConvoyResolution {
             g.advance_phase();
         }
+        g.rng.force([6, 6]); // two_dice_raw = 66
         assert_eq!(
-            g.apply(Command::BombConvoy { convoy_index: 0, bomb_points: 250, torpedo_planes: 0, total_planes: 10, roll: 66 }),
+            g.apply(Command::BombConvoy { convoy_index: 0, bomb_points: 250, torpedo_planes: 0, total_planes: 10 }),
             Ok(CommandOutcome::ConvoyBombed(25))
         );
         assert_eq!(g.convoys[0].fuel_tons, 7500);
 
-        // Deliver at the Naval Convoy Arrival Phase.
+        // Deliver at the Naval Convoy Arrival Phase, on the convoy's scheduled arrival turn (§56.16).
         while g.phase != Phase::NavalConvoyArrival {
             g.advance_phase();
         }
+        g.game_turn = 55;
         match g.apply(Command::DeliverConvoy { convoy_index: 0 }) {
             Ok(CommandOutcome::ConvoyDelivered(c)) => {
                 assert_eq!(c.fuel, 60000); // 7500 t * 8
@@ -11884,22 +11975,24 @@ mod tests {
         g.game_turn = 5;
         g.operations_stage = 1;
 
-        // Wrong phase (still InitiativeDetermination).
+        // Wrong phase (still InitiativeDetermination) — roll drawn but irrelevant to the phase reject.
         assert_eq!(
-            g.apply(Command::ProduceCommonwealthInfantry { roll: 12 }),
+            g.apply(Command::ProduceCommonwealthInfantry {}),
             Err(CommandError::WrongPhase)
         );
         g.phase = Phase::Organization;
 
         // §20.78A CW trucks (early era, GT5): light die4=4, medium die4=15, heavy die4=3; first
         // arrival GT9, then spread over four Game-Turns (≤25%/GT).
+        g.rng.force([4, 4, 4]);
         assert_eq!(
-            g.apply(Command::ProduceCommonwealthTrucks { light_die: 4, medium_die: 4, heavy_die: 4 }),
+            g.apply(Command::ProduceCommonwealthTrucks {}),
             Ok(CommandOutcome::TrucksProduced { arrival_game_turn: 9, light: 4, medium: 15, heavy: 3 })
         );
-        // §20.78B CW infantry (era GT3–30, roll 12): 20 Infantry Replacement Points, arrive GT9.
+        // §20.78B CW infantry (era GT3–30, 2d6 sum = 12): 20 Infantry Replacement Points, arrive GT9.
+        g.rng.force([6, 6]);
         assert_eq!(
-            g.apply(Command::ProduceCommonwealthInfantry { roll: 12 }),
+            g.apply(Command::ProduceCommonwealthInfantry {}),
             Ok(CommandOutcome::InfantryProduced { arrival_game_turn: 9, points: 20 })
         );
         // §20.74: the 20 points are divided among GT9's three OpStages as evenly as possible (7/7/6).
@@ -14956,22 +15049,26 @@ mod tests {
 
         // Dice: survival 3 (all-Recce −1 → row 0…3, no loss); recon 4 × 2 net points → reveal 2;
         // objective loss 1 → 0/0.
+        // Dice are now rolled inside the boundary; force survival 3 / recon 4 / loss 1 before each.
         let patrol = |reveals: Vec<(_, i32)>, loss: Vec<(_, u32)>| Command::Patrol {
             patrol_points: vec![(recce, 2)], target: b, exclude: vec![],
-            reveals, loss_choice: loss, survival_die: 3, recon_die: 4, loss_die: 1,
+            reveals, loss_choice: loss,
         };
 
         // §16.51: reported TOE must be within ±2 — 8 for a 5-strength unit (diff 3) is out of band.
+        g.rng.force([3, 4, 1]);
         assert_eq!(
             g.apply(patrol(vec![(g1, 8), (g2, 6)], vec![])),
             Err(CommandError::PatrolRevealMismatch),
         );
         // Wrong number of units revealed (recon required 2).
+        g.rng.force([3, 4, 1]);
         assert_eq!(
             g.apply(patrol(vec![(g1, 5)], vec![])),
             Err(CommandError::PatrolRevealMismatch),
         );
         // A faithful patrol: reveal both units within ±2 (g1 exact 5, g2 as 4 = 6−2).
+        g.rng.force([3, 4, 1]);
         match g.apply(patrol(vec![(g1, 5), (g2, 4)], vec![])) {
             Ok(CommandOutcome::Patrol(r)) => {
                 assert!(!r.wiped_out);

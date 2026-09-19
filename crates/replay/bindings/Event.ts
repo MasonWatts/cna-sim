@@ -3,6 +3,7 @@ import type { AirView } from "./AirView";
 import type { HexsideView } from "./HexsideView";
 import type { MapOverlaysView } from "./MapOverlaysView";
 import type { NavalView } from "./NavalView";
+import type { OffMapView } from "./OffMapView";
 import type { RaiderView } from "./RaiderView";
 import type { ReplacementView } from "./ReplacementView";
 import type { RommelView } from "./RommelView";
@@ -88,4 +89,9 @@ air: AirView | null,
  * The naval layer — on-map ships + port state + Axis convoys (§30/§55/§56). **Delta**: `Some` only
  * when it changes. Fold forward.
  */
-naval: NavalView | null, };
+naval: NavalView | null, 
+/**
+ * The off-map §8.8 Tripoli/Tunisia layer — boxes + occupants. **Delta**: `Some` only when it
+ * changes. Fold forward.
+ */
+off_map: OffMapView | null, };

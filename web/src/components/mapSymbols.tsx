@@ -183,6 +183,51 @@ export function routeGlyph(kind: string, A: { x: number; y: number }, B: { x: nu
 // wings with four engine nacelles and a broad cruciform tail; Transport = wide wings, a bulkier
 // fuselage, and two engine nacelles. Nose points up; drawn to fit roughly a ±6 × ±5 box. The caller
 // supplies fill/stroke (a light silhouette on the counter). Unknown classes fall back to Fighter.
+// Side-profile warship silhouette by type, keyed off the §30.12 Gun Rating printed on the counter
+// (6 = BB, 4 = CA, 3 = CL, 2 = CLAA, 1 = DD): hull length + main-gun turrets scale with the rating;
+// the AA cruiser shows AA mounts instead of turrets; the wreck (San Giorgio) lists and is broken.
+// Caller supplies fill/stroke. Drawn to fit roughly a ±7 × ±4 box.
+export function shipGlyph(gun: number, wreck: boolean): JSX.Element {
+  if (wreck) {
+    // A half-sunk, listing hull broken amidships (San Giorgio).
+    return (
+      <g transform="rotate(-8)">
+        <path d="M-6,0 L2.2,0 L3.6,2.4 L-5,2.4 Z" />
+        <path d="M3.2,0 L6,0 L5.2,2.4 L4.2,2.4 Z" />
+        <rect x={-2.2} y={-1.6} width={1.4} height={1.8} />
+      </g>
+    );
+  }
+  // Match the counter art: a low side-profile recognition silhouette — a long flat hull with a
+  // jagged superstructure — scaling from a long, busy battleship (Gun 6) to a small destroyer
+  // (Gun 1). Heavy/light/AA cruisers (4/3/2) share one cruiser profile, as on the counters.
+  if (gun >= 6) {
+    // Battleship: long hull, tall central bridge tower, fore/aft turret and funnel bumps.
+    return (
+      <g>
+        <path d="M-7,1 L7,1 L6,2.4 L-6,2.4 Z" />
+        <path d="M-5.6,1 L-5.3,0.2 L-4,0.2 L-3.8,-0.6 L-2.6,-0.6 L-2.4,-2.4 L-1.6,-2.4 L-1.4,-0.6 L0.4,-0.6 L0.6,-1.5 L1.4,-1.5 L1.6,-0.6 L3.2,-0.6 L3.4,0.2 L4.9,0.2 L5.1,1 Z" />
+      </g>
+    );
+  }
+  if (gun >= 2) {
+    // Cruiser (CA/CL/CLAA): medium hull, central bridge, a couple of low bumps.
+    return (
+      <g>
+        <path d="M-5,1 L5,1 L4.2,2.4 L-4.2,2.4 Z" />
+        <path d="M-3.6,1 L-3.3,0.1 L-1.7,0.1 L-1.5,-1.6 L-0.7,-1.6 L-0.5,0.1 L1.8,0.1 L2,-0.7 L2.8,-0.7 L3,1 Z" />
+      </g>
+    );
+  }
+  // Destroyer: short low hull, a small bridge and a funnel.
+  return (
+    <g>
+      <path d="M-3.4,1 L3.4,1 L2.7,2.4 L-2.7,2.4 Z" />
+      <path d="M-1.9,1 L-1.7,-0.5 L-0.9,-0.5 L-0.7,1 L0.5,1 L0.7,-1.2 L1.2,-1.2 L1.4,1 Z" />
+    </g>
+  );
+}
+
 export function squadronGlyph(cls: string): JSX.Element {
   if (cls === "Bomber") {
     return (

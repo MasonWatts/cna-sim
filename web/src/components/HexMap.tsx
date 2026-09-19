@@ -16,10 +16,11 @@ import type { NavalView } from "@bindings/NavalView";
 import type { ShipView } from "@bindings/ShipView";
 import type { InfoPanelData } from "../lore";
 import { WEATHER_SYSTEM_INFO, WEATHER_CONDITION_INFO } from "../weatherInfo";
-import { PORT_SYSTEM_INFO, CONVOY_SYSTEM_INFO } from "../navalInfo";
+import { PORT_SYSTEM_INFO, CONVOY_SYSTEM_INFO, OFF_MAP_INFO } from "../navalInfo";
+import type { OffMapView } from "@bindings/OffMapView";
 import { hexCenter, hexPolygon, mapBounds } from "../hex";
 
-import { terrainFill, HEX_STROKE, ROUTE_DARK, ROUTE_KINDS, EDGE_KINDS, edgeGlyph, routeGlyph, featureGlyph, unitTypeGlyph, squadronGlyph, PATTERNS } from "./mapSymbols";
+import { terrainFill, HEX_STROKE, ROUTE_DARK, ROUTE_KINDS, EDGE_KINDS, edgeGlyph, routeGlyph, featureGlyph, unitTypeGlyph, squadronGlyph, shipGlyph, PATTERNS } from "./mapSymbols";
 
 
 // Rank org sizes so the largest formation in a stack is shown as the "top" counter.
@@ -105,7 +106,7 @@ function weatherGlyph(kind: string): JSX.Element {
  *  Perf: `memo`'d so pan/zoom (which only change the parent's transform, not these props) skip it
  *  entirely, and the ~7k-polygon terrain layer is `useMemo`'d on `map` so scrubbing (units change)
  *  never rebuilds it — only the small units layer re-renders. */
-export const HexMap = memo(function HexMap({ map, units, weather, replacements, supplyDumps, truckConvoys, raiders, rommel, overlays, hexsides, air, naval, placeLore, onPlaceHover, onPlaceLeave, onInfoHover, legend, unitKey }: { map: MapView; units: UnitView[]; weather?: string[]; replacements?: ReplacementView[]; supplyDumps?: SupplyDumpView[]; truckConvoys?: TruckConvoyView[]; raiders?: RaiderView[]; rommel?: RommelView[]; overlays?: MapOverlaysView; hexsides?: MapView["hexsides"]; air?: AirView; naval?: NavalView; placeLore?: Record<string, unknown>; onPlaceHover?: (name: string, x: number, y: number) => void; onPlaceLeave?: () => void; onInfoHover?: (data: InfoPanelData, x: number, y: number) => void; legend?: React.ReactNode; unitKey?: React.ReactNode }) {
+export const HexMap = memo(function HexMap({ map, units, weather, replacements, supplyDumps, truckConvoys, raiders, rommel, overlays, hexsides, air, naval, offMap, placeLore, onPlaceHover, onPlaceLeave, onInfoHover, legend, unitKey }: { map: MapView; units: UnitView[]; weather?: string[]; replacements?: ReplacementView[]; supplyDumps?: SupplyDumpView[]; truckConvoys?: TruckConvoyView[]; raiders?: RaiderView[]; rommel?: RommelView[]; overlays?: MapOverlaysView; hexsides?: MapView["hexsides"]; air?: AirView; naval?: NavalView; offMap?: OffMapView; placeLore?: Record<string, unknown>; onPlaceHover?: (name: string, x: number, y: number) => void; onPlaceLeave?: () => void; onInfoHover?: (data: InfoPanelData, x: number, y: number) => void; legend?: React.ReactNode; unitKey?: React.ReactNode }) {
   // Generic hover-attrs for an SVG element that should open the hybrid info panel, anchored to the
   // element's on-screen box; reuses onPlaceLeave (the shared hide) for leaving.
   const infoHover = (data: InfoPanelData) =>
@@ -633,10 +634,9 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
               <>
                 <TileTitle text={top.sh.wreck ? "Wreck" : top.sh.name} y={-1} size={8} />
                 <text x={-9.5} textAnchor="middle" y={8} fontSize={7} fill="#eef">{`⚓${top.sh.gun}`}</text>
-                {/* a ship hull silhouette */}
-                <g transform="translate(9.5 5)" fill="#e9e4cf" stroke="#0d0f14" strokeWidth={0.4}>
-                  <path d="M-6,0 L6,0 L4,3 L-4,3 Z" />
-                  <rect x={-1.5} y={-3} width={3} height={3} />
+                {/* class-specific hull silhouette (BB/CA/CL/CLAA/DD by Gun Rating; wreck lists broken) */}
+                <g transform="translate(9.5 5.5) scale(0.9)" fill="#e9e4cf" stroke="#0d0f14" strokeWidth={0.4}>
+                  {shipGlyph(top.sh.max_gun, top.sh.wreck)}
                 </g>
               </>
             );
@@ -781,17 +781,49 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
                 ))}
               </g>
             )}
-            {naval.convoys.length > 0 && (
-              <g>
-                <rect x={px} y={convoyY} width={boxW} height={28 + naval.convoys.length * 14} rx={6} fill="#e6eef0" stroke="#7a97a0" strokeWidth={1} opacity={0.96} />
-                <text x={px + boxW / 2} y={convoyY + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#243033" {...infoHover(CONVOY_SYSTEM_INFO)}>Axis Convoys</text>
-                {naval.convoys.map((c, i) => (
+            {/* Always shown (a stable panel), with a placeholder when no convoy is in transit. */}
+            <g>
+              <rect x={px} y={convoyY} width={boxW} height={28 + Math.max(1, naval.convoys.length) * 14} rx={6} fill="#e6eef0" stroke="#7a97a0" strokeWidth={1} opacity={0.96} />
+              <text x={px + boxW / 2} y={convoyY + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#243033" {...infoHover(CONVOY_SYSTEM_INFO)}>Axis Convoys</text>
+              {naval.convoys.length > 0 ? (
+                naval.convoys.map((c, i) => (
                   <text key={`nc${i}`} x={px + 10} y={convoyY + 34 + i * 14} fontFamily="Courier New, monospace" fontSize={10} fill="#3a4b4f">
                     {`GT${c.arrival_gt} L${c.lane}→${c.destination} ${c.tons}t`}
                   </text>
-                ))}
-              </g>
-            )}
+                ))
+              ) : (
+                <text x={px + 10} y={convoyY + 34} fontFamily="Courier New, monospace" fontSize={10} fontStyle="italic" fill="#7a8a8d">None scheduled</text>
+              )}
+            </g>
+          </g>
+        );
+      })()}
+      {/* Off-map §8.8 Tripoli/Tunisia boxes: a panel just west of the Nofilia junction (A2802) where
+          Axis units march onto the map. Boxes listed nearest-the-map first, with a → Nofilia note. */}
+      {offMap && offMap.nodes.length > 0 && (() => {
+        const nof = hexCenter(3, 27); // Nofilia port hex — the §8.8 map junction (A2802)
+        const boxW = 200;
+        const rows = offMap.nodes.length;
+        const boxH = 30 + rows * 14 + 16;
+        // Near Nofilia but lifted one full box-height north (over the sea, clear of the coast) —
+        // with a ↘ pointer down to the Nofilia junction.
+        const ox = nof.x - 30;
+        const oy = nof.y - 2 * boxH - 12;
+        return (
+          <g>
+            <rect x={ox} y={oy} width={boxW} height={boxH} rx={6} fill="#efe4cf" stroke="#a08a5a" strokeWidth={1} opacity={0.96} />
+            <text x={ox + boxW / 2} y={oy + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={12} fontWeight={700} fill="#3a2f14" {...infoHover(OFF_MAP_INFO)}>Off-Map §8.8</text>
+            {offMap.nodes.map((n, i) => {
+              const label = n.units.length > 0 ? n.units.map((u) => u.abbr + (u.transit > 0 ? "→" : "")).join(", ") : "—";
+              // Reverse the vertical order so the box reads geographically toward Nofilia below it:
+              // Tunis (furthest) at the top, Tripolitania (nearest the junction) at the bottom.
+              return (
+                <text key={n.name} x={ox + 8} y={oy + 32 + (rows - 1 - i) * 14} fontFamily="Courier New, monospace" fontSize={9.5} fill="#4a3f22">
+                  <tspan fontWeight={700}>{n.name}</tspan>{`  ${label}`}
+                </text>
+              );
+            })}
+            <text x={ox + 8} y={oy + 32 + rows * 14 + 8} fontFamily="Courier New, monospace" fontSize={9} fontStyle="italic" fill="#7a5c2a">↘ Nofilia (A2802)</text>
           </g>
         );
       })()}

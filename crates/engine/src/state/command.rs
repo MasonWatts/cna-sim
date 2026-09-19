@@ -99,7 +99,7 @@ pub enum Command {
     /// §27.85/§27.86: the SAS Brigade raids the Axis air facility in its hex (no Axis combat units
     /// present), destroying the §27.93-table percentage of grounded planes; `roll` is a d6. Subject
     /// to the §27.87 once-a-month / ≥6-Operations-Stage frequency limit.
-    RaidAirfieldSas { unit: UnitId, roll: u32 },
+    RaidAirfieldSas { unit: UnitId },
     /// §27.13: form a desert raider (LRDG / DSA) from a Friendly Recce/AC `from_unit`, removing one
     /// TOE Strength Point and placing the counter in its hex (Organization Phase).
     FormRaider { kind: crate::state::game::RaiderKind, from_unit: UnitId },
@@ -107,39 +107,39 @@ pub enum Command {
     /// Raiders ignore enemy Zones of Control (§27.34) but may not enter an Enemy-occupied hex except
     /// to raid (§27.42). Entering an enemy-controlled (ZOC) hex risks being spotted: `spot_roll` is a
     /// d6 and a 6 eliminates the raider (§27.41/§27.43).
-    MoveRaider { raider: usize, to: HexCoord, spot_roll: u32 },
+    MoveRaider { raider: usize, to: HexCoord },
     /// §27.44: an Enemy attempts to spot the raider at index `raider` (spending 1 CP); `roll` is a
     /// d6 and a 6 eliminates it (§27.43).
-    SpotRaider { raider: usize, roll: u32 },
+    SpotRaider { raider: usize },
     /// §27.35: the raider at index `raider` resupplies where it stands — drawing 2 Fuel + 1 Ammo
     /// from a co-located Friendly supply dump, and Water from an oasis/bir in the hex. It must draw
     /// Water each Game-Turn or be eliminated, and needs 2 Fuel to move (§27.35).
     ResupplyRaider { raider: usize },
     /// §27.6: a Commonwealth LRDG in Rommel's hex attempts a Raid on Rommel (Movement & Combat
     /// Phase). `roll` is 2d6 (2–12) resolved on the §27.64 table. Costs 10 CP; max four per campaign.
-    RaidRommel { raider: usize, roll: u32 },
+    RaidRommel { raider: usize },
     /// §27.52: the raider blows the water pipeline in its hex (no enemy combat units present); a d6
     /// `roll` of 1-4 blows it. Costs 5 CP. (Movement & Combat Phase.)
-    RaidPipeline { raider: usize, roll: u32 },
+    RaidPipeline { raider: usize },
     /// §27.53: the raider cripples the (non-strip, non-major-city) airfield in its hex (no enemy
     /// combat units present); a d6 `roll` of 1-2 reduces its capacity one level. Costs 5 CP.
-    RaidAirfield { raider: usize, roll: u32 },
+    RaidAirfield { raider: usize },
     /// §27.54: the raider destroys grounded enemy planes in its hex (no enemy combat units / not a
     /// major city); a d6 `roll` of 1-2 destroys 10% of each enemy squadron's planes, a 6 eliminates
     /// the raider. Costs 5 CP.
-    RaidPlanes { raider: usize, roll: u32 },
+    RaidPlanes { raider: usize },
     /// §27.55: the raider attacks the enemy Supply Dump in its hex (not a major city). If guarded by
     /// enemy combat units, `attack_roll` (2d6) must exceed the guards' Raw Defensive Assault Strength
     /// or the raider is eliminated; then `destroy_roll` (d6) of 1-2 destroys 10% of the dump. Costs
     /// 5 CP. (§27.56: a dummy dump is revealed instead.)
-    RaidSupplyDump { raider: usize, attack_roll: u32, destroy_roll: u32 },
+    RaidSupplyDump { raider: usize },
     /// §27.57-58: the raider attacks the enemy free truck convoy at index `convoy` in its hex; a d6
     /// `roll` of 1-2 destroys one Truck Point + its cargo. Replacement-carrying convoys add 1 to the
     /// roll and a 6 eliminates the raider (§27.58). Costs 5 CP.
-    RaidTruckConvoy { raider: usize, convoy: usize, roll: u32 },
+    RaidTruckConvoy { raider: usize, convoy: usize },
     /// §27.59: during the enemy's Truck Convoy Phase, a raider within four Movement CPs of the
     /// passing convoy at index `convoy` halts and attacks it (§27.58 mechanics, a d6 `roll`).
-    InterceptTruckConvoy { raider: usize, convoy: usize, roll: u32 },
+    InterceptTruckConvoy { raider: usize, convoy: usize },
     /// Move a whole formation (a parent counter plus its attached units) one hex. The
     /// parent counter moves and the attached units ride along; over-expenditure is judged
     /// against the formation CPA (§6.15, the slowest member).
@@ -209,9 +209,6 @@ pub enum Command {
         exclude: Vec<UnitId>,
         reveals: Vec<(UnitId, i32)>,
         loss_choice: Vec<(UnitId, u32)>,
-        survival_die: u32,
-        recon_die: u32,
-        loss_die: u32,
     },
     /// §16.4 place a Dummy Tank Formation for the phasing side at `hex` with a borrowed
     /// `designation` (§16.44), expending 10 Stores (§16.42). Organization (Construction) Phase.
@@ -265,7 +262,6 @@ pub enum Command {
         ammo_tons: u32,
         stores_tons: u32,
         replacement_tons: u32,
-        die: u32,
     },
     /// §41.6: resolve a Commonwealth strategic bombing attack on a planned convoy (Convoy
     /// Resolution Phase). `roll` is a 2d6 value encoded `10*d1+d2`.
@@ -274,7 +270,6 @@ pub enum Command {
         bomb_points: u32,
         torpedo_planes: u32,
         total_planes: u32,
-        roll: u32,
     },
     /// §56.16: deliver an arrived convoy's surviving supply tonnage into supply points (Naval
     /// Convoy Arrival Phase).
@@ -291,11 +286,11 @@ pub enum Command {
     /// §20.78A ProduceCommonwealthTrucks: roll the Commonwealth Truck Production Table once
     /// (Organization Phase) — one d6 per truck type. The produced Truck Points arrive four
     /// Game-Turns later at Alexandria (into the Commonwealth free-truck pool).
-    ProduceCommonwealthTrucks { light_die: u32, medium_die: u32, heavy_die: u32 },
+    ProduceCommonwealthTrucks {},
     /// §20.78B ProduceCommonwealthInfantry: roll the Commonwealth Infantry Production Table once
     /// (Organization Phase) with a 2d6 `roll` (2–12). The produced Infantry Replacement Points
     /// arrive four Game-Turns later and begin Training.
-    ProduceCommonwealthInfantry { roll: u32 },
+    ProduceCommonwealthInfantry {},
     /// §20.66a ProduceAxisTrucks: plan `count` Truck Points of `kind` (Organization Phase),
     /// validated against the Axis Truck Production row's lifetime total and per-Game-Turn maximum.
     /// On success the trucks arrive two Game-Turns later (into the Axis free-truck pool).
@@ -332,13 +327,13 @@ pub enum Command {
     /// §41.39/§55.27: lay a mine in a port's harbour by air (Land Support Air Phase).
     LayHarborMine { port: String },
     /// §55.27: an engineer attempts to clear a harbour mine (Repair Phase); `die` 1–3 succeeds.
-    RemoveHarborMine { port: String, die: u32 },
+    RemoveHarborMine { port: String },
     /// §42.53: Commonwealth naval reconnaissance of a shipping lane (Convoy Resolution Phase).
     /// `roll` is a 2d6 value encoded `10*d1+d2`.
-    ReconConvoyLane { lane: u8, planes: u32, roll: u32 },
+    ReconConvoyLane { lane: u8, planes: u32 },
     /// §33.0 II.B / §44.42: the Axis determines Malta raid support at Availability `level` (1–4)
     /// with a 2d6 `roll` (Malta Availability Determination Phase).
-    DetermineMaltaAvailability { level: u32, roll: u32 },
+    DetermineMaltaAvailability { level: u32 },
     /// §38.34: roll `base_die` to refit a squadron's un-refitted planes via the §38.37 table (Land
     /// Support Air Phase). `wrong_squadron` applies the §38.35 not-own-SGSU penalty. Returns the
     /// number refitted.
@@ -374,11 +369,11 @@ pub enum Command {
     UnloadConvoy { convoy: usize, commodity: crate::state::game::Commodity, amount: u32 },
     /// §22.13: field-repair the broken-down Truck Points of the free truck convoy at `convoy` (Repair
     /// Phase); `roll` (1-6) drives how many are recovered.
-    RepairConvoyTrucks { convoy: usize, roll: u8 },
+    RepairConvoyTrucks { convoy: usize },
     /// §52.16: poison a well (Movement & Combat Phase); `die` decides success.
-    PoisonWell { hex: HexCoord, die: u8 },
+    PoisonWell { hex: HexCoord },
     /// §52.17: sweeten (un-poison) a well (Movement & Combat Phase); `die` decides success.
-    SweetenWell { hex: HexCoord, die: u8 },
+    SweetenWell { hex: HexCoord },
     /// §24.3: begin laying a minefield (real or `dummy`) in a hex (Organization Phase).
     LayMinefield { builder: UnitId, hex: HexCoord, dummy: bool },
     /// §24.3: begin clearing a minefield in a hex (Organization Phase).
@@ -490,16 +485,10 @@ pub enum Command {
         bombload_per_plane: u32,
         base_index: usize,
         interceptors: Option<crate::state::game::Flight>,
-        flak_destroy_roll: u32,
-        flak_abort_roll: u32,
-        bomb_roll: u32,
     },
     /// §44.13: the Commonwealth builds capacity levels on a Maltese air facility using the Malta
     /// Air Facility Construction Table (Organization Phase; once per Game-Turn per base).
-    ConstructMaltaFacility {
-        base_index: usize,
-        die: u32,
-    },
+    ConstructMaltaFacility { base_index: usize },
     /// §30.34/§41.34: bomb a Commonwealth warship (Land Support Air Phase, not at night). Resolves
     /// as a bombing mission on the "units" CRT group; the result is applied as Gun-Rating damage.
     BombShip {
@@ -512,9 +501,6 @@ pub enum Command {
         /// the bombers it downs. `None` leaves the interception uncredited.
         interceptor_squadron: Option<crate::state::air::SquadronId>,
         flak_points: u32,
-        flak_destroy_roll: u32,
-        flak_abort_roll: u32,
-        bomb_roll: u32,
     },
     /// §49.14: fill a land unit's fuel tanks to capacity (Organization Phase). Returns new Fuel.
     RefuelUnit { unit: UnitId },
@@ -547,9 +533,6 @@ pub enum Command {
         /// the bombers it downs. `None` leaves the interception uncredited.
         interceptor_squadron: Option<crate::state::air::SquadronId>,
         flak_points: u32,
-        flak_destroy_roll: u32,
-        flak_abort_roll: u32,
-        bomb_roll: u32,
         night: bool,
     },
     /// §40.2: fly `planes` fighters on Combat Air Patrol over `center` (Land Support Air Phase),
@@ -1246,20 +1229,22 @@ impl GameState {
             Command::LandLayforce { unit, to, ship_hexes } => self.cmd_land_layforce(unit, to, ship_hexes),
             Command::EmbarkLayforce { unit } => self.cmd_embark_layforce(unit),
             Command::LandSas { unit, to, ship_hexes } => self.cmd_land_sas(unit, to, ship_hexes),
-            Command::RaidAirfieldSas { unit, roll } => self.cmd_raid_airfield_sas(unit, roll),
+            Command::RaidAirfieldSas { unit } => { let roll = self.rng.d6() as u32; self.cmd_raid_airfield_sas(unit, roll) }
             Command::FormRaider { kind, from_unit } => self.cmd_form_raider(kind, from_unit),
-            Command::MoveRaider { raider, to, spot_roll } => self.cmd_move_raider(raider, to, spot_roll),
-            Command::SpotRaider { raider, roll } => self.cmd_spot_raider(raider, roll),
+            Command::MoveRaider { raider, to } => { let spot_roll = self.rng.d6() as u32; self.cmd_move_raider(raider, to, spot_roll) }
+            Command::SpotRaider { raider } => { let roll = self.rng.d6() as u32; self.cmd_spot_raider(raider, roll) }
             Command::ResupplyRaider { raider } => self.cmd_resupply_raider(raider),
-            Command::RaidRommel { raider, roll } => self.cmd_raid_rommel(raider, roll),
-            Command::RaidPipeline { raider, roll } => self.cmd_raid_pipeline(raider, roll),
-            Command::RaidAirfield { raider, roll } => self.cmd_raid_airfield(raider, roll),
-            Command::RaidPlanes { raider, roll } => self.cmd_raid_planes(raider, roll),
-            Command::RaidSupplyDump { raider, attack_roll, destroy_roll } => {
+            Command::RaidRommel { raider } => { let roll = (self.rng.d6() + self.rng.d6()) as u32; self.cmd_raid_rommel(raider, roll) }
+            Command::RaidPipeline { raider } => { let roll = self.rng.d6() as u32; self.cmd_raid_pipeline(raider, roll) }
+            Command::RaidAirfield { raider } => { let roll = self.rng.d6() as u32; self.cmd_raid_airfield(raider, roll) }
+            Command::RaidPlanes { raider } => { let roll = self.rng.d6() as u32; self.cmd_raid_planes(raider, roll) }
+            Command::RaidSupplyDump { raider } => {
+                let attack_roll = (self.rng.d6() + self.rng.d6()) as u32;
+                let destroy_roll = self.rng.d6() as u32;
                 self.cmd_raid_supply_dump(raider, attack_roll, destroy_roll)
             }
-            Command::RaidTruckConvoy { raider, convoy, roll } => self.cmd_raid_truck_convoy(raider, convoy, roll),
-            Command::InterceptTruckConvoy { raider, convoy, roll } => self.cmd_intercept_truck_convoy(raider, convoy, roll),
+            Command::RaidTruckConvoy { raider, convoy } => { let roll = self.rng.d6() as u32; self.cmd_raid_truck_convoy(raider, convoy, roll) }
+            Command::InterceptTruckConvoy { raider, convoy } => { let roll = self.rng.d6() as u32; self.cmd_intercept_truck_convoy(raider, convoy, roll) }
             Command::FormationMove { formation, to, mode } => {
                 self.formation_move(formation, to, mode)
             }
@@ -1276,10 +1261,13 @@ impl GameState {
             Command::React { unit, path } => self.cmd_react(unit, &path),
             Command::RetreatBeforeAssault { unit, path } => self.cmd_retreat_before_assault(unit, &path),
             Command::Patrol {
-                patrol_points, target, exclude, reveals, loss_choice, survival_die, recon_die, loss_die,
-            } => self.cmd_patrol(
-                &patrol_points, target, &exclude, &reveals, &loss_choice, survival_die, recon_die, loss_die,
-            ),
+                patrol_points, target, exclude, reveals, loss_choice,
+            } => {
+                let survival_die = self.rng.d6() as u32;
+                let recon_die = self.rng.d6() as u32;
+                let loss_die = self.rng.d6() as u32;
+                self.cmd_patrol(&patrol_points, target, &exclude, &reveals, &loss_choice, survival_die, recon_die, loss_die)
+            }
             Command::PlaceDummyTank { hex, designation } => {
                 self.require_phase(Phase::Organization)?;
                 if self.place_dummy_tank(self.active_player, hex, designation) {
@@ -1299,21 +1287,27 @@ impl GameState {
             Command::SetGunPosition { unit, forward } => self.cmd_set_gun_position(unit, forward),
             Command::MoveOffMap { unit, direction } => self.cmd_move_off_map(unit, direction),
             Command::PlanConvoy {
-                lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, die,
-            } => self.cmd_plan_convoy(
-                lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, die,
-            ),
-            Command::BombConvoy { convoy_index, bomb_points, torpedo_planes, total_planes, roll } => {
+                lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons,
+            } => {
+                let die = self.rng.d6() as u32;
+                self.cmd_plan_convoy(lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, die)
+            }
+            Command::BombConvoy { convoy_index, bomb_points, torpedo_planes, total_planes } => {
+                let roll = self.rng.two_dice_raw() as u32;
                 self.cmd_bomb_convoy(convoy_index, bomb_points, torpedo_planes, total_planes, roll)
             }
             Command::DeliverConvoy { convoy_index } => self.cmd_deliver_convoy(convoy_index),
             Command::PlanProduction { nationality, item, count } => {
                 self.cmd_plan_production(nationality, &item, count)
             }
-            Command::ProduceCommonwealthTrucks { light_die, medium_die, heavy_die } => {
+            Command::ProduceCommonwealthTrucks {} => {
+                let light_die = self.rng.d6() as u32;
+                let medium_die = self.rng.d6() as u32;
+                let heavy_die = self.rng.d6() as u32;
                 self.cmd_produce_commonwealth_trucks(light_die, medium_die, heavy_die)
             }
-            Command::ProduceCommonwealthInfantry { roll } => {
+            Command::ProduceCommonwealthInfantry {} => {
+                let roll = (self.rng.d6() + self.rng.d6()) as u32;
                 self.cmd_produce_commonwealth_infantry(roll)
             }
             Command::ProduceAxisTrucks { kind, count } => self.cmd_produce_axis_trucks(kind, count),
@@ -1349,11 +1343,13 @@ impl GameState {
                 self.cmd_bomb_air_facility(hex, kind, levels)
             }
             Command::LayHarborMine { port } => self.cmd_lay_harbor_mine(&port),
-            Command::RemoveHarborMine { port, die } => self.cmd_remove_harbor_mine(&port, die),
-            Command::ReconConvoyLane { lane, planes, roll } => {
+            Command::RemoveHarborMine { port } => { let die = self.rng.d6() as u32; self.cmd_remove_harbor_mine(&port, die) }
+            Command::ReconConvoyLane { lane, planes } => {
+                let roll = self.rng.two_dice_raw() as u32;
                 self.cmd_recon_convoy_lane(lane, planes, roll)
             }
-            Command::DetermineMaltaAvailability { level, roll } => {
+            Command::DetermineMaltaAvailability { level } => {
+                let roll = (self.rng.d6() + self.rng.d6()) as u32;
                 self.cmd_determine_malta_availability(level, roll)
             }
             Command::RefitSquadron { squadron, wrong_squadron } => {
@@ -1387,12 +1383,13 @@ impl GameState {
                 }
                 Ok(CommandOutcome::TrucksUnloaded(self.unload_convoy(convoy, commodity, amount)))
             }
-            Command::RepairConvoyTrucks { convoy, roll } => {
+            Command::RepairConvoyTrucks { convoy } => {
                 self.require_phase(Phase::Repair)?;
                 let side = self.truck_convoys.get(convoy).map(|c| c.side).ok_or(CommandError::TruckConvoyCannotMove)?;
                 if self.active_player != side {
                     return Err(CommandError::WrongPhase);
                 }
+                let roll = self.rng.d6();
                 Ok(CommandOutcome::Repaired(self.repair_convoy_trucks(convoy, roll)))
             }
             Command::AssignTrucks { unit, light, medium, heavy } => {
@@ -1401,12 +1398,14 @@ impl GameState {
             Command::ReleaseTrucks { unit, light, medium, heavy } => {
                 self.cmd_release_trucks(unit, light, medium, heavy)
             }
-            Command::PoisonWell { hex, die } => {
+            Command::PoisonWell { hex } => {
                 self.require_phase(Phase::MovementAndCombat)?;
+                let die = self.rng.d6();
                 Ok(CommandOutcome::WellPoisoned(self.poison_well(hex, die)))
             }
-            Command::SweetenWell { hex, die } => {
+            Command::SweetenWell { hex } => {
                 self.require_phase(Phase::MovementAndCombat)?;
+                let die = self.rng.d6();
                 Ok(CommandOutcome::WellSweetened(self.sweeten_well(hex, die)))
             }
             Command::LayMinefield { builder, hex, dummy } => {
@@ -1665,7 +1664,6 @@ impl GameState {
             }
             Command::BombMaltaBase {
                 squadron, planes, bombload_per_plane, base_index, interceptors,
-                flak_destroy_roll, flak_abort_roll, bomb_roll,
             } => {
                 self.require_phase(Phase::MaltaRaid)?;
                 if base_index >= self.malta_bases.len() {
@@ -1674,6 +1672,10 @@ impl GameState {
                 if !self.sgsus.contains_key(&squadron) {
                     return Err(CommandError::NoSuchSquadron);
                 }
+                // §39.3x/§41.3: flak (two rolls) + Air-Bombardment dice rolled inside the boundary.
+                let flak_destroy_roll = self.rng.sequential_read() as u32;
+                let flak_abort_roll = self.rng.sequential_read() as u32;
+                let bomb_roll = self.rng.sequential_read() as u32;
                 // §44.24: the raid uses the base's own diverted AA/Flak (§44.18) for flak.
                 let flak_points = self.malta_bases[base_index].aa_points;
                 let mission = self
@@ -1689,8 +1691,9 @@ impl GameState {
                 self.malta_bases[base_index].bomb(levels_lost);
                 Ok(CommandOutcome::MaltaBaseBombed { mission, levels_lost })
             }
-            Command::ConstructMaltaFacility { base_index, die } => {
+            Command::ConstructMaltaFacility { base_index } => {
                 self.require_phase(Phase::Organization)?;
+                let die = self.rng.d6() as u32;
                 let levels = self
                     .reference
                     .malta_construction
@@ -1702,7 +1705,7 @@ impl GameState {
             }
             Command::BombShip {
                 squadron, planes, bombload_per_plane, ship_index, interceptors, interceptor_squadron,
-                flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll,
+                flak_points,
             } => {
                 self.require_phase(Phase::LandSupportAir)?;
                 if ship_index >= self.fleet.len() {
@@ -1711,6 +1714,10 @@ impl GameState {
                 if !self.sgsus.contains_key(&squadron) {
                     return Err(CommandError::NoSuchSquadron);
                 }
+                // §39.3x/§41.3: flak (two rolls) + Air-Bombardment dice rolled inside the boundary.
+                let flak_destroy_roll = self.rng.sequential_read() as u32;
+                let flak_abort_roll = self.rng.sequential_read() as u32;
+                let bomb_roll = self.rng.sequential_read() as u32;
                 // §30.34: Commonwealth-Fleet damage is read on the "units" section of the CRT; a
                 // ship attack is never at night (§41.34).
                 let outcome = self
@@ -1770,7 +1777,7 @@ impl GameState {
             }
             Command::FlyBombingMission {
                 squadron, planes, bombload_per_plane, mission, interceptors, interceptor_squadron,
-                flak_points, flak_destroy_roll, flak_abort_roll, bomb_roll, night,
+                flak_points, night,
             } => {
                 self.require_phase(Phase::LandSupportAir)?;
                 if !self.sgsus.contains_key(&squadron) {
@@ -1778,6 +1785,10 @@ impl GameState {
                 }
                 let group = crate::rules::air::bombing_target_group(mission)
                     .ok_or(CommandError::NoTable)?; // mining harbours use their own table
+                // §39.3x/§41.3: flak (two rolls) + Air-Bombardment dice rolled inside the boundary.
+                let flak_destroy_roll = self.rng.sequential_read() as u32;
+                let flak_abort_roll = self.rng.sequential_read() as u32;
+                let bomb_roll = self.rng.sequential_read() as u32;
                 let outcome = self
                     .resolve_bombing_mission(
                         squadron, planes, bombload_per_plane, group, interceptors, None,
@@ -4505,6 +4516,21 @@ impl GameState {
         // Anti-Armor fire is against an adjacent hex (§14), like other close combat.
         if !self.attackers_adjacent_to(attackers, target_hex) {
             return Err(CommandError::NotAdjacent);
+        }
+        // §14: anti-armor fire needs an enemy in the target hex. Reject a hex with no live enemy
+        // combat unit (e.g. one a Close Assault just cleared) — otherwise the shot resolves to a
+        // null result against nothing.
+        let enemy_side = attackers
+            .first()
+            .and_then(|&a| self.unit(a))
+            .map(|u| u.nationality.side().opponent())
+            .ok_or(CommandError::NoTargets)?;
+        if !self
+            .units_in_hex(target_hex)
+            .into_iter()
+            .any(|id| self.unit(id).is_some_and(|u| u.nationality.side() == enemy_side && u.total_toe() > 0))
+        {
+            return Err(CommandError::NoTargets);
         }
         // §14.22: a hex may be anti-armor-fired only once per Combat Segment.
         if self.anti_armor_hexes_this_stage.contains(&target_hex) {

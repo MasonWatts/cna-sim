@@ -321,6 +321,13 @@ struct ScenarioData {
     /// Air facilities (airfields / landing strips / flying-boat basins) present at start (§36).
     #[serde(default)]
     air_facilities: Vec<AirFieldSpec>,
+    /// §30.17/§55.25: the scuttled San Giorgio blocking a harbour at start (Tobruk), if present.
+    #[serde(default)]
+    san_giorgio: Option<SanGiorgioSpec>,
+    /// §30/§30.6: the Commonwealth Mediterranean Fleet — ships deployed at start and scheduled
+    /// arrivals. Each seeds `GameState.fleet` (Deployed) or `pending_ships` (a Turn arrival).
+    #[serde(default)]
+    ships: Vec<ShipSpec>,
     /// Initial plane pools (§60.32 Italian / §60.42 Commonwealth): the aircraft each nationality has
     /// available at Game-Turn 1, which the player assigns to squadrons/airfields (§35.2). Seeds
     /// `GameState.plane_pool`.
@@ -391,6 +398,30 @@ struct AirFieldSpec {
     capacity: Option<u32>,
     #[serde(default)]
     off_map: bool,
+}
+
+/// §30.17/§55.25: the scuttled San Giorgio blocking a harbour at start. `at` is its hex label,
+/// `blocks` the harbour name (its efficiency block comes from the port chart's `starts_blocked`).
+#[derive(Deserialize)]
+struct SanGiorgioSpec {
+    at: String,
+    blocks: String,
+    gun: u32,
+    aa: u32,
+}
+
+/// §30/§30.6: a Commonwealth fleet ship. `gun`/`aa` are its Gun and AA ratings (from the counter).
+/// `valetta` starts it at Valetta (Malta) instead of Alexandria. `arrival` is Deployed (GT1) or a
+/// scheduled Turn arrival.
+#[derive(Deserialize)]
+struct ShipSpec {
+    name: String,
+    gun: u32,
+    aa: u32,
+    #[serde(default)]
+    valetta: bool,
+    #[serde(default)]
+    arrival: crate::reference::ob::Arrival,
 }
 
 /// A fortification placed at setup: hex label + level.
@@ -699,6 +730,31 @@ impl GameState {
             }
             f.off_map = a.off_map;
             self.add_air_facility(f);
+        }
+        // §30.17/§55.25: place the scuttled San Giorgio blocking Tobruk (the port's efficiency block
+        // is already applied from the chart's `starts_blocked`; this adds the on-map wreck itself).
+        if let Some(sg) = &data.san_giorgio {
+            let hex = HexId::parse(&sg.at)
+                .ok_or_else(|| ScenarioError::BadHex(sg.at.clone()))?
+                .to_hex_coord();
+            self.place_san_giorgio(hex, &sg.blocks, sg.gun, sg.aa);
+        }
+        // §30/§30.6: the Commonwealth fleet — deploy GT1 ships into `fleet`, schedule later arrivals.
+        for s in &data.ships {
+            let mut ship = crate::state::naval::Ship::new(s.name.clone(), s.gun, s.aa);
+            if s.valetta {
+                ship.location = crate::state::naval::ShipLocation::Valetta;
+            }
+            match s.arrival {
+                crate::reference::ob::Arrival::Deployed => self.fleet.push(ship),
+                crate::reference::ob::Arrival::Turn { game_turn, stage } => {
+                    self.pending_ships.push(crate::state::game::PendingShip {
+                        ship,
+                        game_turn: game_turn as u32,
+                        stage,
+                    });
+                }
+            }
         }
         // §60.32/§60.42: seed each side's starting plane pool.
         for p in &data.initial_planes {

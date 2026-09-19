@@ -880,6 +880,10 @@ pub struct GameState {
     /// Commonwealth warships (§30).
     #[serde(default)]
     pub fleet: Vec<crate::state::naval::Ship>,
+    /// §30.6: fleet ships scheduled to arrive after GT1 (Barham/York/Ajax… GT8, Queen Elizabeth…
+    /// GT33). Processed into `fleet` when their arrival stage is reached.
+    #[serde(default)]
+    pub pending_ships: Vec<PendingShip>,
     /// The San Giorgio wreck blocking Tobruk (§30.17), while present.
     #[serde(default)]
     pub san_giorgio: Option<crate::state::naval::SanGiorgio>,
@@ -1218,6 +1222,15 @@ pub enum OffMapError {
     NoCpa,
 }
 
+/// §30.6: a Commonwealth fleet ship scheduled to arrive after Game-Turn 1. Held until its
+/// `(game_turn, stage)` is reached, then pushed onto `fleet` at the port its `ship.location` names.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PendingShip {
+    pub ship: crate::state::naval::Ship,
+    pub game_turn: u32,
+    pub stage: u8,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PendingArrival {
     pub nationality: Nationality,
@@ -1249,6 +1262,7 @@ impl GameState {
             ports: HashMap::new(),
             convoys: Vec::new(),
             fleet: Vec::new(),
+            pending_ships: Vec::new(),
             san_giorgio: None,
             malta_bases: Vec::new(),
             rng: Rng::new(seed),
@@ -5167,8 +5181,35 @@ impl GameState {
         if supply == 0 && !self.may_create_extra_sgsu(nationality) {
             return None;
         }
-        if !self.air_facilities.iter().any(|f| f.hex == hex) {
+        // §36: a squadron bases only at a friendly air facility, and only within the field's SGSU
+        // capacity. There must be a facility here; the enemy must not physically hold the hex (proxy
+        // for facility control until per-facility ownership/capture is modeled — see the deferred air
+        // basing work); and the field's SGSU limit (airfield 6 / strip 1 / off-map its own) must have
+        // room. Guards against the toy agents piling squadrons onto enemy or over-full fields.
+        let Some(facility) = self.air_facilities.iter().find(|f| f.hex == hex) else {
             return None;
+        };
+        let sgsu_cap = if facility.off_map {
+            facility.off_map_sgsu_limit.unwrap_or(u32::MAX)
+        } else {
+            facility.max_sgsus()
+        };
+        let side = nationality.side();
+        let enemy_ground = self
+            .units
+            .values()
+            .any(|u| u.hex() == Some(hex) && u.nationality.side() != side && u.total_toe() > 0);
+        // An enemy squadron already operating from the field also denies it (a field with no ground
+        // units is held by whichever side bases there first).
+        let enemy_air = self
+            .sgsus
+            .values()
+            .any(|s| s.location == Some(hex) && s.nationality.side() != side);
+        if enemy_ground || enemy_air {
+            return None; // enemy combat unit or squadron holds the field
+        }
+        if self.sgsus.values().filter(|s| s.location == Some(hex)).count() as u32 >= sgsu_cap {
+            return None; // field already at SGSU capacity (§36.14)
         }
         let id = crate::state::air::SquadronId(
             self.sgsus.keys().map(|s| s.0).max().unwrap_or(0) + 1,
@@ -5534,6 +5575,11 @@ impl GameState {
         if c.cancelled {
             self.convoys.remove(convoy_index);
             return Some(Commodities::default());
+        }
+        // §56.16: a convoy is delivered only on/after its scheduled arrival Game-Turn — never the
+        // turn it was planned. A not-yet-due convoy stays in transit (and visible in the panel).
+        if c.arrival_gt > self.game_turn {
+            return None;
         }
         let dest = c.destination.clone();
         let delivered = Commodities {
@@ -9442,6 +9488,21 @@ impl GameState {
     /// Bring in reinforcements now due (§4.44 Organization at Arrival): the later-arriving
     /// units of a deployed formation whose scheduled (game_turn, stage) has been reached.
     /// They spawn and attach to their already-on-map parent, joining the formation.
+    /// §30.6: move any fleet ships whose scheduled arrival stage has been reached into `fleet`
+    /// (at the port their `ship.location` names — Alexandria/Valetta).
+    pub fn process_ship_arrivals(&mut self) {
+        let now = (self.game_turn, self.operations_stage);
+        let mut i = 0;
+        while i < self.pending_ships.len() {
+            if (self.pending_ships[i].game_turn, self.pending_ships[i].stage) <= now {
+                let p = self.pending_ships.remove(i);
+                self.fleet.push(p.ship);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
     pub fn process_arrivals(&mut self) {
         let now = (self.game_turn, self.operations_stage);
         let mut due = Vec::new();
@@ -9496,6 +9557,7 @@ impl GameState {
         // §20.12: reinforcements enter at the start of the Naval Convoy Arrival Phase.
         if phase == Phase::NavalConvoyArrival {
             self.process_arrivals();
+            self.process_ship_arrivals(); // §30.6 Commonwealth Fleet arrivals
             // §20.62/§20.64: defer any Axis Replacement production beyond the turn's actual roll
             // before the survivors enter the pool.
             self.defer_over_shipped_axis_replacements();

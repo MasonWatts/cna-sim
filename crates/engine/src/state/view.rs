@@ -533,6 +533,137 @@ impl GameState {
                 }
             }
         }
+
+        // Attacks on the Commonwealth Fleet — Axis-only, since the fleet is Commonwealth. Each
+        // candidate is validated via dry_run (which clones, so no RNG/state side effect here).
+        if side == Side::Axis {
+            use crate::state::naval::ShipLocation;
+            for (ship_index, ship) in self.fleet.iter().enumerate() {
+                // §30.35: each Axis gun unit co-located with a ship at sea may fire at it.
+                if let ShipLocation::AtSea(hex) = ship.location {
+                    for id in self.units_in_hex(hex) {
+                        if self.unit(id).is_some_and(|u| u.nationality.side() == Side::Axis && u.total_toe() > 0) {
+                            let cmd = Command::ArtilleryBombardShip { attackers: vec![id], ship_index };
+                            if self.dry_run(&cmd).is_ok() {
+                                out.push(cmd);
+                            }
+                        }
+                    }
+                }
+                // §30.39: the San Giorgio firing at a ship in an adjacent sea hex.
+                let cmd = Command::SanGiorgioAttackShip { ship_index };
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            }
+            // §30.4: the once-per-game Italian Chariot raid on Alexandria (plan, then execute).
+            for cmd in [Command::PlanChariotRaid, Command::ExecuteChariotRaid] {
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            }
+        }
+        // §27.77/§30.5: a Layforce battalion (Commonwealth) at Alexandria may embark onto the fleet.
+        if side == Side::Commonwealth {
+            for &id in self.units.keys() {
+                if self.is_layforce(id) {
+                    let cmd = Command::EmbarkLayforce { unit: id };
+                    if self.dry_run(&cmd).is_ok() {
+                        out.push(cmd);
+                    }
+                }
+            }
+        }
+        // §8.8: an off-map unit (Tripoli/Tunisia complex, Axis-only) may march one Operations Stage
+        // toward the map (Nofilia) or inland. dry_run enforces the §8.84 transit/stage rules.
+        for u in self.units.values() {
+            if u.nationality.side() == side
+                && matches!(u.location, Some(UnitLocation::OffMap { .. }))
+            {
+                for direction in [crate::state::game::OffMapDir::TowardMap, crate::state::game::OffMapDir::Inland] {
+                    let cmd = Command::MoveOffMap { unit: u.id, direction };
+                    if self.dry_run(&cmd).is_ok() {
+                        out.push(cmd);
+                    }
+                }
+            }
+        }
+
+        // §27 desert raiders — roll-free now that dice moved inside the boundary. An own raider may
+        // move a hex and attempt each raid type; the enemy may try to spot a raider (§27.44). All
+        // dry_run-gated so only situationally-legal candidates survive.
+        for (raider, r) in self.raiders.iter().enumerate() {
+            if r.side == side {
+                if let Some(rhex) = r.hex {
+                    for to in self.map.neighbors(rhex) {
+                        let cmd = Command::MoveRaider { raider, to };
+                        if self.dry_run(&cmd).is_ok() {
+                            out.push(cmd);
+                        }
+                    }
+                }
+                for cmd in [
+                    Command::RaidPipeline { raider },
+                    Command::RaidAirfield { raider },
+                    Command::RaidPlanes { raider },
+                    Command::RaidSupplyDump { raider },
+                    Command::RaidRommel { raider },
+                    Command::ResupplyRaider { raider },
+                ] {
+                    if self.dry_run(&cmd).is_ok() {
+                        out.push(cmd);
+                    }
+                }
+                for convoy in 0..self.truck_convoys.len() {
+                    for cmd in [
+                        Command::RaidTruckConvoy { raider, convoy },
+                        Command::InterceptTruckConvoy { raider, convoy },
+                    ] {
+                        if self.dry_run(&cmd).is_ok() {
+                            out.push(cmd);
+                        }
+                    }
+                }
+            } else {
+                let cmd = Command::SpotRaider { raider };
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            }
+        }
+
+        // §27.9: an own SAS unit raids grounded planes at the airfield in its hex.
+        // §52.16/§52.17: an own unit poisons or sweetens the well in its hex.
+        let mut own_hexes: Vec<HexCoord> = Vec::new();
+        for u in self.units.values() {
+            if u.nationality.side() != side {
+                continue;
+            }
+            if self.is_sas(u.id) {
+                let cmd = Command::RaidAirfieldSas { unit: u.id };
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            }
+            if let Some(h) = u.hex() {
+                own_hexes.push(h);
+            }
+        }
+        own_hexes.sort_by_key(|h| (h.col, h.row));
+        own_hexes.dedup();
+        for hex in own_hexes {
+            // Only a hex with a poisonable well (§52.7 Village/Bir) is a real target — the commands
+            // are otherwise accepted-but-no-op. Poison a clean well; sweeten a poisoned one.
+            use crate::state::game::WaterKind;
+            if !matches!(self.hex_water_source(hex), Some(WaterKind::Village | WaterKind::Bir)) {
+                continue;
+            }
+            let poisoned = self.poisoned_wells.contains(&hex);
+            let cmd = if poisoned { Command::SweetenWell { hex } } else { Command::PoisonWell { hex } };
+            if self.dry_run(&cmd).is_ok() {
+                out.push(cmd);
+            }
+        }
         out
     }
 
@@ -553,8 +684,18 @@ impl GameState {
             .filter_map(|u| Some((u.id, u.hex()?)))
             .collect();
         let mut out = Vec::new();
+        // §27.13: a raider (Commonwealth LRDG / Axis DSA) is formed from a Recce/AC unit.
+        let raider_kind = match side {
+            Side::Commonwealth => crate::state::game::RaiderKind::Lrdg,
+            Side::Axis => crate::state::game::RaiderKind::Dsa,
+        };
         for &(unit, _) in &own {
-            for cmd in [Command::RefuelUnit { unit }, Command::RearmUnit { unit }, Command::DetachUnit { unit }] {
+            for cmd in [
+                Command::RefuelUnit { unit },
+                Command::RearmUnit { unit },
+                Command::DetachUnit { unit },
+                Command::FormRaider { kind: raider_kind, from_unit: unit },
+            ] {
                 if self.dry_run(&cmd).is_ok() {
                     out.push(cmd);
                 }
@@ -1059,7 +1200,7 @@ impl GameState {
             if self.truck_convoys[i].side != side {
                 continue;
             }
-            let cmd = Command::RepairConvoyTrucks { convoy: i, roll: 4 };
+            let cmd = Command::RepairConvoyTrucks { convoy: i };
             if self.dry_run(&cmd).is_ok() {
                 out.push(cmd);
             }
@@ -1131,7 +1272,6 @@ impl GameState {
                 ammo_tons: 10,
                 stores_tons: 20,
                 replacement_tons: 0,
-                die: 6,
             };
             if self.dry_run(&cmd).is_ok() {
                 out.push(cmd);
