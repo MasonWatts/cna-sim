@@ -43,6 +43,21 @@ impl SquadronClass {
             AircraftClass::Transport => self == SquadronClass::Transport,
         }
     }
+
+    /// The squadron class to *display* a plane of `class` under (§35.21) — Malta groups loose planes
+    /// as if squadrons, so a plane type maps to one representative class for the counter glyph.
+    /// Fighter/fighter-bomber → Fighter; transport → Transport; bomber/dive-bomber/flying-boat and
+    /// (for glyph purposes) reconnaissance → Bomber.
+    pub fn for_aircraft(class: AircraftClass) -> SquadronClass {
+        match class {
+            AircraftClass::Fighter | AircraftClass::FighterBomber => SquadronClass::Fighter,
+            AircraftClass::Transport => SquadronClass::Transport,
+            AircraftClass::Bomber
+            | AircraftClass::DiveBomber
+            | AircraftClass::FlyingBoat
+            | AircraftClass::Reconnaissance => SquadronClass::Bomber,
+        }
+    }
 }
 
 /// Ready/reserve plane capacity of a squadron (§35.23). `ready` planes may fly; the squadron may

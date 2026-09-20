@@ -271,8 +271,8 @@ export function squadronGlyph(cls: string): JSX.Element {
  *  landing strip); an anchor beside that triangle (Flying Boat Basin); an anchor beside two crossed
  *  strokes (Flying Boat Alighting Area). Drawn as light strokes centered at the origin (~12px box) so
  *  it reads on the slate counter; `kind` is the `AirFacilityView.kind` string. */
-export function airfieldGlyph(kind: string): JSX.Element {
-  const S = { stroke: "#e9e4cf", strokeWidth: 1.2, fill: "none", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+export function airfieldGlyph(kind: string, stroke = "#e9e4cf"): JSX.Element {
+  const S = { stroke, strokeWidth: 1.2, fill: "none", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   // Right triangle: short left vertical, horizontal base, hypotenuse sloping to a point at the right.
   const triangle = (ox: number, s: number) => (
     <path d={`M${ox - 5 * s},${-4 * s} L${ox - 5 * s},${3 * s} L${ox + 6 * s},${3 * s} Z`} />

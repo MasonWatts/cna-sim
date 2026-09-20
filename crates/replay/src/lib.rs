@@ -410,6 +410,20 @@ pub struct MaltaBaseView {
     pub flak_light: u32,
     /// §44.18 diverted Heavy flak points at this field.
     pub flak_heavy: u32,
+    /// §44.14: loose planes grouped by aircraft type (Malta uses no SGSUs) — rendered as
+    /// squadron-style counters. Sorted by descending plane count so the first is the representative.
+    #[serde(default)]
+    pub groups: Vec<MaltaPlaneGroupView>,
+}
+
+/// A §44.14 group of Malta planes of one aircraft type, shown as a squadron-style counter.
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct MaltaPlaneGroupView {
+    pub aircraft_type: String,
+    /// The representative squadron class for the counter glyph (`"Fighter"|"Bomber"|"Transport"`).
+    pub class: String,
+    pub planes: u32,
 }
 
 /// A squadron based off-map in a §43 Mediterranean box (no hex; otherwise like `SquadronView`).
@@ -498,17 +512,36 @@ fn air_views(g: &GameState) -> AirView {
         MedAirBaseView { name: "Italy/Sicily".into(), squadrons: med_squadrons(MedBase::ItalySicily) },
         MedAirBaseView { name: "Crete".into(), squadrons: med_squadrons(MedBase::Crete) },
     ];
+    use cna_engine::reference::squadron::SquadronClass;
+    let cw_air = g.reference.aircraft_charts.get(&cna_engine::reference::units::Nationality::Commonwealth);
     let malta: Vec<MaltaBaseView> = g
         .malta_bases
         .iter()
-        .map(|b| MaltaBaseView {
-            name: b.name.clone(),
-            kind: format!("{:?}", b.kind),
-            levels: b.levels,
-            max_levels: b.max_levels,
-            planes: b.plane_count(),
-            flak_light: b.flak_light,
-            flak_heavy: b.flak_heavy,
+        .map(|b| {
+            let mut groups: Vec<MaltaPlaneGroupView> = b
+                .planes
+                .iter()
+                .map(|(ty, count)| {
+                    // §44.14: Malta stores loose planes by type; derive the display class from the
+                    // aircraft chart (default Bomber if the type is unknown to the chart).
+                    let class = cw_air
+                        .and_then(|c| c.get(ty))
+                        .map(|a| SquadronClass::for_aircraft(a.class))
+                        .unwrap_or(SquadronClass::Bomber);
+                    MaltaPlaneGroupView { aircraft_type: ty.clone(), class: format!("{class:?}"), planes: *count }
+                })
+                .collect();
+            groups.sort_by(|a, b| b.planes.cmp(&a.planes).then(a.aircraft_type.cmp(&b.aircraft_type)));
+            MaltaBaseView {
+                name: b.name.clone(),
+                kind: format!("{:?}", b.kind),
+                levels: b.levels,
+                max_levels: b.max_levels,
+                planes: b.plane_count(),
+                flak_light: b.flak_light,
+                flak_heavy: b.flak_heavy,
+                groups,
+            }
         })
         .collect();
     // §36.53 Commonwealth off-map facilities — always every chart row, populated from CW SGSUs whose
@@ -579,6 +612,10 @@ pub struct PortStateView {
     /// the chart leaves it unspecified.
     pub stacking_in: Option<u32>,
     pub stacking_out: Option<u32>,
+    /// §30.5/§55.13: whether a naval troop transfer has already used this port this Operations Stage
+    /// (one transfer per port per stage).
+    #[serde(default)]
+    pub transferred_this_stage: bool,
 }
 
 /// A scheduled/in-transit Axis naval convoy (§56) for the panel; cancelled convoys are omitted.
@@ -641,6 +678,7 @@ fn naval_views(g: &GameState) -> NavalView {
             blocked: p.mines > 0 || p.wreck_block > 0,
             stacking_in: p.stacking_in,
             stacking_out: p.stacking_out,
+            transferred_this_stage: g.ports_transferred_this_stage.contains(&p.name),
         })
         .collect();
     ports.sort_by(|a, b| a.name.cmp(&b.name));
@@ -658,13 +696,16 @@ fn naval_views(g: &GameState) -> NavalView {
 #[derive(Serialize, TS, Clone, PartialEq)]
 #[ts(export)]
 pub struct OffMapUnitView {
-    pub name: String,
-    pub abbr: String,
-    pub side: String,
+    /// The full unit counter (TOE, type glyph, status) — rendered like an on-map tile.
+    pub unit: UnitView,
     /// Operations Stages already spent on the current leg (§8.84); 0 = resting in the box.
     pub transit: u8,
     /// Heading toward the map (Nofilia) rather than inland.
     pub toward_map: bool,
+    /// Total Operations Stages of the current leg for this unit's CPA (§8.89); 0 = resting in the
+    /// box. Lets the viewer place the unit on a track of the right length at step `transit`.
+    #[serde(default)]
+    pub leg_total: u8,
 }
 
 /// One off-map node (box) and its occupants.
@@ -673,6 +714,21 @@ pub struct OffMapUnitView {
 pub struct OffMapNodeView {
     pub name: String,
     pub units: Vec<OffMapUnitView>,
+    /// §8.8 box AA value.
+    #[serde(default)]
+    pub aa_points: u32,
+    /// The debarkation port for this box, if any (Tripoli → "Tripoli", Tunis → "Bizerta").
+    #[serde(default)]
+    pub port: Option<String>,
+    /// The toward-map leg's cost in Operations Stages at the fast (CPA ≥25), medium (CPA 15–24), and
+    /// slow (CPA <15) tiers (§8.89) — the transit-track lengths from this box to the next box closer
+    /// to the map.
+    #[serde(default)]
+    pub leg_fast: u8,
+    #[serde(default)]
+    pub leg_mid: u8,
+    #[serde(default)]
+    pub leg_slow: u8,
 }
 
 /// The off-map Tripoli/Tunisia complex (§8.8): the Axis-only chain of boxes and their occupants,
@@ -688,25 +744,49 @@ fn off_map_views(g: &GameState) -> OffMapView {
     use cna_engine::state::unit::UnitLocation;
     // Map order: nearest the map (Nofilia) first, extending inland/west.
     const NODES: [&str; 4] = ["Tripolitania", "Tripoli", "Gabes", "Tunis"];
+    let net = g.reference.off_map.as_ref();
     let nodes = NODES
         .iter()
         .map(|&node| {
             let mut units: Vec<OffMapUnitView> = g
                 .units
-                .values()
-                .filter_map(|u| match &u.location {
-                    Some(UnitLocation::OffMap { node: n, transit, toward_map }) if n == node => Some(OffMapUnitView {
-                        name: u.name.clone(),
-                        abbr: if u.abbr.is_empty() { u.name.clone() } else { u.abbr.clone() },
-                        side: format!("{:?}", u.nationality.side()),
-                        transit: *transit,
-                        toward_map: *toward_map,
-                    }),
+                .iter()
+                .filter_map(|(&id, u)| match &u.location {
+                    Some(UnitLocation::OffMap { node: n, transit, toward_map }) if n == node => {
+                        // §8.89: the current leg's length for this unit's CPA — the toward-map leg
+                        // lives on this node, the inland leg on the next box out. 0 while resting.
+                        let leg_total = if *transit == 0 {
+                            0
+                        } else {
+                            net.and_then(|net| {
+                                let i = net.index_of(node)?;
+                                let cpa = g.formation_cpa(id).or_else(|| g.unit_cpa(id)).unwrap_or(0);
+                                let leg = if *toward_map { &net.nodes[i].leg } else { &net.nodes.get(i + 1)?.leg };
+                                Some(leg.stages_for_cpa(cpa) as u8)
+                            })
+                            .unwrap_or(0)
+                        };
+                        Some(OffMapUnitView {
+                            unit: unit_view(g, u),
+                            transit: *transit,
+                            toward_map: *toward_map,
+                            leg_total,
+                        })
+                    }
                     _ => None,
                 })
                 .collect();
-            units.sort_by(|a, b| a.name.cmp(&b.name));
-            OffMapNodeView { name: node.to_string(), units }
+            units.sort_by(|a, b| a.unit.name.cmp(&b.unit.name));
+            let n = net.and_then(|net| net.node(node));
+            OffMapNodeView {
+                name: node.to_string(),
+                units,
+                aa_points: n.map(|n| n.aa_points as u32).unwrap_or(0),
+                port: n.and_then(|n| n.port.clone()),
+                leg_fast: n.map(|n| n.leg.cpa_high).unwrap_or(0),
+                leg_mid: n.map(|n| n.leg.cpa_mid).unwrap_or(0),
+                leg_slow: n.map(|n| n.leg.cpa_low).unwrap_or(0),
+            }
         })
         .collect();
     OffMapView { nodes }
@@ -765,6 +845,40 @@ fn hexside_views(g: &GameState) -> Vec<HexsideView> {
     hexsides
 }
 
+/// Build the viewer `UnitView` for a single unit — shared by the on-map unit layer and the off-map
+/// complex so both render identical counters (TOE, glyph, status).
+fn unit_view(g: &GameState, u: &cna_engine::state::unit::Unit) -> UnitView {
+    UnitView {
+        id: u.id.0,
+        name: u.name.clone(),
+        abbr: u.abbr.clone(),
+        nationality: format!("{:?}", u.nationality),
+        side: format!("{:?}", u.nationality.side()),
+        hex: g.effective_hex(u.id).map(|h| [h.col, h.row]),
+        org_size: format!("{:?}", u.org_size),
+        // The counter-symbol primitives: the unit's explicit OB set, or (for an untagged unit)
+        // the classified arm family mapped to its canonical primitives.
+        unit_type: {
+            let prims = match u.unit_type {
+                Some(t) => t.glyph(),
+                None => g.org_family_of(u.id).map(cna_engine::reference::formation_org::org_family_to_primitives).unwrap_or_default(),
+            };
+            prims.iter().map(|p| format!("{p:?}")).collect()
+        },
+        toe: u.total_toe(),
+        fuel: u.fuel,
+        ammo: u.ammo,
+        cohesion: u.cohesion,
+        basic_morale: u.basic_morale,
+        morale_reference: u.basic_morale_reference,
+        in_training: u.status.in_training,
+        broken: !u.weapons_broken.is_empty()
+            || u.toe_broken > 0
+            || u.trucks_broken.light + u.trucks_broken.medium + u.trucks_broken.heavy > 0,
+        is_hq: u.is_hq,
+    }
+}
+
 fn unit_views(g: &GameState) -> Vec<UnitView> {
     let mut v: Vec<UnitView> = g
         .units
@@ -772,35 +886,7 @@ fn unit_views(g: &GameState) -> Vec<UnitView> {
         // §19.62: a combat-eliminated (0-TOE) non-HQ unit is removed from play and can never be
         // rebuilt — omit it so the viewer drops it. A 0-TOE HQ stays as its formation's cadre.
         .filter(|u| u.total_toe() > 0 || u.is_hq || u.is_tds)
-        .map(|u| UnitView {
-            id: u.id.0,
-            name: u.name.clone(),
-            abbr: u.abbr.clone(),
-            nationality: format!("{:?}", u.nationality),
-            side: format!("{:?}", u.nationality.side()),
-            hex: g.effective_hex(u.id).map(|h| [h.col, h.row]),
-            org_size: format!("{:?}", u.org_size),
-            // The counter-symbol primitives: the unit's explicit OB set, or (for an untagged unit)
-            // the classified arm family mapped to its canonical primitives.
-            unit_type: {
-                let prims = match u.unit_type {
-                    Some(t) => t.glyph(),
-                    None => g.org_family_of(u.id).map(cna_engine::reference::formation_org::org_family_to_primitives).unwrap_or_default(),
-                };
-                prims.iter().map(|p| format!("{p:?}")).collect()
-            },
-            toe: u.total_toe(),
-            fuel: u.fuel,
-            ammo: u.ammo,
-            cohesion: u.cohesion,
-            basic_morale: u.basic_morale,
-            morale_reference: u.basic_morale_reference,
-            in_training: u.status.in_training,
-            broken: !u.weapons_broken.is_empty()
-                || u.toe_broken > 0
-                || u.trucks_broken.light + u.trucks_broken.medium + u.trucks_broken.heavy > 0,
-            is_hq: u.is_hq,
-        })
+        .map(|u| unit_view(g, u))
         .collect();
     v.sort_by_key(|u| u.id);
     v

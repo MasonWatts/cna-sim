@@ -16,6 +16,15 @@ function toCube(col: number, row: number): Cube {
   return { x, z };
 }
 
+/** Parse a hex label like `"E1833"` (section letter A–E + two-digit RR row + two-digit CC col) into
+ *  global (col,row), mirroring the engine's `HexId::to_hex_coord` (col = sectionIndex*33 + CC). */
+export function parseHexId(s: string): { col: number; row: number } | null {
+  const m = /^([A-Ea-e])(\d\d)(\d\d)$/.exec(s.trim());
+  if (!m) return null;
+  const idx = m[1].toUpperCase().charCodeAt(0) - 65;
+  return { col: idx * 33 + Number(m[3]), row: Number(m[2]) };
+}
+
 /** Pixel center of hex (col,row) for pointy-top layout, before view offset. Row increases *upward*
  *  (the engine's (1,1) is the lower-left tile), so y is negated — SVG y grows downward. */
 export function hexCenter(col: number, row: number): { x: number; y: number } {

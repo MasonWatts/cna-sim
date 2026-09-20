@@ -16,9 +16,10 @@ import type { NavalView } from "@bindings/NavalView";
 import type { ShipView } from "@bindings/ShipView";
 import type { InfoPanelData } from "../lore";
 import { WEATHER_SYSTEM_INFO, WEATHER_CONDITION_INFO } from "../weatherInfo";
-import { PORT_SYSTEM_INFO, CONVOY_SYSTEM_INFO, OFF_MAP_INFO, MED_BASE_INFO, MALTA_INFO, CW_OFF_MAP_INFO } from "../navalInfo";
+import { PORT_SYSTEM_INFO, PORT_TONNAGE_INFO, PORT_TRANSFER_INFO, CONVOY_SYSTEM_INFO, OFF_MAP_INFO, OFF_MAP_AA_INFO, OFF_MAP_PORT_INFO, OFF_MAP_TRANSIT_INFO, MED_BASE_INFO, MALTA_INFO, MALTA_CAPACITY_INFO, MALTA_AA_INFO, CW_OFF_MAP_INFO, facilityInfo } from "../navalInfo";
 import type { OffMapView } from "@bindings/OffMapView";
-import { hexCenter, hexPolygon, mapBounds } from "../hex";
+import type { OffMapUnitView } from "@bindings/OffMapUnitView";
+import { hexCenter, hexPolygon, mapBounds, parseHexId } from "../hex";
 
 import { terrainFill, HEX_STROKE, ROUTE_DARK, ROUTE_KINDS, EDGE_KINDS, edgeGlyph, routeGlyph, featureGlyph, unitTypeGlyph, squadronGlyph, shipGlyph, airfieldGlyph, PATTERNS } from "./mapSymbols";
 
@@ -49,11 +50,65 @@ function TileTitle({ text, y = -1, size = 8.5, max = 34, fill = "#fff" }: { text
   );
 }
 
+// A squadron counter (§35) as drawn on the board — side-colored 38×22 tile, designation title,
+// plane count, class silhouette, dashed if unsupplied, with a +N badge for the rest of a stack.
+// Centered at the origin; the parent positions it. Reused for on-map hexes and Malta/off-map boxes.
+function SquadronCounter({ designation, planes, cls, side = "Commonwealth", supplied = true, extra = 0, title }: { designation: string; planes: number; cls: string; side?: string; supplied?: boolean; extra?: number; title?: string }) {
+  const fill = side === "Commonwealth" ? "var(--cw)" : "var(--axis)";
+  return (
+    <g>
+      {extra > 0 && <rect x={-17} y={-13} width={38} height={22} rx={3} fill={fill} opacity={0.5} stroke="#0d0f14" strokeWidth={1} />}
+      <rect x={-19} y={-11} width={38} height={22} rx={3} fill={fill} stroke="#0d0f14" strokeWidth={1} strokeDasharray={supplied ? undefined : "3 2"} />
+      <TileTitle text={designation.replace(/^(Commonwealth|Axis|Italian|German)\s+/, "")} y={-1} size={8.5} />
+      <text x={-9.5} textAnchor="middle" y={8} fontSize={7} fill="#eef">{`x${planes}`}</text>
+      <g transform="translate(9.5 4.5) scale(0.62)" fill="#e9e4cf" stroke="#0d0f14" strokeWidth={0.5}>{squadronGlyph(cls)}</g>
+      {extra > 0 && (
+        <g transform="translate(19 -11)">
+          <circle r={8} fill="#11151c" stroke="#eef" strokeWidth={1} />
+          <text textAnchor="middle" y={3} fontSize={9} fill="#eef" fontWeight={700}>+{extra}</text>
+        </g>
+      )}
+      <title>{title ?? `• ${designation} squadron (§35) — ${side} ${cls}, ${planes} plane(s)${supplied ? "" : " — UNSUPPLIED (§35.14)"}`}</title>
+    </g>
+  );
+}
+
+// A full land-unit counter (§4.44) as drawn on the board — side-colored 38×22 tile, abbr title, TOE
+// (— for a 0-TOE cadre/HQ), the composed type glyph, broken/training markers, and a native tooltip.
+// Centered at the origin; the parent positions it. Reused on the map and in the off-map complex.
+function UnitCounter({ u, extra = 0 }: { u: UnitView; extra?: number }) {
+  const fill = u.side === "Commonwealth" ? "var(--cw)" : "var(--axis)";
+  const cadre = u.toe === 0;
+  const morale = `${u.basic_morale >= 0 ? "+" : ""}${u.basic_morale}` + (u.basic_morale < u.morale_reference ? `→${u.morale_reference >= 0 ? "+" : ""}${u.morale_reference}` : "");
+  const tip = `• ${u.name} (${u.org_size}, TOE ${cadre ? "-" : u.toe}, morale ${morale})${u.broken ? " 🔧" : ""}${u.in_training ? " 🎓" : ""}`;
+  return (
+    <g>
+      {extra > 0 && <rect x={-17} y={-13} width={38} height={22} rx={3} fill={fill} opacity={0.5} stroke="#0d0f14" strokeWidth={1} />}
+      <rect x={-19} y={-11} width={38} height={22} rx={3} fill={fill} stroke={u.broken ? "#e7b53a" : "#0d0f14"} strokeWidth={u.broken ? 2 : 1} />
+      <TileTitle text={u.abbr || u.name} y={-1} size={9} />
+      <text x={-9.5} textAnchor="middle" y={8} fontSize={8} fill="#eef">{cadre ? "-" : u.toe}</text>
+      {u.unit_type.length > 0 && <g transform="translate(9.5 5)">{unitTypeGlyph(u.unit_type)}</g>}
+      {u.broken && <text x={-15} y={-4} fontSize={11} textAnchor="middle" aria-label="broken down">🔧</text>}
+      {u.in_training && <text x={-15} y={7} fontSize={9} textAnchor="middle" aria-label="in training">🎓</text>}
+      {extra > 0 && (
+        <g transform="translate(19 -11)">
+          <circle r={8} fill="#11151c" stroke="#eef" strokeWidth={1} />
+          <text textAnchor="middle" y={3} fontSize={9} fill="#eef" fontWeight={700}>+{extra}</text>
+        </g>
+      )}
+      <title>{tip}</title>
+    </g>
+  );
+}
+
 // The 5 map sections span contiguous global-column bands (A=1–33, B=34–66, C=67–99, D=100–132,
 // E=133–165), the same `(col-1)/33` split the weather engine uses.
 const SECTION_BOUNDS = [33, 66, 99, 132]; // last col of A, B, C, D
 const SECTION_CENTERS = [17, 50, 83, 116, 149]; // representative mid-column of A…E
 const LABEL_HEADROOM = 52; // extra viewBox space above the map so Region labels clear all coastlines
+const LEFT_MARGIN = 1140; // extra viewBox space west of the map for the §8.8 Tripoli/Tunisia complex
+const RIGHT_MARGIN = 220; // extra viewBox space east of the map for the §36.53 Canal-zone air boxes
+const BOTTOM_MARGIN = 120; // extra viewBox space south of the map for the Ethiopia off-map box
 
 /** A small pictorial weather icon (~radius 6) centered at (0,0), for the weather panel. */
 function weatherGlyph(kind: string): JSX.Element {
@@ -120,6 +175,11 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           onMouseLeave: () => onPlaceLeave?.(),
         }
       : {};
+  // Historical-context lore (public/lore/places.json) for a place label, as an info-panel section.
+  const loreOfPlace = (key: string) => {
+    const e = placeLore?.[key] as { description?: string; links?: { label: string; url: string }[] } | undefined;
+    return e?.description ? { description: e.description, links: e.links } : undefined;
+  };
   // Routes/edge-terrain fold forward during play (rail/road built or destroyed); fall back to the
   // static header map when no delta has been threaded.
   const hexsideList = hexsides ?? map.hexsides;
@@ -401,7 +461,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
   for (const sh of naval?.ships ?? []) pushTile(sh.hex, { kind: "ship", rank: 80, sh });
 
   return (
-    <svg width={w} height={h + LABEL_HEADROOM} viewBox={`${minX} ${minY - LABEL_HEADROOM} ${w} ${h + LABEL_HEADROOM}`} style={{ display: "block" }} role="img" aria-label="game board">
+    <svg width={w + LEFT_MARGIN + RIGHT_MARGIN} height={h + LABEL_HEADROOM + BOTTOM_MARGIN} viewBox={`${minX - LEFT_MARGIN} ${minY - LABEL_HEADROOM} ${w + LEFT_MARGIN + RIGHT_MARGIN} ${h + LABEL_HEADROOM + BOTTOM_MARGIN}`} style={{ display: "block" }} role="img" aria-label="game board">
       {PATTERNS}
       {terrain}
       {sections}
@@ -697,9 +757,9 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
         const cellW = (WPW - 16) / 5;
         return (
           <g>
-            <rect x={px} y={py} width={WPW} height={WPH} rx={6} fill="#efe8c6" stroke="#b7a97a" strokeWidth={1} opacity={0.96} />
+            <rect x={px} y={py} width={WPW} height={WPH} rx={6} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.96} />
             {/* Title + A–E labels explain the weather system and Region bands. */}
-            <text x={px + WPW / 2} y={py + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#2f2b22" {...infoHover(WEATHER_SYSTEM_INFO)}>
+            <text x={px + WPW / 2} y={py + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#4a3d16" {...infoHover(WEATHER_SYSTEM_INFO)}>
               Weather
             </text>
             {SECTION_CENTERS.map((_, i) => {
@@ -708,14 +768,17 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
               const condInfo = WEATHER_CONDITION_INFO[cond] ?? WEATHER_CONDITION_INFO.Normal;
               return (
                 <g key={i}>
-                  <text x={cx} y={py + 36} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={12} fontWeight={700} fill="#5b5340" {...infoHover(WEATHER_SYSTEM_INFO)}>
+                  <text x={cx} y={py + 36} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={12} fontWeight={700} fill="#6b5a2e" {...infoHover(WEATHER_SYSTEM_INFO)}>
                     {String.fromCharCode(65 + i)}
                   </text>
                   {/* The glyph + condition name explain the current condition's effects. */}
-                  <g transform={`translate(${cx} ${py + 58})`} {...infoHover(condInfo)}>{weatherGlyph(cond)}</g>
-                  <text x={cx} y={py + 92} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8.5} fill="#5b5340" {...infoHover(condInfo)}>
+                  <g transform={`translate(${cx} ${py + 58})`}>{weatherGlyph(cond)}</g>
+                  <text x={cx} y={py + 92} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8.5} fill="#6b5a2e">
                     {cond}
                   </text>
+                  {/* transparent bounding box over the glyph + name so the condition tooltip triggers
+                      anywhere in the cell, not just on the icon strokes */}
+                  <rect x={cx - cellW / 2} y={py + 46} width={cellW} height={50} fill="transparent" {...infoHover(condInfo)} />
                 </g>
               );
             })}
@@ -725,11 +788,12 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
       {/* Replacement-Point delivery: a dashed line from each assigned on-map pool toward its unit's
           hex (§20.41/§20.49). The pools themselves render as counters in the hex stack above; staged
           future arrivals (§20.21) are listed in a panel. */}
-      {replacements && replacements.length > 0 && (() => {
+      {(() => {
+        const reps = replacements ?? [];
         const unitHex = new Map<number, [number, number]>();
         for (const u of units) if (u.hex) unitHex.set(u.id, u.hex as [number, number]);
-        const onMap = replacements.filter((r) => r.hex);
-        const staged = replacements.filter((r) => !r.hex);
+        const onMap = reps.filter((r) => r.hex);
+        const staged = reps.filter((r) => !r.hex);
         return (
           <g>
             {onMap.map((r, i) => {
@@ -740,87 +804,226 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
               const b = hexCenter(dst[0], dst[1]);
               return <line key={`rpl${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#c8b06a" strokeWidth={1.2} strokeDasharray="4 3" opacity={0.6} />;
             })}
-            {staged.length > 0 && (
-              <g>
-                <rect x={panelX - 234} y={panelY} width={220} height={28 + staged.length * 15} rx={6} fill="#efe8c6" stroke="#b7a97a" strokeWidth={1} opacity={0.96} />
-                <text x={panelX - 124} y={panelY + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#2f2b22">Incoming Replacements</text>
-                {staged.map((r, i) => (
-                  <text key={i} x={panelX - 224} y={panelY + 34 + i * 15} fontFamily="Courier New, monospace" fontSize={10} fill="#5b5340">
-                    {`GT ${r.arrival ? `${r.arrival[0]}/${r.arrival[1]}` : "?"} — ${r.side.slice(0, 2)} ${r.class} ×${r.count}`}
-                  </text>
-                ))}
-              </g>
-            )}
+            <g {...infoHover({ title: "Incoming Replacements (§20)", rules: { description: "Replacement Points rebuild units' losses (§20). Produced points are scheduled and arrive after a planning delay (Axis 2 / Commonwealth 4 Game-Turns, §20.21), then must Train (§17.3/§20.43) before they can absorb into a unit. This panel lists points still in transit — their arrival Game-Turn, side, class, and count — before they appear on the map." } })}>
+              <rect x={panelX - 234} y={panelY} width={220} height={28 + Math.max(1, staged.length) * 15} rx={6} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.96} />
+              <text x={panelX - 124} y={panelY + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#4a3d16">Incoming Replacements</text>
+              {staged.length > 0 ? staged.map((r, i) => (
+                <text key={i} x={panelX - 224} y={panelY + 34 + i * 15} fontFamily="Courier New, monospace" fontSize={10} fill="#6b5a2e">
+                  {`GT ${r.arrival ? `${r.arrival[0]}/${r.arrival[1]}` : "?"} — ${r.side.slice(0, 2)} ${r.class} ×${r.count}`}
+                </text>
+              )) : (
+                <text x={panelX - 124} y={panelY + 34} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={10} fontStyle="italic" fill="#8a7a3a">None pending</text>
+              )}
+            </g>
           </g>
         );
       })()}
       {/* Naval panels (§55/§56): a Ports box (efficiencies) and, below it, an Axis Convoys box —
           abstract/named naval state that has no map hex, so it lives in off-map panels. */}
       {naval && (naval.ports.length > 0 || naval.convoys.length > 0) && (() => {
-        const boxW = 340;
+        const boxW = 372;
         const px = panelX - boxW - 14;
         const py = panelY + 150;
-        const portsH = 28 + naval.ports.length * 14;
+        const portsH = 42 + naval.ports.length * 14;
         const convoyY = py + (naval.ports.length > 0 ? portsH + 10 : 0);
         return (
           <g>
             {naval.ports.length > 0 && (
               <g>
-                <rect x={px} y={py} width={boxW} height={portsH} rx={6} fill="#e6eef0" stroke="#7a97a0" strokeWidth={1} opacity={0.96} />
-                <text x={px + boxW / 2} y={py + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#243033" {...infoHover(PORT_SYSTEM_INFO)}>Ports</text>
+                <rect x={px} y={py} width={boxW} height={portsH} rx={6} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.96} />
+                <text x={px + boxW / 2} y={py + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#4a3d16" {...infoHover(PORT_SYSTEM_INFO)}>Ports</text>
+                {/* section column headers */}
+                <text x={px + 170} y={py + 30} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8} fontWeight={700} fill="#6b5a2e">Shipping Tonnage</text>
+                <text x={px + 305} y={py + 30} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8} fontWeight={700} fill="#6b5a2e">Troop Transfer</text>
                 {naval.ports.map((p, i) => (
-                  <text key={`np${i}`} x={px + 10} y={py + 34 + i * 14} fontFamily="Courier New, monospace" fontSize={10} fill={p.blocked ? "#a33" : "#3a4b4f"} {...infoHover(PORT_SYSTEM_INFO)}>
-                    <tspan fontWeight={700}>{p.name}</tspan>
-                    <tspan x={px + 96}>{`${p.efficiency}/${p.max_efficiency}`}</tspan>
-                    <tspan x={px + 132}>{`→ ${p.throughput}/${p.max_tonnage}t`}</tspan>
-                    <tspan x={px + 250}>{`⇅ ${p.stacking_in ?? "-"}/${p.stacking_out ?? "-"} SP${p.blocked ? " ⚠" : ""}`}</tspan>
-                  </text>
+                  <g key={`np${i}`}>
+                    <text x={px + 10} y={py + 48 + i * 14} fontFamily="Courier New, monospace" fontSize={10} fill={p.blocked ? "#a33" : "#4a3f22"}>
+                      <tspan fontWeight={700}>{p.name}</tspan>
+                      <tspan x={px + 96}>{`${p.efficiency}/${p.max_efficiency}`}</tspan>
+                      <tspan x={px + 132}>{`→ ${p.throughput}/${p.max_tonnage}t`}</tspan>
+                      <tspan x={px + 250}>{`⇅ ${p.stacking_in ?? "-"}/${p.stacking_out ?? "-"} SP${p.blocked ? " ⚠" : ""}`}</tspan>
+                    </text>
+                    {/* §30.5/§55.13: checked once this port has transferred troops this Operations Stage. */}
+                    <g transform={`translate(${px + boxW - 16} ${py + 44 + i * 14})`}>
+                      <rect x={-5} y={-5} width={11} height={11} rx={1.5} fill={p.transferred_this_stage ? "#4a3f22" : "#efe2b3"} stroke="#4a3f22" strokeWidth={1} />
+                      {p.transferred_this_stage && <path d="M-3,0 L-1,2.3 L3.5,-3" stroke="#fff" strokeWidth={1.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />}
+                    </g>
+                  </g>
                 ))}
+                {/* transparent bounding-box hit areas so each column's tooltip triggers consistently
+                    across its whole zone (name → general, tonnage columns, transfer columns). */}
+                {(() => {
+                  const zTop = py + 23, zBot = py + portsH - 5;
+                  const zone = (x1: number, x2: number, info: InfoPanelData) => (
+                    <rect x={x1} y={zTop} width={x2 - x1} height={zBot - zTop} fill="transparent" {...infoHover(info)} />
+                  );
+                  return (
+                    <>
+                      {zone(px + 6, px + 92, PORT_SYSTEM_INFO)}
+                      {zone(px + 92, px + 244, PORT_TONNAGE_INFO)}
+                      {zone(px + 244, px + boxW - 4, PORT_TRANSFER_INFO)}
+                    </>
+                  );
+                })()}
               </g>
             )}
             {/* Always shown (a stable panel), with a placeholder when no convoy is in transit. */}
             <g>
-              <rect x={px} y={convoyY} width={boxW} height={28 + Math.max(1, naval.convoys.length) * 14} rx={6} fill="#e6eef0" stroke="#7a97a0" strokeWidth={1} opacity={0.96} />
-              <text x={px + boxW / 2} y={convoyY + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#243033" {...infoHover(CONVOY_SYSTEM_INFO)}>Axis Convoys</text>
+              <rect x={px} y={convoyY} width={boxW} height={28 + Math.max(1, naval.convoys.length) * 14} rx={6} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.96} />
+              <text x={px + boxW / 2} y={convoyY + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#4a3d16" {...infoHover(CONVOY_SYSTEM_INFO)}>Axis Convoys</text>
               {naval.convoys.length > 0 ? (
                 naval.convoys.map((c, i) => (
-                  <text key={`nc${i}`} x={px + 10} y={convoyY + 34 + i * 14} fontFamily="Courier New, monospace" fontSize={10} fill="#3a4b4f">
+                  <text key={`nc${i}`} x={px + 10} y={convoyY + 34 + i * 14} fontFamily="Courier New, monospace" fontSize={10} fill="#4a3f22">
                     {`GT${c.arrival_gt} L${c.lane}→${c.destination} ${c.tons}t`}
                   </text>
                 ))
               ) : (
-                <text x={px + 10} y={convoyY + 34} fontFamily="Courier New, monospace" fontSize={10} fontStyle="italic" fill="#7a8a8d">None scheduled</text>
+                <text x={px + 10} y={convoyY + 34} fontFamily="Courier New, monospace" fontSize={10} fontStyle="italic" fill="#8a7a3a">None scheduled</text>
               )}
             </g>
           </g>
         );
       })()}
-      {/* Off-map §8.8 Tripoli/Tunisia boxes: a panel just west of the Nofilia junction (A2802) where
-          Axis units march onto the map. Boxes listed nearest-the-map first, with a → Nofilia note. */}
+      {/* §8.8 Tripoli/Tunisia off-map complex: a horizontal strip in the sea WEST of the map (the
+          real direction of these places). Reads map→inland left as: [Nofilia junction] · Tripolitania
+          · Tripoli · Gabes · Tunis — i.e. Tripolitania nearest the map on the right, Tunis farthest
+          on the left (the reverse of the paper counter-sheet, which is laid out to fit its box). Each
+          location box shows its name, AA, and port; between boxes are the fast/slow transit tracks
+          (§8.89). Units rest in boxes or sit on a track cell at their transit step. */}
       {offMap && offMap.nodes.length > 0 && (() => {
-        const nof = hexCenter(3, 27); // Nofilia port hex — the §8.8 map junction (A2802)
-        const boxW = 200;
-        const rows = offMap.nodes.length;
-        const boxH = 30 + rows * 14 + 16;
-        // Near Nofilia but lifted one full box-height north (over the sea, clear of the coast) —
-        // with a ↘ pointer down to the Nofilia junction.
-        const ox = nof.x - 30;
-        const oy = nof.y - 2 * boxH - 12;
+        // Normalise with per-node defaults (from off-map-nodes.ron) so an older game.jsonl lacking
+        // the leg/AA/port fields still lays out correctly — notably Tunis→Gabes is a 5-stage slow leg.
+        const PORT: Record<string, string> = { Tripoli: "Tripoli", Tunis: "Bizerta" };
+        const MID: Record<string, number> = { Tripolitania: 1, Tripoli: 1, Gabes: 1, Tunis: 2 };
+        const SLOW: Record<string, number> = { Tripolitania: 3, Tripoli: 3, Gabes: 3, Tunis: 5 };
+        const nodes = offMap.nodes.map((n) => ({
+          ...n,
+          aa_points: n.aa_points ?? 0,
+          leg_fast: n.leg_fast || 1,
+          leg_mid: n.leg_mid || MID[n.name] || 1,
+          leg_slow: n.leg_slow || SLOW[n.name] || 3,
+          port: n.port ?? PORT[n.name] ?? null,
+        }));
+        const boxW = 84, boxH = 100, cellW = 42, cGap = 3, gap = 9, nofW = 40;
+        // A leg of N stages has N−1 in-transit cells (the last stage arrives in the next box).
+        const trackW = (slow: number) => Math.max(1, slow - 1) * (cellW + cGap) - cGap;
+        // Right edge just west of the map; lay columns out right→left.
+        const rightX = minX - 16;
+        const topY = hexCenter(3, 27).y - boxH / 2;
+        let x = rightX;
+        const nofX = x - nofW; x = nofX - gap;
+        const trackX: number[] = [], boxX: number[] = [];
+        nodes.forEach((n, k) => {
+          const tw = trackW(n.leg_slow);
+          trackX[k] = x - tw; x = trackX[k] - gap;
+          boxX[k] = x - boxW; x = boxX[k] - gap;
+        });
+        const leftX = x + gap;
+        // Tolerate an older game.jsonl whose off-map units predate the embedded full `unit`: fall back
+        // to a minimal counter synthesized from the legacy name/abbr/side fields (TOE/glyph blank).
+        const unitOf = (u: OffMapUnitView): UnitView => {
+          if (u.unit) return u.unit;
+          const l = u as unknown as { name?: string; abbr?: string; side?: string };
+          return { id: 0, name: l.name ?? "", abbr: l.abbr ?? l.name ?? "", nationality: "", side: l.side ?? "Axis", hex: null, org_size: "", unit_type: [], toe: 0, fuel: 0, ammo: 0, cohesion: 0, basic_morale: 0, morale_reference: 0, in_training: false, broken: false, is_hq: false } as unknown as UnitView;
+        };
         return (
           <g>
-            <rect x={ox} y={oy} width={boxW} height={boxH} rx={6} fill="#efe4cf" stroke="#a08a5a" strokeWidth={1} opacity={0.96} />
-            <text x={ox + boxW / 2} y={oy + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={12} fontWeight={700} fill="#3a2f14" {...infoHover(OFF_MAP_INFO)}>Off-Map §8.8</text>
-            {offMap.nodes.map((n, i) => {
-              const label = n.units.length > 0 ? n.units.map((u) => u.abbr + (u.transit > 0 ? "→" : "")).join(", ") : "—";
-              // Reverse the vertical order so the box reads geographically toward Nofilia below it:
-              // Tunis (furthest) at the top, Tripolitania (nearest the junction) at the bottom.
+            {/* parent background box holding the whole complex (as with the Malta box) */}
+            <rect x={leftX - 12} y={topY - 30} width={rightX - leftX + 24} height={boxH + 44} rx={7} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} />
+            <text x={(leftX + rightX) / 2} y={topY - 14} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={12} fontWeight={700} fill="#3a2f14" {...infoHover(OFF_MAP_INFO)}>Axis Off-Map Land Movement (§8.8)</text>
+            {/* Nofilia map-junction marker (rightmost, adjacent to the board). */}
+            <g>
+              <rect x={nofX} y={topY} width={nofW} height={boxH} rx={4} fill="#dfe7ef" stroke="#8aa0b4" strokeWidth={1} opacity={0.95} />
+              <text x={nofX + nofW / 2} y={topY + boxH / 2 - 4} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8} fontWeight={700} fill="#33465a">Nofilia</text>
+              <text x={nofX + nofW / 2} y={topY + boxH / 2 + 7} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={7} fill="#55697d">A2802 →</text>
+            </g>
+            {nodes.map((n, k) => {
+              // Transit track between box k and the box one step closer to the map — three lanes for
+              // the three CPA tiers (§8.89). A leg of N stages has N−1 *in-transit* cells (the Nth
+              // stage arrives in the next box): fast (CPA ≥25) and medium (CPA 15–24) are one stage on
+              // every leg except Tunis→Gabes (medium = 2), so they show a straight arrow; slow
+              // (CPA <15) shows its leg−1 step boxes. Cells are 42 wide; lanes are 22 tall.
+              const laneH = 22;
+              const cellsOf = (n_: number) => Math.max(0, n_ - 1);
+              const slowCells = cellsOf(n.leg_slow);
+              const tw = Math.max(1, slowCells) * (cellW + cGap) - cGap;
+              const fastY = topY + 18, medY = topY + 44, slowY = topY + 70;
+              const cellCX = (idx: number) => trackX[k] + idx * (cellW + cGap) + cellW / 2;
+              const onTrack = n.units.filter((u) => u.transit > 0 && u.toward_map);
+              // A rightward (toward-map) arrow from x1 to a head at x2.
+              const arrowSeg = (x1: number, x2: number, y: number) => (
+                <g stroke="#b19a55" strokeWidth={1} fill="#b19a55">
+                  <line x1={x1} y1={y} x2={x2 - 2} y2={y} />
+                  <path d={`M${x2 - 6},${y - 3} L${x2},${y} L${x2 - 6},${y + 3} Z`} stroke="none" />
+                </g>
+              );
+              // A single arrow spanning the whole track, for a lane with no step boxes.
+              const arrow = (y: number) => arrowSeg(trackX[k], trackX[k] + tw, y);
+              // One lane: `cells` step boxes (a single box centered; several left-aligned), or an arrow.
+              const renderLane = (cells: number, laneTop: number, label: string) => (
+                <g>
+                  <text x={trackX[k]} y={laneTop - 2} fontFamily="Courier New, monospace" fontSize={5.5} fill="#8a7a4a">{label}</text>
+                  {cells === 0
+                    ? arrow(laneTop + laneH / 2)
+                    : cells === 1
+                    ? (() => {
+                        // A single centered step box with a separate arrow on each side (location →
+                        // box → next), each with its own head and `gap`-sized spaces at the box and ends.
+                        const cy = laneTop + laneH / 2;
+                        const bl = trackX[k] + tw / 2 - cellW / 2, br = trackX[k] + tw / 2 + cellW / 2;
+                        return (
+                          <g>
+                            {arrowSeg(trackX[k], bl - gap, cy)}
+                            <rect x={bl} y={laneTop} width={cellW} height={laneH} rx={2} fill="none" stroke="#c3aa63" strokeWidth={0.8} strokeDasharray="2 2" />
+                            {arrowSeg(br + gap, trackX[k] + tw, cy)}
+                          </g>
+                        );
+                      })()
+                    : Array.from({ length: cells }).map((_, ci) => (
+                        <rect key={ci} x={trackX[k] + ci * (cellW + cGap)} y={laneTop} width={cellW} height={laneH} rx={2} fill="none" stroke="#c3aa63" strokeWidth={0.8} strokeDasharray="2 2" />
+                      ))}
+                </g>
+              );
               return (
-                <text key={n.name} x={ox + 8} y={oy + 32 + (rows - 1 - i) * 14} fontFamily="Courier New, monospace" fontSize={9.5} fill="#4a3f22">
-                  <tspan fontWeight={700}>{n.name}</tspan>{`  ${label}`}
-                </text>
+                <g key={n.name}>
+                  {/* fast/medium/slow transit channels — one hoverable group with a bounding hit-area */}
+                  <g {...infoHover(OFF_MAP_TRANSIT_INFO)}>
+                    <rect x={trackX[k] - 2} y={fastY - 8} width={Math.max(tw, cellW) + 4} height={slowY + laneH - fastY + 12} fill="transparent" />
+                    {renderLane(cellsOf(n.leg_fast), fastY, "fast")}
+                    {renderLane(cellsOf(n.leg_mid), medY, "medium")}
+                    {renderLane(slowCells, slowY, "slow")}
+                  </g>
+                  {onTrack.map((u, ui) => {
+                    // Which lane: slow tier, else medium tier, else fast (fast/medium 1-stage legs
+                    // never hold an in-transit unit — they arrive the same stage).
+                    const [laneTop, centered] = u.leg_total >= n.leg_slow ? [slowY, false] : u.leg_total >= n.leg_mid ? [medY, true] : [fastY, true];
+                    const idx = Math.min(Math.max(0, u.transit - 1), Math.max(0, slowCells - 1));
+                    const cx = centered ? trackX[k] + tw / 2 : cellCX(idx);
+                    return <g key={`${n.name}-t${ui}`} transform={`translate(${cx} ${(laneTop as number) + laneH / 2})`}><UnitCounter u={unitOf(u)} /></g>;
+                  })}
+                  {/* location box — lighter inner shade (as with the Malta airfield cells) */}
+                  <rect x={boxX[k]} y={topY} width={boxW} height={boxH} rx={4} fill="#efe2b3" stroke="#c3aa63" strokeWidth={1} />
+                  <text x={boxX[k] + boxW / 2} y={topY + 13} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={9} fontWeight={700} fill="#4a3d16" {...(loreOfPlace(n.name) ? infoHover({ title: n.name, lore: loreOfPlace(n.name) }) : {})}>{n.name}</text>
+                  <text x={boxX[k] + boxW / 2} y={topY + 24} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={7.5} fill="#6b5a2e">
+                    <tspan {...infoHover(OFF_MAP_AA_INFO)}>{`AA ${n.aa_points}`}</tspan>
+                    {n.port && <tspan {...infoHover(OFF_MAP_PORT_INFO)}>{` · ⚓${n.port}`}</tspan>}
+                  </text>
+                  {/* §20.43: Tripoli is the Axis off-map training area — the map training-ground glyph. */}
+                  {n.name === "Tripoli" && (
+                    <g transform={`translate(${boxX[k] + boxW / 2} ${topY + 28}) scale(0.8)`} {...infoHover({ title: "Axis Training Area (§20.43)", rules: { description: "Axis Replacement Points train here (§20.43 — Tripoli or any major city). Training runs for the §20.43 schedule of Operations Stages with an instruction battalion present at Basic Morale (§17.35)." } })}>
+                      <rect x={-8} y={-6} width={16} height={30} fill="transparent" />
+                      {featureGlyph("AxisTrainingArea")}
+                    </g>
+                  )}
+                  {/* resting units (transit 0): representative tile + badge */}
+                  {(() => {
+                    const rest = n.units.filter((u) => u.transit === 0);
+                    if (rest.length === 0) return <text x={boxX[k] + boxW / 2} y={topY + boxH / 2 + 16} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={7.5} fontStyle="italic" fill="#9a8a4a">— empty —</text>;
+                    return <g transform={`translate(${boxX[k] + boxW / 2} ${topY + boxH / 2 + 16})`}><UnitCounter u={unitOf(rest[0])} extra={rest.length - 1} /></g>;
+                  })()}
+                </g>
               );
             })}
-            <text x={ox + 8} y={oy + 32 + rows * 14 + 8} fontFamily="Courier New, monospace" fontSize={9} fontStyle="italic" fill="#7a5c2a">↘ Nofilia (A2802)</text>
           </g>
         );
       })()}
@@ -837,11 +1040,11 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
         const by = mb.name === "Crete" ? minY - 46 : minY + 2;
         const shown = mb.squadrons.slice(0, 5);
         const extra = mb.squadrons.length - shown.length;
-        const title = `${mb.name.replace("/", " & ")} Air Bases`;
+        const title = `Axis ${mb.name.replace("/", " & ")} Air Bases`;
         return (
           <g key={mb.name}>
             <rect x={bx} y={by} width={bw} height={bh} rx={5} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.97} />
-            <text x={bx + bw / 2} y={by + 15} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={10} fontWeight={700} fill="#4a3d16" {...infoHover(MED_BASE_INFO)}>{title}</text>
+            <text x={bx + bw / 2} y={by + 15} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={Math.min(10, (bw - 12) / (title.length * 0.6))} fontWeight={700} fill="#4a3d16" {...infoHover(MED_BASE_INFO)}>{title}</text>
             {shown.length === 0 ? (
               <text x={bx + bw / 2} y={by + 40} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={9} fontStyle="italic" fill="#8a7a3a">— no squadrons —</text>
             ) : (
@@ -863,49 +1066,75 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           delta layer; falls back to the static roster before the first AirView.
           Positioned in the sea between Sicily and the African coast. */}
       {(() => {
-        const kindAbbr = (k: string): string =>
-          k === "FlyingBoatBasin" ? "fb-basin"
-          : k === "FlyingBoatAlightingArea" ? "fb-alight"
-          : k === "AirLandingStrip" ? "strip"
-          : "airfield";
-        // §44.18 flak is held per-field (a raid draws only the raided field's flak, §44.24); shown
-        // per row as AA<total> with the Heavy portion in parens (Heavy can't be fighter-suppressed).
-        const flakLabel = (light: number, heavy: number): string => {
-          const total = light + heavy;
-          if (total === 0) return "";
-          return heavy > 0 ? `AA${total} (${heavy}H)` : `AA${total}`;
-        };
-        // Live facilities when available, else the static seed roster.
-        const bases = air?.malta?.length
-          ? air.malta.map((b) => ({
-              name: b.name,
-              meta: `${kindAbbr(b.kind)} · ${b.levels}/${b.max_levels}`,
-              planes: `${b.planes}/${b.levels * 18}`,
-              flak: flakLabel(b.flak_light, b.flak_heavy),
-            }))
+        type Group = { aircraft_type: string; class: string; planes: number };
+        type Field = { name: string; kind: string; levels: number; maxLevels: number; planes: number; flakLight: number; flakHeavy: number; groups: Group[] };
+        // Live facilities when available, else the static §44.1 seed roster (empty, pre-play).
+        const fields: Field[] = air?.malta?.length
+          ? air.malta.map((b) => ({ name: b.name, kind: b.kind, levels: b.levels, maxLevels: b.max_levels, planes: b.planes, flakLight: b.flak_light, flakHeavy: b.flak_heavy, groups: b.groups ?? [] }))
           : ([
-              ["Takali", "airfield · 6"], ["Luqa", "airfield · 6"], ["Safi", "airfield · 6"],
-              ["Hal Far", "airfield · 6"], ["Kalafrana", "fb-basin · 3"], ["Valetta", "fb-alight · 1"],
-            ] as [string, string][]).map(([name, meta]) => ({ name, meta, planes: "", flak: "" }));
-        const maltaAaTotal = air?.malta?.reduce((s, b) => s + b.flak_light + b.flak_heavy, 0) ?? 0;
-        const bw = 210;
-        const bh = 24 + bases.length * 11 + 6;
-        // Sit just right of the Italy/Sicily Med box (centre hexCenter(17,1).x, width 152, top minY+2),
+              ["Takali", "Airfield", 6], ["Luqa", "Airfield", 6], ["Safi", "Airfield", 6],
+              ["Hal Far", "Airfield", 6], ["Kalafrana", "FlyingBoatBasin", 3], ["Valetta", "FlyingBoatAlightingArea", 1],
+            ] as [string, string, number][]).map(([name, kind, maxLevels]) => ({ name, kind, levels: maxLevels, maxLevels, planes: 0, flakLight: 0, flakHeavy: 0, groups: [] }));
+        const maltaAaTotal = fields.reduce((s, f) => s + f.flakLight + f.flakHeavy, 0);
+        // Diverted flak (§44.18) is the AA that fires against a raid; every field also has 1 intrinsic
+        // AA point (§36.18), shown as "+1i", usable only vs strafing/dive-bombing (not the level-bombing
+        // Malta raid). Heavy diverted flak is annotated (nH) — it can't be fighter-suppressed (§40.74).
+        const flakLabel = (l: number, h: number) => {
+          const d = l + h;
+          return `AA: ${d}${h > 0 ? `(${h}H)` : ""} + 1`;
+        };
+        // A rectangular grid of airfield cells inside the parent Malta box.
+        const cols = 3;
+        const rows = Math.ceil(fields.length / cols);
+        const cellW = 122, cellH = 76, gapX = 6, gapY = 6, pad = 8, titleH = 22;
+        const gridW = cols * cellW + (cols - 1) * gapX;
+        const bw = gridW + 2 * pad;
+        const bh = titleH + rows * cellH + (rows - 1) * gapY + pad;
+        // Just right of the Italy/Sicily Med box (centre hexCenter(17,1).x, width 152, top minY+2),
         // tops aligned, with a 12px gutter.
         const bx = hexCenter(17, 1).x + 76 + 12;
         const by = minY + 2;
+        // Historical-context lore (from public/lore/places.json) for the island and each field, shown
+        // as the panel's lore section alongside the rules text.
+        const loreOf = (key: string) => {
+          const e = placeLore?.[key] as { description?: string; links?: { label: string; url: string }[] } | undefined;
+          return e?.description ? { description: e.description, links: e.links } : undefined;
+        };
         return (
           <g>
             <rect x={bx} y={by} width={bw} height={bh} rx={5} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.97} />
-            <text x={bx + bw / 2} y={by + 15} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={11} fontWeight={700} fill="#4a3d16" {...infoHover(MALTA_INFO)}>{maltaAaTotal > 0 ? `Malta §44 · AA${maltaAaTotal}/48` : "Malta §44"}</text>
-            {bases.map((b, i) => (
-              <text key={b.name} x={bx + 8} y={by + 31 + i * 11} fontFamily="Courier New, monospace" fontSize={8.5} fill="#4a3f22">
-                <tspan fontWeight={700}>{b.name}</tspan>
-                <tspan x={bx + 66}>{b.meta}</tspan>
-                {b.planes && <tspan x={bx + 118}>{`✈${b.planes}`}</tspan>}
-                {b.flak && <tspan x={bx + bw - 6} textAnchor="end" fontWeight={700}>{b.flak}</tspan>}
-              </text>
-            ))}
+            <text x={bx + bw / 2} y={by + 15} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={11} fontWeight={700} fill="#4a3d16" {...infoHover({ ...MALTA_INFO, lore: loreOf("Malta") })}>{maltaAaTotal > 0 ? `Commonwealth Malta Air Bases · AA ${maltaAaTotal}/48` : "Commonwealth Malta Air Bases"}</text>
+            {fields.map((f, i) => {
+              const cx = bx + pad + (i % cols) * (cellW + gapX);
+              const cy = by + titleH + Math.floor(i / cols) * (cellH + gapY);
+              const cap = f.levels * 18;
+              const rep = f.groups[0];
+              const extra = Math.max(0, f.groups.length - 1);
+              return (
+                <g key={f.name}>
+                  <rect x={cx} y={cy} width={cellW} height={cellH} rx={4} fill="#efe2b3" stroke="#c3aa63" strokeWidth={1} />
+                  {/* type glyph (hoverable rules helper) + field name */}
+                  <g transform={`translate(${cx + 16} ${cy + 14}) scale(1.3)`} {...infoHover(facilityInfo(f.kind))}>
+                    {/* transparent hit-area so the whole glyph box is hoverable, not just the strokes */}
+                    <rect x={-8} y={-6} width={16} height={13} fill="transparent" />
+                    {airfieldGlyph(f.kind, "#5a4a1e")}
+                  </g>
+                  <text x={cx + cellW / 2} y={cy + 14} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={9} fontWeight={700} fill="#4a3d16" {...(loreOf(f.name) ? infoHover({ title: `${f.name} — Malta`, lore: loreOf(f.name), rules: facilityInfo(f.kind).rules }) : {})}>{f.name}</text>
+                  {/* capacity/usage (planes) — its own rules helper (§44.14) */}
+                  <text x={cx + cellW / 2} y={cy + 28} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8.5} fill="#4a3f22" {...infoHover(MALTA_CAPACITY_INFO)}><tspan fontSize={14} dx={2} dy={2}>✈</tspan><tspan dy={-2}>{` ${f.planes}/${cap}`}</tspan></text>
+                  {/* AA / flak — its own rules helper (§44.18) */}
+                  <text x={cx + cellW / 2} y={cy + 40} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8.5} fill="#4a3f22" {...infoHover(MALTA_AA_INFO)}>{flakLabel(f.flakLight, f.flakHeavy)}</text>
+                  {/* stationed planes as a squadron counter stack (rep + badge, on-map logic) */}
+                  {rep ? (
+                    <g transform={`translate(${cx + cellW / 2} ${cy + 58})`}>
+                      <SquadronCounter designation={rep.aircraft_type} planes={rep.planes} cls={rep.class} side="Commonwealth" extra={extra} />
+                    </g>
+                  ) : (
+                    <text x={cx + cellW / 2} y={cy + 60} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8} fontStyle="italic" fill="#9a8a4a">— empty —</text>
+                  )}
+                </g>
+              );
+            })}
           </g>
         );
       })()}
@@ -924,29 +1153,71 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           { name: "Ethiopia", entry_hex: "E0127", max_squadrons: null, flying_boat: false, squadrons: [] },
         ];
         const list = air?.cw_off_map?.length ? air.cw_off_map : STATIC;
-        const bw = 96;
-        const bh = 46;
-        const gap = 8;
-        const total = list.length * bw + (list.length - 1) * gap;
-        const startX = hexCenter(SECTION_CENTERS[4], 0).x - total / 2;
-        const by = minY + 2; // below the Region E label (baseline ~minY-12)
+        // Standalone cells modeled on the Malta airfield cells (no parent box): kind glyph + name,
+        // a squadron capacity line (no AA — these off-map fields have none), and a stationed-squadron
+        // counter stack.
+        const bw = 104, bh = 74, gap = 8;
+        // The six Canal-zone boxes sit east of the map (right margin) near their entry-hex rows; the
+        // Ethiopia box sits below the map (its real direction, south). Each has a dashed connector to
+        // the entry hex. `conn` = {ax,ay} box attach point → {hx,hy} hex-edge point.
+        const boxLeftX = minX + w + 8;
+        const belowMapY = minY + h + 18;
+        const anchorOf = (f: (typeof list)[number]) => {
+          const p = parseHexId(f.entry_hex);
+          return p ? hexCenter(p.col, p.row) : null;
+        };
+        // Canal-zone boxes packed top→bottom in the right margin so ones sharing an entry hex
+        // (Fayid/Deversoir/Kabrit at E1833; Abu Seier/Ismailia at E3433) stack without overlapping.
+        const canal = list.filter((f) => f.name !== "Ethiopia").map((f) => ({ f, anchor: anchorOf(f) }))
+          .sort((a, b) => (a.anchor?.y ?? 0) - (b.anchor?.y ?? 0));
+        let cursorY = -Infinity;
+        const placed = canal.map(({ f, anchor }) => {
+          const by = Math.max((anchor?.y ?? minY) - bh / 2, cursorY);
+          cursorY = by + bh + gap;
+          return { f, bx: boxLeftX, by, conn: anchor ? { ax: boxLeftX, ay: by + bh / 2, hx: anchor.x + 22, hy: anchor.y } : null };
+        });
+        // Ethiopia below the map, centered under its entry hex (clamped within the map's x-span).
+        const eth = list.find((f) => f.name === "Ethiopia");
+        if (eth) {
+          const a = anchorOf(eth);
+          const bx = Math.min(Math.max((a?.x ?? minX + w / 2) - bw / 2, minX), minX + w - bw);
+          placed.push({ f: eth, bx, by: belowMapY, conn: a ? { ax: bx + bw / 2, ay: belowMapY, hx: a.x, hy: a.y + 26 } : null });
+        }
         return (
           <g>
-            {list.map((f, i) => {
-              const bx = startX + i * (bw + gap);
+            {placed.map(({ f, bx, by, conn }) => {
               const used = f.squadrons.length;
-              const planes = f.squadrons.reduce((s, sq) => s + sq.planes, 0);
               const cap = f.max_squadrons == null ? "∞" : String(f.max_squadrons);
+              const kind = f.flying_boat ? "FlyingBoatBasin" : "Airfield";
+              const rep = f.squadrons[0];
               return (
                 <g key={f.name}>
-                  <rect x={bx} y={by} width={bw} height={bh} rx={5} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.97} />
-                  <text x={bx + bw / 2} y={by + 14} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={9} fontWeight={700} fill="#4a3d16" {...infoHover(CW_OFF_MAP_INFO)}>
-                    {f.name}{f.flying_boat ? " ⚓" : ""}
-                  </text>
-                  <text x={bx + bw / 2} y={by + 26} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={7.5} fill="#8a7a3a">{f.entry_hex}</text>
-                  <text x={bx + bw / 2} y={by + 40} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8.5} fill="#4a3f22">
-                    {used === 0 ? `— · ${cap} sq` : `${used}/${cap} sq · ✈${planes}`}
-                  </text>
+                  {/* dashed connector from the box to the entry hex */}
+                  {conn && (
+                    <g stroke="#8a7a3a" strokeWidth={1.2} fill="#8a7a3a">
+                      <line x1={conn.hx} y1={conn.hy} x2={conn.ax} y2={conn.ay} strokeDasharray="4 3" />
+                      <circle cx={conn.hx} cy={conn.hy} r={2.2} stroke="none" />
+                    </g>
+                  )}
+                  <rect x={bx} y={by} width={bw} height={bh} rx={4} fill="#efe2b3" stroke="#c3aa63" strokeWidth={1} />
+                  {/* type glyph (hoverable rules helper) + field name */}
+                  <g transform={`translate(${bx + 16} ${by + 14}) scale(1.3)`} {...infoHover(facilityInfo(kind))}>
+                    <rect x={-8} y={-6} width={16} height={13} fill="transparent" />
+                    {airfieldGlyph(kind, "#5a4a1e")}
+                  </g>
+                  <text x={bx + bw / 2} y={by + 14} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={9} fontWeight={700} fill="#4a3d16" {...(loreOfPlace(f.name) ? infoHover({ title: f.name, lore: loreOfPlace(f.name) }) : {})}>{f.name}</text>
+                  {/* capacity/usage in squadrons (no AA) */}
+                  <text x={bx + bw / 2} y={by + 28} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8.5} fill="#4a3f22" {...infoHover(CW_OFF_MAP_INFO)}>{`${used}/${cap} sq`}</text>
+                  {/* stationed squadrons — representative counter + badge (on-map logic); the tooltip
+                      lists the whole stack, not just the top counter */}
+                  {rep ? (
+                    <g transform={`translate(${bx + bw / 2} ${by + 50})`}>
+                      <SquadronCounter designation={rep.designation} planes={rep.planes} cls={rep.class} side="Commonwealth" supplied={rep.supplied} extra={f.squadrons.length - 1}
+                        title={`${f.name} — ${f.squadrons.length} squadron(s)\n` + f.squadrons.map((s) => `• ${s.designation} (§35) — ${s.side} ${s.class}, ${s.planes} plane(s)${s.supplied ? "" : " — UNSUPPLIED (§35.14)"}`).join("\n")} />
+                    </g>
+                  ) : (
+                    <text x={bx + bw / 2} y={by + 52} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8} fontStyle="italic" fill="#9a8a4a">— empty —</text>
+                  )}
                 </g>
               );
             })}

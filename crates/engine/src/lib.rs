@@ -4022,6 +4022,11 @@ mod tests {
         assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(1), facility: "Deversoir".into() }), Ok(CommandOutcome::SquadronBasedOffMap));
         assert_eq!(g.sgsus[&SquadronId(1)].off_map_box.as_deref(), Some("Deversoir"));
         assert_eq!(g.sgsus[&SquadronId(1)].location, None);
+        // §36.5a: the off-map facility has unlimited maintenance supply — even if the squadron were
+        // marked unsupplied, the upkeep pass restores it (as with the §43.21 Med boxes).
+        g.sgsus.get_mut(&SquadronId(1)).unwrap().supplied = false;
+        g.consume_sgsu_upkeep();
+        assert!(g.sgsus[&SquadronId(1)].supplied, "§36.5a: off-map field auto-supplies its squadron");
         assert_eq!(g.off_map_north_african_planes(), 20);
         // §36.53/§37.4: an off-map-based squadron still has a computable flight distance — the chart's
         // facility→entry-hex distance (Deversoir = 12, entry E1833) plus the on-map hex distance from
@@ -4044,6 +4049,18 @@ mod tests {
         // A fighter squadron cannot use the Port Said flying-boat basin; a flying-boat squadron can.
         assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(3), facility: "Port Said".into() }), Err(CommandError::OffMapBasingFailed));
         assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(2), facility: "Port Said".into() }), Ok(CommandOutcome::SquadronBasedOffMap));
+        // §36.3: SGSU 2 sits at the Port Said flying-boat basin — it may take flying boats but not
+        // land bombers, even though it is off-map (the gate now covers §36.53 facilities too).
+        *g.plane_pool.entry(Nationality::Commonwealth).or_default().entry("Sunderland".into()).or_insert(0) += 3;
+        *g.plane_pool.entry(Nationality::Commonwealth).or_default().entry("Blenheim Mk.IV".into()).or_insert(0) += 3;
+        assert_eq!(
+            g.apply(Command::AssignSquadronPlanes { squadron: SquadronId(2), aircraft_type: "Blenheim Mk.IV".into(), class: AircraftClass::Bomber, count: 1 }),
+            Err(CommandError::WrongAircraftForFacility)
+        );
+        assert_eq!(
+            g.apply(Command::AssignSquadronPlanes { squadron: SquadronId(2), aircraft_type: "Sunderland".into(), class: AircraftClass::FlyingBoat, count: 1 }),
+            Ok(CommandOutcome::SquadronPlanesAssigned)
+        );
         // Ethiopia is gated until Game-Turn 35.
         assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(3), facility: "Ethiopia".into() }), Err(CommandError::OffMapBasingFailed));
         g.game_turn = 35;
@@ -9128,6 +9145,58 @@ mod tests {
         assert_eq!(destroyed_with(0, 6, 18), base_loss, "Heavy flak is never suppressed");
     }
 
+    // §40.24/§44: Malta-based planes interdict an Axis convoy — capability, range, and resolution.
+    #[test]
+    fn malta_convoy_interdiction_40_24() {
+        use crate::state::air::{AirFacilityKind, MaltaAirBase};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::naval::Convoy;
+        use crate::reference::units::Side;
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        let mut luqa = MaltaAirBase::new("Luqa", AirFacilityKind::Airfield, 6, 6);
+        luqa.add_planes("Beaufort Mk.I", 12); // range 144, bomb 5, torpedo 8, convoy-bombing (B)
+        luqa.add_planes("Swordfish Mk.I", 6); // range 48 — can't reach a distant convoy
+        luqa.add_planes("Anson Mk.I", 6); // torpedo 0 — no torpedo run
+        g.malta_bases.push(luqa);
+        // Two planned convoys: Tripoli (Malta distance 42, in range) and Tobruk (126).
+        let convoy = |dest: &str| Convoy {
+            lane: 1, destination: dest.into(), arrival_gt: 3,
+            fuel_tons: 200, ammo_tons: 100, stores_tons: 100, replacement_tons: 0, cancelled: false,
+        };
+        g.convoys.push(convoy("Tripoli"));
+        g.convoys.push(convoy("Tobruk"));
+        g.phase = Phase::ConvoyResolution;
+        g.active_player = Side::Commonwealth;
+
+        // A Beaufort bombing run on the Tripoli convoy resolves; total tonnage < 1000 → no flak, so
+        // no attackers are lost and all 12 planes remain based.
+        g.rng.force([5, 5]); // convoy-bomb roll 55
+        match g.apply(Command::InterdictConvoy { base_index: 0, aircraft_type: "Beaufort Mk.I".into(), planes: 12, torpedo: false, convoy_index: 0 }) {
+            Ok(CommandOutcome::ConvoyInterdicted { attackers_lost, .. }) => {
+                assert_eq!(attackers_lost, 0, "a <1000t convoy has no flak");
+                assert_eq!(g.malta_bases[0].planes.iter().find(|(t, _)| t == "Beaufort Mk.I").unwrap().1, 12);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // §37.4: a Swordfish (range 48) cannot reach the Tobruk convoy (distance 126).
+        assert_eq!(
+            g.apply(Command::InterdictConvoy { base_index: 0, aircraft_type: "Swordfish Mk.I".into(), planes: 6, torpedo: false, convoy_index: 1 }),
+            Err(CommandError::TargetOutOfRange)
+        );
+        // §39: the Anson has no torpedo rating, so a torpedo run is refused.
+        assert_eq!(
+            g.apply(Command::InterdictConvoy { base_index: 0, aircraft_type: "Anson Mk.I".into(), planes: 6, torpedo: true, convoy_index: 0 }),
+            Err(CommandError::WrongAircraftForMission)
+        );
+        // Asking for more planes than the field holds is refused.
+        assert_eq!(
+            g.apply(Command::InterdictConvoy { base_index: 0, aircraft_type: "Beaufort Mk.I".into(), planes: 99, torpedo: false, convoy_index: 0 }),
+            Err(CommandError::NotEnoughPlanes)
+        );
+    }
+
     #[test]
     fn artillery_and_san_giorgio_vs_ship_30_35_39() {
         use crate::state::command::{Command, CommandError, CommandOutcome};
@@ -10499,6 +10568,12 @@ mod tests {
         // m2 → (6,0), adjacent to the escorted SGSU at (5,0): it survives.
         assert!(g.apply(Command::MoveStep { unit: m2, to: HexCoord::new(6, 0), mode: MoveMode::NonMotorized }).is_ok());
         assert_eq!(g.sgsus[&SquadronId(2)].location, Some(HexCoord::new(5, 0)), "escorted SGSU survives");
+
+        // §35.12: a unit moving directly ONTO an undefended enemy SGSU's hex overruns it too (not
+        // just one it ends up beside) — the Alexandria coexistence bug.
+        g.sgsus.insert(SquadronId(4), Sgsu::new(SquadronId(4), Nationality::German, SquadronClass::Fighter, "JG 3", 5, Some(HexCoord::new(3, 0))));
+        assert!(g.apply(Command::MoveStep { unit: m1, to: HexCoord::new(3, 0), mode: MoveMode::NonMotorized }).is_ok());
+        assert_eq!(g.sgsus[&SquadronId(4)].location, None, "§35.12 SGSU on the entered hex is overrun");
 
         // §35.27: the 8 grounded planes were captured by the overrunning (Commonwealth) side, usable
         // one Game-Turn later — not simply destroyed.

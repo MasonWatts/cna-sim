@@ -4,4 +4,18 @@ import type { OffMapUnitView } from "./OffMapUnitView";
 /**
  * One off-map node (box) and its occupants.
  */
-export type OffMapNodeView = { name: string, units: Array<OffMapUnitView>, };
+export type OffMapNodeView = { name: string, units: Array<OffMapUnitView>, 
+/**
+ * §8.8 box AA value.
+ */
+aa_points: number, 
+/**
+ * The debarkation port for this box, if any (Tripoli → "Tripoli", Tunis → "Bizerta").
+ */
+port: string | null, 
+/**
+ * The toward-map leg's cost in Operations Stages at the fast (CPA ≥25), medium (CPA 15–24), and
+ * slow (CPA <15) tiers (§8.89) — the transit-track lengths from this box to the next box closer
+ * to the map.
+ */
+leg_fast: number, leg_mid: number, leg_slow: number, };

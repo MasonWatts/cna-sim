@@ -394,8 +394,43 @@ impl GameState {
             Phase::CommonwealthFleet => self.legal_fleet_commands(side),
             Phase::NavalConvoyArrival => self.legal_naval_convoy_commands(side),
             Phase::NavalConvoySchedule => self.legal_convoy_planning_commands(side),
+            Phase::ConvoyResolution => self.legal_convoy_resolution_commands(side),
             _ => Vec::new(),
         }
+    }
+
+    /// §40.24/§44: Commonwealth Malta-based convoy interdiction (Convoy Resolution Phase). For each
+    /// Malta field, each convoy-bombing-capable aircraft type it holds, and each live convoy, a
+    /// candidate strike committing all of that type's planes (bomb, plus a torpedo run when the type
+    /// has a torpedo rating). Range/capability/phase all fall out of `dry_run` validation.
+    fn legal_convoy_resolution_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
+        use crate::state::command::Command;
+        let mut out = Vec::new();
+        if side != Side::Commonwealth {
+            return out;
+        }
+        for (bi, base) in self.malta_bases.iter().enumerate() {
+            for (ty, count) in &base.planes {
+                if *count == 0 {
+                    continue;
+                }
+                for ci in 0..self.convoys.len() {
+                    for torpedo in [false, true] {
+                        let cmd = Command::InterdictConvoy {
+                            base_index: bi,
+                            aircraft_type: ty.clone(),
+                            planes: *count,
+                            torpedo,
+                            convoy_index: ci,
+                        };
+                        if self.dry_run(&cmd).is_ok() {
+                            out.push(cmd);
+                        }
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// Movement & Combat actions: single-hex moves plus, for each enemy-occupied hex adjacent to a

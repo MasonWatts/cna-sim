@@ -7271,9 +7271,11 @@ impl GameState {
                 None => continue,
             };
             let Some(hex) = hex else {
-                // §43.21: a Box-based (off-map Mediterranean) squadron is auto-supplied by the Box —
-                // no Fuel/Water/Stores upkeep is drawn, and it counts as supplied.
-                if self.sgsus.get(&id).is_some_and(|s| s.med_base.is_some()) {
+                // An off-map squadron is auto-supplied and draws no Fuel/Water/Stores upkeep: the Axis
+                // Mediterranean boxes supply their bombers (§43.21), and the §36.53 Commonwealth
+                // off-map facilities have unlimited maintenance supply (§36.5a). Either way it counts
+                // as supplied.
+                if self.sgsus.get(&id).is_some_and(|s| s.med_base.is_some() || s.off_map_box.is_some()) {
                     if let Some(s) = self.sgsus.get_mut(&id) {
                         s.supplied = true;
                     }
@@ -8019,6 +8021,17 @@ impl GameState {
         let fac = chart.facilities.iter().find(|f| f.name == facility)?;
         let entry = HexId::parse(&fac.entry_hex)?.to_hex_coord();
         Some(fac.distance + entry.distance(target))
+    }
+
+    /// §37.4/§44.17: air distance in hexes from Malta to a named off-map point (a convoy's
+    /// destination port such as "Tripoli"/"Benghazi") via the Air Distance Chart. `None` if the
+    /// chart is unloaded, the point is unknown, or the route is Prohibited.
+    pub fn malta_flight_distance(&self, destination: &str) -> Option<u32> {
+        use crate::reference::air_distance::AirDist;
+        match self.reference.air_distance.as_ref()?.distance("Malta", destination)? {
+            AirDist::Hexes(n) => Some(n),
+            AirDist::Prohibited => None,
+        }
     }
 
     /// §37.12: a squadron's flight distance to `target` — hex distance from its on-map base, the

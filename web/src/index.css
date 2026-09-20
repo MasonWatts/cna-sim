@@ -231,15 +231,15 @@ code {
 
 /* Paper-style legend inset drawn in map coordinates (off-shore, horizontally centered) */
 .legend-map {
-  background: #efe8c6;
-  color: #3a352b;
-  border: 1px solid #b7a97a;
+  background: #e7d9a8;
+  color: #4a3f22;
+  border: 1px solid #b19a55;
   border-radius: 6px;
   padding: 10px 12px;
   box-shadow: 0 3px 12px rgba(0,0,0,0.35);
 }
-.legend-map .tk-title { color: #2f2b22; }
-.legend-map .tk-label { color: #5b5340; }
+.legend-map .tk-title { color: #4a3d16; }
+.legend-map .tk-label { color: #6b5a2e; }
 
 /* Historical-context ("lore") floating panel — a stylized tooltip shown on place-label hover. */
 .lore-panel {

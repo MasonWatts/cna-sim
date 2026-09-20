@@ -20,4 +20,9 @@ blocked: boolean,
  * §55.13: personnel (TOE Stacking Point) capacity in / out per Operations Stage. `None` where
  * the chart leaves it unspecified.
  */
-stacking_in: number | null, stacking_out: number | null, };
+stacking_in: number | null, stacking_out: number | null, 
+/**
+ * §30.5/§55.13: whether a naval troop transfer has already used this port this Operations Stage
+ * (one transfer per port per stage).
+ */
+transferred_this_stage: boolean, };

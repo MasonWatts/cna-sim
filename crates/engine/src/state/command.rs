@@ -522,6 +522,13 @@ pub enum Command {
     /// §44.15: (Commonwealth) move `count` planes of `aircraft_type` between two Malta facilities,
     /// free of cost (Organization Phase); capacity- and §36.3-checked at the destination.
     MoveMaltaPlanes { from_base: usize, to_base: usize, aircraft_type: String, count: u32 },
+    /// §40.24/§44: (Commonwealth) fly `planes` of `aircraft_type` from a Malta field to interdict a
+    /// planned Axis convoy (Convoy Resolution Phase). The type must have Convoy/Land bombing
+    /// capability (chart column B) and range to reach the convoy's destination (§37.4 Malta
+    /// distance); `torpedo` uses the loadout's torpedo rating instead of its bombload. Resolves on
+    /// the Axis-Naval-Convoy CRT (tonnage lost); the convoy's flak may down attackers (§56.16), which
+    /// are removed from the field. Malta planes auto-refuel/rearm (§44.16), so no supply is spent.
+    InterdictConvoy { base_index: usize, aircraft_type: String, planes: u32, torpedo: bool, convoy_index: usize },
     /// §30.34/§41.34: bomb a Commonwealth warship (Land Support Air Phase, not at night). Resolves
     /// as a bombing mission on the "units" CRT group; the result is applied as Gun-Rating damage.
     BombShip {
@@ -940,6 +947,9 @@ pub enum CommandOutcome {
     MaltaAaDiverted(u32),
     /// §44.15/§44.18: flak points redistributed between two Malta fields.
     MaltaFlakMoved { light: u32, heavy: u32 },
+    /// §40.24/§44: a Malta convoy-interdiction strike — `percent` of the convoy's tonnage lost and
+    /// `attackers_lost` planes downed by the convoy's flak.
+    ConvoyInterdicted { percent: u32, attackers_lost: u32 },
     /// §44.14: planes based onto / moved between Malta facilities.
     MaltaPlanesBased(u32),
     MaltaPlanesMoved(u32),
@@ -1263,6 +1273,11 @@ pub enum CommandError {
     ShipAlreadyFired,
     /// §44.1: the referenced Maltese air base does not exist.
     NoSuchMaltaBase,
+    /// §39: the aircraft type may not fly the requested mission (e.g. no Convoy/Land bombing
+    /// capability, chart column B).
+    WrongAircraftForMission,
+    /// The field does not hold that many planes of the requested type.
+    NotEnoughPlanes,
 }
 
 impl GameState {
@@ -1350,6 +1365,9 @@ impl GameState {
             Command::BombConvoy { convoy_index, bomb_points, torpedo_planes, total_planes } => {
                 let roll = self.rng.two_dice_raw() as u32;
                 self.cmd_bomb_convoy(convoy_index, bomb_points, torpedo_planes, total_planes, roll)
+            }
+            Command::InterdictConvoy { base_index, aircraft_type, planes, torpedo, convoy_index } => {
+                self.cmd_interdict_convoy(base_index, &aircraft_type, planes, torpedo, convoy_index)
             }
             Command::DeliverConvoy { convoy_index } => self.cmd_deliver_convoy(convoy_index),
             Command::PlanProduction { nationality, item, count } => {
@@ -2240,6 +2258,86 @@ impl GameState {
             Some(pct) => Ok(CommandOutcome::ConvoyBombed(pct)),
             None => Err(CommandError::InvalidConvoy),
         }
+    }
+
+    /// §40.24/§44: a Malta-based convoy-interdiction strike. Draws real planes from a Malta field,
+    /// range-gates via the §37.4 Malta distance to the convoy's destination, resolves the attack on
+    /// the Axis-Naval-Convoy CRT, then applies the convoy's flak (§56.16) as attacker losses removed
+    /// from the field. Malta planes auto-refuel/rearm (§44.16), so no supply is expended and
+    /// survivors stay based (the strike is "outside" the sequence like §44.15 moves).
+    fn cmd_interdict_convoy(
+        &mut self,
+        base_index: usize,
+        aircraft_type: &str,
+        planes: u32,
+        torpedo: bool,
+        convoy_index: usize,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::aircraft::{Mission, MissionCap};
+        use crate::reference::units::Nationality;
+        self.require_phase(Phase::ConvoyResolution)?;
+        if self.active_player != Side::Commonwealth {
+            return Err(CommandError::WrongPhase);
+        }
+        if planes == 0 {
+            return Err(CommandError::NotEnoughPlanes);
+        }
+        // Valid Malta field holding enough planes of the type.
+        let base = self.malta_bases.get(base_index).ok_or(CommandError::NoSuchMaltaBase)?;
+        let have = base.planes.iter().find(|(t, _)| t == aircraft_type).map(|(_, n)| *n).unwrap_or(0);
+        if have < planes {
+            return Err(CommandError::NotEnoughPlanes);
+        }
+        // Valid, live convoy.
+        let convoy = self.convoys.get(convoy_index).ok_or(CommandError::InvalidConvoy)?;
+        if convoy.cancelled {
+            return Err(CommandError::InvalidConvoy);
+        }
+        let destination = convoy.destination.clone();
+        // §39: the aircraft type must have Convoy/Land bombing capability (chart column B), and — for
+        // a torpedo run — a torpedo rating. Look up the CW Aircraft Characteristics.
+        let ac = self
+            .reference
+            .aircraft_charts
+            .get(&Nationality::Commonwealth)
+            .and_then(|c| c.get(aircraft_type))
+            .ok_or(CommandError::WrongAircraftForMission)?;
+        if ac.missions.cap_for(Mission::ConvoyLandBombing) == MissionCap::No {
+            return Err(CommandError::WrongAircraftForMission);
+        }
+        let loadout = ac.loadouts.first().ok_or(CommandError::WrongAircraftForMission)?;
+        let bombload = loadout.bombload;
+        let torp = loadout.torpedo;
+        if torpedo && torp == 0 {
+            return Err(CommandError::WrongAircraftForMission);
+        }
+        // §37.4/§44.17: the strike must be within the aircraft's range of the convoy's destination.
+        let dist = self.malta_flight_distance(&destination).ok_or(CommandError::TargetOutOfRange)?;
+        if dist > ac.max_range() {
+            return Err(CommandError::TargetOutOfRange);
+        }
+        // Resolve on the Axis-Naval-Convoy CRT: a torpedo run uses torpedo planes; else bombload
+        // points across the striking planes.
+        let (bomb_points, torpedo_planes) = if torpedo { (0, planes) } else { (planes * bombload, 0) };
+        let roll = self.rng.two_dice_raw() as u32;
+        let percent = self
+            .resolve_convoy_bombing(convoy_index, bomb_points, torpedo_planes, planes, roll)
+            .ok_or(CommandError::InvalidConvoy)?;
+        // §56.16: the convoy's flak fires at the attackers; losses are removed from the field.
+        let flak = self.convoys.get(convoy_index).map(|c| c.flak_points()).unwrap_or(0);
+        let mut attackers_lost = 0u32;
+        if flak > 0 {
+            if let Some(aa) = self.reference.anti_aircraft.as_ref() {
+                use crate::reference::anti_aircraft::AaSection;
+                let flak_roll = self.rng.sequential_read() as u32;
+                attackers_lost = aa.result(AaSection::OtherDestroyed, flak, 0, flak_roll).max(0) as u32;
+            }
+        }
+        attackers_lost = attackers_lost.min(planes);
+        if attackers_lost > 0 {
+            self.malta_bases[base_index].remove_planes(aircraft_type, attackers_lost);
+        }
+        Ok(CommandOutcome::ConvoyInterdicted { percent, attackers_lost })
     }
 
     /// §56.16 DeliverConvoy: gated to the Naval Convoy Arrival Phase.
@@ -4314,12 +4412,24 @@ impl GameState {
         self.require_phase(Phase::Organization)?;
         let gt = self.game_turn;
         let nationality = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?.nationality;
-        // §36.3: a squadron based on the map may only take planes its facility kind can service —
-        // flying-boats need a basin/alighting area, land planes need an airfield/strip. Off-map /
-        // Med-based squadrons (no on-map hex) are unrestricted here.
-        if let Some(hex) = self.sgsus.get(&squadron).and_then(|s| s.location) {
-            if let Some(f) = self.air_facilities.iter().find(|f| f.hex == hex) {
-                if !facility_serves(f.kind, class) {
+        // §36.3: a squadron may only take planes its facility kind can service — flying-boats need a
+        // basin/alighting area, land planes need an airfield/strip. Applies both on the map and at an
+        // off-map §36.53 facility (Port Said is a flying-boat basin; the rest are airfields). Axis
+        // Med-box squadrons (no hex, no §36.53 box) are unrestricted here.
+        {
+            use crate::state::air::AirFacilityKind;
+            let s = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+            let kind = if let Some(hex) = s.location {
+                self.air_facilities.iter().find(|f| f.hex == hex).map(|f| f.kind)
+            } else if let Some(box_name) = s.off_map_box.as_deref() {
+                self.reference.off_map_air_facilities.as_ref()
+                    .and_then(|c| c.facilities.iter().find(|f| f.name == box_name))
+                    .map(|f| if f.flying_boat { AirFacilityKind::FlyingBoatBasin } else { AirFacilityKind::Airfield })
+            } else {
+                None
+            };
+            if let Some(kind) = kind {
+                if !facility_serves(kind, class) {
                     return Err(CommandError::WrongAircraftForFacility);
                 }
             }
@@ -6394,12 +6504,13 @@ impl GameState {
                 if !surrender.is_empty() {
                     self.surrender_units(&surrender);
                 }
-                // §35.12: an enemy SGSU the mover is now adjacent to, with no friendly combat unit
-                // stacked with it, cannot react during the enemy's move and is eliminated; §35.27:
-                // its grounded planes are lost. (§35.13: it may be redeployed one Game-Turn later.)
-                let overrun: Vec<crate::state::air::SquadronId> = to
-                    .neighbors()
-                    .into_iter()
+                // §35.12: an enemy SGSU the mover is now on or adjacent to, with no friendly combat
+                // unit stacked with it, cannot react during the enemy's move and is eliminated;
+                // §35.27: its grounded planes are captured. (§35.13: it may be redeployed one
+                // Game-Turn later.) The destination hex itself is included — a unit moving directly
+                // onto an undefended SGSU overruns it, not just one it ends up beside.
+                let overrun: Vec<crate::state::air::SquadronId> = std::iter::once(to)
+                    .chain(to.neighbors())
                     .flat_map(|h| {
                         self.sgsus
                             .iter()
