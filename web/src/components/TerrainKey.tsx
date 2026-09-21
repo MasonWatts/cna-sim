@@ -1,6 +1,6 @@
 import { CREAM, HEX_STROKE, PATTERNS, edgeGlyph, featureGlyph, routeGlyph, terrainFill } from "./mapSymbols";
 import { hexPolygon } from "../hex";
-import type { InfoPanelData } from "../lore";
+import type { InfoPanelData, LoreMap } from "../lore";
 import { TERRAIN_INFO, TERRAIN_KEY_INFO } from "../terrainInfo";
 
 // A cosmetic legend mirroring the paper map's TERRAIN KEY, but drawn with our own patterns/glyphs.
@@ -77,14 +77,21 @@ const Row = ({ children }: { children: React.ReactNode }) => (
   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 66px)", gap: 4, justifyContent: "start" }}>{children}</div>
 );
 
-export function TerrainKey({ label = "Terrain Key", onInfoHover, onInfoLeave }: { label?: string; onInfoHover?: (data: InfoPanelData, x: number, y: number) => void; onInfoLeave?: () => void }) {
+export function TerrainKey({ label = "Terrain Key", lore, onInfoHover, onInfoLeave }: { label?: string; lore?: LoreMap; onInfoHover?: (data: InfoPanelData, x: number, y: number) => void; onInfoLeave?: () => void }) {
+  // The rules for each key live in TERRAIN_INFO (code); historical lore is loaded at runtime from
+  // /lore/terrain.json and merged on here so the panel shows both the book (lore) and gavel (rules)
+  // sections. Rules-only keys just omit the lore section.
+  const infoFor = (k: string): InfoPanelData => {
+    const e = lore?.[k];
+    return e ? { ...TERRAIN_INFO[k], lore: { description: e.description, links: e.links } } : TERRAIN_INFO[k];
+  };
   // A legend swatch with an info entry opens the hybrid lore/rules panel on hover, anchored to the cell.
   const mkHover = (k: string) =>
     onInfoHover && TERRAIN_INFO[k]
       ? {
           onMouseEnter: (e: React.MouseEvent) => {
             const r = e.currentTarget.getBoundingClientRect();
-            onInfoHover(TERRAIN_INFO[k], r.left, r.bottom);
+            onInfoHover(infoFor(k), r.left, r.bottom);
           },
           onMouseLeave: () => onInfoLeave?.(),
         }

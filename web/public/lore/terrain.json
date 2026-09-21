@@ -1,0 +1,34 @@
+{
+  "_README": "Historical-context (lore) entries for the map's terrain / edge / route types, keyed by the terrain key used in the viewer's Terrain Key legend (e.g. \"SaltMarsh\", \"Delta\", \"Wadi\"). Fetched at runtime via loadLore(\"terrain\") and merged onto the rules-only TERRAIN_INFO in src/terrainInfo.ts, so edits need no rebuild. Schema per entry: { title?: string, description: string, links?: [{ label: string, url: string }] } — same as places.json. The panel heading and the rules text come from TERRAIN_INFO; only description + links are used from here. Keys starting with \"_\" are ignored. Rules text (§-cited mechanics) stays in code, NOT here.",
+
+  "SaltMarsh": {
+    "title": "Salt Marsh",
+    "description": "Salt marshes — the North African sebkha — are shallow depressions floored with fine, salt-crusted sand. A firm-looking surface often hides a quicksand-like bog that could swallow a vehicle to its axles. Their impassability shaped the campaign: the vast sabkha of the Qattara Depression anchored the southern flank at El Alamein, denying any sweep around the line and forcing a head-on fight.",
+    "links": [{ "label": "Sabkha (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Sabkha" }]
+  },
+  "HeavyVegetation": {
+    "title": "Heavy Vegetation",
+    "description": "The map's handful of vegetated hexes sit along the Cyrenaican coast from Benghazi through Tolmeta (ancient Ptolemais) to Cyrene — the Mediterranean maquis of the Jebel Akhdar, the 'Green Mountain'. Watered by winter rains off the sea, its slopes of pine, juniper and wild olive form the lushest corner of Libya, and their cover broke up the open-country tank warfare typical of the desert elsewhere.",
+    "links": [{ "label": "Jebel Akhdar (Libya) (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Jebel_Akhdar_(Libya)" }]
+  },
+  "Mountain": {
+    "title": "Mountain",
+    "description": "The theater's real high ground is the Jebel Akhdar of Cyrenaica — a limestone massif rising some 800 m behind the coast between Benghazi and Derna, laced with steep wadis and few passes. It is the only true mountain country in the coastal fighting zone (the Atlas ranges lie far to the west in Tunisia and Algeria), and its heights and defiles repeatedly channeled the advance and gave defenders commanding ground.",
+    "links": [{ "label": "Jebel Akhdar (Libya) (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Jebel_Akhdar_(Libya)" }]
+  },
+  "Delta": {
+    "title": "Delta",
+    "description": "The cultivated Nile Delta — a dense patchwork of irrigation canals, dykes and fields fanning out north of Cairo to the sea. The green heart of Egypt and the prize behind the Alamein line, its close, water-cut ground favored the defender and broke up armored movement, unlike the open desert to the west.",
+    "links": [{ "label": "Nile Delta (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Nile_Delta" }]
+  },
+  "Desert": {
+    "title": "Desert",
+    "description": "The deep desert south of the narrow coastal strip — the trackless, near-waterless sand-sea and gravel plain that gave the campaign its name. Impassable-looking to conventional armies, it became the highway of raiders and flanking marches: the Long Range Desert Group and Rommel's turning movements navigated it by sun-compass and dead reckoning, and the Great Sand Sea walled off the far southern flank.",
+    "links": [{ "label": "Libyan Desert (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Libyan_Desert" }]
+  },
+  "Wadi": {
+    "title": "Wadi",
+    "description": "A wadi is a dry riverbed or ravine, cut by rare desert downpours and usually bone-dry. In the desert war their sunken beds were prized cover — concealing assembly areas, gun lines, and headquarters from view — while the steep banks broke up vehicle movement; a sudden cloudburst could also send a flash flood roaring down one without warning.",
+    "links": [{ "label": "Wadi (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Wadi" }]
+  }
+}

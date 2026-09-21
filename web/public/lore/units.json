@@ -1,0 +1,194 @@
+{
+  "_README": "Historical-context (lore) entries for named units, keyed by the EXACT in-game counter name (a unit's `name` field from the OB, e.g. \"9th Australian Div HQ\", \"Ariete (132nd) Div HQE\"). Fetched at runtime via loadLore(\"units\") and shown as the book (lore) section of a counter's detail in the stacked-tile info panel — so edits need no rebuild. Schema per entry: { title?: string (a clean readable name; falls back to the key), description: string (a few sentences), links?: [{ label, url }] }. Keys starting with \"_\" are ignored. Curated for genuinely interesting units only (famous formations, notable stands/fates) — most ordinary battalions/regiments intentionally have no entry, and their rules/stats already show in the panel. Air squadrons (not yet deployed in the scenario) and the omitted San Giorgio wreck are not covered here.",
+
+  "Deutsches Afrika Korps HQ": {
+    "title": "Deutsches Afrika Korps (Rommel)",
+    "description": "The Deutsches Afrika Korps (DAK) was the German expeditionary force formed on 11 January 1941 and sent to Libya as a 'blocking force' to shore up Italian defenses after the Italian 10th Army was routed in Operation Compass. Erwin Rommel — soon nicknamed 'the Desert Fox' — took command in February 1941 and immediately went over to the offensive, driving the British back across Cyrenaica and besieging Tobruk. Built initially around the 5th Light Division and later the 15th and 21st Panzer Divisions, the Korps fought through Operation Crusader, Gazala, and both battles of El Alamein. After defeat at Second El Alamein and the Operation Torch landings, its remnants withdrew into Tunisia and surrendered on 13 May 1943.",
+    "links": [
+      { "label": "Afrika Korps (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Afrika_Korps" },
+      { "label": "Erwin Rommel (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Erwin_Rommel" }
+    ]
+  },
+  "15th Panzer Div HQ": {
+    "title": "15th Panzer Division",
+    "description": "The 15th Panzer Division was raised in 1940 from the former 33rd Infantry Division and converted to an armored division before deploying to Libya in April 1941 as part of Rommel's Afrika Korps. It fought almost exclusively in North Africa, seeing action in the defensive battles around Tobruk (Operations Brevity, Battleaxe, and Crusader), at Gazala, in the capture of Tobruk, and the invasion of Egypt. Commanders over its life included Walter Neumann-Silkow, Eduard Crasemann, and Gustav von Vaerst. Shattered at the Second Battle of El Alamein, it retreated with the Afrika Korps, fought at Kasserine Pass, and surrendered in Tunisia in May 1943.",
+    "links": [{ "label": "15th Panzer Division (Wikipedia)", "url": "https://en.wikipedia.org/wiki/15th_Panzer_Division_(Wehrmacht)" }]
+  },
+  "21st Panzer Div HQ": {
+    "title": "21st Panzer Division",
+    "description": "The 21st Panzer Division was created on 15 August 1941 by redesignating the 5th Light Division, becoming one of the two armored divisions at the core of Rommel's Afrika Korps. It won a notable victory at Sidi Rezegh during Operation Crusader and played a leading part at Gazala and the capture of Tobruk in June 1942 before being ground down at both battles of El Alamein, reduced to only a handful of tanks by November 1942. Its early commanders included Johann von Ravenstein, captured in November 1941, and Georg von Bismarck, killed at Alam el Halfa. The division was destroyed in the Tunisian surrender of May 1943, though its number was later revived for a new division that fought in Normandy.",
+    "links": [{ "label": "21st Panzer Division (Wikipedia)", "url": "https://en.wikipedia.org/wiki/21st_Panzer_Division_(Wehrmacht)" }]
+  },
+  "5th Leichte Panzer Div HQ": {
+    "title": "5th Light Division (Afrika)",
+    "description": "The 5th Light Division was the first German division of the Afrika Korps, organized in early 1941 around Panzer Regiment 5 drawn from the 3rd Panzer Division. Its elements arrived in Libya between February and March 1941, and under Rommel it spearheaded the offensive of 31 March 1941 that drove British forces back roughly 600 miles across Cyrenaica. On 15 August 1941 the formation was redesignated the 21st Panzer Division, under which name it continued to fight through the rest of the North African campaign.",
+    "links": [{ "label": "5th Light Afrika Division (Wikipedia)", "url": "https://en.wikipedia.org/wiki/5th_Light_Afrika_Division" }]
+  },
+  "90th Leichte Div HQ": {
+    "title": "90th Light Africa Division",
+    "description": "The 90th Light Africa Division was created from a division staff ordered on 26 June 1941 to reinforce the Afrika Korps with infantry, beginning as 'Division z.b.V. Afrika' and renamed 90. leichte Afrika-Division on 28 November 1941; it was the only major German combat division largely raised in Africa itself. It played a major role in most actions against the British Eighth Army in the Western Desert, including Operation Crusader, Bir Hakeim, and both battles of El Alamein, and was considered a formidable opponent by the 2nd New Zealand Division. It surrendered in Tunisia on 13 May 1943 and was later reconstituted as the 90th Panzergrenadier Division for the Italian campaign.",
+    "links": [{ "label": "90th Light Infantry Division (Wikipedia)", "url": "https://en.wikipedia.org/wiki/90th_Light_Infantry_Division_(Wehrmacht)" }]
+  },
+  "164th Leichte Div HQ": {
+    "title": "164th Light Africa Division",
+    "description": "The 164th Light Africa Division originated as the 164th Infantry Division, formed at Dresden in November 1939, which fought in the invasion of Greece and later garrisoned Crete as 'Fortress Division Kreta.' In mid-1942 it transferred to North Africa and was reorganized for desert warfare under Panzerarmee Afrika. It performed well at the Second Battle of El Alamein — one of its regiments helping to prevent the capture of the army headquarters — and then fought through the retreat into Tunisia. Its final commander, Kurt von Liebenstein, surrendered to Lieutenant General Bernard Freyberg's 2nd New Zealand Division in May 1943.",
+    "links": [{ "label": "164th Light Afrika Division (Wikipedia)", "url": "https://en.wikipedia.org/wiki/164th_Light_Afrika_Division" }]
+  },
+  "Ramcke Bde HQ": {
+    "title": "Ramcke Parachute Brigade",
+    "description": "The Ramcke Parachute Brigade (Fallschirmjäger-Brigade Ramcke) was a Luftwaffe airborne unit formed in 1942 and sent to reinforce the Afrika Korps in its drive toward the Suez Canal. Commanded by Hermann-Bernhard Ramcke from April to November 1942, it fought alongside Italian infantry until the advance was halted near El Alamein. Lacking sufficient transport, the brigade was left behind during the retreat and became surrounded; its survivors famously seized a British supply convoy and used the captured trucks to reach German lines. The remnants withdrew into Tunisia and were included in the Axis surrender of May 1943.",
+    "links": [{ "label": "Ramcke Parachute Brigade (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Ramcke_Parachute_Brigade" }]
+  },
+  "Sonderverband 288 HQ": {
+    "title": "Sonderverband 288",
+    "description": "Sonderverband 288 was a specialized German unit assembled from mid-1941 at Potsdam, drawing on tropics-capable and mountain troops and equipped for independent operations — including Arabic interpreters, a mobile printing press for propaganda leaflets, and specialists for seizing oil facilities. Conceived under Hitler's Directive No. 32 for a possible advance through Iraq, Iran, and India, it was instead flown to Libya from November 1941 to support the Afrika Korps. Roughly regiment-sized under Oberst Otto Menton, it took part in the storming of Bir Hakeim and the capture of Tobruk in June 1942, then covered the retreat toward Tunisia. It was renamed Panzergrenadier-Regiment Afrika on 31 October 1942, fought at Kasserine Pass in early 1943, and went into captivity with the Afrika Korps surrender in May 1943.",
+    "links": [{ "label": "Sonderverband 288 (German Wikipedia)", "url": "https://de.wikipedia.org/wiki/Sonderverband_288" }]
+  },
+
+  "Ariete (132nd) Div HQE": {
+    "title": "132nd Armoured Division \"Ariete\"",
+    "description": "The 132nd Armoured Division \"Ariete\" (\"Ram\"), formed in 1939, was Italy's premier armored division and the most respected Italian formation of the Western Desert campaign. Fighting alongside Rommel's Afrika Korps from 1941, it mauled the British 22nd Armoured Brigade at Bir el Gubi during Operation Crusader and overran the 3rd Indian Motor Brigade at Gazala in 1942. Encircled at the Second Battle of El Alamein, it was destroyed on 4 November 1942; its last signal — \"Ariete tanks are fighting\" — became famous, and Rommel wrote of losing his \"oldest Italian comrades.\" Commanders included Mario Balotta, Giuseppe De Stefanis and Francesco Arena.",
+    "links": [{ "label": "132nd Armoured Division Ariete (Wikipedia)", "url": "https://en.wikipedia.org/wiki/132nd_Armoured_Division_Ariete" }]
+  },
+  "132 Regt Corazzata HQ": {
+    "title": "132nd Armoured Regiment (Ariete Division)",
+    "description": "The 132nd Armoured (Corazzato) Regiment was the tank core of the 132nd Armoured Division \"Ariete,\" equipped mainly with M13/40 and M14/41 medium tanks. As part of Italy's elite armored division it fought alongside Rommel's Afrika Korps, mauling the British 22nd Armoured Brigade at Bir el Gubi during Operation Crusader (1941) and overrunning the 3rd Indian Motor Brigade at Gazala in 1942. Encircled at the Second Battle of El Alamein, the Ariete was destroyed on 4 November 1942, its final signal — \"Ariete tanks are fighting\" — passing into legend as Rommel mourned the loss of his \"oldest Italian comrades.\"",
+    "links": [{ "label": "132nd Armoured Division Ariete (Wikipedia)", "url": "https://en.wikipedia.org/wiki/132nd_Armoured_Division_Ariete" }]
+  },
+  "101st Trieste Div HQ": {
+    "title": "101st Motorized Division \"Trieste\"",
+    "description": "The 101st Motorized Division \"Trieste\" was the Italian motorized division attached to Rommel's mobile striking force. During the 1942 Gazala battles it was tasked with clearing lanes through the British minefields to supply the German divisions in the \"Cauldron,\" and it joined the assault on the Free French at Bir Hakeim. It fought at Alam el Halfa and was largely annihilated at the Second Battle of El Alamein; rebuilt from survivors, it fought on in Tunisia and surrendered in May 1943.",
+    "links": [{ "label": "101st Motorised Division Trieste (Wikipedia)", "url": "https://en.wikipedia.org/wiki/101st_Motorised_Division_Trieste" }]
+  },
+  "Littorio (133rd) Div HQ": {
+    "title": "133rd Armoured Division \"Littorio\"",
+    "description": "The 133rd Armoured Division \"Littorio\" (named for the fascist fascio littorio) was Italy's third armored division, formed in 1939 and shipped to Libya in early 1942, suffering heavy losses to Malta-based air and naval attacks en route. Committed around Tobruk and El Alamein, it counterattacked British armour during the Second Battle of El Alamein, losing about 100 tanks on 2 November 1942. On 4 November it was destroyed alongside the Ariete and Trieste, and was officially declared lost later that month.",
+    "links": [{ "label": "133rd Armoured Division Littorio (Wikipedia)", "url": "https://en.wikipedia.org/wiki/133rd_Armoured_Division_Littorio" }]
+  },
+  "185th Folgore Div HQ": {
+    "title": "185th Parachute Division \"Folgore\"",
+    "description": "The 185th Parachute Division \"Folgore\" (\"Lightning\") was formed in 1941 from Italy's paratroop arm, originally trained for the planned airborne invasion of Malta. Deployed as elite infantry to the southern sector of the El Alamein line near the Qattara Depression, it repelled British attacks in September 1942 and held firm through the Second Battle of El Alamein, reportedly losing none of its positions before being ordered to withdraw on 2 November. Encircled during the retreat, its survivors surrendered on 6 November 1942; even Allied observers praised paratroopers who \"fought to the last round of ammunition.\"",
+    "links": [{ "label": "185th Parachute Division Folgore (Wikipedia)", "url": "https://en.wikipedia.org/wiki/185th_Parachute_Division_Folgore" }]
+  },
+  "102nd Trento Div HQ": {
+    "title": "102nd Motorized Division \"Trento\"",
+    "description": "The 102nd Motorized Division \"Trento\" served in North Africa from 1941, taking part in the Siege of Tobruk and the frontier battles of Brevity, Battleaxe and Crusader. It fought through Gazala and held Miteirya Ridge at the First Battle of El Alamein. During the Second Battle it lost half its infantry and most of its artillery, and was surrounded and destroyed with the Ariete at Bir el Abd in early November 1942.",
+    "links": [{ "label": "102nd Motorised Division Trento (Wikipedia)", "url": "https://en.wikipedia.org/wiki/102nd_Motorised_Division_Trento" }]
+  },
+  "136th Giovani Fascisti Div HQ": {
+    "title": "136th Division \"Giovani Fascisti\" (Young Fascists)",
+    "description": "The 136th Division \"Giovani Fascisti\" (Young Fascists) grew out of volunteer battalions of fascist youth from the Gioventù Italiana del Littorio. Its battalion group won distinction at the December 1941 Action at Bir el Gubi, holding against the 11th Indian Infantry Brigade during Operation Crusader, and was expanded into a full division in 1942. Despite the \"Armoured\" title it never received tanks; it garrisoned Siwa Oasis, retreated after El Alamein and fought on in Tunisia until the Axis surrender in May 1943. Its men were noted for having fought the entire war without being issued steel helmets.",
+    "links": [{ "label": "136th Armoured Division Giovani Fascisti (Wikipedia)", "url": "https://en.wikipedia.org/wiki/136th_Armoured_Division_Giovani_Fascisti" }]
+  },
+  "Maletti Div HQ": {
+    "title": "Maletti Group (Raggruppamento Maletti)",
+    "description": "The Maletti Group (Raggruppamento Maletti), formed in 1940 under General Pietro Maletti, was the Italian 10th Army's principal mobile force and contained all the M11/39 medium tanks then in Libya. During the invasion of Egypt it became lost in the open desert for want of maps and navigation equipment. On 9 December 1940 it was overrun at Nibeiwa in the opening blow of Operation Compass, when British Matilda tanks and Indian infantry attacked from the rear; around 2,000 prisoners were taken and General Maletti was killed defending the camp.",
+    "links": [{ "label": "Maletti Group (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Maletti_Group" }]
+  },
+  "5th Desert Patrol": {
+    "title": "Italian Auto-Saharan Company (Compagnia Auto-Avio-Sahariana)",
+    "description": "The Italian Auto-Saharan Companies (Compagnie Auto-Avio-Sahariane) were the Royal Army's long-range desert reconnaissance and raiding units, motorized in 1938 from earlier camel-mounted Saharan troops and crewed by mixed Italian and Libyan personnel. They were the Italian counterpart to — and partial model for — the British Long Range Desert Group, but uniquely fielded their own air support of Caproni Ca.309 \"Ghibli\" aircraft. They clashed with the LRDG directly, notably defeating a patrol at Gebel Sherif on 31 January 1941 and capturing Major Pat Clayton.",
+    "links": [{ "label": "Auto-Saharan Company (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Auto-Saharan_Company" }]
+  },
+  "23rd Desert Patrol": {
+    "title": "Italian Auto-Saharan Company (Compagnia Auto-Avio-Sahariana)",
+    "description": "The Italian Auto-Saharan Companies (Compagnie Auto-Avio-Sahariane) were the Royal Army's long-range desert reconnaissance and raiding units, motorized in 1938 from earlier camel-mounted Saharan troops and crewed by mixed Italian and Libyan personnel. They were the Italian counterpart to — and partial model for — the British Long Range Desert Group, but uniquely fielded their own air support of Caproni Ca.309 \"Ghibli\" aircraft. They clashed with the LRDG directly, notably defeating a patrol at Gebel Sherif on 31 January 1941 and capturing Major Pat Clayton.",
+    "links": [{ "label": "Auto-Saharan Company (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Auto-Saharan_Company" }]
+  },
+  "55th Savona Div HQ": {
+    "title": "55th Infantry Division \"Savona\"",
+    "description": "The 55th Infantry Division \"Savona\" garrisoned the Libyan–Egyptian frontier and from August 1941 held the Sollum–Bardia–Halfaya Pass line. Ordered to cover the Axis withdrawal after Operation Crusader, it was cut off and endured a prolonged siege at Halfaya Pass (\"Hellfire Pass\"). With food, water and ammunition exhausted and air resupply impossible, its encircled garrisons surrendered in January 1942; the division was declared lost on 17 January 1942 and its commander, Fedele De Giorgis, taken prisoner.",
+    "links": [{ "label": "55th Infantry Division Savona (Wikipedia)", "url": "https://en.wikipedia.org/wiki/55th_Infantry_Division_Savona" }]
+  },
+  "60th Sabratha Div HQ": {
+    "title": "60th Infantry Division \"Sabratha\"",
+    "description": "The 60th Infantry Division \"Sabratha,\" raised in Libya in 1937, fought delaying actions during Operation Compass and was wrecked at Beda Fomm before being rebuilt. Reaching the El Alamein line in early July 1942 before it could entrench, it was routed by the Australian 26th Brigade at Tel el Eisa on 10 July, losing over 1,500 prisoners. Effectively destroyed, its survivors were absorbed into the Trento division and the Sabratha was formally dissolved in August 1942.",
+    "links": [{ "label": "60th Infantry Division Sabratha (Wikipedia)", "url": "https://en.wikipedia.org/wiki/60th_Infantry_Division_Sabratha" }]
+  },
+  "1st CCNN Div HQ": {
+    "title": "1st CC.NN. Division \"23 Marzo\"",
+    "description": "The 1st CC.NN. Division \"23 Marzo\" was a Blackshirt division of the Fascist militia (MVSN), manned by party volunteers from Tuscany and Umbria; its name marks 23 March 1919, the founding of the Fasci Italiani di Combattimento. Deployed to Libya, it joined the September 1940 invasion of Egypt and advanced to Sidi Barrani. Surrounded at Bardia during Operation Compass, it was destroyed in the Battle of Bardia, 3–5 January 1941, and its commander was captured.",
+    "links": [{ "label": "1st CC.NN. Division 23 Marzo (Wikipedia)", "url": "https://en.wikipedia.org/wiki/1st_CC.NN._Division_%2223_Marzo%22" }]
+  },
+  "2nd CCNN Div HQ": {
+    "title": "2nd CC.NN. Division \"28 Ottobre\"",
+    "description": "The 2nd CC.NN. Division \"28 Ottobre\" was a Fascist militia (Blackshirt) division whose name commemorates the March on Rome of 28 October 1922. After earlier service in Ethiopia it was reformed and sent to Libya, taking part in the 1940 invasion of Egypt and advancing toward Sollum. Pushed back to Bardia by Operation Compass, it was destroyed there in the Battle of Bardia, 3–5 January 1941.",
+    "links": [{ "label": "2nd CC.NN. Division 28 Ottobre (Wikipedia)", "url": "https://en.wikipedia.org/wiki/2nd_CC.NN._Division_%2228_Ottobre%22" }]
+  },
+  "4th CCNN Div HQ": {
+    "title": "4th CC.NN. Division \"3 Gennaio\"",
+    "description": "The 4th CC.NN. Division \"3 Gennaio\" was a Blackshirt militia division named for 3 January 1925, the date Mussolini assumed dictatorial powers. Raised for the Ethiopian war and later reformed, it deployed to Libya and joined the invasion of Egypt, reaching Sidi Barrani. It was among the first formations overrun in Operation Compass, destroyed at the Battle of Sidi Barrani on 10–11 December 1940, its commander Fabio Merzari taken prisoner.",
+    "links": [{ "label": "4th CC.NN. Division 3 Gennaio (Wikipedia)", "url": "https://en.wikipedia.org/wiki/4th_CC.NN._Division_%223_Gennaio%22" }]
+  },
+
+  "7th Armored Div HQE": {
+    "title": "7th Armoured Division (\"The Desert Rats\")",
+    "description": "Formed in Egypt in 1938 as the Mobile Division and renamed the 7th Armoured Division in 1940, it took its famous \"Desert Rats\" nickname and jerboa insignia during its long service in the Western Desert. Under commanders such as Michael O'Moore Creagh, and with subordinate leaders like Jock Campbell and William Gott, it fought in nearly every major Western Desert action, including Operation Compass, Battleaxe, Crusader, and both battles of El Alamein, before going on to Tunisia, Italy, and North West Europe. It became one of the most storied British armoured formations of the war.",
+    "links": [{ "label": "7th Armoured Division (Wikipedia)", "url": "https://en.wikipedia.org/wiki/7th_Armoured_Division_(United_Kingdom)" }]
+  },
+  "9th Australian Div HQ": {
+    "title": "9th Australian Division (\"Rats of Tobruk\")",
+    "description": "Commanded by Lieutenant General Sir Leslie Morshead, the 9th Australian Division earned enduring fame as the \"Rats of Tobruk\" for its defence of the besieged port against Rommel through much of 1941. Withdrawn and refitted, it returned to the line for the Second Battle of El Alamein in October 1942, where it fought in the critical northern sector under XXX Corps. Montgomery credited the \"magnificent 9th\" as indispensable to the twelve-day victory that broke the Axis in Egypt.",
+    "links": [{ "label": "9th Division (Australia) (Wikipedia)", "url": "https://en.wikipedia.org/wiki/9th_Division_(Australia)" }]
+  },
+  "6th Australian Div HQ": {
+    "title": "6th Australian Division",
+    "description": "The senior Australian division of the Second AIF, the 6th Division under Major General Iven Mackay spearheaded the destruction of the Italian Tenth Army during Operation Compass in early 1941. It stormed and captured the fortresses of Bardia (3 January) and Tobruk (22 January), taking tens of thousands of prisoners as it drove west toward Benghazi. It was then withdrawn from Africa in April 1941 for the ill-fated Greek campaign, handing its desert role to the 9th Division.",
+    "links": [{ "label": "6th Division (Australia) (Wikipedia)", "url": "https://en.wikipedia.org/wiki/6th_Division_(Australia)" }]
+  },
+  "2nd New Zealand Div HQ": {
+    "title": "2nd New Zealand Division",
+    "description": "Led throughout its existence by the charismatic Lieutenant General Sir Bernard Freyberg VC, the 2nd New Zealand Division was among the Eighth Army's most reliable and hardest-fighting formations. It saw heavy action at Operation Crusader (its costliest fighting of the war), Mersa Matruh, Minqar Qaim, and both battles of El Alamein, and played a prominent role in the pursuit that carried the Eighth Army into Tunisia. The division was noted for its aggressive mobile tactics and its outsized combat reputation.",
+    "links": [{ "label": "2nd New Zealand Division (Wikipedia)", "url": "https://en.wikipedia.org/wiki/2nd_New_Zealand_Division" }]
+  },
+  "4th Indian Div HQ": {
+    "title": "4th Indian Division",
+    "description": "One of the finest infantry divisions in British service, the 4th Indian Division opened the desert war in style during Operation Compass, its 11th Indian Brigade destroying the Italian Maletti Group at Nibeiwa Camp alongside 7 RTR. Described as being \"in the vanguard of nine campaigns,\" it fought across North Africa from Sidi Barrani through Tobruk, Wadi Akarit, and the final drive on Tunis, where it shared in the capture of German General von Arnim. Its mix of British and Indian units earned it a formidable combat reputation.",
+    "links": [{ "label": "4th Infantry Division (India) (Wikipedia)", "url": "https://en.wikipedia.org/wiki/4th_Infantry_Division_(India)" }]
+  },
+  "1st South African Div HQ": {
+    "title": "1st South African Division",
+    "description": "Raised in the Union of South Africa, the 1st South African Division fought first in the East African campaign before transferring to the Western Desert in 1941. Under Brigadier George Brink and later Major General Dan Pienaar, it endured hard fighting at Sidi Rezegh during Operation Crusader (where its 5th Brigade was destroyed at \"Totensonntag\"), the Gazala battles and \"Cauldron,\" and First El Alamein, Alam el Halfa, and Second El Alamein. It was disbanded in early 1943 to help form the 6th South African Armoured Division.",
+    "links": [{ "label": "1st Infantry Division (South Africa) (Wikipedia)", "url": "https://en.wikipedia.org/wiki/1st_Infantry_Division_(South_Africa)" }]
+  },
+  "2nd South African Div HQ": {
+    "title": "2nd South African Division",
+    "description": "Formed in October 1940, the 2nd South African Division met a catastrophic end at the fall of Tobruk. Holding the fortress perimeter in June 1942, it was overrun by Rommel's assault, and the bulk of the division, save one brigade, was captured on 21 June 1942, sending over 10,000 South Africans into captivity. The disaster effectively destroyed the division, which was disbanded that same day; its surviving brigade was absorbed into the 1st South African Division.",
+    "links": [{ "label": "2nd Infantry Division (South Africa) (Wikipedia)", "url": "https://en.wikipedia.org/wiki/2nd_Infantry_Division_(South_Africa)" }]
+  },
+  "51st Infantry Div HQ": {
+    "title": "51st (Highland) Infantry Division",
+    "description": "The original 51st (Highland) Division was forced to surrender at Saint-Valery-en-Caux in June 1940, and the formation was reconstituted from the 9th (Highland) Division to carry on its name and traditions. It experienced its first fighting in its new form at the Second Battle of El Alamein in October–November 1942, taking roughly 2,000 casualties, and went on to serve through Tunisia, Sicily, and North West Europe. Its revival and redemption after St Valery gave it particular symbolic weight.",
+    "links": [{ "label": "51st (Highland) Division (Wikipedia)", "url": "https://en.wikipedia.org/wiki/51st_(Highland)_Division" }]
+  },
+  "50th Infantry Div HQ": {
+    "title": "50th (Northumbrian) Infantry Division",
+    "description": "A Territorial Army division, the 50th (Northumbrian) held part of the Gazala Line in 1942 and is best remembered for its dramatic breakout that June. Rather than retreat east through the encircling Axis forces, the division punched west through the thinly held Italian sector in mixed motorised columns, overrunning surprised defenders before swinging south and east around the enemy to reach the Egyptian frontier and reassemble. It later fought at El Alamein and went on to Sicily and Normandy.",
+    "links": [{ "label": "50th (Northumbrian) Infantry Division (Wikipedia)", "url": "https://en.wikipedia.org/wiki/50th_(Northumbrian)_Infantry_Division" }]
+  },
+  "70th Infantry Div HQ": {
+    "title": "70th Infantry Division",
+    "description": "The British 70th Infantry Division was shipped into Tobruk to relieve the largely Australian garrison during the 1941 siege, taking over the defence of the port and conducting aggressive nightly patrols against the German and Italian besiegers. It then formed the core of the garrison's breakout during Operation Crusader, linking up with the relieving Eighth Army. The division was later broken up, with much of its manpower feeding the Chindit long-range penetration forces in Burma.",
+    "links": [{ "label": "70th Infantry Division (Wikipedia)", "url": "https://en.wikipedia.org/wiki/70th_Infantry_Division_(United_Kingdom)" }]
+  },
+  "1st Free French Bde HQ": {
+    "title": "1st Free French Brigade",
+    "description": "The 1st Free French Brigade (1re Brigade Française Libre), under General Marie-Pierre Kœnig, won lasting renown for its stand at Bir Hakeim, the desert box anchoring the southern flank of the Gazala Line. From 26 May to 11 June 1942 its Legionnaires, colonial troops, and Free French held out against sustained German and Italian attacks, buying the Eighth Army vital time before executing a daring night breakout. The brigade earned a citation for the action and later fought at Second El Alamein, forming the nucleus of the 1st Free French Division.",
+    "links": [{ "label": "1st Free French Division (Wikipedia)", "url": "https://en.wikipedia.org/wiki/1st_Free_French_Division" }]
+  },
+  "Polish Brigade HQ": {
+    "title": "Polish Independent Carpathian Rifle Brigade",
+    "description": "Formed in 1940 in French-controlled Syria from Polish soldiers exiled after the 1939 invasion, the Independent Carpathian Rifle Brigade under General Stanisław Kopański was shipped into Tobruk in August 1941 to reinforce the garrison. Holding the westernmost sector of the perimeter alongside the British 70th Division, its soldiers fought through the siege and, during Operation Crusader, seized Madauar Hill and the town of Acroma. Its men proudly shared the \"Rats of Tobruk\" title, and the brigade later became the backbone of the 3rd Carpathian Rifle Division.",
+    "links": [{ "label": "Polish Independent Carpathian Rifle Brigade (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Polish_Independent_Carpathian_Rifle_Brigade" }]
+  },
+  "Special Air Service Bde": {
+    "title": "Special Air Service (SAS)",
+    "description": "Founded in 1941 by David Stirling as \"L\" Detachment, Special Air Service Brigade, the SAS pioneered small-team raiding deep behind Axis lines in the Western Desert. Working with the Long Range Desert Group for transport and navigation, its patrols struck enemy airfields by night; one early raid destroyed some 60 aircraft on the ground without loss. These desert operations established the tactics and reputation that made the SAS the model for modern special forces.",
+    "links": [{ "label": "Special Air Service (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Special_Air_Service" }]
+  },
+  "22nd Guards Brigade HQ": {
+    "title": "22nd Guards Brigade",
+    "description": "An independent British brigade of Guards battalions, the 22nd Guards Brigade served in the Western Desert during the 1941–42 fighting and held one of the defended \"boxes\" of the Gazala Line in 1942. Caught up in Rommel's offensive, much of the brigade was forced to surrender on 20 June 1942 with the fall of Tobruk. It was later renumbered the 201st Guards Brigade.",
+    "links": [{ "label": "22nd Guards Brigade (Wikipedia)", "url": "https://en.wikipedia.org/wiki/22nd_Guards_Brigade" }]
+  }
+}
