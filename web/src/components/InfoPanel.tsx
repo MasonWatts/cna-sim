@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { EntryDetail, InfoPanelData, InfoSection, StackEntry, StackStateRow } from "../lore";
 
 // Reusable hybrid info panel: a title, then an optional historical **lore** section (Material
@@ -31,6 +31,7 @@ function Section({ icon, section }: { icon: string; section: InfoSection }) {
 function StateSection({ rows, glyph }: { rows: StackStateRow[]; glyph?: import("react").ReactNode }) {
   return (
     <div className="info-section">
+      {glyph && <div className="state-glyph">{glyph}</div>}
       <div className="info-body">
         <span className="material-symbols-outlined info-icon" aria-hidden="true">person</span>
         <div className="state-rows">
@@ -41,31 +42,51 @@ function StateSection({ rows, glyph }: { rows: StackStateRow[]; glyph?: import("
             </div>
           ))}
         </div>
-        {glyph && <div className="state-glyph">{glyph}</div>}
       </div>
     </div>
   );
 }
 
+// Above this many state rows, a counter's detail is laid out in two columns (rules/lore stacked on
+// the left, the tall state readout in its own column on the right) so the panel doesn't get very
+// tall. Below it, everything stays in a single vertical stack.
+const WIDE_STATE_ROWS = 8;
+
 // The right-hand detail pane for the selected counter: up to a rules blurb, a dynamic-state
 // readout, and lore — falling back to the plain summary line for not-yet-expanded types.
 function DetailView({ detail: d }: { detail: EntryDetail }) {
+  const stateRows = d.state && d.state.length > 0 ? d.state : null;
+  const rulesLore = [
+    d.rules && <Section key="rules" icon="gavel" section={d.rules} />,
+    d.lore && <Section key="lore" icon="book_5" section={d.lore} />,
+  ].filter(Boolean);
+  const stack = (nodes: ReactNode[]) =>
+    nodes.map((s, i) => (
+      <div key={i}>
+        {i > 0 && <hr className="info-divider" />}
+        {s}
+      </div>
+    ));
+
+  // Tall state + something to sit beside it → two columns.
+  if (stateRows && stateRows.length > WIDE_STATE_ROWS && rulesLore.length > 0) {
+    return (
+      <div className="sl-detail sl-detail-wide">
+        <div className="sl-detail-col">{stack(rulesLore)}</div>
+        <div className="sl-col-divider" />
+        <StateSection rows={stateRows} glyph={d.glyph} />
+      </div>
+    );
+  }
+
+  // Single vertical stack (rules → state → lore), or the plain summary fallback.
   const sections = [
     d.rules && <Section key="rules" icon="gavel" section={d.rules} />,
-    d.state && d.state.length > 0 && <StateSection key="state" rows={d.state} glyph={d.glyph} />,
+    stateRows && <StateSection key="state" rows={stateRows} glyph={d.glyph} />,
     d.lore && <Section key="lore" icon="book_5" section={d.lore} />,
-    d.summary && !d.rules && !d.state && !d.lore && <div key="summary" className="sl-summary">{d.summary}</div>,
+    d.summary && !d.rules && !stateRows && !d.lore && <div key="summary" className="sl-summary">{d.summary}</div>,
   ].filter(Boolean);
-  return (
-    <div className="sl-detail">
-      {sections.map((s, i) => (
-        <div key={i}>
-          {i > 0 && <hr className="info-divider" />}
-          {s}
-        </div>
-      ))}
-    </div>
-  );
+  return <div className="sl-detail">{stack(sections)}</div>;
 }
 
 // Master-detail view for a stacked hex: a scrollable list of counters (left) and the selected

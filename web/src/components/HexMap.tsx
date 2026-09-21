@@ -166,7 +166,7 @@ function weatherGlyph(kind: string): JSX.Element {
  *  Perf: `memo`'d so pan/zoom (which only change the parent's transform, not these props) skip it
  *  entirely, and the ~7k-polygon terrain layer is `useMemo`'d on `map` so scrubbing (units change)
  *  never rebuilds it — only the small units layer re-renders. */
-export const HexMap = memo(function HexMap({ map, units, weather, replacements, supplyDumps, truckConvoys, raiders, rommel, overlays, hexsides, air, naval, offMap, prisoners, captured, dummyTanks, brokenVehicles, placeLore, onPlaceHover, onPlaceLeave, onInfoHover, legend, unitKey }: { map: MapView; units: UnitView[]; weather?: string[]; replacements?: ReplacementView[]; supplyDumps?: SupplyDumpView[]; truckConvoys?: TruckConvoyView[]; raiders?: RaiderView[]; rommel?: RommelView[]; overlays?: MapOverlaysView; hexsides?: MapView["hexsides"]; air?: AirView; naval?: NavalView; offMap?: OffMapView; prisoners?: PrisonerView[]; captured?: CapturedView[]; dummyTanks?: DummyTankView[]; brokenVehicles?: BrokenVehicleView[]; placeLore?: Record<string, unknown>; onPlaceHover?: (name: string, x: number, y: number) => void; onPlaceLeave?: () => void; onInfoHover?: (data: InfoPanelData, x: number, y: number) => void; legend?: React.ReactNode; unitKey?: React.ReactNode }) {
+export const HexMap = memo(function HexMap({ map, units, weather, replacements, supplyDumps, truckConvoys, raiders, rommel, overlays, hexsides, air, naval, offMap, prisoners, captured, dummyTanks, brokenVehicles, placeLore, unitLore, onPlaceHover, onPlaceLeave, onInfoHover, legend, unitKey }: { map: MapView; units: UnitView[]; weather?: string[]; replacements?: ReplacementView[]; supplyDumps?: SupplyDumpView[]; truckConvoys?: TruckConvoyView[]; raiders?: RaiderView[]; rommel?: RommelView[]; overlays?: MapOverlaysView; hexsides?: MapView["hexsides"]; air?: AirView; naval?: NavalView; offMap?: OffMapView; prisoners?: PrisonerView[]; captured?: CapturedView[]; dummyTanks?: DummyTankView[]; brokenVehicles?: BrokenVehicleView[]; placeLore?: Record<string, unknown>; unitLore?: Record<string, unknown>; onPlaceHover?: (name: string, x: number, y: number) => void; onPlaceLeave?: () => void; onInfoHover?: (data: InfoPanelData, x: number, y: number) => void; legend?: React.ReactNode; unitKey?: React.ReactNode }) {
   // Generic hover-attrs for an SVG element that should open the hybrid info panel, anchored to the
   // element's on-screen box; reuses onPlaceLeave (the shared hide) for leaving.
   const infoHover = (data: InfoPanelData) =>
@@ -417,13 +417,33 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
       const x = (hexCenter(b, 0).x + hexCenter(b + 1, 0).x) / 2;
       return <line key={i} x1={x} y1={minY} x2={x} y2={minY + h} stroke="#8f8663" strokeWidth={1.2} strokeDasharray="6 6" opacity={0.5} />;
     });
+    // Global column bands of the five Regions (Sections A–E), for the label tooltip.
+    const RANGES: [number, number][] = [[1, 33], [34, 66], [67, 99], [100, 132], [133, 165]];
     const letters = SECTION_CENTERS.map((c, i) => (
-      <text key={i} x={hexCenter(c, 0).x} y={minY - LABEL_HEADROOM + 40} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={44} fontWeight={700} fill="#8f8663" opacity={0.4} style={{ pointerEvents: "none" }}>
+      <text
+        key={i}
+        x={hexCenter(c, 0).x}
+        y={minY - LABEL_HEADROOM + 40}
+        textAnchor="middle"
+        fontFamily="Courier New, monospace"
+        fontSize={44}
+        fontWeight={700}
+        fill="#8f8663"
+        opacity={0.4}
+        {...infoHover({
+          title: `Region ${String.fromCharCode(65 + i)} (cols ${RANGES[i][0]}–${RANGES[i][1]})`,
+          rules: {
+            description:
+              "The map is split into five Regions (Sections A–E) — vertical column bands. Regions are the unit of weather determination (§29.1): each Game-Turn the weather is rolled separately per Region and applies to every hex in it, driving movement, vehicle breakdown, water/fuel supply, and air operations. Rainstorm well replenishment is likewise resolved per Region (§52.15). Regions have no other direct effect on movement, combat, or supply beyond the weather they carry.",
+          },
+        })}
+      >
         {`Region ${String.fromCharCode(65 + i)}`}
       </text>
     ));
     return [...lines, ...letters];
-  }, [minX, minY, w, h]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minX, minY, w, h, onInfoHover, onPlaceLeave]);
 
   // Group every hex occupant — combat units, free truck convoys (§53), and on-map Replacement-Point
   // pools (§20) — into one per-hex stack so they render as counters like the paper game (a "top"
@@ -536,6 +556,10 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
       u.in_training ? "In training (§17.3)" : "",
     ].filter(Boolean);
     if (flags.length) state.push({ label: "Status", value: flags.join("; ") });
+    // Historical lore (public/lore/units.json), keyed by the exact counter name; only curated
+    // (notable) units have an entry — most counters show rules+state only.
+    const le = unitLore?.[u.name] as { description?: string; links?: { label: string; url: string }[] } | undefined;
+    const lore = le?.description ? { description: le.description, links: le.links } : undefined;
     const sideFill = u.side === "Commonwealth" ? "var(--cw)" : "var(--axis)";
     const glyph = u.unit_type.length ? (
       <svg width={46} height={30} viewBox="-14 -9 28 18" style={{ display: "block" }} aria-hidden="true">
@@ -543,7 +567,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
         {unitTypeGlyph(u.unit_type)}
       </svg>
     ) : undefined;
-    return { glyph, rules, state };
+    return { glyph, rules, state, lore };
   };
   type SqLike = { designation: string; class: string; planes: number; supplied: boolean };
   const squadronLabel = (sq: SqLike) => `${sq.designation.replace(/^(Commonwealth|Axis|Italian|German)\s+/, "")} sqn`;

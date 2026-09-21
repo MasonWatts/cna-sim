@@ -32,6 +32,8 @@ export function App() {
   // Historical-context ("lore") panel: dataset loaded from /lore/places.json; `hover` holds the entry
   // being shown and where. A short hide delay lets the cursor travel into the panel to click links.
   const [placeLore, setPlaceLore] = useState<LoreMap>({});
+  const [terrainLore, setTerrainLore] = useState<LoreMap>({});
+  const [unitLore, setUnitLore] = useState<LoreMap>({});
   const [info, setInfo] = useState<{ data: InfoPanelData; x: number; y: number } | null>(null);
   const hideTimer = useRef<number | null>(null);
   const [step, setStep] = useState(0);
@@ -125,9 +127,12 @@ export function App() {
       .catch((e) => setError(String(e)));
   }, []);
 
-  // Load the place-lore dataset once (graceful empty on failure).
+  // Load the lore datasets once (graceful empty on failure). Places key by map label; terrain keys
+  // by the Terrain-Key legend key and is merged onto the rules-only TERRAIN_INFO in <TerrainKey>.
   useEffect(() => {
     loadLore("places").then(setPlaceLore);
+    loadLore("terrain").then(setTerrainLore);
+    loadLore("units").then(setUnitLore);
   }, []);
 
   const cancelHide = useCallback(() => {
@@ -471,8 +476,8 @@ export function App() {
         <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0", width: "max-content" }}>
           {/* Variant C is drawn inside HexMap in map coordinates (see `legend`), so it pans/zooms
               with the board and sits off-shore at the map's horizontal center. */}
-          <HexMap map={record.map} units={frames[idx] ?? []} weather={weatherFrames[idx]} replacements={replacementFrames[idx] ?? []} supplyDumps={supplyDumpFrames[idx] ?? []} truckConvoys={truckConvoyFrames[idx] ?? []} raiders={raiderFrames[idx] ?? []} rommel={rommelFrames[idx] ?? []} overlays={overlayFrames[idx]} hexsides={hexsideFrames[idx]} air={airFrames[idx]} naval={navalFrames[idx]} offMap={offMapFrames[idx]} prisoners={prisonerFrames[idx] ?? []} captured={capturedFrames[idx] ?? []} dummyTanks={dummyTankFrames[idx] ?? []} brokenVehicles={brokenVehicleFrames[idx] ?? []} placeLore={placeLore} onPlaceHover={onPlaceHover} onPlaceLeave={hideInfo} onInfoHover={showInfo} legend={<>
-              <div className="legend-map"><TerrainKey onInfoHover={showInfo} onInfoLeave={hideInfo} /></div>
+          <HexMap map={record.map} units={frames[idx] ?? []} weather={weatherFrames[idx]} replacements={replacementFrames[idx] ?? []} supplyDumps={supplyDumpFrames[idx] ?? []} truckConvoys={truckConvoyFrames[idx] ?? []} raiders={raiderFrames[idx] ?? []} rommel={rommelFrames[idx] ?? []} overlays={overlayFrames[idx]} hexsides={hexsideFrames[idx]} air={airFrames[idx]} naval={navalFrames[idx]} offMap={offMapFrames[idx]} prisoners={prisonerFrames[idx] ?? []} captured={capturedFrames[idx] ?? []} dummyTanks={dummyTankFrames[idx] ?? []} brokenVehicles={brokenVehicleFrames[idx] ?? []} placeLore={placeLore} unitLore={unitLore} onPlaceHover={onPlaceHover} onPlaceLeave={hideInfo} onInfoHover={showInfo} legend={<>
+              <div className="legend-map"><TerrainKey lore={terrainLore} onInfoHover={showInfo} onInfoLeave={hideInfo} /></div>
               <div className="legend-map compass-box"><div className="tk-title">Orientation</div><CompassRose /></div>
             </>}
             unitKey={<div className="legend-map"><UnitKey unitTypes={record.unit_types} /></div>} />
@@ -526,7 +531,7 @@ export function App() {
       {info && (
         <div
           className={`lore-panel${info.data.entries ? " wide" : ""}`}
-          style={{ left: Math.min(info.x, window.innerWidth - (info.data.entries ? 480 : 340)), top: Math.min(info.y, window.innerHeight - 180) }}
+          style={{ left: Math.min(info.x, window.innerWidth - (info.data.entries ? 860 : 340)), top: Math.min(info.y, window.innerHeight - 180) }}
           onMouseEnter={cancelHide}
           onMouseLeave={hideInfo}
         >

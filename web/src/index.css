@@ -293,7 +293,7 @@ code {
 .info-stack { white-space: pre-line; font-size: 12.5px; line-height: 1.5; font-family: "Courier New", monospace; }
 
 /* Master-detail stacked-tile panel: scrollable counter list (left) + selected detail (right). */
-.lore-panel.wide { max-width: 460px; }
+.lore-panel.wide { max-width: 840px; }
 .info-stacklist { display: flex; gap: 10px; margin-top: 4px; align-items: stretch; }
 .info-stacklist .sl-list {
   flex: 0 0 140px; max-height: 220px; overflow-y: auto;
@@ -314,14 +314,23 @@ code {
 }
 .info-stacklist .sl-item:hover { background: rgba(168, 134, 47, 0.16); }
 .info-stacklist .sl-item.active { background: rgba(168, 134, 47, 0.3); font-weight: 700; }
-.info-stacklist .sl-detail { flex: 1 1 auto; min-width: 0; font-size: 12.5px; line-height: 1.5; align-self: flex-start; }
+/* Fixed reading width for the detail column, so rules/lore text is the same width whether the
+   layout is single-column or two-column; the panel grows to fit rather than squishing the columns. */
+.info-stacklist .sl-detail { flex: 0 0 300px; min-width: 0; font-size: 12.5px; line-height: 1.5; align-self: flex-start; }
+/* Two-column detail (tall state): rules/lore stacked left (same 300px reading width), the state
+   readout in its own fixed column on the right. */
+.info-stacklist .sl-detail-wide { flex: 0 0 auto; display: flex; gap: 12px; align-items: flex-start; }
+.info-stacklist .sl-detail-wide .sl-detail-col { flex: 0 0 300px; min-width: 0; display: flex; flex-direction: column; }
+.info-stacklist .sl-detail-wide .sl-col-divider { flex: 0 0 1px; align-self: stretch; background: #c9bd93; }
+.info-stacklist .sl-detail-wide > .info-section { flex: 0 0 300px; margin-top: 0; }
 /* First section in the detail pane shouldn't add a top gap (the flex row already aligns it). */
 .info-stacklist .sl-detail > .info-section:first-child { margin-top: 0; }
 .info-stacklist .sl-summary { font-size: 12.5px; line-height: 1.5; }
-/* Counter glyph chip inside the status box (land units), pushed to the right. */
-.info-stacklist .state-glyph { margin-left: auto; align-self: flex-start; padding-left: 8px; }
-/* Dynamic-state readout: a compact label/value table. */
-.state-rows { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; align-items: baseline; }
+/* Counter glyph chip inside the status box (land units): floated to the top-right of the section so
+   the rows flow beside/below it and it can never push the column wider or overflow to the right. */
+.info-stacklist .state-glyph { float: right; margin: 0 0 2px 10px; }
+/* Dynamic-state readout: a compact label/value table; grows/shrinks so the glyph stays inside. */
+.state-rows { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; align-items: baseline; }
 .state-row { display: contents; }
 .state-label { color: #6b5f3a; }
 .state-value { font-weight: 700; font-family: "Courier New", monospace; }
