@@ -2386,15 +2386,15 @@ impl GameState {
     /// repairs only German tanks, never Italian or captured Commonwealth (§22.7). Excludes `id`
     /// itself and any TDS repair-locked this stage (§22.66).
     pub(crate) fn hex_has_friendly_tds(&self, id: UnitId) -> bool {
+        let Some(hex) = self.effective_hex(id) else { return false };
         let Some(u) = self.units.get(&id) else { return false };
-        let Some(hex) = u.hex() else { return false };
         let nat = u.nationality;
         self.units.values().any(|o| {
             o.id != id
                 && o.is_tds
                 && !o.tds_repair_locked
                 && o.nationality == nat
-                && o.hex() == Some(hex)
+                && self.effective_hex(o.id) == Some(hex)
         })
     }
 
@@ -2875,8 +2875,9 @@ impl GameState {
     /// eliminated so its broken vehicles remain on the map to be captured/towed/repaired. No-op if
     /// the unit has no broken vehicles or no hex.
     pub(crate) fn shed_broken_vehicles(&mut self, id: UnitId) {
+        // Physical hex via `effective_hex` (an attached unit rides its parent's counter).
+        let Some(hex) = self.effective_hex(id) else { return };
         let Some(u) = self.units.get_mut(&id) else { return };
-        let Some(hex) = u.hex() else { return };
         let weapons = std::mem::take(&mut u.weapons_broken);
         let toe = std::mem::take(&mut u.toe_broken);
         let trucks = std::mem::take(&mut u.trucks_broken);
@@ -2902,7 +2903,7 @@ impl GameState {
         let owner = m.side;
         // A co-located friendly combat unit, HQ, or Engineer protects it.
         let guarded = self.units.values().any(|u| {
-            u.hex() == Some(m.hex)
+            self.effective_hex(u.id) == Some(m.hex)
                 && u.nationality.side() == owner
                 && u.total_toe() > 0
                 && (self.is_combat_unit(u.id) || u.is_hq || {
@@ -2959,7 +2960,7 @@ impl GameState {
         }
         // §21.64: not into an enemy-controlled hex (enemy ZOC with no friendly unit present).
         let enemy_controlled = self.hex_in_zoc_of(to, side.opponent())
-            && !self.units.values().any(|u| u.hex() == Some(to) && u.nationality.side() == side && u.total_toe() > 0);
+            && !self.units.values().any(|u| self.effective_hex(u.id) == Some(to) && u.nationality.side() == side && u.total_toe() > 0);
         if enemy_controlled {
             return false;
         }
@@ -2967,7 +2968,7 @@ impl GameState {
             Some(MoveCost::Cost(f)) => f.0.max(0) as u32,
             _ => return false, // prohibited / off-map
         };
-        let cap = if self.units.values().any(|u| u.is_tds && u.hex() == Some(from) && u.nationality.side() == side) {
+        let cap = if self.units.values().any(|u| u.is_tds && self.effective_hex(u.id) == Some(from) && u.nationality.side() == side) {
             200 // §22.65: a Tank Delivery Squadron tows at 20 CP
         } else {
             100 // §21.63: otherwise 10 CP
@@ -2997,7 +2998,7 @@ impl GameState {
             return false;
         }
         let enemy_controlled = self.hex_in_zoc_of(to, side.opponent())
-            && !self.units.values().any(|u| u.hex() == Some(to) && u.nationality.side() == side && u.total_toe() > 0);
+            && !self.units.values().any(|u| self.effective_hex(u.id) == Some(to) && u.nationality.side() == side && u.total_toe() > 0);
         if enemy_controlled {
             return false;
         }
@@ -3005,7 +3006,7 @@ impl GameState {
             Some(MoveCost::Cost(f)) => f.0.max(0) as u32,
             _ => return false,
         };
-        let cap = if self.units.values().any(|u| u.is_tds && u.hex() == Some(from) && u.nationality.side() == side) {
+        let cap = if self.units.values().any(|u| u.is_tds && self.effective_hex(u.id) == Some(from) && u.nationality.side() == side) {
             200
         } else {
             100
@@ -3694,7 +3695,7 @@ impl GameState {
             let nat = self.units.get(&unit).map(|u| u.nationality);
             self.units
                 .values()
-                .filter(|t| t.is_tds && t.hex() == Some(hex) && Some(t.nationality) == nat)
+                .filter(|t| t.is_tds && self.effective_hex(t.id) == Some(hex) && Some(t.nationality) == nat)
                 .map(|t| t.tds_tank_reserve)
                 .sum()
         } else {
@@ -4027,7 +4028,7 @@ impl GameState {
                 let enemy_occupied = self
                     .units
                     .values()
-                    .any(|u| u.hex() == Some(n) && u.nationality.side() == enemy);
+                    .any(|u| self.effective_hex(u.id) == Some(n) && u.nationality.side() == enemy);
                 if self.hex_in_zoc_of(n, enemy) || enemy_occupied {
                     continue;
                 }
@@ -5290,7 +5291,7 @@ impl GameState {
         let enemy_ground = self
             .units
             .values()
-            .any(|u| u.hex() == Some(hex) && u.nationality.side() != side && u.total_toe() > 0);
+            .any(|u| self.effective_hex(u.id) == Some(hex) && u.nationality.side() != side && u.total_toe() > 0);
         // An enemy squadron already operating from the field also denies it (a field with no ground
         // units is held by whichever side bases there first).
         let enemy_air = self
@@ -6573,8 +6574,10 @@ impl GameState {
     /// Prisoner Points for the opponent (§28.11); weapon (tank/gun/AA) TOE becomes captured
     /// equipment (§28.3). Called from the surrender resolution before the unit's TOE is zeroed.
     pub(crate) fn capture_on_surrender(&mut self, unit: UnitId) {
+        // §28: prisoners/equipment are recorded at the unit's PHYSICAL hex — an attached unit rides
+        // its parent's counter, so use `effective_hex` (own `location` is `None` while attached).
+        let Some(hex) = self.effective_hex(unit) else { return };
         let Some(u) = self.units.get(&unit) else { return };
-        let Some(hex) = u.hex() else { return };
         let captor = u.nationality.side().opponent();
         let owner = u.nationality;
         match &u.composition {
@@ -6741,7 +6744,7 @@ impl GameState {
                 .units
                 .values()
                 .filter(|u| u.nationality.side() == e.side && u.total_toe() > 0)
-                .filter_map(|u| u.hex())
+                .filter_map(|u| self.effective_hex(u.id))
                 .min_by_key(|h| h.distance(e.hex));
             if let Some(tgt) = target {
                 let next = self
@@ -6818,7 +6821,7 @@ impl GameState {
         self.units
             .values()
             .filter(|u| u.nationality.side() == side && u.total_toe() > 0)
-            .filter_map(|u| u.hex())
+            .filter_map(|u| self.effective_hex(u.id))
             .any(|uh| self.within_cp_budget(hex, uh, MoveMode::NonMotorized, cp_budget))
     }
 
@@ -7326,7 +7329,7 @@ impl GameState {
     pub fn hex_flak_points(&self, hex: HexCoord, bomber_side: Side) -> u32 {
         self.units
             .values()
-            .filter(|u| u.hex() == Some(hex) && u.nationality.side() != bomber_side)
+            .filter(|u| self.effective_hex(u.id) == Some(hex) && u.nationality.side() != bomber_side)
             .map(|u| {
                 let rating = self
                     .reference
@@ -7345,7 +7348,7 @@ impl GameState {
     /// infantry unit in `hex` (a strafing result). Returns the points actually removed.
     pub fn strafe_infantry_loss(&mut self, hex: HexCoord, attacker_side: Side, points: u32) -> u32 {
         let victim = self.units.values().find_map(|u| {
-            if u.hex() != Some(hex) || u.nationality.side() == attacker_side {
+            if self.effective_hex(u.id) != Some(hex) || u.nationality.side() == attacker_side {
                 return None;
             }
             let is_inf = self
@@ -7421,7 +7424,7 @@ impl GameState {
     pub fn strafe_first_line_trucks(&mut self, hex: HexCoord, attacker_side: Side, points: u32) -> u32 {
         let victim = self.units.values().find_map(|u| {
             let t = &u.trucks;
-            (u.hex() == Some(hex)
+            (self.effective_hex(u.id) == Some(hex)
                 && u.nationality.side() != attacker_side
                 && t.light + t.medium + t.heavy > 0)
                 .then_some(u.id)
@@ -7494,7 +7497,7 @@ impl GameState {
                 .unwrap_or(0)
         };
         let victim = self.units.values().find_map(|u| {
-            if u.hex() != Some(hex) || u.nationality.side() == attacker_side {
+            if self.effective_hex(u.id) != Some(hex) || u.nationality.side() == attacker_side {
                 return None;
             }
             let armored = matches!(&u.composition, Composition::Weapons { groups }
@@ -7931,7 +7934,7 @@ impl GameState {
             )
         };
         let victim = self.units.values().find_map(|u| {
-            if u.hex() != Some(hex) || u.nationality.side() != victim_side {
+            if self.effective_hex(u.id) != Some(hex) || u.nationality.side() != victim_side {
                 return None;
             }
             let has_aa = match &u.composition {
@@ -8387,7 +8390,7 @@ impl GameState {
         if let Some(n) = c.not_within_of_enemy {
             let enemy = side.opponent();
             let too_close = self.units.values().any(|u| {
-                u.nationality.side() == enemy && u.hex().is_some_and(|h| h.distance(hex) <= n)
+                u.nationality.side() == enemy && self.effective_hex(u.id).is_some_and(|h| h.distance(hex) <= n)
             });
             if too_close {
                 return false;
@@ -9746,7 +9749,7 @@ impl GameState {
         } else if self
             .units
             .values()
-            .any(|u| u.nationality == Nationality::German && u.hex().is_some())
+            .any(|u| u.nationality == Nationality::German && self.effective_hex(u.id).is_some())
         {
             r.axis_german
         } else {
@@ -9946,7 +9949,7 @@ impl GameState {
     /// elsewhere.
     fn track_layforce_alexandria(&mut self) {
         let alex = self.alexandria_hex();
-        let in_alex = self.units.values().any(|u| u.name.contains("Layforce") && u.hex() == alex);
+        let in_alex = self.units.values().any(|u| u.name.contains("Layforce") && self.effective_hex(u.id) == alex);
         if in_alex {
             if self.layforce_alexandria_since.is_none() {
                 self.layforce_alexandria_since = Some(self.game_turn);

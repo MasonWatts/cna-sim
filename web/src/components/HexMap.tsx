@@ -19,6 +19,10 @@ import { WEATHER_SYSTEM_INFO, WEATHER_CONDITION_INFO } from "../weatherInfo";
 import { PORT_SYSTEM_INFO, PORT_TONNAGE_INFO, PORT_TRANSFER_INFO, CONVOY_SYSTEM_INFO, OFF_MAP_INFO, OFF_MAP_AA_INFO, OFF_MAP_PORT_INFO, OFF_MAP_TRANSIT_INFO, MED_BASE_INFO, MALTA_INFO, MALTA_CAPACITY_INFO, MALTA_AA_INFO, CW_OFF_MAP_INFO, facilityInfo } from "../navalInfo";
 import type { OffMapView } from "@bindings/OffMapView";
 import type { OffMapUnitView } from "@bindings/OffMapUnitView";
+import type { PrisonerView } from "@bindings/PrisonerView";
+import type { CapturedView } from "@bindings/CapturedView";
+import type { DummyTankView } from "@bindings/DummyTankView";
+import type { BrokenVehicleView } from "@bindings/BrokenVehicleView";
 import { hexCenter, hexPolygon, mapBounds, parseHexId } from "../hex";
 
 import { terrainFill, HEX_STROKE, ROUTE_DARK, ROUTE_KINDS, EDGE_KINDS, edgeGlyph, routeGlyph, featureGlyph, unitTypeGlyph, squadronGlyph, shipGlyph, airfieldGlyph, PATTERNS } from "./mapSymbols";
@@ -161,7 +165,7 @@ function weatherGlyph(kind: string): JSX.Element {
  *  Perf: `memo`'d so pan/zoom (which only change the parent's transform, not these props) skip it
  *  entirely, and the ~7k-polygon terrain layer is `useMemo`'d on `map` so scrubbing (units change)
  *  never rebuilds it — only the small units layer re-renders. */
-export const HexMap = memo(function HexMap({ map, units, weather, replacements, supplyDumps, truckConvoys, raiders, rommel, overlays, hexsides, air, naval, offMap, placeLore, onPlaceHover, onPlaceLeave, onInfoHover, legend, unitKey }: { map: MapView; units: UnitView[]; weather?: string[]; replacements?: ReplacementView[]; supplyDumps?: SupplyDumpView[]; truckConvoys?: TruckConvoyView[]; raiders?: RaiderView[]; rommel?: RommelView[]; overlays?: MapOverlaysView; hexsides?: MapView["hexsides"]; air?: AirView; naval?: NavalView; offMap?: OffMapView; placeLore?: Record<string, unknown>; onPlaceHover?: (name: string, x: number, y: number) => void; onPlaceLeave?: () => void; onInfoHover?: (data: InfoPanelData, x: number, y: number) => void; legend?: React.ReactNode; unitKey?: React.ReactNode }) {
+export const HexMap = memo(function HexMap({ map, units, weather, replacements, supplyDumps, truckConvoys, raiders, rommel, overlays, hexsides, air, naval, offMap, prisoners, captured, dummyTanks, brokenVehicles, placeLore, onPlaceHover, onPlaceLeave, onInfoHover, legend, unitKey }: { map: MapView; units: UnitView[]; weather?: string[]; replacements?: ReplacementView[]; supplyDumps?: SupplyDumpView[]; truckConvoys?: TruckConvoyView[]; raiders?: RaiderView[]; rommel?: RommelView[]; overlays?: MapOverlaysView; hexsides?: MapView["hexsides"]; air?: AirView; naval?: NavalView; offMap?: OffMapView; prisoners?: PrisonerView[]; captured?: CapturedView[]; dummyTanks?: DummyTankView[]; brokenVehicles?: BrokenVehicleView[]; placeLore?: Record<string, unknown>; onPlaceHover?: (name: string, x: number, y: number) => void; onPlaceLeave?: () => void; onInfoHover?: (data: InfoPanelData, x: number, y: number) => void; legend?: React.ReactNode; unitKey?: React.ReactNode }) {
   // Generic hover-attrs for an SVG element that should open the hybrid info panel, anchored to the
   // element's on-screen box; reuses onPlaceLeave (the shared hide) for leaving.
   const infoHover = (data: InfoPanelData) =>
@@ -437,7 +441,11 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
     | { kind: "squadron"; rank: number; sq: SquadronView }
     | { kind: "cap"; rank: number; cp: CapView }
     | { kind: "airfield"; rank: number; af: AirFacilityView }
-    | { kind: "ship"; rank: number; sh: ShipView };
+    | { kind: "ship"; rank: number; sh: ShipView }
+    | { kind: "prisoner"; rank: number; pr: PrisonerView }
+    | { kind: "captured"; rank: number; ce: CapturedView }
+    | { kind: "dummytank"; rank: number; dt: DummyTankView }
+    | { kind: "broken"; rank: number; bv: BrokenVehicleView };
   const byHex = new Map<string, Tile[]>();
   const pushTile = (hex: [number, number] | null | undefined, t: Tile) => {
     if (!hex) return;
@@ -459,6 +467,13 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
   for (const af of air?.facilities ?? []) pushTile(af.hex, { kind: "airfield", rank: 4, af });
   // Warships on the map (§30): a bombarding fleet unit or the San Giorgio wreck.
   for (const sh of naval?.ships ?? []) pushTile(sh.hex, { kind: "ship", rank: 80, sh });
+  // §28 prisoner stacks + escapees — low rank (a guarding/nearby combat unit shows as the top tile).
+  for (const pr of prisoners ?? []) pushTile(pr.hex, { kind: "prisoner", rank: 12, pr });
+  // §28.3/§14.46 captured equipment + knocked-out tank markers — low rank infrastructure.
+  for (const ce of captured ?? []) pushTile(ce.hex, { kind: "captured", rank: 8, ce });
+  // §32 dummy (decoy) tanks and §21.5 broken-down vehicle markers — low rank.
+  for (const dt of dummyTanks ?? []) pushTile(dt.hex, { kind: "dummytank", rank: 14, dt });
+  for (const bv of brokenVehicles ?? []) pushTile(bv.hex, { kind: "broken", rank: 9, bv });
 
   return (
     <svg width={w + LEFT_MARGIN + RIGHT_MARGIN} height={h + LABEL_HEADROOM + BOTTOM_MARGIN} viewBox={`${minX - LEFT_MARGIN} ${minY - LABEL_HEADROOM} ${w + LEFT_MARGIN + RIGHT_MARGIN} ${h + LABEL_HEADROOM + BOTTOM_MARGIN}`} style={{ display: "block" }} role="img" aria-label="game board">
@@ -506,6 +521,10 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           : t.kind === "squadron" ? t.sq.side
           : t.kind === "cap" ? t.cp.side
           : t.kind === "ship" ? t.sh.side
+          : t.kind === "prisoner" ? (t.pr.kind === "Pow" ? t.pr.captor : t.pr.side)
+          : t.kind === "captured" ? t.ce.captor
+          : t.kind === "dummytank" ? t.dt.side
+          : t.kind === "broken" ? t.bv.side
           : ""; // pipeline / airfield: no side
 
         const side = sideOf(top);
@@ -569,6 +588,16 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
             return `• ${t.sq.designation} squadron (§35) — ${t.sq.side} ${t.sq.class}, ${t.sq.planes} plane(s)${t.sq.supplied ? "" : " — UNSUPPLIED (§35.14)"}`;
           if (t.kind === "cap") return `• Combat Air Patrol (§40) — ${t.cp.side} ${t.cp.cap_type}`;
           if (t.kind === "airfield") return `• ${t.af.kind} (§36) — capacity ${t.af.capacity} squadron(s)`;
+          if (t.kind === "prisoner")
+            return t.pr.kind === "Pow"
+              ? `• Prisoners (§28) — ${t.pr.points} ${t.pr.side} POW point(s), held by ${t.pr.captor}${t.pr.guards > 0 ? `, ${t.pr.guards} guard pt` : " — unguarded"}`
+              : `• Escaped prisoners (§28.24) — ${t.pr.points} ${t.pr.side} point(s) heading home`;
+          if (t.kind === "captured")
+            return `• ${t.ce.destroyed_tank ? "Knocked-out tanks (§14.46)" : "Captured equipment (§28.3)"} — ${t.ce.count}× ${t.ce.nationality} ${t.ce.system}, held by ${t.ce.captor}; ${t.ce.repaired ? "repaired (usable)" : "needs repair"}`;
+          if (t.kind === "dummytank")
+            return `• ${t.dt.designation} — ${t.dt.side} dummy (decoy) tank marker (§32); indistinguishable from real armour to the enemy`;
+          if (t.kind === "broken")
+            return `• Broken-down vehicles (§21.5) — ${t.bv.side} (${t.bv.nationality}); ${t.bv.detail}; awaiting tow/repair`;
           // ship
           return t.sh.wreck
             ? `• ${t.sh.name} — scuttled wreck (§55.25), gun ${t.sh.gun}/${t.sh.max_gun}`
@@ -682,6 +711,62 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
                 <text x={-9.5} textAnchor="middle" y={8} fontSize={7} fill="#eef">{`cap ${top.af.capacity}`}</text>
                 {/* §36 paper-map facility symbol (triangle / anchor+triangle / anchor+crossed) */}
                 <g transform="translate(9.5 5)">{airfieldGlyph(top.af.kind)}</g>
+              </>
+            );
+          }
+          if (top.kind === "prisoner") {
+            return (
+              <>
+                <text textAnchor="middle" y={-1} fontSize={8.5} fill="#fff" fontWeight={700}>{top.pr.kind === "Pow" ? "POW" : "Escape"}</text>
+                <text x={-9.5} textAnchor="middle" y={8} fontSize={8} fill="#eef">{`×${top.pr.points}`}</text>
+                {/* barbed wire — a strand with X barbs ( -x-x-x- ) at the glyph slot */}
+                <g transform="translate(9.5 5)" stroke="#e9e4cf" strokeWidth={1} strokeLinecap="round">
+                  <line x1={-6.5} y1={0} x2={6.5} y2={0} />
+                  {[-4, 0, 4].map((bx) => (
+                    <g key={bx}>
+                      <line x1={bx - 1.1} y1={-1.1} x2={bx + 1.1} y2={1.1} />
+                      <line x1={bx - 1.1} y1={1.1} x2={bx + 1.1} y2={-1.1} />
+                    </g>
+                  ))}
+                </g>
+              </>
+            );
+          }
+          if (top.kind === "captured") {
+            return (
+              <>
+                <TileTitle text={top.ce.destroyed_tank ? "KO Tank" : "Captured"} y={-1} size={8} />
+                <text x={-9.5} textAnchor="middle" y={8} fontSize={7} fill="#eef">{`×${top.ce.count}`}</text>
+                {/* repaired → check; needs repair → Material Symbols "wrench" (24×24 path, Apache-2.0) */}
+                <g transform="translate(9.5 5)">
+                  {top.ce.repaired
+                    ? <path d="M-4,0 L-1,3 L4,-4" stroke="#e9e4cf" strokeWidth={1} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    : <path transform="translate(-5 -5) scale(0.42)" fill="#e9e4cf" d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z" />}
+                </g>
+              </>
+            );
+          }
+          if (top.kind === "dummytank") {
+            // Rendered like an armour counter (a decoy is meant to look real) with a faint "?" cue.
+            return (
+              <>
+                <TileTitle text={top.dt.designation} y={-1} size={8.5} />
+                <text x={-9.5} textAnchor="middle" y={8} fontSize={7} fill="#eef">decoy</text>
+                <g transform="translate(9.5 5)">{unitTypeGlyph(["Armor"])}</g>
+              </>
+            );
+          }
+          if (top.kind === "broken") {
+            return (
+              <>
+                <text textAnchor="middle" y={-1} fontSize={8.5} fill="#fff" fontWeight={700}>Broken</text>
+                <text x={-9.5} textAnchor="middle" y={8} fontSize={7} fill="#eef">{`×${top.bv.points}`}</text>
+                {/* a broken-down truck (tilted, detached wheel) at the glyph slot */}
+                <g transform="translate(9.5 5)" stroke="#e9e4cf" strokeWidth={0.8} fill="none" strokeLinecap="round">
+                  <path d="M-5,2 L-5,-2 L1,-2 L3,0 L5,0 L5,2 Z" transform="rotate(-8)" />
+                  <circle cx={-3} cy={3.5} r={1.2} />
+                  <circle cx={4.5} cy={4} r={1.2} />
+                </g>
               </>
             );
           }

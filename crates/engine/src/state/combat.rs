@@ -84,7 +84,7 @@ impl GameState {
             .iter()
             .filter_map(|id| self.units.get(id))
             .filter(|u| {
-                u.hex()
+                self.effective_hex(u.id)
                     .is_none_or(|fh| !self.anti_armor_fire_blocked(fh, target_hex))
             })
             .map(|u| u.raw_strength(&self.reference, RatingKind::AntiArmor))
@@ -192,7 +192,7 @@ impl GameState {
         let in_hex = terrain.min(self.fort_shift(target_hex));
         let mut hexside = 0;
         for a in attackers {
-            if let Some(ah) = self.units.get(a).and_then(|u| u.hex()) {
+            if let Some(ah) = self.effective_hex(*a) {
                 let s: i32 = self
                     .map
                     .hexsides_on(ah, target_hex)
@@ -1181,7 +1181,7 @@ impl GameState {
         units
             .iter()
             .filter_map(|id| self.units.get(id))
-            .any(|u| u.status.with_rommel || (rommel_hex.is_some() && u.hex() == rommel_hex))
+            .any(|u| u.status.with_rommel || (rommel_hex.is_some() && self.effective_hex(u.id) == rommel_hex))
     }
 
     /// Unit-size column shift (§15.5): §15.51 double-strength (+2 to the side with ≥2× the

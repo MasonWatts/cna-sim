@@ -2075,6 +2075,16 @@ impl GameState {
             return Err(CommandError::PortCannotTransfer);
         }
         let dest_hex = self.port_hex(to_port).ok_or(CommandError::PortCannotTransfer)?;
+        // §30.5/§55: troops may only be shipped through friendly ports — the destination must not be
+        // held by an enemy combat unit (you can't land men in an enemy-garrisoned port, e.g. Tobruk
+        // while the Axis holds it).
+        let enemy_holds = self
+            .units_in_hex(dest_hex)
+            .into_iter()
+            .any(|id| self.unit(id).is_some_and(|u| u.nationality.side() != side && u.total_toe() > 0));
+        if enemy_holds {
+            return Err(CommandError::PortCannotTransfer);
+        }
         // Copy out the port capacities/operability (scalars) so the ports borrow ends before mutation.
         let (origin_out, origin_op) = {
             let p = self.ports.get(&origin).ok_or(CommandError::PortCannotTransfer)?;
@@ -5082,9 +5092,8 @@ impl GameState {
         if !matches!(self.phase, Phase::Organization | Phase::MovementAndCombat) {
             return Err(CommandError::WrongPhase);
         }
-        let captor_u = self.unit(captor).ok_or(CommandError::UnitNotFound)?;
-        let captor_hex = captor_u.hex().ok_or(CommandError::UnitNotOnMap)?;
-        let captor_side = captor_u.nationality.side();
+        let captor_hex = self.effective_hex(captor).ok_or(CommandError::UnitNotOnMap)?;
+        let captor_side = self.unit(captor).ok_or(CommandError::UnitNotFound)?.nationality.side();
         // §17.52c/§17.53: the captor must be an enemy combat unit adjacent to the surrendering hex.
         if !self.is_combat_unit(captor) || !captor_hex.is_adjacent(hex) {
             return Err(CommandError::InvalidCaptor);
@@ -5845,7 +5854,15 @@ impl GameState {
             }
             2
         };
-        self.unit_mut(unit).expect("checked").attached_parent = Some(parent);
+        // §19.1 invariant: an attached unit rides its parent's counter and has NO independent
+        // location — its physical hex is resolved via `effective_hex`. Clearing `location` here (it
+        // was equal to the parent's hex at attach time) keeps own-hex from going stale when the
+        // parent later moves, so `effective_hex` stays the single source of truth.
+        {
+            let u = self.unit_mut(unit).expect("checked");
+            u.attached_parent = Some(parent);
+            u.location = None;
+        }
         for id in [unit, parent] {
             let cpa = self.unit_cpa(id).unwrap_or(0);
             self.expend_cp_against(id, Fixed(cost * 10), cpa);
@@ -5864,7 +5881,13 @@ impl GameState {
             .ok_or(CommandError::UnitNotFound)?
             .attached_parent
             .ok_or(CommandError::ReorgIllegal)?;
-        self.unit_mut(unit).expect("checked").attached_parent = None;
+        // On detach the unit regains its own counter at the stack's current physical hex (§19.43).
+        let hex = self.effective_hex(parent);
+        {
+            let u = self.unit_mut(unit).expect("checked");
+            u.attached_parent = None;
+            u.location = hex.map(crate::state::unit::UnitLocation::OnMap);
+        }
         for id in [unit, parent] {
             let cpa = self.unit_cpa(id).unwrap_or(0);
             self.expend_cp_against(id, Fixed(10), cpa);

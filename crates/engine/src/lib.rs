@@ -3726,6 +3726,14 @@ mod tests {
         assert_eq!(g.effective_hex(unit), Some(tobruk));
         // §30.52: a second transfer touching either used port this stage is rejected.
         assert_eq!(g.apply(Command::NavalTransferTroops { unit, to_port: "Alex".into() }), Err(CommandError::PortTransferUnavailable));
+
+        // §30.5/§55: a port held by an enemy combat unit may not receive a transfer. Reset the stage,
+        // give Bardia real capacity, and garrison it with an Axis unit → the transfer is refused.
+        g.ports_transferred_this_stage.clear();
+        g.ports.insert("Bardia".into(), port("Bardia", 6, 6));
+        let axis = g.spawn_unit(Nationality::Italian, "p", "garrison", Composition::Organic { current_toe: 6 });
+        g.unit_mut(axis).unwrap().location = Some(UnitLocation::OnMap(bardia));
+        assert_eq!(g.apply(Command::NavalTransferTroops { unit, to_port: "Bardia".into() }), Err(CommandError::PortCannotTransfer));
     }
 
     #[test]
@@ -15543,12 +15551,21 @@ mod tests {
         assert_eq!(g.unit(assigned).unwrap().attached_parent, Some(div));
         assert_eq!(g.unit(assigned).unwrap().cp_expended, Fixed(10));
         assert_eq!(g.unit(div).unwrap().cp_expended, Fixed(10));
+        // §19.1 invariant: an attached unit has NO own location; its physical hex resolves via the
+        // parent. If the parent then moves, the attached unit's effective hex follows (no stale own).
+        assert!(g.unit(assigned).unwrap().location.is_none(), "attach clears own location");
+        assert_eq!(g.effective_hex(assigned), Some(a));
+        g.unit_mut(div).unwrap().location = Some(UnitLocation::OnMap(b));
+        assert!(g.unit(assigned).unwrap().location.is_none(), "still no own location after parent moves");
+        assert_eq!(g.effective_hex(assigned), Some(b), "effective hex follows the parent");
+        g.unit_mut(div).unwrap().location = Some(UnitLocation::OnMap(a)); // restore for the rest of the test
 
         // §19.13: a unit already attached may not attach again without detaching.
         assert_eq!(g.apply(Command::AttachUnit { unit: assigned, parent: div }), Err(CommandError::ReorgIllegal));
-        // §19.43: detach for 1 CP each.
+        // §19.43: detach for 1 CP each; the unit regains its own counter at the stack's current hex.
         assert_eq!(g.apply(Command::DetachUnit { unit: assigned }), Ok(CommandOutcome::UnitDetached));
         assert_eq!(g.unit(assigned).unwrap().attached_parent, None);
+        assert_eq!(g.unit(assigned).unwrap().hex(), Some(a), "detach restores own location to the parent's hex");
 
         // §19.1: a non-co-located unit may not attach.
         let far = mk(&mut g, b);

@@ -149,6 +149,18 @@ pub struct Event {
     /// changes. Fold forward.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub off_map: Option<OffMapView>,
+    /// Prisoner-of-war stacks and escaped prisoners (§28). **Delta**: `Some` only when they change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prisoners: Option<Vec<PrisonerView>>,
+    /// Captured equipment + knocked-out tank markers (§28.3/§14.46). **Delta**: `Some` on change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub captured: Option<Vec<CapturedView>>,
+    /// Dummy (decoy) tank markers (§32). **Delta**: `Some` on change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dummy_tanks: Option<Vec<DummyTankView>>,
+    /// Broken-down vehicle markers awaiting repair (§21.5). **Delta**: `Some` on change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub broken_vehicles: Option<Vec<BrokenVehicleView>>,
 }
 
 #[derive(Serialize, TS, Clone, PartialEq)]
@@ -274,6 +286,63 @@ pub struct RaiderView {
     pub revealed: bool,
     pub fuel: u32,
     pub ammo: u32,
+}
+
+/// A §28 prisoner stack (POWs) or a group of escaped prisoners, for the viewer.
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct PrisonerView {
+    pub hex: [i16; 2],
+    /// `"Pow"` (a guarded prisoner stack) | `"Escapee"` (escaped, heading home, §28.24).
+    pub kind: String,
+    /// The army the prisoners belong to.
+    pub side: String,
+    /// The capturing side guarding a POW stack; empty for escapees.
+    pub captor: String,
+    pub points: u32,
+    /// §28.2 Guard Points watching a POW stack; 0 for escapees.
+    pub guards: u32,
+}
+
+/// A §28.3/§14.46 pile of captured (or knocked-out) equipment on the map, for the viewer.
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct CapturedView {
+    pub hex: [i16; 2],
+    /// The side currently holding it.
+    pub captor: String,
+    /// The equipment's original nationality (its weapon system / repair rules apply).
+    pub nationality: String,
+    pub system: String,
+    pub count: u32,
+    /// §28.3: usable only once repaired.
+    pub repaired: bool,
+    /// §14.46: a knocked-out tank marker (vs surrendered kit) — repairable by either side.
+    pub destroyed_tank: bool,
+}
+
+/// A §32 dummy (decoy) tank marker on the map. Indistinguishable from a real armour counter to the
+/// enemy; the viewer shows it to the spectator.
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct DummyTankView {
+    pub hex: [i16; 2],
+    pub side: String,
+    pub designation: String,
+}
+
+/// A §21.5 broken-down vehicle marker awaiting tow/repair, for the viewer.
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct BrokenVehicleView {
+    pub hex: [i16; 2],
+    /// The side currently owning the marker (flips on capture, §21.52).
+    pub side: String,
+    pub nationality: String,
+    /// Total broken points held (weapon TOE + organic TOE + truck points), for the counter value.
+    pub points: u32,
+    /// A short breakdown for the tooltip (systems, TOE, trucks).
+    pub detail: String,
 }
 
 /// The Rommel command counter (§31), when on the map. Off-map / in-Germany states are simply omitted.
@@ -988,6 +1057,87 @@ fn raider_views(g: &GameState) -> Vec<RaiderView> {
         .collect()
 }
 
+/// §28 prisoner stacks (POWs) and escaped prisoners on the map, for the viewer. Deterministic order.
+fn prisoner_views(g: &GameState) -> Vec<PrisonerView> {
+    let mut v: Vec<PrisonerView> = Vec::new();
+    for p in &g.prisoner_groups {
+        v.push(PrisonerView {
+            hex: [p.hex.col, p.hex.row],
+            kind: "Pow".into(),
+            side: format!("{:?}", p.original),
+            captor: format!("{:?}", p.captor),
+            points: p.points,
+            guards: p.guards,
+        });
+    }
+    for e in &g.escapees {
+        v.push(PrisonerView {
+            hex: [e.hex.col, e.hex.row],
+            kind: "Escapee".into(),
+            side: format!("{:?}", e.side),
+            captor: String::new(),
+            points: e.points,
+            guards: 0,
+        });
+    }
+    v.sort_by(|a, b| (a.hex[0], a.hex[1], &a.kind).cmp(&(b.hex[0], b.hex[1], &b.kind)));
+    v
+}
+
+/// §28.3/§14.46 captured equipment and knocked-out tank markers on the map, for the viewer.
+fn captured_views(g: &GameState) -> Vec<CapturedView> {
+    let mut v: Vec<CapturedView> = g
+        .captured_equipment
+        .iter()
+        .map(|c| CapturedView {
+            hex: [c.hex.col, c.hex.row],
+            captor: format!("{:?}", c.captor),
+            nationality: format!("{:?}", c.nationality),
+            system: c.system.clone(),
+            count: c.count,
+            repaired: c.repaired,
+            destroyed_tank: c.destroyed_tank,
+        })
+        .collect();
+    v.sort_by(|a, b| (a.hex[0], a.hex[1], &a.system).cmp(&(b.hex[0], b.hex[1], &b.system)));
+    v
+}
+
+/// §32 dummy (decoy) tank markers on the map, for the viewer.
+fn dummy_tank_views(g: &GameState) -> Vec<DummyTankView> {
+    let mut v: Vec<DummyTankView> = g
+        .dummy_tanks
+        .iter()
+        .map(|d| DummyTankView { hex: [d.hex.col, d.hex.row], side: format!("{:?}", d.side), designation: d.designation.clone() })
+        .collect();
+    v.sort_by(|a, b| (a.hex[0], a.hex[1], &a.designation).cmp(&(b.hex[0], b.hex[1], &b.designation)));
+    v
+}
+
+/// §21.5 broken-down vehicle markers awaiting tow/repair, for the viewer.
+fn broken_vehicle_views(g: &GameState) -> Vec<BrokenVehicleView> {
+    let mut v: Vec<BrokenVehicleView> = g
+        .broken_vehicles
+        .iter()
+        .map(|b| {
+            let wsum: u32 = b.weapons.iter().map(|w| w.count).sum();
+            let trucks = b.trucks.light + b.trucks.medium + b.trucks.heavy;
+            let mut parts: Vec<String> = b.weapons.iter().filter(|w| w.count > 0).map(|w| format!("{}× {}", w.count, w.system)).collect();
+            if b.toe > 0 { parts.push(format!("{} TOE", b.toe)); }
+            if trucks > 0 { parts.push(format!("{trucks} truck pt")); }
+            BrokenVehicleView {
+                hex: [b.hex.col, b.hex.row],
+                side: format!("{:?}", b.side),
+                nationality: format!("{:?}", b.nationality),
+                points: wsum + b.toe + trucks,
+                detail: if parts.is_empty() { "empty".into() } else { parts.join(", ") },
+            }
+        })
+        .collect();
+    v.sort_by(|a, b| (a.hex[0], a.hex[1]).cmp(&(b.hex[0], b.hex[1])));
+    v
+}
+
 /// The Rommel counter (§31) when on the map, as a 0-or-1 element list (so it folds like the other
 /// delta layers). Off-map / in-Germany yields an empty list.
 fn rommel_views(g: &GameState) -> Vec<RommelView> {
@@ -1030,6 +1180,10 @@ fn delta_frame(
     prev_air: &mut AirView,
     prev_naval: &mut NavalView,
     prev_off_map: &mut OffMapView,
+    prev_prisoners: &mut Vec<PrisonerView>,
+    prev_captured: &mut Vec<CapturedView>,
+    prev_dummy: &mut Vec<DummyTankView>,
+    prev_broken: &mut Vec<BrokenVehicleView>,
 ) -> Event {
     let cur = unit_views(game);
     let cur_ids: std::collections::HashSet<u32> = cur.iter().map(|u| u.id).collect();
@@ -1114,6 +1268,34 @@ fn delta_frame(
     } else {
         None
     };
+    let pv = prisoner_views(game);
+    let prisoners = if pv != *prev_prisoners {
+        *prev_prisoners = pv.clone();
+        Some(pv)
+    } else {
+        None
+    };
+    let cpv = captured_views(game);
+    let captured = if cpv != *prev_captured {
+        *prev_captured = cpv.clone();
+        Some(cpv)
+    } else {
+        None
+    };
+    let dtv = dummy_tank_views(game);
+    let dummy_tanks = if dtv != *prev_dummy {
+        *prev_dummy = dtv.clone();
+        Some(dtv)
+    } else {
+        None
+    };
+    let bvv = broken_vehicle_views(game);
+    let broken_vehicles = if bvv != *prev_broken {
+        *prev_broken = bvv.clone();
+        Some(bvv)
+    } else {
+        None
+    };
     Event {
         step,
         game_turn: game.game_turn,
@@ -1136,6 +1318,10 @@ fn delta_frame(
         air,
         naval,
         off_map,
+        prisoners,
+        captured,
+        dummy_tanks,
+        broken_vehicles,
     }
 }
 
@@ -1165,7 +1351,11 @@ pub fn record_game(
     let mut prev_air: AirView = AirView::default();
     let mut prev_naval: NavalView = NavalView::default();
     let mut prev_off_map: OffMapView = OffMapView::default();
-    let mut events = vec![delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map)];
+    let mut prev_prisoners: Vec<PrisonerView> = Vec::new();
+    let mut prev_captured: Vec<CapturedView> = Vec::new();
+    let mut prev_dummy: Vec<DummyTankView> = Vec::new();
+    let mut prev_broken: Vec<BrokenVehicleView> = Vec::new();
+    let mut events = vec![delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken)];
     let mut step = 0u32;
     let mut guard = 0u64;
     while game.game_turn <= max_turns {
@@ -1195,7 +1385,7 @@ pub fn record_game(
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         if let Ok(outcome) = game.apply(cmd) {
                             step += 1;
-                            events.push(delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map));
+                            events.push(delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken));
                             progress = true;
                         }
                         acted += 1;
@@ -1266,7 +1456,11 @@ pub fn record_game_streaming(
     let mut prev_air: AirView = AirView::default();
     let mut prev_naval: NavalView = NavalView::default();
     let mut prev_off_map: OffMapView = OffMapView::default();
-    let start = delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map);
+    let mut prev_prisoners: Vec<PrisonerView> = Vec::new();
+    let mut prev_captured: Vec<CapturedView> = Vec::new();
+    let mut prev_dummy: Vec<DummyTankView> = Vec::new();
+    let mut prev_broken: Vec<BrokenVehicleView> = Vec::new();
+    let start = delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken);
     writeln!(out, "{}", serde_json::to_string(&start)?)?;
 
     let mut step = 0u32;
@@ -1299,7 +1493,7 @@ pub fn record_game_streaming(
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         if let Ok(outcome) = game.apply(cmd) {
                             step += 1;
-                            let ev = delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map);
+                            let ev = delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken);
                             writeln!(out, "{}", serde_json::to_string(&ev)?)?;
                             progress = true;
                         }
@@ -1424,6 +1618,10 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
     let mut prev_air: AirView = AirView::default();
     let mut prev_naval: NavalView = NavalView::default();
     let mut prev_off_map: OffMapView = OffMapView::default();
+    let mut prev_prisoners: Vec<PrisonerView> = Vec::new();
+    let mut prev_captured: Vec<CapturedView> = Vec::new();
+    let mut prev_dummy: Vec<DummyTankView> = Vec::new();
+    let mut prev_broken: Vec<BrokenVehicleView> = Vec::new();
     let mut events: Vec<Event> = Vec::new();
     let mut step = 0u32;
     let frame = |game: &GameState,
@@ -1442,8 +1640,12 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
                      prev_air: &mut AirView,
                      prev_naval: &mut NavalView,
                      prev_off_map: &mut OffMapView,
+                     prev_prisoners: &mut Vec<PrisonerView>,
+                     prev_captured: &mut Vec<CapturedView>,
+                     prev_dummy: &mut Vec<DummyTankView>,
+                     prev_broken: &mut Vec<BrokenVehicleView>,
                      events: &mut Vec<Event>| {
-        events.push(delta_frame(game, *step, "Commonwealth", action.into(), outcome, Vec::new(), prev, prev_weather, prev_rp, prev_dumps, prev_convoys, prev_raiders, prev_rommel, prev_overlays, prev_hexsides, prev_air, prev_naval, prev_off_map));
+        events.push(delta_frame(game, *step, "Commonwealth", action.into(), outcome, Vec::new(), prev, prev_weather, prev_rp, prev_dumps, prev_convoys, prev_raiders, prev_rommel, prev_overlays, prev_hexsides, prev_air, prev_naval, prev_off_map, prev_prisoners, prev_captured, prev_dummy, prev_broken));
         *step += 1;
     };
 
@@ -1452,7 +1654,7 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
         class: ReplacementClass::Infantry, sub: None, count: 4, side: Side::Commonwealth,
         game_turn: 3, stage: 1, location: None, assigned_to: Some(unit), tonnage: 0,
     });
-    frame(&game, &mut step, "Staged: Infantry replacement pool planned (§20.21)", String::new(), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
+    frame(&game, &mut step, "Staged: Infantry replacement pool planned (§20.21)", String::new(), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken, &mut events);
 
     // 1 — ARRIVE: it lands on-map at a port hex and begins Training (§20.21 → §20.43).
     game.pending_replacements.clear();
@@ -1460,12 +1662,12 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
         class: ReplacementClass::Infantry, sub: None, count: 4, side: Side::Commonwealth,
         location: Some(UnitLocation::OnMap(HexCoord::new(0, 1))), training_remaining: 3, assigned_to: Some(unit), cpa_used: 0, carried_by: None,
     });
-    frame(&game, &mut step, "Arrived: pool on-map at the port, training begins (§20.21/§20.43)", "ReplacementArrived".into(), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
+    frame(&game, &mut step, "Arrived: pool on-map at the port, training begins (§20.21/§20.43)", "ReplacementArrived".into(), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken, &mut events);
 
     // 2-4 — TRAIN: the pool trains down (§20.43) at the training area.
     for remaining in [2u32, 1, 0] {
         game.replacement_points[0].training_remaining = remaining;
-        frame(&game, &mut step, "Training replacement pool (§20.43)", format!("Training: {remaining} stage(s) left"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
+        frame(&game, &mut step, "Training replacement pool (§20.43)", format!("Training: {remaining} stage(s) left"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken, &mut events);
     }
 
     // 5 — LOAD: in the Truck Convoy phase, the convoy commits to the haul — the trained pool is loaded
@@ -1474,7 +1676,7 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
     game.active_player = Side::Commonwealth;
     let picked = game.apply(Command::LoadReplacement { convoy: 0, pool: 0 });
     let loaded = game.apply(Command::LoadConvoy { convoy: 0, commodity: Commodity::Fuel, amount: 30 });
-    frame(&game, &mut step, "Convoy loads the pool + Fuel at the depot (§20.44/§53.14)", format!("{picked:?}; {loaded:?}"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
+    frame(&game, &mut step, "Convoy loads the pool + Fuel at the depot (§20.44/§53.14)", format!("{picked:?}; {loaded:?}"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken, &mut events);
 
     // 6-9 — TRAVEL: the pool moves one hex per step toward its unit via §20.46 MoveReplacement; the
     // carrying convoy burns its own carried Fuel (§49.18), so no en-route dumps are needed. Each step
@@ -1482,12 +1684,12 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
     for hex in [1i16, 2, 3, 4] {
         game.replacement_points[0].cpa_used = 0; // new stage's Truck Convoy Phase
         let outcome = game.apply(Command::MoveReplacement { index: 0, to: HexCoord::new(hex, 1) });
-        frame(&game, &mut step, "Delivering replacement pool toward its unit (§20.46)", format!("{outcome:?}"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
+        frame(&game, &mut step, "Delivering replacement pool toward its unit (§20.46)", format!("{outcome:?}"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken, &mut events);
     }
 
     // 7 — ABSORB: co-located and trained, the pool is absorbed and the unit's TOE jumps (§20.49).
     let added = game.absorb_replacement(0, unit).unwrap_or(0);
-    frame(&game, &mut step, "Absorbed into the unit (§20.49)", format!("ReplacementAbsorbed({added})"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
+    frame(&game, &mut step, "Absorbed into the unit (§20.49)", format!("ReplacementAbsorbed({added})"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken, &mut events);
 
     // 8 — DEMOLISH: the NZ Rail Coy at (3,1) demolishes its own railroad hex (§24.66 scorched earth) via
     // a real `DemolishRailroad` command; completing the one-stage project flips both rail edges of the
@@ -1496,7 +1698,7 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
     game.active_player = Side::Commonwealth;
     let started = game.apply(Command::DemolishRailroad { builder: sapper, a: HexCoord::new(3, 1), b: HexCoord::new(4, 1) });
     game.advance_construction();
-    frame(&game, &mut step, "NZ Rail Coy demolishes the railroad at (3,1) (§24.66)", format!("{started:?}"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut events);
+    frame(&game, &mut step, "NZ Rail Coy demolishes the railroad at (3,1) (§24.66)", format!("{started:?}"), &mut prev, &mut prev_weather, &mut prev_rp, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken, &mut events);
 
     GameRecord {
         scenario: "Replacement-Point Lifecycle Demo (§20)".into(),

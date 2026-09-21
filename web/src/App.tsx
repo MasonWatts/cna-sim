@@ -13,6 +13,10 @@ import type { HexsideView } from "@bindings/HexsideView";
 import type { AirView } from "@bindings/AirView";
 import type { NavalView } from "@bindings/NavalView";
 import type { OffMapView } from "@bindings/OffMapView";
+import type { PrisonerView } from "@bindings/PrisonerView";
+import type { CapturedView } from "@bindings/CapturedView";
+import type { DummyTankView } from "@bindings/DummyTankView";
+import type { BrokenVehicleView } from "@bindings/BrokenVehicleView";
 import { mapBounds } from "./hex";
 import { HexMap } from "./components/HexMap";
 import { Scrubber } from "./components/Scrubber";
@@ -329,6 +333,52 @@ export function App() {
     return out;
   }, [record]);
 
+  // Prisoner stacks + escapees (§28) — one delta list; fold forward.
+  const prisonerFrames = useMemo<PrisonerView[][]>(() => {
+    if (!record) return [];
+    const out: PrisonerView[][] = [];
+    let cur: PrisonerView[] = [];
+    for (const e of record.events) {
+      if (e.prisoners) cur = e.prisoners;
+      out.push(cur);
+    }
+    return out;
+  }, [record]);
+
+  // Captured equipment + knocked-out tank markers (§28.3/§14.46) — one delta list; fold forward.
+  const capturedFrames = useMemo<CapturedView[][]>(() => {
+    if (!record) return [];
+    const out: CapturedView[][] = [];
+    let cur: CapturedView[] = [];
+    for (const e of record.events) {
+      if (e.captured) cur = e.captured;
+      out.push(cur);
+    }
+    return out;
+  }, [record]);
+
+  // Dummy tanks (§32) and broken-down vehicles (§21.5) — delta lists; fold forward.
+  const dummyTankFrames = useMemo<DummyTankView[][]>(() => {
+    if (!record) return [];
+    const out: DummyTankView[][] = [];
+    let cur: DummyTankView[] = [];
+    for (const e of record.events) {
+      if (e.dummy_tanks) cur = e.dummy_tanks;
+      out.push(cur);
+    }
+    return out;
+  }, [record]);
+  const brokenVehicleFrames = useMemo<BrokenVehicleView[][]>(() => {
+    if (!record) return [];
+    const out: BrokenVehicleView[][] = [];
+    let cur: BrokenVehicleView[] = [];
+    for (const e of record.events) {
+      if (e.broken_vehicles) cur = e.broken_vehicles;
+      out.push(cur);
+    }
+    return out;
+  }, [record]);
+
   // Node structures for each grouping level (Month/Week/Op-Stage/Phase), for level-aware navigation.
   const nodesByLevel = useMemo<Record<Exclude<Level, "step">, Node[]>>(
     () => ({
@@ -421,7 +471,7 @@ export function App() {
         <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0", width: "max-content" }}>
           {/* Variant C is drawn inside HexMap in map coordinates (see `legend`), so it pans/zooms
               with the board and sits off-shore at the map's horizontal center. */}
-          <HexMap map={record.map} units={frames[idx] ?? []} weather={weatherFrames[idx]} replacements={replacementFrames[idx] ?? []} supplyDumps={supplyDumpFrames[idx] ?? []} truckConvoys={truckConvoyFrames[idx] ?? []} raiders={raiderFrames[idx] ?? []} rommel={rommelFrames[idx] ?? []} overlays={overlayFrames[idx]} hexsides={hexsideFrames[idx]} air={airFrames[idx]} naval={navalFrames[idx]} offMap={offMapFrames[idx]} placeLore={placeLore} onPlaceHover={onPlaceHover} onPlaceLeave={hideInfo} onInfoHover={showInfo} legend={<>
+          <HexMap map={record.map} units={frames[idx] ?? []} weather={weatherFrames[idx]} replacements={replacementFrames[idx] ?? []} supplyDumps={supplyDumpFrames[idx] ?? []} truckConvoys={truckConvoyFrames[idx] ?? []} raiders={raiderFrames[idx] ?? []} rommel={rommelFrames[idx] ?? []} overlays={overlayFrames[idx]} hexsides={hexsideFrames[idx]} air={airFrames[idx]} naval={navalFrames[idx]} offMap={offMapFrames[idx]} prisoners={prisonerFrames[idx] ?? []} captured={capturedFrames[idx] ?? []} dummyTanks={dummyTankFrames[idx] ?? []} brokenVehicles={brokenVehicleFrames[idx] ?? []} placeLore={placeLore} onPlaceHover={onPlaceHover} onPlaceLeave={hideInfo} onInfoHover={showInfo} legend={<>
               <div className="legend-map"><TerrainKey onInfoHover={showInfo} onInfoLeave={hideInfo} /></div>
               <div className="legend-map compass-box"><div className="tk-title">Orientation</div><CompassRose /></div>
             </>}
