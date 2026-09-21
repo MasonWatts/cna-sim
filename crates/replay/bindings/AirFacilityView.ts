@@ -12,4 +12,8 @@ kind: string,
 /**
  * §36.14 current capacity in squadrons (0 = destroyed).
  */
-capacity: number, };
+capacity: number, 
+/**
+ * Squadrons currently stationed here (SGSUs whose location is this hex).
+ */
+occupancy: number, };

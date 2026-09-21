@@ -289,3 +289,39 @@ code {
 .info-body { display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.45; }
 .info-icon { color: #a8862f; font-size: 19px; line-height: 1.3; flex: 0 0 auto; }
 .info-divider { border: none; border-top: 1px solid #c9bd93; margin: 9px 0 3px; }
+/* Pre-formatted stacked-tile body: one line per stack occupant, breaks preserved. */
+.info-stack { white-space: pre-line; font-size: 12.5px; line-height: 1.5; font-family: "Courier New", monospace; }
+
+/* Master-detail stacked-tile panel: scrollable counter list (left) + selected detail (right). */
+.lore-panel.wide { max-width: 460px; }
+.info-stacklist { display: flex; gap: 10px; margin-top: 4px; align-items: stretch; }
+.info-stacklist .sl-list {
+  flex: 0 0 140px; max-height: 220px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 2px;
+  padding-right: 4px;
+}
+/* Full-height divider: a stretched flex child so it spans the taller of the two columns. */
+.info-stacklist .sl-divider { flex: 0 0 1px; align-self: stretch; background: #c9bd93; }
+.info-stacklist .sl-list::-webkit-scrollbar { width: 8px; }
+.info-stacklist .sl-list::-webkit-scrollbar-thumb { background: #b7a97a; border-radius: 4px; }
+.info-stacklist .sl-list::-webkit-scrollbar-track { background: transparent; }
+.info-stacklist .sl-item {
+  flex: 0 0 auto;
+  text-align: left; background: none; border: none; cursor: pointer;
+  font-family: system-ui, sans-serif; font-size: 12px; color: #2f2b22;
+  padding: 3px 6px; border-radius: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.info-stacklist .sl-item:hover { background: rgba(168, 134, 47, 0.16); }
+.info-stacklist .sl-item.active { background: rgba(168, 134, 47, 0.3); font-weight: 700; }
+.info-stacklist .sl-detail { flex: 1 1 auto; min-width: 0; font-size: 12.5px; line-height: 1.5; align-self: flex-start; }
+/* First section in the detail pane shouldn't add a top gap (the flex row already aligns it). */
+.info-stacklist .sl-detail > .info-section:first-child { margin-top: 0; }
+.info-stacklist .sl-summary { font-size: 12.5px; line-height: 1.5; }
+/* Counter glyph chip inside the status box (land units), pushed to the right. */
+.info-stacklist .state-glyph { margin-left: auto; align-self: flex-start; padding-left: 8px; }
+/* Dynamic-state readout: a compact label/value table. */
+.state-rows { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; align-items: baseline; }
+.state-row { display: contents; }
+.state-label { color: #6b5f3a; }
+.state-value { font-weight: 700; font-family: "Courier New", monospace; }

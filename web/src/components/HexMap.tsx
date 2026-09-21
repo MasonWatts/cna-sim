@@ -8,13 +8,14 @@ import type { RaiderView } from "@bindings/RaiderView";
 import type { RommelView } from "@bindings/RommelView";
 import type { MapOverlaysView } from "@bindings/MapOverlaysView";
 import type { MinefieldView } from "@bindings/MinefieldView";
+import type { PoisonedWellView } from "@bindings/PoisonedWellView";
 import type { AirView } from "@bindings/AirView";
 import type { AirFacilityView } from "@bindings/AirFacilityView";
 import type { SquadronView } from "@bindings/SquadronView";
 import type { CapView } from "@bindings/CapView";
 import type { NavalView } from "@bindings/NavalView";
 import type { ShipView } from "@bindings/ShipView";
-import type { InfoPanelData } from "../lore";
+import type { EntryDetail, InfoPanelData, StackEntry, StackStateRow } from "../lore";
 import { WEATHER_SYSTEM_INFO, WEATHER_CONDITION_INFO } from "../weatherInfo";
 import { PORT_SYSTEM_INFO, PORT_TONNAGE_INFO, PORT_TRANSFER_INFO, CONVOY_SYSTEM_INFO, OFF_MAP_INFO, OFF_MAP_AA_INFO, OFF_MAP_PORT_INFO, OFF_MAP_TRANSIT_INFO, MED_BASE_INFO, MALTA_INFO, MALTA_CAPACITY_INFO, MALTA_AA_INFO, CW_OFF_MAP_INFO, facilityInfo } from "../navalInfo";
 import type { OffMapView } from "@bindings/OffMapView";
@@ -57,7 +58,7 @@ function TileTitle({ text, y = -1, size = 8.5, max = 34, fill = "#fff" }: { text
 // A squadron counter (§35) as drawn on the board — side-colored 38×22 tile, designation title,
 // plane count, class silhouette, dashed if unsupplied, with a +N badge for the rest of a stack.
 // Centered at the origin; the parent positions it. Reused for on-map hexes and Malta/off-map boxes.
-function SquadronCounter({ designation, planes, cls, side = "Commonwealth", supplied = true, extra = 0, title }: { designation: string; planes: number; cls: string; side?: string; supplied?: boolean; extra?: number; title?: string }) {
+function SquadronCounter({ designation, planes, cls, side = "Commonwealth", supplied = true, extra = 0, title, noTitle }: { designation: string; planes: number; cls: string; side?: string; supplied?: boolean; extra?: number; title?: string; noTitle?: boolean }) {
   const fill = side === "Commonwealth" ? "var(--cw)" : "var(--axis)";
   return (
     <g>
@@ -72,7 +73,7 @@ function SquadronCounter({ designation, planes, cls, side = "Commonwealth", supp
           <text textAnchor="middle" y={3} fontSize={9} fill="#eef" fontWeight={700}>+{extra}</text>
         </g>
       )}
-      <title>{title ?? `• ${designation} squadron (§35) — ${side} ${cls}, ${planes} plane(s)${supplied ? "" : " — UNSUPPLIED (§35.14)"}`}</title>
+      {!noTitle && <title>{title ?? `• ${designation} squadron (§35) — ${side} ${cls}, ${planes} plane(s)${supplied ? "" : " — UNSUPPLIED (§35.14)"}`}</title>}
     </g>
   );
 }
@@ -80,7 +81,7 @@ function SquadronCounter({ designation, planes, cls, side = "Commonwealth", supp
 // A full land-unit counter (§4.44) as drawn on the board — side-colored 38×22 tile, abbr title, TOE
 // (— for a 0-TOE cadre/HQ), the composed type glyph, broken/training markers, and a native tooltip.
 // Centered at the origin; the parent positions it. Reused on the map and in the off-map complex.
-function UnitCounter({ u, extra = 0 }: { u: UnitView; extra?: number }) {
+function UnitCounter({ u, extra = 0, noTitle }: { u: UnitView; extra?: number; noTitle?: boolean }) {
   const fill = u.side === "Commonwealth" ? "var(--cw)" : "var(--axis)";
   const cadre = u.toe === 0;
   const morale = `${u.basic_morale >= 0 ? "+" : ""}${u.basic_morale}` + (u.basic_morale < u.morale_reference ? `→${u.morale_reference >= 0 ? "+" : ""}${u.morale_reference}` : "");
@@ -100,7 +101,7 @@ function UnitCounter({ u, extra = 0 }: { u: UnitView; extra?: number }) {
           <text textAnchor="middle" y={3} fontSize={9} fill="#eef" fontWeight={700}>+{extra}</text>
         </g>
       )}
-      <title>{tip}</title>
+      {!noTitle && <title>{tip}</title>}
     </g>
   );
 }
@@ -437,6 +438,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
     | { kind: "rp"; rank: number; r: ReplacementView }
     | { kind: "dump"; rank: number; d: SupplyDumpView }
     | { kind: "mine"; rank: number; f: MinefieldView }
+    | { kind: "well"; rank: number; w: PoisonedWellView }
     | { kind: "pipe"; rank: number; p: [number, number] }
     | { kind: "squadron"; rank: number; sq: SquadronView }
     | { kind: "cap"; rank: number; cp: CapView }
@@ -460,6 +462,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
   for (const r of replacements ?? []) if (r.hex) pushTile(r.hex, { kind: "rp", rank: 10, r });
   for (const d of supplyDumps ?? []) pushTile(d.hex, { kind: "dump", rank: 5, d });
   for (const f of overlays?.minefields ?? []) pushTile(f.hex, { kind: "mine", rank: 2, f });
+  for (const w of overlays?.poisoned_wells ?? []) pushTile(w.hex, { kind: "well", rank: 3, w });
   for (const p of overlays?.pipelines ?? []) pushTile(p as [number, number], { kind: "pipe", rank: 1, p: p as [number, number] });
   // Air layer: squadrons and CAP patrols rank above ground raiders/convoys; airfields are infrastructure.
   for (const sq of air?.squadrons ?? []) pushTile(sq.hex, { kind: "squadron", rank: 70, sq });
@@ -474,6 +477,91 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
   // §32 dummy (decoy) tanks and §21.5 broken-down vehicle markers — low rank.
   for (const dt of dummyTanks ?? []) pushTile(dt.hex, { kind: "dummytank", rank: 14, dt });
   for (const bv of brokenVehicles ?? []) pushTile(bv.hex, { kind: "broken", rank: 9, bv });
+
+  // ── Shared detail-panel builders ────────────────────────────────────────────────────────────
+  // Unit and squadron detail are reused both by the on-map stack loop and by the off-map complex
+  // (land-transit boxes + off-map airfields), so they live at component scope. Kept as the single
+  // source of truth: the loop's detailOf delegates here for these two kinds.
+  const clsShort = (c: string) => (c === "Infantry" ? "Inf" : c);
+  const moraleStr = (u: UnitView) =>
+    `${u.basic_morale >= 0 ? "+" : ""}${u.basic_morale}` +
+    (u.basic_morale < u.morale_reference ? `→${u.morale_reference >= 0 ? "+" : ""}${u.morale_reference}` : "") +
+    (u.in_training ? " 🎓" : "");
+  const unitLabel = (u: UnitView) => u.abbr || u.name;
+  const unitDetail = (u: UnitView): EntryDetail => {
+    const typeLabel = u.unit_type.length
+      ? u.unit_type.map((k) => (k === "Hq" ? "HQ" : k === "AntiTank" ? "Anti-tank" : k === "AntiAircraft" ? "AA" : k)).join(" ")
+      : "Unclassified";
+    const rules = {
+      description: u.is_hq
+        ? "A Headquarters counter (§19) commands its formation and lends its Command Point Allowance to subordinate units. Reduced to 0 TOE it is not eliminated — it persists as the formation cadre (§19.62/§19.67), able to receive newly built battalions to rebuild."
+        : "A land unit (§9) holds its hex, projects a Zone of Control into the six adjacent hexes (§10), and stacks up to the hex limit (§9.14). Combat strength scales with its TOE Strength Points (§4.4); TOE losses accumulate until the unit is eliminated at 0 (§19.62). It burns fuel to move and ammo to fight (§21) and must trace supply to a source (§23); poor morale or cohesion risks failed activation and combat (§17).",
+    };
+    const combat = [
+      u.attack || u.defense ? `Assault ${u.attack}/${u.defense}` : "",
+      u.anti_armor ? `Anti-armor ${u.anti_armor}` : "",
+      u.barrage ? `Barrage ${u.barrage}` : "",
+    ].filter(Boolean).join(" · ");
+    const movement =
+      u.cpa == null
+        ? "—"
+        : `${Math.max(u.cpa - u.cp_expended, 0).toFixed(1)} / ${u.cpa} CP${u.motorized ? " (motorized)" : " (leg)"}`;
+    const state: StackStateRow[] = [
+      { label: "Unit", value: u.name },
+      { label: "Nationality", value: u.nationality },
+      { label: "Size", value: u.org_size },
+      { label: "Type", value: typeLabel },
+      {
+        label: "Formation",
+        value: u.formation
+          ? `${u.formation}${u.formation_colocated == null ? "" : u.formation_colocated ? " · co-located" : " · detached"}`
+          : u.is_hq ? "— (formation HQ)" : "Independent",
+      },
+    ];
+    if (u.attached_to) state.push({ label: "Attached to", value: u.attached_to });
+    const carried = u.attached_units ?? [];
+    if (carried.length) state.push({ label: "Carries", value: carried.join(", ") });
+    state.push(
+      { label: "TOE", value: u.toe === 0 ? (u.is_hq ? "0 (cadre)" : "0") : String(u.toe) },
+      { label: "Combat", value: combat || "none" },
+      { label: "Movement", value: movement },
+      { label: "Supply", value: u.supplied ? "Adequate (§23)" : "Short (§23)" },
+      { label: "Fuel", value: String(u.fuel) },
+      { label: "Ammo", value: String(u.ammo) },
+      { label: "Morale", value: moraleStr(u) },
+      { label: "Cohesion", value: String(u.cohesion) },
+    );
+    const flags = [
+      u.broken ? "Broken down (§21) — awaiting repair" : "",
+      u.in_training ? "In training (§17.3)" : "",
+    ].filter(Boolean);
+    if (flags.length) state.push({ label: "Status", value: flags.join("; ") });
+    const sideFill = u.side === "Commonwealth" ? "var(--cw)" : "var(--axis)";
+    const glyph = u.unit_type.length ? (
+      <svg width={46} height={30} viewBox="-14 -9 28 18" style={{ display: "block" }} aria-hidden="true">
+        <rect x={-13} y={-8.5} width={26} height={17} rx={2.5} fill={sideFill} stroke="#0d0f14" strokeWidth={1} />
+        {unitTypeGlyph(u.unit_type)}
+      </svg>
+    ) : undefined;
+    return { glyph, rules, state };
+  };
+  type SqLike = { designation: string; class: string; planes: number; supplied: boolean };
+  const squadronLabel = (sq: SqLike) => `${sq.designation.replace(/^(Commonwealth|Axis|Italian|German)\s+/, "")} sqn`;
+  const squadronDetail = (sq: SqLike): EntryDetail => ({
+    rules: {
+      description:
+        "An air squadron / SGSU (§35) flies missions from an air facility within range. It must be supplied to refit lost planes (§35.14) — an unsupplied squadron cannot replace losses; planes are drawn from and returned to the air replacement pool.",
+    },
+    state: [
+      { label: "Designation", value: sq.designation },
+      { label: "Class", value: sq.class },
+      { label: "Planes", value: String(sq.planes) },
+      { label: "Supplied", value: sq.supplied ? "Yes" : "No — cannot refit (§35.14)" },
+    ],
+  });
+  const unitEntry = (u: UnitView): StackEntry => ({ label: unitLabel(u), detail: unitDetail(u) });
+  const sqEntry = (sq: SqLike): StackEntry => ({ label: squadronLabel(sq), detail: squadronDetail(sq) });
+  const stackInfo = (title: string, entries: StackEntry[]): InfoPanelData => ({ title, entries });
 
   return (
     <svg width={w + LEFT_MARGIN + RIGHT_MARGIN} height={h + LABEL_HEADROOM + BOTTOM_MARGIN} viewBox={`${minX - LEFT_MARGIN} ${minY - LABEL_HEADROOM} ${w + LEFT_MARGIN + RIGHT_MARGIN} ${h + LABEL_HEADROOM + BOTTOM_MARGIN}`} style={{ display: "block" }} role="img" aria-label="game board">
@@ -529,7 +617,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
 
         const side = sideOf(top);
         // Pipelines / airfields aren't side-owned — tint pipe water-blue, airfield slate; else by side.
-        const fill = top.kind === "pipe" ? "#4a6b78" : top.kind === "airfield" ? "#556070" : top.kind === "ship" && top.sh.wreck ? "#6b6b6b" : side === "Commonwealth" ? "var(--cw)" : "var(--axis)";
+        const fill = top.kind === "pipe" ? "#4a6b78" : top.kind === "airfield" ? "#556070" : top.kind === "well" ? "#5b6b3a" : top.kind === "ship" && top.sh.wreck ? "#6b6b6b" : side === "Commonwealth" ? "var(--cw)" : "var(--axis)";
         // Status modifiers (broken 🔧 / training 🎓 / dashed border) reflect only the TOP counter's own
         // state — a subordinate tile's status lives in the tooltip, not painted over the representative.
         const topBroken = (top.kind === "unit" && top.u.broken) || (top.kind === "convoy" && top.c.broken > 0);
@@ -554,11 +642,6 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
         const isWreck = top.kind === "ship" && top.sh.wreck;
         const dashed = isTrainingRp || isLooseDump || isHiddenRaider || isProvisionalMine || isUnsuppliedSqn || isWreck;
         const isRommel = top.kind === "rommel";
-        const clsShort = (c: string) => (c === "Infantry" ? "Inf" : c);
-        const moraleStr = (u: UnitView) =>
-          `${u.basic_morale >= 0 ? "+" : ""}${u.basic_morale}` +
-          (u.basic_morale < u.morale_reference ? `→${u.morale_reference >= 0 ? "+" : ""}${u.morale_reference}` : "") +
-          (u.in_training ? " 🎓" : "");
         // One tooltip line per occupant, kind-appropriate.
         const line = (t: Tile): string => {
           if (t.kind === "unit")
@@ -583,6 +666,8 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           if (t.kind === "mine") {
             return `• ${t.f.dummy ? "Dummy minefield" : "Minefield"} (§26) — ${t.f.side}${t.f.revealed ? "" : ", unspotted by the enemy"}`;
           }
+          if (t.kind === "well")
+            return `• Poisoned well (§52.16) — known by ${t.w.cw_knows && t.w.axis_knows ? "both sides" : t.w.cw_knows ? "Commonwealth only" : t.w.axis_knows ? "Axis only" : "neither"}`;
           if (t.kind === "pipe") return `• Water pipeline (§52.2) — unlimited water while connected to a source`;
           if (t.kind === "squadron")
             return `• ${t.sq.designation} squadron (§35) — ${t.sq.side} ${t.sq.class}, ${t.sq.planes} plane(s)${t.sq.supplied ? "" : " — UNSUPPLIED (§35.14)"}`;
@@ -603,7 +688,269 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
             ? `• ${t.sh.name} — scuttled wreck (§55.25), gun ${t.sh.gun}/${t.sh.max_gun}`
             : `• ${t.sh.name} — ${t.sh.side} warship at sea (§30), gun ${t.sh.gun}/${t.sh.max_gun}`;
         };
-        const tip = `${side} @ (${col},${row})${stack.length > 1 ? ` — ${stack.length} counters` : ""}\n` + sorted.map(line).join("\n");
+        // Short list label for a counter (left column of the master-detail panel).
+        const shortLabel = (t: Tile): string => {
+          if (t.kind === "unit") return t.u.abbr || t.u.name;
+          if (t.kind === "rommel") return "Rommel";
+          if (t.kind === "raider") return t.k.kind === "Lrdg" ? "LRDG" : "Sonderkommando";
+          if (t.kind === "convoy") return `Truck Convoy (${t.c.light + t.c.medium + t.c.heavy} TP)`;
+          if (t.kind === "rp") return `${clsShort(t.r.class)} RP ×${t.r.count}`;
+          if (t.kind === "dump") return t.d.unlimited ? "Supply base" : t.d.dummy ? "Dummy dump" : t.d.constructed ? "Supply dump" : "Loose supplies";
+          if (t.kind === "mine") return t.f.dummy ? "Dummy minefield" : "Minefield";
+          if (t.kind === "well") return "Poisoned well";
+          if (t.kind === "pipe") return "Water pipeline";
+          if (t.kind === "squadron") return `${t.sq.designation.replace(/^(Commonwealth|Axis|Italian|German)\s+/, "")} sqn`;
+          if (t.kind === "cap") return "Combat Air Patrol";
+          if (t.kind === "airfield") return t.af.kind;
+          if (t.kind === "prisoner") return t.pr.kind === "Pow" ? `POW ×${t.pr.points}` : `Escapees ×${t.pr.points}`;
+          if (t.kind === "captured") return t.ce.destroyed_tank ? `KO tanks ×${t.ce.count}` : `Captured ×${t.ce.count}`;
+          if (t.kind === "dummytank") return t.dt.designation;
+          if (t.kind === "broken") return `Broken vehicles ×${t.bv.points}`;
+          return t.sh.wreck ? `${t.sh.name} (wreck)` : t.sh.name;
+        };
+        // Structured detail for a counter's detail pane. Expanded per element type (rules blurb +
+        // dynamic state + lore); types not yet expanded fall back to the plain summary line.
+        const detailOf = (t: Tile): EntryDetail => {
+          if (t.kind === "dump") {
+            const d = t.d;
+            const rules = {
+              description:
+                "A supply dump is fuel, ammunition, general stores, and water unloaded into a hex (§24.9). Dumps cannot move and add no stacking cost; a unit in the hex — or tracing supply to it — draws what it needs. An enemy that takes the hex captures the dump intact unless it is destroyed first.",
+            };
+            let state: StackStateRow[];
+            if (d.unlimited) state = [{ label: "Type", value: "Supply base (§57)" }, { label: "Supply", value: "Unlimited" }];
+            else if (d.dummy) state = [{ label: "Type", value: "Dummy dump (§32.18)" }, { label: "Contents", value: "Decoy — no real supplies" }];
+            else
+              state = [
+                { label: "Type", value: d.constructed ? "Supply dump" : "Loose supplies" },
+                { label: "Fuel", value: String(d.fuel) },
+                { label: "Ammo", value: String(d.ammo) },
+                { label: "Stores", value: String(d.stores) },
+                { label: "Water", value: String(d.water) },
+              ];
+            return { rules, state };
+          }
+          if (t.kind === "unit") return unitDetail(t.u);
+          if (t.kind === "airfield") {
+            const facilityName = (k: string) =>
+              k === "AirLandingStrip" ? "Air landing strip"
+              : k === "FlyingBoatBasin" ? "Flying-boat basin"
+              : k === "FlyingBoatAlightingArea" ? "Flying-boat alighting area"
+              : "Airfield";
+            const seaplane = t.af.kind.includes("Boat");
+            const rules = {
+              description: seaplane
+                ? "A flying-boat basin/alighting area (§36) bases seaplanes only; land planes cannot use it (§36.3). Capacity limits stationed squadrons (§36.14); the facility can be bombed to reduced capacity or destroyed (0) and rebuilt by engineers."
+                : "An airfield or landing strip (§36) bases and services land squadrons. Capacity limits how many squadrons may be stationed (§36.14); it can be bombed down to reduced capacity or destroyed (0), then rebuilt by engineers. Stationed squadrons must be supplied to refit (§35.14).",
+            };
+            const state: StackStateRow[] = [
+              { label: "Facility", value: facilityName(t.af.kind) },
+              { label: "Capacity", value: `${t.af.capacity} sqn` },
+              { label: "In use", value: `${t.af.occupancy ?? "?"} / ${t.af.capacity}` },
+              { label: "Status", value: t.af.capacity === 0 ? "Destroyed" : "Operational" },
+            ];
+            return { rules, state };
+          }
+          if (t.kind === "squadron") return squadronDetail(t.sq);
+          if (t.kind === "cap") {
+            return {
+              rules: {
+                description:
+                  "A Combat Air Patrol (§40.2) is a fighter mission standing over a hex to intercept enemy air activity there, engaging raiders and bombers that enter the covered hex before they can strike.",
+              },
+              state: [
+                { label: "Type", value: t.cp.cap_type },
+                { label: "Side", value: t.cp.side },
+              ],
+            };
+          }
+          if (t.kind === "convoy") {
+            const c = t.c;
+            const cargo =
+              [c.fuel ? `F${c.fuel}` : "", c.ammo ? `A${c.ammo}` : "", c.stores ? `S${c.stores}` : "", c.water ? `W${c.water}` : ""]
+                .filter(Boolean)
+                .join(" ") || "empty";
+            return {
+              rules: {
+                description:
+                  "A truck convoy (§53) hauls supply and replacements along roads/tracks, spending Truck Points by weight class. Trucks consume fuel and can break down (§21.5); a convoy is captured or destroyed if the enemy catches it in the open.",
+              },
+              state: [
+                { label: "Trucks", value: `${c.light + c.medium + c.heavy} TP (L${c.light} M${c.medium} H${c.heavy})` },
+                { label: "Broken", value: c.broken > 0 ? `${c.broken} 🔧` : "none" },
+                { label: "Cargo", value: cargo },
+                { label: "Replacements", value: c.carries_replacements ? "hauling RP" : "none" },
+              ],
+            };
+          }
+          if (t.kind === "rp") {
+            const r = t.r;
+            return {
+              rules: {
+                description:
+                  "Replacement Points (§20) rebuild understrength units and formations. Commonwealth infantry may arrive green and must train up (§17.3) before use at full value; RP are carried forward by convoy to the units that need them.",
+              },
+              state: [
+                { label: "Class", value: clsShort(r.class) },
+                { label: "Count", value: `×${r.count}` },
+                { label: "Training", value: r.training_remaining > 0 ? `${r.training_remaining} stage(s) remaining 🎓` : "trained" },
+                { label: "Transport", value: r.carried_by != null ? "loaded on convoy" : "awaiting pickup" },
+              ],
+            };
+          }
+          if (t.kind === "raider") {
+            const k = t.k;
+            return {
+              rules: {
+                description:
+                  "A desert raider (§27) — LRDG or Sonderkommando — operates deep behind the lines against supply and airfields. It carries its own fuel and ammo, stays concealed until it acts (§27.32), and draws supply under special rules.",
+              },
+              state: [
+                { label: "Force", value: k.kind === "Lrdg" ? "LRDG" : "Sonderkommando" },
+                { label: "Fuel", value: String(k.fuel) },
+                { label: "Ammo", value: String(k.ammo) },
+                { label: "Concealment", value: k.revealed ? "revealed" : "concealed (§27.32)" },
+              ],
+            };
+          }
+          if (t.kind === "mine") {
+            const f = t.f;
+            return {
+              rules: {
+                description:
+                  "A minefield (§26) impedes movement and can damage units entering it. Its type stays hidden until an enemy tests it (§26.2); a dummy field has no real mines but is indistinguishable until probed.",
+              },
+              state: [
+                { label: "Owner", value: f.side },
+                { label: "Type", value: f.dummy ? "Dummy" : "Live" },
+                { label: "Spotted", value: f.revealed ? "yes — enemy has tested it" : "no" },
+              ],
+            };
+          }
+          if (t.kind === "pipe") {
+            return {
+              rules: {
+                description:
+                  "A water pipeline (§52.2) carries unlimited water forward from a source while the line stays connected, supplying units along its hexes and easing the desert water requirement (§51).",
+              },
+              state: [{ label: "Status", value: "Connected — unlimited water" }],
+            };
+          }
+          if (t.kind === "well") {
+            const w = t.w;
+            return {
+              rules: {
+                description:
+                  "A village or bir well can be poisoned by any unit for 1 CP (§52.16 — a die roll of 1 salts it). A poisoned well yields no water until sweetened (§52.17). Its state is secret to the enemy until an opposing unit draws there and it is publicly revealed (§52.14); oasis and major-city wells cannot be poisoned.",
+              },
+              state: [
+                { label: "State", value: "Poisoned ☠ (§52.16)" },
+                { label: "Commonwealth", value: w.cw_knows ? "knows" : "unaware" },
+                { label: "Axis", value: w.axis_knows ? "knows" : "unaware" },
+                { label: "Disclosure", value: w.cw_knows && w.axis_knows ? "publicly revealed (§52.14)" : "secret to the enemy" },
+              ],
+            };
+          }
+          if (t.kind === "ship") {
+            const sh = t.sh;
+            return {
+              rules: {
+                description:
+                  "A warship (§30) operates at sea, bombarding coastal hexes and escorting convoys with its Gun Rating. Battle damage reduces its effective gun; a scuttled ship becomes a wreck (§55.25).",
+              },
+              state: [
+                { label: "Name", value: sh.name },
+                { label: "Status", value: sh.wreck ? "Scuttled wreck (§55.25)" : "At sea" },
+                { label: "Gun", value: `${sh.gun} / ${sh.max_gun}` },
+              ],
+            };
+          }
+          if (t.kind === "prisoner") {
+            const pr = t.pr;
+            return pr.kind === "Pow"
+              ? {
+                  rules: {
+                    description:
+                      "Prisoners of war (§28) are enemy strength captured in combat, worth POW points toward victory. They must be guarded (§28.2); unguarded prisoners can escape and convert back into replacement points for their own side.",
+                  },
+                  state: [
+                    { label: "Held by", value: pr.captor },
+                    { label: "Points", value: `${pr.points} ${pr.side} POW pt` },
+                    { label: "Guards", value: pr.guards > 0 ? `${pr.guards} pt` : "unguarded — may escape" },
+                  ],
+                }
+              : {
+                  rules: {
+                    description:
+                      "Escaped prisoners (§28.24) are POWs that broke free and are making their way home, where they convert back into replacement points for their original side.",
+                  },
+                  state: [
+                    { label: "Side", value: pr.side },
+                    { label: "Points", value: `${pr.points} pt` },
+                  ],
+                };
+          }
+          if (t.kind === "captured") {
+            const ce = t.ce;
+            return {
+              rules: {
+                description:
+                  "Captured equipment (§28.3) — enemy kit taken intact — can be repaired and turned against its former owner; knocked-out tanks (§14.46) can likewise be recovered and repaired by either side. It is unusable until repaired.",
+              },
+              state: [
+                { label: "Kind", value: ce.destroyed_tank ? "Knocked-out tanks (§14.46)" : "Captured equipment (§28.3)" },
+                { label: "Item", value: `${ce.count}× ${ce.nationality} ${ce.system}` },
+                { label: "Held by", value: ce.captor },
+                { label: "Condition", value: ce.repaired ? "repaired (usable)" : "needs repair" },
+              ],
+            };
+          }
+          if (t.kind === "dummytank") {
+            return {
+              rules: {
+                description:
+                  "A dummy (decoy) tank marker (§32) mimics real armour to mislead the enemy, who cannot tell it from a genuine unit until it is engaged or revealed. It has no combat value.",
+              },
+              state: [
+                { label: "Designation", value: t.dt.designation },
+                { label: "Side", value: t.dt.side },
+                { label: "Nature", value: "Decoy — no combat value" },
+              ],
+            };
+          }
+          if (t.kind === "broken") {
+            const bv = t.bv;
+            return {
+              rules: {
+                description:
+                  "Broken-down vehicles (§21.5) are trucks and weapons immobilized by mechanical failure, left behind until towed or repaired (§22). They can be captured by the enemy if overrun (§21.52).",
+              },
+              state: [
+                { label: "Owner", value: `${bv.side} (${bv.nationality})` },
+                { label: "Points", value: String(bv.points) },
+                { label: "Detail", value: bv.detail },
+                { label: "Status", value: "Awaiting tow/repair" },
+              ],
+            };
+          }
+          if (t.kind === "rommel") {
+            return {
+              rules: {
+                description:
+                  "Rommel (§31) is a command counter that lends his Command Point Allowance bonus to a unit he joins, boosting its movement and combat. He can shift between units to weight the Axis effort.",
+              },
+              state: [{ label: "Lending CPA to", value: t.m.attached_to != null ? `unit #${t.m.attached_to}` : "none" }],
+            };
+          }
+          return { summary: line(t).replace(/^•\s*/, "") };
+        };
+        // Info-panel content for the stack: header line becomes the title; each counter is a
+        // selectable entry with a short label and its structured detail.
+        const headerSide = side || (top.kind === "pipe" ? "Pipeline" : top.kind === "airfield" ? "Airfield" : "Stack");
+        const tileInfo: InfoPanelData = {
+          title: `${headerSide} @ (${col},${row})${stack.length > 1 ? ` — ${stack.length} counters` : ""}`,
+          entries: sorted.map((t) => ({ label: shortLabel(t), detail: detailOf(t) })),
+        };
         // The representative counter's two text rows: a title line and a value/glyph line.
         const body = (() => {
           if (top.kind === "unit") {
@@ -663,6 +1010,19 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
               <>
                 <text textAnchor="middle" y={-1} fontSize={8.5} fill="#fff" fontWeight={700}>Mines</text>
                 <text textAnchor="middle" y={8} fontSize={8} fill="#eef">{top.f.dummy ? "decoy" : "active"}</text>
+              </>
+            );
+          }
+          if (top.kind === "well") {
+            return (
+              <>
+                <text textAnchor="middle" y={-1} fontSize={8.5} fill="#fff" fontWeight={700}>Well</text>
+                <text x={-9.5} textAnchor="middle" y={8} fontSize={7} fill="#eef">poison</text>
+                {/* a water droplet with a skull cross-out at the glyph slot */}
+                <g transform="translate(9.5 5)">
+                  <path d="M0,-5 C3,-1 4,1 0,4 C-4,1 -3,-1 0,-5 Z" fill="#cfe6ef" stroke="#0d0f14" strokeWidth={0.5} />
+                  <text textAnchor="middle" y={2.5} fontSize={6} fill="#3a2a2a" fontWeight={700}>☠</text>
+                </g>
               </>
             );
           }
@@ -804,7 +1164,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           );
         })();
         return (
-          <g key={key} transform={`translate(${ctr.x} ${ctr.y})`}>
+          <g key={key} transform={`translate(${ctr.x} ${ctr.y})`} {...infoHover(tileInfo)}>
             {/* a hint of the stack underneath the top counter */}
             {extra > 0 && (
               <rect x={-17} y={-13} width={38} height={22} rx={3} fill={fill} opacity={0.5} stroke="#0d0f14" strokeWidth={1} />
@@ -830,7 +1190,6 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
                 <text textAnchor="middle" y={3} fontSize={9} fill="#eef" fontWeight={700}>+{extra}</text>
               </g>
             )}
-            <title>{tip}</title>
           </g>
         );
       })}
@@ -1084,7 +1443,16 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
                     const [laneTop, centered] = u.leg_total >= n.leg_slow ? [slowY, false] : u.leg_total >= n.leg_mid ? [medY, true] : [fastY, true];
                     const idx = Math.min(Math.max(0, u.transit - 1), Math.max(0, slowCells - 1));
                     const cx = centered ? trackX[k] + tw / 2 : cellCX(idx);
-                    return <g key={`${n.name}-t${ui}`} transform={`translate(${cx} ${(laneTop as number) + laneH / 2})`}><UnitCounter u={unitOf(u)} /></g>;
+                    const uv = unitOf(u);
+                    return (
+                      <g
+                        key={`${n.name}-t${ui}`}
+                        transform={`translate(${cx} ${(laneTop as number) + laneH / 2})`}
+                        {...infoHover(stackInfo(`${n.name} — in transit (§8.89)`, [unitEntry(uv)]))}
+                      >
+                        <UnitCounter u={uv} noTitle />
+                      </g>
+                    );
                   })}
                   {/* location box — lighter inner shade (as with the Malta airfield cells) */}
                   <rect x={boxX[k]} y={topY} width={boxW} height={boxH} rx={4} fill="#efe2b3" stroke="#c3aa63" strokeWidth={1} />
@@ -1104,7 +1472,14 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
                   {(() => {
                     const rest = n.units.filter((u) => u.transit === 0);
                     if (rest.length === 0) return <text x={boxX[k] + boxW / 2} y={topY + boxH / 2 + 16} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={7.5} fontStyle="italic" fill="#9a8a4a">— empty —</text>;
-                    return <g transform={`translate(${boxX[k] + boxW / 2} ${topY + boxH / 2 + 16})`}><UnitCounter u={unitOf(rest[0])} extra={rest.length - 1} /></g>;
+                    return (
+                      <g
+                        transform={`translate(${boxX[k] + boxW / 2} ${topY + boxH / 2 + 16})`}
+                        {...infoHover(stackInfo(`${n.name} — off-map box`, rest.map((r) => unitEntry(unitOf(r)))))}
+                      >
+                        <UnitCounter u={unitOf(rest[0])} extra={rest.length - 1} noTitle />
+                      </g>
+                    );
                   })()}
                 </g>
               );
@@ -1211,8 +1586,11 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
                   <text x={cx + cellW / 2} y={cy + 40} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8.5} fill="#4a3f22" {...infoHover(MALTA_AA_INFO)}>{flakLabel(f.flakLight, f.flakHeavy)}</text>
                   {/* stationed planes as a squadron counter stack (rep + badge, on-map logic) */}
                   {rep ? (
-                    <g transform={`translate(${cx + cellW / 2} ${cy + 58})`}>
-                      <SquadronCounter designation={rep.aircraft_type} planes={rep.planes} cls={rep.class} side="Commonwealth" extra={extra} />
+                    <g
+                      transform={`translate(${cx + cellW / 2} ${cy + 58})`}
+                      {...infoHover(stackInfo(`${f.name} — Malta`, f.groups.map((gr) => sqEntry({ designation: gr.aircraft_type, class: gr.class, planes: gr.planes, supplied: true }))))}
+                    >
+                      <SquadronCounter designation={rep.aircraft_type} planes={rep.planes} cls={rep.class} side="Commonwealth" extra={extra} noTitle />
                     </g>
                   ) : (
                     <text x={cx + cellW / 2} y={cy + 60} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8} fontStyle="italic" fill="#9a8a4a">— empty —</text>
@@ -1296,9 +1674,11 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
                   {/* stationed squadrons — representative counter + badge (on-map logic); the tooltip
                       lists the whole stack, not just the top counter */}
                   {rep ? (
-                    <g transform={`translate(${bx + bw / 2} ${by + 50})`}>
-                      <SquadronCounter designation={rep.designation} planes={rep.planes} cls={rep.class} side="Commonwealth" supplied={rep.supplied} extra={f.squadrons.length - 1}
-                        title={`${f.name} — ${f.squadrons.length} squadron(s)\n` + f.squadrons.map((s) => `• ${s.designation} (§35) — ${s.side} ${s.class}, ${s.planes} plane(s)${s.supplied ? "" : " — UNSUPPLIED (§35.14)"}`).join("\n")} />
+                    <g
+                      transform={`translate(${bx + bw / 2} ${by + 50})`}
+                      {...infoHover(stackInfo(f.name, f.squadrons.map((s) => sqEntry({ designation: s.designation, class: s.class, planes: s.planes, supplied: s.supplied }))))}
+                    >
+                      <SquadronCounter designation={rep.designation} planes={rep.planes} cls={rep.class} side="Commonwealth" supplied={rep.supplied} extra={f.squadrons.length - 1} noTitle />
                     </g>
                   ) : (
                     <text x={bx + bw / 2} y={by + 52} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8} fontStyle="italic" fill="#9a8a4a">— empty —</text>

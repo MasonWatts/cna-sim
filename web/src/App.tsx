@@ -276,7 +276,7 @@ export function App() {
   const overlayFrames = useMemo<MapOverlaysView[]>(() => {
     if (!record) return [];
     const out: MapOverlaysView[] = [];
-    let cur: MapOverlaysView = { minefields: [], fortifications: [], pipelines: [] };
+    let cur: MapOverlaysView = { minefields: [], fortifications: [], pipelines: [], poisoned_wells: [] };
     for (const e of record.events) {
       if (e.overlays) cur = e.overlays;
       out.push(cur);
@@ -525,8 +525,8 @@ export function App() {
           lore dataset — see src/lore.ts / public/lore/places.json. */}
       {info && (
         <div
-          className="lore-panel"
-          style={{ left: Math.min(info.x, window.innerWidth - 340), top: Math.min(info.y + 8, window.innerHeight - 180) }}
+          className={`lore-panel${info.data.entries ? " wide" : ""}`}
+          style={{ left: Math.min(info.x, window.innerWidth - (info.data.entries ? 480 : 340)), top: Math.min(info.y, window.innerHeight - 180) }}
           onMouseEnter={cancelHide}
           onMouseLeave={hideInfo}
         >

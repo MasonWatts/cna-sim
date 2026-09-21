@@ -39,4 +39,55 @@ broken: boolean,
  * — new battalions can be assigned to it), so the viewer keeps and marks it; a 0-TOE *non-HQ*
  * unit is combat-eliminated and gone for good (§19.62), so the recorder omits it entirely.
  */
-is_hq: boolean, };
+is_hq: boolean, 
+/**
+ * §15 Actual offensive close-assault Strength Points (0 for HQ / pure support).
+ */
+attack: number, 
+/**
+ * §15 Actual defensive close-assault Strength Points.
+ */
+defense: number, 
+/**
+ * §14 Actual Anti-Armor Strength Points (anti-tank fire).
+ */
+anti_armor: number, 
+/**
+ * §13 Actual Barrage Strength Points (artillery); 0 for non-gun units.
+ */
+barrage: number, 
+/**
+ * §6 governing Capability Point Allowance this stage (motorized / Rommel adjusted). `null` when
+ * the unit has no CPA (e.g. off-map / not independently on the map).
+ */
+cpa: number | null, 
+/**
+ * Capability Points already expended this Operations Stage, in CP (CPA − this = remaining).
+ */
+cp_expended: number, 
+/**
+ * §6.17 whether the unit moves at the motorized rate (vs leg/foot).
+ */
+motorized: boolean, 
+/**
+ * §23 whether the unit's current supply (fuel/ammo/stores/water) is adequate this stage.
+ */
+supplied: boolean, 
+/**
+ * §19.1 administrative parent — the higher formation this unit is assigned to (its HQ's name).
+ * `null` for a top-level formation HQ (which *is* the formation) or an unassigned unit.
+ */
+formation: string | null, 
+/**
+ * Whether the administrative parent is currently co-located (same effective hex) with this unit,
+ * vs. detached elsewhere. `null` when there is no assigned parent, or the parent has no hex.
+ */
+formation_colocated: boolean | null, 
+/**
+ * §19.1 the counter this unit is physically attached to and rides with, if any.
+ */
+attached_to: string | null, 
+/**
+ * §19.1 names of units physically attached to (riding on) this counter.
+ */
+attached_units: Array<string>, };

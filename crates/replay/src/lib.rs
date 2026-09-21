@@ -198,6 +198,33 @@ pub struct UnitView {
     /// — new battalions can be assigned to it), so the viewer keeps and marks it; a 0-TOE *non-HQ*
     /// unit is combat-eliminated and gone for good (§19.62), so the recorder omits it entirely.
     pub is_hq: bool,
+    /// §15 Actual offensive close-assault Strength Points (0 for HQ / pure support).
+    pub attack: i32,
+    /// §15 Actual defensive close-assault Strength Points.
+    pub defense: i32,
+    /// §14 Actual Anti-Armor Strength Points (anti-tank fire).
+    pub anti_armor: i32,
+    /// §13 Actual Barrage Strength Points (artillery); 0 for non-gun units.
+    pub barrage: i32,
+    /// §6 governing Capability Point Allowance this stage (motorized / Rommel adjusted). `null` when
+    /// the unit has no CPA (e.g. off-map / not independently on the map).
+    pub cpa: Option<i32>,
+    /// Capability Points already expended this Operations Stage, in CP (CPA − this = remaining).
+    pub cp_expended: f32,
+    /// §6.17 whether the unit moves at the motorized rate (vs leg/foot).
+    pub motorized: bool,
+    /// §23 whether the unit's current supply (fuel/ammo/stores/water) is adequate this stage.
+    pub supplied: bool,
+    /// §19.1 administrative parent — the higher formation this unit is assigned to (its HQ's name).
+    /// `null` for a top-level formation HQ (which *is* the formation) or an unassigned unit.
+    pub formation: Option<String>,
+    /// Whether the administrative parent is currently co-located (same effective hex) with this unit,
+    /// vs. detached elsewhere. `null` when there is no assigned parent, or the parent has no hex.
+    pub formation_colocated: Option<bool>,
+    /// §19.1 the counter this unit is physically attached to and rides with, if any.
+    pub attached_to: Option<String>,
+    /// §19.1 names of units physically attached to (riding on) this counter.
+    pub attached_units: Vec<String>,
 }
 
 /// A Replacement-Point pool (§20.2), for visualizing the replacement lifecycle. **Staged** pools
@@ -375,8 +402,22 @@ pub struct FortView {
     pub damage: u8,
 }
 
-/// Static-ish map overlays that change during play: minefields (§26), fortifications (§24.4), and
-/// water-pipeline hexes (§52.2). Bundled into one delta layer so the log carries them together.
+/// A poisoned village/bir well (§52.16), for the viewer. The spectator sees the true state; the
+/// `*_knows` flags reflect §52.14 secrecy — which side(s) currently know the well is poisoned (the
+/// side that salted it, plus everyone once it's been publicly revealed).
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct PoisonedWellView {
+    pub hex: [i16; 2],
+    /// Whether the Commonwealth knows this well is poisoned (§52.14).
+    pub cw_knows: bool,
+    /// Whether the Axis knows this well is poisoned (§52.14).
+    pub axis_knows: bool,
+}
+
+/// Static-ish map overlays that change during play: minefields (§26), fortifications (§24.4),
+/// water-pipeline hexes (§52.2), and poisoned wells (§52.16). Bundled into one delta layer so the
+/// log carries them together.
 #[derive(Serialize, TS, Clone, PartialEq, Default)]
 #[ts(export)]
 pub struct MapOverlaysView {
@@ -384,6 +425,7 @@ pub struct MapOverlaysView {
     pub fortifications: Vec<FortView>,
     /// `[col, row]` of each hex holding a water pipeline (§52.2).
     pub pipelines: Vec<[i16; 2]>,
+    pub poisoned_wells: Vec<PoisonedWellView>,
 }
 
 fn map_overlay_views(g: &GameState) -> MapOverlaysView {
@@ -406,7 +448,17 @@ fn map_overlay_views(g: &GameState) -> MapOverlaysView {
     fortifications.sort_by_key(|f| (f.hex[0], f.hex[1]));
     let mut pipelines: Vec<[i16; 2]> = g.pipelines.iter().map(|h| [h.col, h.row]).collect();
     pipelines.sort();
-    MapOverlaysView { minefields, fortifications, pipelines }
+    let mut poisoned_wells: Vec<PoisonedWellView> = g
+        .poisoned_wells
+        .iter()
+        .map(|&h| PoisonedWellView {
+            hex: [h.col, h.row],
+            cw_knows: g.observe_well_poisoned(Side::Commonwealth, h) == Some(true),
+            axis_knows: g.observe_well_poisoned(Side::Axis, h) == Some(true),
+        })
+        .collect();
+    poisoned_wells.sort_by_key(|w| (w.hex[0], w.hex[1]));
+    MapOverlaysView { minefields, fortifications, pipelines, poisoned_wells }
 }
 
 /// An on-map air facility (§36) — an airfield / landing strip / flying-boat basin, with its current
@@ -419,6 +471,8 @@ pub struct AirFacilityView {
     pub kind: String,
     /// §36.14 current capacity in squadrons (0 = destroyed).
     pub capacity: u32,
+    /// Squadrons currently stationed here (SGSUs whose location is this hex).
+    pub occupancy: u32,
 }
 
 /// An on-map squadron / SGSU (§35) — its aircraft class, designation, total plane count, and whether
@@ -534,7 +588,12 @@ fn air_views(g: &GameState) -> AirView {
         .air_facilities
         .iter()
         .filter(|f| !f.off_map)
-        .map(|f| AirFacilityView { hex: [f.hex.col, f.hex.row], kind: format!("{:?}", f.kind), capacity: f.capacity_level })
+        .map(|f| AirFacilityView {
+            hex: [f.hex.col, f.hex.row],
+            kind: format!("{:?}", f.kind),
+            capacity: f.capacity_level,
+            occupancy: g.sgsus.values().filter(|s| s.location == Some(f.hex)).count() as u32,
+        })
         .collect();
     facilities.sort_by_key(|f| (f.hex[0], f.hex[1]));
     let mut squadrons: Vec<SquadronView> = g
@@ -917,6 +976,7 @@ fn hexside_views(g: &GameState) -> Vec<HexsideView> {
 /// Build the viewer `UnitView` for a single unit — shared by the on-map unit layer and the off-map
 /// complex so both render identical counters (TOE, glyph, status).
 fn unit_view(g: &GameState, u: &cna_engine::state::unit::Unit) -> UnitView {
+    use cna_engine::state::unit::RatingKind;
     UnitView {
         id: u.id.0,
         name: u.name.clone(),
@@ -945,6 +1005,25 @@ fn unit_view(g: &GameState, u: &cna_engine::state::unit::Unit) -> UnitView {
             || u.toe_broken > 0
             || u.trucks_broken.light + u.trucks_broken.medium + u.trucks_broken.heavy > 0,
         is_hq: u.is_hq,
+        attack: u.actual_strength(&g.reference, RatingKind::CloseAssaultOff),
+        defense: u.actual_strength(&g.reference, RatingKind::CloseAssaultDef),
+        anti_armor: u.actual_strength(&g.reference, RatingKind::AntiArmor),
+        barrage: u.actual_strength(&g.reference, RatingKind::Barrage),
+        cpa: g.effective_cpa(u.id),
+        cp_expended: u.cp_expended.0 as f32 / 10.0,
+        motorized: g.unit_is_motorized(u.id),
+        supplied: g.unit_supply_adequate(u.id),
+        formation: u.assigned_parent.and_then(|p| g.units.get(&p)).map(|p| p.name.clone()),
+        formation_colocated: u.assigned_parent.and_then(|p| {
+            let ph = g.effective_hex(p)?;
+            Some(g.effective_hex(u.id) == Some(ph))
+        }),
+        attached_to: u.attached_parent.and_then(|p| g.units.get(&p)).map(|p| p.name.clone()),
+        attached_units: {
+            let mut v: Vec<String> = g.units.values().filter(|o| o.attached_parent == Some(u.id)).map(|o| o.name.clone()).collect();
+            v.sort();
+            v
+        },
     }
 }
 
@@ -1839,6 +1918,7 @@ mod tests {
         let av = air_views(&g);
         assert_eq!(av.facilities.len(), 1, "off-map facility omitted");
         assert_eq!((av.facilities[0].hex, av.facilities[0].kind.as_str(), av.facilities[0].capacity), ([4, 5], "Airfield", 6));
+        assert_eq!(av.facilities[0].occupancy, 0, "no squadrons stationed → occupancy 0");
     }
 
     #[test]

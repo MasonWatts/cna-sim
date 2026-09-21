@@ -22,9 +22,31 @@ export type LoreMap = Record<string, LoreEntry>;
 /** One section of the hybrid info panel — a paragraph plus optional "read more" links. */
 export type InfoSection = { description: string; links?: LoreLink[] };
 
+/** One row of an element's dynamic-state readout (e.g. a depot's fuel/ammo levels). */
+export type StackStateRow = { label: string; value: string };
+
+/** Structured detail for one stacked-tile occupant, shown in the panel's detail pane. Up to three
+ * sections, rendered top-to-bottom when present: general **rules** for the element type (gavel
+ * icon), the element's dynamic **state** (person icon), and historical **lore** (book icon). A
+ * plain `summary` is the fallback for element types not yet given structured detail. */
+export type EntryDetail = {
+  summary?: string;
+  /** Optional counter glyph (a small inline SVG chip) shown at the top of the detail pane. */
+  glyph?: import("react").ReactNode;
+  rules?: InfoSection;
+  state?: StackStateRow[];
+  lore?: InfoSection;
+};
+
+/** One selectable occupant in a stacked-tile info panel: a short list label and its detail. */
+export type StackEntry = { label: string; detail: EntryDetail };
+
 /** Data for the reusable hybrid info panel: a title, an optional historical **lore** section (book
- * icon) and an optional **rules** section (gavel icon). Either or both may be present. */
-export type InfoPanelData = { title: string; lore?: InfoSection; rules?: InfoSection };
+ * icon) and an optional **rules** section (gavel icon). Either or both may be present. An optional
+ * pre-formatted `body` (newline-separated) renders verbatim above the sections. Optional `entries`
+ * switch the panel into a master-detail layout — a scrollable list of counters on the left, the
+ * selected counter's detail on the right — used for stacked map-tile tooltips. */
+export type InfoPanelData = { title: string; body?: string; entries?: StackEntry[]; lore?: InfoSection; rules?: InfoSection };
 
 /**
  * Fetch a lore dataset from `web/public/lore/<kind>.json` (e.g. `"places"`). Keys beginning with

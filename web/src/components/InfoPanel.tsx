@@ -1,4 +1,5 @@
-import type { InfoPanelData, InfoSection } from "../lore";
+import { useEffect, useState } from "react";
+import type { EntryDetail, InfoPanelData, InfoSection, StackEntry, StackStateRow } from "../lore";
 
 // Reusable hybrid info panel: a title, then an optional historical **lore** section (Material
 // "book_5" icon, inline with the text) and an optional **rules** section (Material "gavel" icon),
@@ -25,10 +26,81 @@ function Section({ icon, section }: { icon: string; section: InfoSection }) {
   );
 }
 
-export function InfoPanel({ title, lore, rules }: InfoPanelData) {
+// The element's dynamic state (current supply levels, strength, etc.) as a small labelled table,
+// marked with a Material "person" icon to distinguish it from the rules (gavel) and lore (book).
+function StateSection({ rows, glyph }: { rows: StackStateRow[]; glyph?: import("react").ReactNode }) {
+  return (
+    <div className="info-section">
+      <div className="info-body">
+        <span className="material-symbols-outlined info-icon" aria-hidden="true">person</span>
+        <div className="state-rows">
+          {rows.map((r) => (
+            <div className="state-row" key={r.label}>
+              <span className="state-label">{r.label}</span>
+              <span className="state-value">{r.value}</span>
+            </div>
+          ))}
+        </div>
+        {glyph && <div className="state-glyph">{glyph}</div>}
+      </div>
+    </div>
+  );
+}
+
+// The right-hand detail pane for the selected counter: up to a rules blurb, a dynamic-state
+// readout, and lore — falling back to the plain summary line for not-yet-expanded types.
+function DetailView({ detail: d }: { detail: EntryDetail }) {
+  const sections = [
+    d.rules && <Section key="rules" icon="gavel" section={d.rules} />,
+    d.state && d.state.length > 0 && <StateSection key="state" rows={d.state} glyph={d.glyph} />,
+    d.lore && <Section key="lore" icon="book_5" section={d.lore} />,
+    d.summary && !d.rules && !d.state && !d.lore && <div key="summary" className="sl-summary">{d.summary}</div>,
+  ].filter(Boolean);
+  return (
+    <div className="sl-detail">
+      {sections.map((s, i) => (
+        <div key={i}>
+          {i > 0 && <hr className="info-divider" />}
+          {s}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Master-detail view for a stacked hex: a scrollable list of counters (left) and the selected
+// counter's detail (right). Selection resets to the first entry whenever the stack changes.
+function StackList({ entries }: { entries: StackEntry[] }) {
+  const [sel, setSel] = useState(0);
+  useEffect(() => setSel(0), [entries]);
+  const active = entries[Math.min(sel, entries.length - 1)];
+  return (
+    <div className="info-stacklist">
+      <div className="sl-list">
+        {entries.map((e, i) => (
+          <button
+            key={i}
+            className={`sl-item${i === sel ? " active" : ""}`}
+            title={e.label}
+            onClick={() => setSel(i)}
+            onMouseEnter={() => setSel(i)}
+          >
+            {e.label}
+          </button>
+        ))}
+      </div>
+      <div className="sl-divider" />
+      {active && <DetailView detail={active.detail} />}
+    </div>
+  );
+}
+
+export function InfoPanel({ title, body, entries, lore, rules }: InfoPanelData) {
   return (
     <>
       <div className="lore-title">{title}</div>
+      {entries && entries.length > 0 && <StackList entries={entries} />}
+      {body && <div className="info-stack">{body}</div>}
       {lore && <Section icon="book_5" section={lore} />}
       {lore && rules && <hr className="info-divider" />}
       {rules && <Section icon="gavel" section={rules} />}
