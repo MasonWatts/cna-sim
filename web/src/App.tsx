@@ -107,8 +107,10 @@ export function App() {
     dragLast.current = null;
   };
 
-  // Load the recorded game. Prefer the streamed JSONL log (game.jsonl: a header line then one event
-  // per line); fall back to the single-document game.json.
+  // Load the recorded game. Prefer the gzipped JSONL log (game.jsonl.gz — the JSONL is ~97%
+  // redundant, so gzip takes ~34 MB → ~1 MB, keeping the asset under Cloudflare's 25 MB/file limit
+  // and cutting transfer). Decompress in the browser with the native DecompressionStream, then parse
+  // one header line + one event per line. Fall back to a raw game.jsonl, then a single game.json.
   useEffect(() => {
     const parseJsonl = (text: string): GameRecord => {
       const lines = text.split("\n").filter((l) => l.trim().length > 0);
@@ -116,8 +118,22 @@ export function App() {
       const events = lines.slice(1).map((l) => JSON.parse(l));
       return { ...header, events } as GameRecord;
     };
-    fetch("/game.jsonl")
-      .then((r) => (r.ok ? r.text().then(parseJsonl) : Promise.reject(new Error("no jsonl"))))
+    // Fetch a gzipped text asset. Some static servers (e.g. Vite dev) serve `.gz` with
+    // `Content-Encoding: gzip`, so the browser has already inflated the body; others serve the raw
+    // gzip bytes. Sniff the gzip magic (1f 8b) after fetch and inflate via DecompressionStream only
+    // when the bytes are still compressed — robust either way.
+    const fetchGzipText = async (url: string): Promise<string> => {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const buf = new Uint8Array(await r.arrayBuffer());
+      const isGzip = buf.length > 2 && buf[0] === 0x1f && buf[1] === 0x8b;
+      if (!isGzip) return new TextDecoder().decode(buf);
+      const stream = new Response(buf).body!.pipeThrough(new DecompressionStream("gzip"));
+      return new Response(stream).text();
+    };
+    fetchGzipText("/game.jsonl.gz")
+      .then(parseJsonl)
+      .catch(() => fetch("/game.jsonl").then((r) => (r.ok ? r.text().then(parseJsonl) : Promise.reject(new Error("no jsonl")))))
       .catch(() =>
         fetch("/game.json").then((r) =>
           r.ok ? (r.json() as Promise<GameRecord>) : Promise.reject(new Error(`HTTP ${r.status}`)),
