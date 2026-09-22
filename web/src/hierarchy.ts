@@ -37,7 +37,7 @@ export function monthLabel(gt: number): string {
 }
 export function weekLabel(gt: number): string {
   const d = dateOf(gt);
-  return `${MON[d.month - 1]} wk${d.week} · GT${gt}`;
+  return `Week ${d.week} of ${MON[d.month - 1]} ${d.year} (Turn ${gt})`;
 }
 
 /** The grouping key for one event at a given level (empty for "step" — every step is its own node). */
@@ -60,9 +60,9 @@ export function nodeLabel(ev: Event, level: Level): string {
     case "week":
       return weekLabel(ev.game_turn);
     case "stage":
-      return `GT${ev.game_turn} · Stage ${ev.operations_stage}`;
+      return `Stage ${ev.operations_stage}`;
     case "phase":
-      return `GT${ev.game_turn} · S${ev.operations_stage} · ${ev.phase}`;
+      return `${ev.phase}`;
     case "step":
       return `step ${ev.step}`;
   }

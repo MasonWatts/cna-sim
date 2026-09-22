@@ -34,7 +34,6 @@ export function Scrubber({
   onRestart: () => void;
   onTogglePlay: () => void;
 }) {
-  const levelIdx = LEVELS.indexOf(level);
   // The slider and counter track the selected granularity: over steps at Step level, over nodes
   // (weeks / op-stages / phases) otherwise.
   const isStep = level === "step";
@@ -44,13 +43,11 @@ export function Scrubber({
   return (
     <div className="scrubber">
       <span className="level-select" title="Playback granularity — how far Prev/Next/Play jump">
-        <button onClick={() => onLevel(LEVELS[Math.max(0, levelIdx - 1)])} title="Zoom out (coarser)">⤢−</button>
         {LEVELS.map((l) => (
           <button key={l} className={l === level ? "active" : ""} onClick={() => onLevel(l)}>
             {LEVEL_LABEL[l]}
           </button>
         ))}
-        <button onClick={() => onLevel(LEVELS[Math.min(LEVELS.length - 1, levelIdx + 1)])} title="Zoom in (finer)">⤢+</button>
       </span>
 
       <span className="transport">

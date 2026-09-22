@@ -50,7 +50,7 @@ export function App() {
   zoomRef.current = zoom;
   panRef.current = pan;
 
-  const clampZ = (z: number) => Math.max(0.02, Math.min(6, z));
+  const clampZ = (z: number) => Math.max(0.15, Math.min(6, z));
 
   // Set zoom to `nz` keeping the content point under pane-local pixel (cx,cy) fixed (zoom-to-cursor).
   const zoomAbout = (nz: number, cx: number, cy: number) => {
@@ -423,7 +423,7 @@ export function App() {
   return (
     <div className="app">
       <div className="header">
-        <h1>CNA-Sim — {record.scenario}</h1>
+        <h1>Campaign for North Africa Simulation</h1>
         <span className="meta">
           <span className="chip cw">CW: {record.commonwealth_agent}</span>{" "}
           <span className="chip axis">Axis: {record.axis_agent}</span>
@@ -443,14 +443,14 @@ export function App() {
           })}
           {" › "}
           <button className={`crumb ${level === "step" ? "active" : ""}`} onClick={() => setLevel("step")}>
-            step {event.step}
+            Step {event.step}
           </button>
         </span>
         <span className="meta zoom">
           <button onClick={() => zoomAtCenter(zoom / 1.25)} title="Zoom out">−</button>
           <input
             type="range"
-            min={0.05}
+            min={0.15}
             max={4}
             step={0.01}
             value={zoom}
