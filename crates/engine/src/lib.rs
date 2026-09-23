@@ -1558,6 +1558,95 @@ mod tests {
     }
 
     #[test]
+    fn transfer_planes_between_squadrons_35_22() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::Commonwealth, include_str!("../../../data/reference/aircraft/commonwealth.ron")).unwrap();
+        let mut g = GameState::new(refs, 1); // 1940 → CW ready capacity 15
+        g.phase = Phase::Organization;
+        let base = HexCoord::new(5, 5);
+        let mk = |g: &mut GameState, id: u32, planes: u32, hex: HexCoord| {
+            let mut s = Sgsu::new(SquadronId(id), Nationality::Commonwealth, SquadronClass::Fighter, "sqn", 0, Some(hex));
+            s.add_planes("Blenheim Mk.IVF", AircraftClass::Fighter, planes, 1);
+            g.sgsus.insert(SquadronId(id), s);
+        };
+        mk(&mut g, 1, 12, base); // donor
+        mk(&mut g, 2, 4, base); // recipient, below 50% of 15 (7.5)
+
+        // §35.22b + §35.21 + §35.23: 3 planes move to the under-strength co-located squadron, instantly.
+        match g.apply(Command::TransferPlanes { from: SquadronId(1), to: SquadronId(2), aircraft_type: "Blenheim Mk.IVF".into(), count: 3 }) {
+            Ok(CommandOutcome::PlanesTransferred { count: 3, in_transit: false }) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert_eq!(g.sgsus[&SquadronId(1)].plane_count(), 9);
+        assert_eq!(g.sgsus[&SquadronId(2)].plane_count(), 7);
+
+        // §35.22b: a squadron at/above 50% ready capacity may not receive a transfer.
+        g.sgsus.get_mut(&SquadronId(2)).unwrap().add_planes("Blenheim Mk.IVF", AircraftClass::Fighter, 1, 1); // now 8 ≥ 7.5
+        assert_eq!(
+            g.apply(Command::TransferPlanes { from: SquadronId(1), to: SquadronId(2), aircraft_type: "Blenheim Mk.IVF".into(), count: 1 }),
+            Err(CommandError::PlaneTransferNotAllowed)
+        );
+
+        // §35.22/§43.14: a transfer to a squadron based elsewhere flies a transfer mission (grounded).
+        mk(&mut g, 3, 2, HexCoord::new(9, 9)); // recipient at a different base, below 50%
+        match g.apply(Command::TransferPlanes { from: SquadronId(1), to: SquadronId(3), aircraft_type: "Blenheim Mk.IVF".into(), count: 2 }) {
+            Ok(CommandOutcome::PlanesTransferred { count: 2, in_transit: true }) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+        assert!(g.sgsus[&SquadronId(3)].in_transit(), "§35.22 transfer mission grounds the squadron");
+    }
+
+    #[test]
+    fn decline_defense_15_29() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut g = GameState::new(close_assault_refs(), 1);
+        let enemy_hex = HexCoord::new(10, 10);
+        let stack_hex = HexCoord::new(11, 10);
+        for c in 10..=16 {
+            g.map.set_hex(HexCoord::new(c, 10), HexTerrain::Clear);
+        }
+        // Axis is phasing; a Commonwealth stack (non-phasing) sits next to an Axis tank (the threat).
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Axis;
+        let threat = g.spawn_unit(Nationality::German, "pz", "tk", Composition::Weapons { groups: vec![WeaponGroup { system: "A9 Cruiser".into(), count: 4 }] });
+        g.unit_mut(threat).unwrap().location = Some(UnitLocation::OnMap(enemy_hex));
+        assert!(g.is_combat_unit(threat));
+        let def = g.spawn_unit(Nationality::Commonwealth, "h", "def", Composition::Organic { current_toe: 4 });
+        g.unit_mut(def).unwrap().location = Some(UnitLocation::OnMap(stack_hex));
+        let coh0 = g.unit(def).unwrap().cohesion;
+
+        // §15.29: the Commonwealth declines to defend → the stack falls back three hexes, +3 DP.
+        match g.apply(Command::DeclineDefense { hex: stack_hex }) {
+            Ok(CommandOutcome::DefenseDeclined { retreated, surrendered }) => {
+                assert_eq!((retreated, surrendered), (1, 0));
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        let u = g.unit(def).unwrap();
+        assert!(u.total_toe() > 0, "retreated, not surrendered");
+        assert!(g.effective_hex(def).unwrap().distance(enemy_hex) >= stack_hex.distance(enemy_hex) + 3);
+        assert_eq!(u.cohesion, coh0 - 3, "§15.29: 3 Disorganization Points");
+
+        // A hex with no adjacent enemy threat cannot be "declined" (§15.29 is an assault situation).
+        let lone = g.spawn_unit(Nationality::Commonwealth, "h", "lone", Composition::Organic { current_toe: 4 });
+        g.unit_mut(lone).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(16, 10)));
+        assert_eq!(g.apply(Command::DeclineDefense { hex: HexCoord::new(16, 10) }), Err(CommandError::NoTargets));
+    }
+
+    #[test]
     fn holding_off_mandatory_zoc_combat_10_3() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;

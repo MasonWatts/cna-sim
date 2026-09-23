@@ -206,6 +206,13 @@ pub enum Command {
         unit: UnitId,
         path: Vec<HexCoord>,
     },
+    /// §15.29: the non-phasing player declines to defend `hex` — allocating no units to the assault.
+    /// Every unit in the hex automatically retreats three hexes and earns 3 Disorganization Points
+    /// (as if it had taken 30% losses); a unit that cannot fall back Surrenders. Issued during the
+    /// phasing player's Movement & Combat, when an enemy combat unit is adjacent.
+    DeclineDefense {
+        hex: HexCoord,
+    },
     /// §16 Patrol & Reconnaissance: the phasing player detaches `patrol_points` (origin unit → TOE
     /// Strength Points) to reconnoitre the enemy-occupied `target` (≤5 hexes). Resolved on the §16.6
     /// Survival, §16.7 Reconnaissance and §16.8 Objective-Loss tables with the supplied dice. The
@@ -326,6 +333,17 @@ pub enum Command {
         squadron: crate::state::air::SquadronId,
         aircraft_type: String,
         class: crate::reference::aircraft::AircraftClass,
+        count: u32,
+    },
+    /// §35.22: transfer `count` planes of `aircraft_type` from one squadron to another (Organization
+    /// Phase). Allowed only to bring a squadron that has fallen below 50% of its ready capacity back
+    /// up (§35.22b), honoring the §35.21 class rule and the §35.23 capacity cap; if the two squadrons
+    /// are not co-located the receiving squadron flies a transfer mission and is grounded in transit
+    /// (§35.22/§43.14).
+    TransferPlanes {
+        from: crate::state::air::SquadronId,
+        to: crate::state::air::SquadronId,
+        aircraft_type: String,
         count: u32,
     },
     /// §41.36: bomb an air facility, reducing its capacity by `levels` (Land Support Air Phase).
@@ -712,6 +730,7 @@ impl Command {
             Command::Retreat { .. } => &["§15.82"],
             Command::React { .. } => &["§8.5"],
             Command::RetreatBeforeAssault { .. } => &["§13"],
+            Command::DeclineDefense { .. } => &["§15.29"],
             Command::Patrol { .. } => &["§16"],
             Command::SetGunPosition { .. } => &["§12.11", "§12.12"],
             Command::PlaceDummyTank { .. } => &["§16.4"],
@@ -805,6 +824,7 @@ impl Command {
             Command::WithdrawSquadron { .. } => &["§34.84"],
             Command::BaseSquadronOffMap { .. } => &["§36.53"],
             Command::AssignSquadronPlanes { .. } => &["§35.2", "§35.28"],
+            Command::TransferPlanes { .. } => &["§35.22"],
             Command::RefitSquadron { .. } => &["§38.34"],
             Command::ReadySquadron { .. } => &["§38.2", "§38.3"],
             Command::ArmSquadron { .. } => &["§38.4"],
@@ -868,6 +888,9 @@ pub enum CommandOutcome {
     Barrage(BarrageOutcome),
     AntiArmor(AntiArmorOutcome),
     CloseAssault(CloseAssaultOutcome),
+    /// §15.29: the non-phasing player declined to defend a hex; `retreated`/`surrendered` count the
+    /// units that fell back three hexes vs. those that could not and Surrendered.
+    DefenseDeclined { retreated: u32, surrendered: u32 },
     /// A retreat was carried out: `toe_removed` from any shortfall, `hexes_short` = the
     /// number of mandated hexes not retreated (§15.82).
     Retreated {
@@ -942,6 +965,9 @@ pub enum CommandOutcome {
     SquadronRefitted(u32),
     /// §4.44a footnote b: the number of the 102nd's TOE points converted to Deacons.
     DeaconsRefitted(u32),
+    /// §35.22: planes transferred between squadrons; `in_transit` = the receiving squadron flew a
+    /// transfer mission (not co-located) and is grounded this stage.
+    PlanesTransferred { count: u32, in_transit: bool },
     /// §53.24: supply loaded onto / unloaded from trucks (the amount moved).
     TrucksLoaded(u32),
     TrucksUnloaded(u32),
@@ -1338,6 +1364,10 @@ pub enum CommandError {
     /// planes may not coexist in one squadron; an Italian squadron may hold German planes, but a
     /// German squadron may not hold Italian planes (and each side's squadrons take their own planes).
     SquadronNationalityMismatch,
+    /// §35.22: a plane transfer is not permitted — the receiving squadron is not below 50% ready
+    /// capacity, the class rule (§35.21) or capacity cap (§35.23) is violated, or there are too few
+    /// planes of the requested type in the source.
+    PlaneTransferNotAllowed,
     /// §8.17: a non-motorized unit (base CPA ≤ 10) may not voluntarily expend more than 150% of its
     /// base Capability Point Allowance in its own portion of the Operations Stage.
     CpaCeilingExceeded,
@@ -1441,6 +1471,7 @@ impl GameState {
             Command::Retreat { unit, path } => self.cmd_retreat(unit, &path),
             Command::React { unit, path } => self.cmd_react(unit, &path),
             Command::RetreatBeforeAssault { unit, path } => self.cmd_retreat_before_assault(unit, &path),
+            Command::DeclineDefense { hex } => self.cmd_decline_defense(hex),
             Command::Patrol {
                 patrol_points, target, exclude, reveals, loss_choice,
             } => {
@@ -1520,6 +1551,7 @@ impl GameState {
                     Err(CommandError::OffMapBasingFailed)
                 }
             }
+            Command::TransferPlanes { from, to, aircraft_type, count } => self.cmd_transfer_planes(from, to, &aircraft_type, count),
             Command::AssignSquadronPlanes { squadron, aircraft_type, class, count } => {
                 self.cmd_assign_squadron_planes(squadron, &aircraft_type, class, count)
             }
@@ -4703,6 +4735,71 @@ impl GameState {
         Ok(CommandOutcome::BombingMission(outcome))
     }
 
+    /// §35.22: transfer planes from one squadron to another (Organization Phase).
+    fn cmd_transfer_planes(
+        &mut self,
+        from: crate::state::air::SquadronId,
+        to: crate::state::air::SquadronId,
+        aircraft_type: &str,
+        count: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::Organization)?;
+        if from == to || count == 0 {
+            return Err(CommandError::PlaneTransferNotAllowed);
+        }
+        let gt = self.game_turn;
+        let from_sq = self.sgsus.get(&from).ok_or(CommandError::NoSuchSquadron)?;
+        let to_sq = self.sgsus.get(&to).ok_or(CommandError::NoSuchSquadron)?;
+        // Same side, and the source actually holds `count` of this type.
+        if from_sq.nationality.side() != to_sq.nationality.side() {
+            return Err(CommandError::PlaneTransferNotAllowed);
+        }
+        let have = from_sq.planes.iter().find(|g| g.aircraft_type == aircraft_type).map_or(0, |g| g.count);
+        if have < count {
+            return Err(CommandError::PlaneTransferNotAllowed);
+        }
+        // The plane's class (§35.21) comes from the owning nationality's Aircraft Chart.
+        let class = self
+            .reference
+            .aircraft_charts
+            .get(&from_sq.nationality)
+            .and_then(|c| c.get(aircraft_type))
+            .map(|a| a.class)
+            .ok_or(CommandError::PlaneTransferNotAllowed)?;
+        // §35.22b: only to reinforce a squadron that has fallen below 50% of its ready capacity.
+        let ready_cap = to_sq.capacity(gt).ready;
+        if to_sq.plane_count() * 2 >= ready_cap {
+            return Err(CommandError::PlaneTransferNotAllowed);
+        }
+        // §35.21 class rule + §35.23 capacity cap on the receiver.
+        if !to_sq.can_add(class, count, gt) {
+            return Err(CommandError::PlaneTransferNotAllowed);
+        }
+        // §35.22/§43.14: a transfer to a squadron based elsewhere flies a transfer mission (grounded).
+        let colocated = from_sq.location == to_sq.location
+            && from_sq.med_base == to_sq.med_base
+            && from_sq.off_map_box == to_sq.off_map_box;
+
+        // Remove from the source (dropping the group if emptied, clamping its readiness counts).
+        {
+            let src = self.sgsus.get_mut(&from).expect("checked");
+            if let Some(g) = src.planes.iter_mut().find(|g| g.aircraft_type == aircraft_type) {
+                g.count -= count;
+                g.refitted = g.refitted.min(g.count);
+                g.ready = g.ready.min(g.refitted);
+                g.armed = g.armed.min(g.ready);
+            }
+            src.planes.retain(|g| g.count > 0);
+        }
+        // Add to the receiver (arrive unready — they must be refitted at the new base, §38.3).
+        let dst = self.sgsus.get_mut(&to).expect("checked");
+        dst.add_planes(aircraft_type, class, count, gt);
+        if !colocated {
+            dst.transfer_remaining = dst.transfer_remaining.max(1);
+        }
+        Ok(CommandOutcome::PlanesTransferred { count, in_transit: !colocated })
+    }
+
     /// §35.2 AssignSquadronPlanes: gated to the Organization Phase.
     fn cmd_assign_squadron_planes(
         &mut self,
@@ -5870,6 +5967,61 @@ impl GameState {
     /// the §8.14/§10.24 ZOC rules — but a unit that did *not* begin the step adjacent to an enemy
     /// combat unit may spend at most 4 CP (or move one hex, §13.24). Not to be confused with
     /// Reaction (§8.5). §13.1: it may not be Pinned, and a Cohesion Level of −26 or worse bars it.
+    /// §15.29: the non-phasing player declines to defend `hex` (allocates no units to the assault) —
+    /// every unit in it retreats three hexes and earns 3 Disorganization Points (surrendering if it
+    /// cannot fall back). Legal in the phasing player's Movement & Combat when the hex holds the
+    /// non-phasing side's units under threat from an adjacent enemy combat unit.
+    fn cmd_decline_defense(&mut self, hex: HexCoord) -> Result<CommandOutcome, CommandError> {
+        if self.phase != Phase::MovementAndCombat {
+            return Err(CommandError::WrongPhase);
+        }
+        // The stack must belong to the non-phasing player (the defender declining, §15.29).
+        let defender = self.active_player.opponent();
+        let stack: Vec<UnitId> = self
+            .units_in_hex(hex)
+            .into_iter()
+            .filter(|&id| self.unit(id).map(|u| u.nationality.side()) == Some(defender))
+            // Independent counters only; attached sub-units ride their parent.
+            .filter(|&id| self.unit(id).map(|u| u.location.is_some()).unwrap_or(false))
+            .collect();
+        if stack.is_empty() {
+            return Err(CommandError::NoTargets);
+        }
+        // There must be a threat to decline — an adjacent enemy (phasing) combat unit (§15.29 arises
+        // only in an assault situation; cf. §10.31).
+        let threat = hex.neighbors().into_iter().find(|&n| {
+            self.units_in_hex(n).into_iter().any(|id| {
+                self.unit(id).map(|u| u.nationality.side()) == Some(self.active_player) && self.is_combat_unit(id)
+            })
+        });
+        let Some(enemy_hex) = threat else {
+            return Err(CommandError::NoTargets);
+        };
+        let mut retreated = 0;
+        let mut surrendered = 0;
+        for id in stack {
+            let name = self.unit(id).map(|u| u.name.clone()).unwrap_or_default();
+            if self.forced_retreat_three(id, enemy_hex) {
+                retreated += 1;
+                self.system_log.push(crate::state::game::SystemLogEntry::new(
+                    Some(id),
+                    "Decline Defense",
+                    format!("{name} declined to defend and fell back three hexes (+3 Disorganization, §15.29)."),
+                    &["§15.29"],
+                ));
+            } else {
+                surrendered += 1;
+                self.system_log.push(crate::state::game::SystemLogEntry::new(
+                    Some(id),
+                    "Decline Defense",
+                    format!("{name} declined to defend but could not fall back and surrendered (§15.29)."),
+                    &["§15.29"],
+                ));
+            }
+        }
+        Ok(CommandOutcome::DefenseDeclined { retreated, surrendered })
+    }
+
     fn cmd_retreat_before_assault(&mut self, unit: UnitId, path: &[HexCoord]) -> Result<CommandOutcome, CommandError> {
         if self.phase != Phase::MovementAndCombat {
             return Err(CommandError::WrongPhase);

@@ -3092,60 +3092,62 @@ impl GameState {
         }
     }
 
-    /// §10.36: force `unit` to retreat three hexes directly away from `enemy_hex` (never entering an
-    /// enemy ZOC or an enemy-occupied/off-map hex), expending all CP and taking 3 Disorganization
-    /// Points. If no legal three-hex path exists, the unit Surrenders in its entirety.
-    fn holding_off_retreat(&mut self, unit: UnitId, enemy_hex: HexCoord) {
-        let side = match self.units.get(&unit) {
-            Some(u) => u.nationality.side(),
-            None => return,
-        };
+    /// §10.36/§15.29: force `unit` three hexes directly away from `away_from` (never entering an enemy
+    /// ZOC or an enemy-occupied/off-map hex), expending all CP and taking 3 Disorganization Points.
+    /// Returns `true` if it retreated; `false` if no legal three-hex path exists and it Surrendered.
+    pub(crate) fn forced_retreat_three(&mut self, unit: UnitId, away_from: HexCoord) -> bool {
+        let Some(side) = self.units.get(&unit).map(|u| u.nationality.side()) else { return false };
         let enemy = side.opponent();
-        let name = self.units.get(&unit).map(|u| u.name.clone()).unwrap_or_default();
-        let mut cur = match self.units.get(&unit).and_then(|u| u.hex()) {
-            Some(h) => h,
-            None => return,
-        };
+        let Some(mut cur) = self.units.get(&unit).and_then(|u| u.hex()) else { return false };
         for _ in 0..3 {
             let next = cur
                 .neighbors()
                 .into_iter()
                 .filter(|&n| {
                     self.map.hex(n).is_some()
-                        && n.distance(enemy_hex) > cur.distance(enemy_hex)
+                        && n.distance(away_from) > cur.distance(away_from)
                         && !self.hex_in_zoc_of(n, enemy)
                         && !self.units_in_hex(n).into_iter().any(|o| {
                             self.units.get(&o).map(|u| u.nationality.side()) == Some(enemy)
                         })
                 })
-                .max_by_key(|n| n.distance(enemy_hex));
+                .max_by_key(|n| n.distance(away_from));
             match next {
                 Some(n) => cur = n,
                 None => {
-                    // §10.36: cannot complete the retreat without entering a ZOC → surrender.
                     self.surrender_units(&[unit]);
-                    self.system_log.push(SystemLogEntry::new(
-                        Some(unit),
-                        "Holding Off",
-                        format!("{name} could not fall back from an unattacked enemy Zone of Control and surrendered (§10.36)."),
-                        &["§10.31", "§10.36"],
-                    ));
-                    return;
+                    return false;
                 }
             }
         }
         let cpa = self.unit_cpa(unit).unwrap_or(0).max(0);
         if let Some(u) = self.units.get_mut(&unit) {
             u.location = Some(UnitLocation::OnMap(cur));
-            u.cohesion -= 3; // §10.36: 3 Disorganization Points
+            u.cohesion -= 3; // 3 Disorganization Points
             u.cp_expended = crate::reference::terrain::Fixed(cpa * 10);
         }
-        self.system_log.push(SystemLogEntry::new(
-            Some(unit),
-            "Holding Off",
-            format!("{name} was in an unattacked enemy Zone of Control and fell back three hexes (+3 Disorganization, §10.36)."),
-            &["§10.31", "§10.36"],
-        ));
+        true
+    }
+
+    /// §10.36: force `unit` back from an unattacked enemy ZOC hex (see `forced_retreat_three`), logging
+    /// the Holding-Off outcome to the Action Log.
+    fn holding_off_retreat(&mut self, unit: UnitId, enemy_hex: HexCoord) {
+        let name = self.units.get(&unit).map(|u| u.name.clone()).unwrap_or_default();
+        if self.forced_retreat_three(unit, enemy_hex) {
+            self.system_log.push(SystemLogEntry::new(
+                Some(unit),
+                "Holding Off",
+                format!("{name} was in an unattacked enemy Zone of Control and fell back three hexes (+3 Disorganization, §10.36)."),
+                &["§10.31", "§10.36"],
+            ));
+        } else {
+            self.system_log.push(SystemLogEntry::new(
+                Some(unit),
+                "Holding Off",
+                format!("{name} could not fall back from an unattacked enemy Zone of Control and surrendered (§10.36)."),
+                &["§10.31", "§10.36"],
+            ));
+        }
     }
 
     /// §21.53: whether a Broken Down Vehicle marker at index `i` is protected from capture — stacked

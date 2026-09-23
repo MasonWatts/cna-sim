@@ -380,10 +380,16 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   *(The probe test also surfaced and fixed a latent u8 overflow in the §15.95 percentage math.)*
   *Simplification:* "Final Adjusted Differential" is read as the strength differential
   (`outcome.differential`), not a shift-adjusted column.
-- [-] **AU9 — §15.29 decline-to-defend.** Deferred: tied to the defender-allocation choice model (the
-  remaining A3 detail, §15.16 per-TOE defensive commitment). `cmd_close_assault` resolves atomically
-  with the *whole* enemy stack defending, so there is no "allocate zero units" trigger to hang the
-  auto-retreat-3/3-DP on until defender allocation is modeled.
+- [x] **AU9 — §15.29 decline-to-defend — DONE (2026-09-23).** Modeled as a non-phasing pre-assault
+  action (like §13 Retreat-Before-Assault, which is also issued during the phasing player's Movement &
+  Combat): `Command::DeclineDefense { hex }`. The non-phasing player's stack in `hex` (which must be
+  threatened by an adjacent phasing combat unit) declines to defend — every unit retreats three hexes
+  and takes 3 Disorganization Points (§15.29 "as if it had taken 30% losses"), Surrendering if it
+  cannot fall back. Reuses the §10.36 `forced_retreat_three` helper (refactored out of `holding_off_retreat`).
+  The other half of §15.29 (attacker allocates no units → no assault) is simply the absence of a
+  `CloseAssault` command, already covered by §10.31/§10.36 Holding Off. Test `decline_defense_15_29`.
+  *(Adapted to the atomic close-assault resolver: the defender pre-declines rather than allocating zero
+  mid-resolution.)*
 - [x] **AU10 — §15.23/§14.22 once-per-Combat-Segment per-hex guard.** close_assaulted_hexes_this_stage / anti_armor_hexes_this_stage (reset per stage) refuse a repeat close assault / anti-armor on the same hex. Test hex_once_per_combat_segment_15_23.
 - [x] **AU11 — §13.28 a Retreat-Before-Assault unit still eats anti-armor fire (can't return it) and
   its TOE counts for % losses.**
@@ -623,10 +629,18 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   Table (from the Desktop capture: die 1→3 dice, 2–3→2, 4–5→1, 6→no effect) → the dice total is
   Damage Points applied to Commonwealth ships at Alexandria (§30.34 `Ship::damage`, concentrated on
   the strongest). Test chariot_raid_30_4.
-- [-] **AU49 — §35.22 in-play plane transfer between squadrons.** Deferred: a faithful transfer needs
-  the §35.21 same-class rule, the §35.23 capacity cap, and the §35.22 "transfer mission" (fly to the
-  new base unless co-located) with its in-transit grounding — a real air-management subsystem for a
-  niche action the operational abstraction never issues. Better as a dedicated effort.
+- [x] **AU49 — §35.22 in-play plane transfer between squadrons — DONE (2026-09-23).**
+  `Command::TransferPlanes { from, to, aircraft_type, count }` (Organization Phase) moves planes
+  between two same-side squadrons under §35.22b (the receiver must be below 50% of its ready capacity,
+  `Sgsu::capacity(gt).ready`), honoring the §35.21 class rule and §35.23 capacity cap (`Sgsu::can_add`).
+  If the two squadrons are not co-located the receiver flies a §35.22/§43.14 transfer mission and is
+  grounded in transit (`transfer_remaining`); co-located transfers are instant (§35.25). Transferred
+  planes arrive unready (need refitting, §38.3). New error `PlaneTransferNotAllowed`; outcome
+  `PlanesTransferred { count, in_transit }`; replay describe/activity arms. Test
+  `transfer_planes_between_squadrons_35_22`. *Simplification:* §35.22a (a transfer freed by SGSU
+  *elimination*) is not modeled — the engine has no standalone eliminated-SGSU-with-orphaned-planes
+  state; the common §35.22b reinforcement case is covered. The transfer-mission grounding is modeled
+  at squadron granularity (the whole receiving squadron), not per-plane.
 - [x] **AU50 — §35.28 Italian squadrons all-German planes — DONE (2026-09-23).** New
   `GameState::aircraft_nationality(type)` resolves an aircraft type's nationality via the Aircraft
   Chart that lists it (each type is unique to one chart, so the mapping is unambiguous).

@@ -1076,6 +1076,7 @@ fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) -> S
             Some(h) => format!("{} withdrew before the assault to {}.", un_bare(g, *unit), hx_str(h)),
             None => format!("{} chose not to withdraw.", un_name(g, *unit)),
         },
+        Command::DeclineDefense { hex } => format!("Declined to defend {} — the garrison falls back three hexes (§15.29).", hx_str(*hex)),
         Command::Patrol { patrol_points, target, .. } => {
             let pts: u32 = patrol_points.iter().map(|(_, p)| *p).sum();
             format!("Patrolled {} with {pts} reconnaissance point(s).", hx_str(*target))
@@ -1231,6 +1232,7 @@ fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) -> S
         Command::WithdrawSquadron { squadron } => format!("Withdrew squadron {} to meet a withdrawal requirement.", sq_name(g, *squadron)),
         Command::BaseSquadronOffMap { squadron, facility } => format!("Based squadron {} at the off-map field {facility}.", sq_name(g, *squadron)),
         Command::AssignSquadronPlanes { squadron, aircraft_type, class, count } => format!("Assigned {count} × {aircraft_type} ({class:?}) to squadron {}.", sq_name(g, *squadron)),
+        Command::TransferPlanes { from, to, aircraft_type, count } => format!("Transferred {count} × {aircraft_type} from squadron {} to under-strength squadron {} (§35.22).", sq_name(g, *from), sq_name(g, *to)),
         Command::RefitSquadron { squadron, .. } => match outcome {
             CommandOutcome::SquadronRefitted(n) => format!("Refit squadron {} — {n} planes returned to service.", sq_name(g, *squadron)),
             _ => format!("Refit squadron {}.", sq_name(g, *squadron)),
@@ -1387,6 +1389,7 @@ fn activity_hex(g: &GameState, cmd: &Command) -> Option<HexCoord> {
         | Command::AirdropUnit { target, .. }
         | Command::FlyBombingMissionAt { target, .. } => Some(*target),
         Command::AntiArmor { target_hex, .. } => Some(*target_hex),
+        Command::DeclineDefense { hex } => Some(*hex),
         Command::DesignateCap { center, .. } => Some(*center),
         // Explicit-hex actions (construction, wells, dumps, captures).
         Command::ConstructSupplyDump { hex, .. }
@@ -1455,6 +1458,7 @@ fn activity_hex(g: &GameState, cmd: &Command) -> Option<HexCoord> {
         | Command::BombShip { ship_index, .. }
         | Command::SanGiorgioAttackShip { ship_index } => shh(*ship_index),
         // Squadron-base actions — the squadron's on-map base hex (None if off-map).
+        Command::TransferPlanes { to, .. } => sqh(*to),
         Command::ReadySquadron { squadron, .. }
         | Command::ArmSquadron { squadron, .. }
         | Command::RefitSquadron { squadron, .. }
