@@ -9773,6 +9773,108 @@ mod tests {
     }
 
     #[test]
+    fn cw_bombing_of_axis_off_map_boxes_41_8() {
+        use crate::reference::aircraft::{AircraftClass, BombingMission};
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexId;
+
+        let refs = || {
+            let mut r = ReferenceData::new();
+            r.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+            r.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+            r.load_air_distance(include_str!("../../../data/reference/air-distance.ron")).unwrap();
+            r.load_off_map_nodes(include_str!("../../../data/reference/off-map-nodes.ron")).unwrap();
+            r.load_ports_chart(include_str!("../../../data/reference/port-capacity.ron")).unwrap();
+            r.load_aircraft_chart(Nationality::Commonwealth, include_str!("../../../data/reference/aircraft/commonwealth.ron")).unwrap();
+            r
+        };
+        // A CW bomber squadron sitting on the Nofilia anchor hex (A2703): distance to the Tripolitania
+        // box is 32 (§37.4), well inside a Blenheim IV's range of 131.
+        let nofilia = HexId::parse("A2703").unwrap().to_hex_coord();
+        let setup = || {
+            let mut g = GameState::new(refs(), 7);
+            g.setup_campaign_ports(); // places Tripoli/Bizerta ports at their listed levels
+            let mut sq = Sgsu::new(SquadronId(1), Nationality::Commonwealth, SquadronClass::Bomber, "55 Sqn", 5, Some(nofilia));
+            sq.add_planes("Blenheim Mk.IV", AircraftClass::Bomber, 12, 1);
+            g.sgsus.insert(SquadronId(1), sq);
+            for grp in g.sgsus.get_mut(&SquadronId(1)).unwrap().planes.iter_mut() {
+                grp.refitted = grp.count;
+                grp.ready = grp.count;
+            }
+            while g.phase != Phase::LandSupportAir {
+                g.advance_phase();
+            }
+            g
+        };
+
+        // §41.83: a Port mission against the Tripoli box reduces the Tripoli port's Efficiency Level.
+        {
+            let mut g = setup();
+            let eff0 = g.ports["Tripoli"].efficiency;
+            g.rng.force([6, 6, 1, 1, 6, 6]); // survive flak, strong bomb roll
+            match g.apply(Command::FlyBombingMissionAtBox {
+                squadron: SquadronId(1), box_name: "Tripoli".into(), mission: BombingMission::Port,
+                planes: 12, bombload_per_plane: 6, night: false,
+            }) {
+                Ok(CommandOutcome::BombingMission(o)) => {
+                    assert!(o.flown > 0);
+                    let eff1 = g.ports["Tripoli"].efficiency;
+                    assert!(eff1 <= eff0, "port efficiency never increases");
+                    if o.result > 0 {
+                        assert_eq!(eff1, eff0 - 1, "§55: at most one Efficiency Level per stage");
+                    }
+                }
+                other => panic!("unexpected: {other:?}"),
+            }
+        }
+
+        // §41.84: an Air Facility mission destroys grounded Axis planes in the box (facility ignored).
+        {
+            let mut g = setup();
+            let mut axis = Sgsu::new(SquadronId(2), Nationality::German, SquadronClass::Bomber, "LG 1", 5, None);
+            axis.add_planes("Ju.88D", AircraftClass::Bomber, 20, 1);
+            // Base the Axis squadron in the Tripoli box (grounded planes there).
+            axis.off_map_box = Some("Tripoli".into());
+            g.reference_mut().load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+            g.sgsus.insert(SquadronId(2), axis);
+            g.rng.force([6, 6, 1, 1, 6, 6]);
+            match g.apply(Command::FlyBombingMissionAtBox {
+                squadron: SquadronId(1), box_name: "Tripoli".into(), mission: BombingMission::AirFacility,
+                planes: 12, bombload_per_plane: 6, night: false,
+            }) {
+                Ok(CommandOutcome::BombingMission(_)) => {
+                    let left: u32 = g.sgsus[&SquadronId(2)].planes.iter().map(|p| p.count).sum();
+                    assert!(left <= 20, "grounded Axis planes never increase");
+                }
+                other => panic!("unexpected: {other:?}"),
+            }
+        }
+
+        // §41.81: only the Commonwealth may bomb the boxes, and only Port / AirFacility missions.
+        {
+            let mut g = setup();
+            let out = g.apply(Command::FlyBombingMissionAtBox {
+                squadron: SquadronId(1), box_name: "Tripoli".into(), mission: BombingMission::Personnel,
+                planes: 12, bombload_per_plane: 6, night: false,
+            });
+            assert_eq!(out, Err(CommandError::MissionNotPermitted));
+        }
+
+        // §41.86: night missions only against the port of Tripoli — a night AirFacility raid is barred.
+        {
+            let mut g = setup();
+            let out = g.apply(Command::FlyBombingMissionAtBox {
+                squadron: SquadronId(1), box_name: "Tripoli".into(), mission: BombingMission::AirFacility,
+                planes: 12, bombload_per_plane: 6, night: true,
+            });
+            assert_eq!(out, Err(CommandError::MissionNotPermitted));
+        }
+    }
+
+    #[test]
     fn resolve_air_to_air_45() {
         use crate::state::game::{Flight, GameState};
         let mut refs = ReferenceData::new();

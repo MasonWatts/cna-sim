@@ -677,6 +677,19 @@ pub enum Command {
         /// escort screen (§39.36/§39.37) or bomber Maneuver (§39.35) qualifies.
         abort_planes: u32,
     },
+    /// §41.8: fly a Commonwealth bombing mission against an Axis off-map Box (Tripolitania / Tripoli /
+    /// Gabes / Tunis) — the only two permitted missions being `Port` (§41.83, reduce the box's port
+    /// Efficiency Level) and `AirFacility` (§41.84, destroy grounded Axis planes; the facility result
+    /// is ignored). Box flak is the constant printed AA (§41.85); night missions are allowed only
+    /// against the port of Tripoli (§41.86). Flak/bomb dice are rolled inside the boundary.
+    FlyBombingMissionAtBox {
+        squadron: crate::state::air::SquadronId,
+        box_name: String,
+        mission: crate::reference::aircraft::BombingMission,
+        planes: u32,
+        bombload_per_plane: u32,
+        night: bool,
+    },
 }
 
 impl Command {
@@ -805,6 +818,7 @@ impl Command {
             Command::ReconHex { .. } => &["§42.27"],
             Command::Strafe { .. } => &["§40.5"],
             Command::FlyBombingMission { .. } | Command::FlyBombingMissionAt { .. } => &["§39", "§41.3"],
+            Command::FlyBombingMissionAtBox { .. } => &["§41.81", "§41.83", "§41.84", "§41.86"],
             Command::BombAirFacility { .. } => &["§41.36"],
             Command::BombShip { .. } => &["§30.34", "§41.34"],
             Command::AirdropSupplies { .. } => &["§42.4"],
@@ -2092,6 +2106,15 @@ impl GameState {
                 let bomb_roll = self.rng.sequential_read() as u32;
                 self.cmd_fly_bombing_mission_at(
                     squadron, target, mission, planes, bombload_per_plane, night, escort, abort_planes,
+                    flak_destroy_roll, flak_abort_roll, bomb_roll,
+                )
+            }
+            Command::FlyBombingMissionAtBox { squadron, box_name, mission, planes, bombload_per_plane, night } => {
+                let flak_destroy_roll = self.rng.sequential_read() as u32;
+                let flak_abort_roll = self.rng.sequential_read() as u32;
+                let bomb_roll = self.rng.sequential_read() as u32;
+                self.cmd_fly_bombing_mission_at_box(
+                    squadron, &box_name, mission, planes, bombload_per_plane, night,
                     flak_destroy_roll, flak_abort_roll, bomb_roll,
                 )
             }
@@ -4509,6 +4532,144 @@ impl GameState {
         }
         // §41.3x: apply the mission's land effect (pin / supply-dump destruction) at the target.
         self.apply_land_bombing_effect(mission, target, nationality.side(), outcome.result.max(0) as u32);
+        Ok(CommandOutcome::BombingMission(outcome))
+    }
+
+    /// §41.8: fly a Commonwealth bombing mission against an Axis off-map Box (Tripolitania / Tripoli /
+    /// Gabes / Tunis). Only `Port` (§41.83 — reduce the box's port Efficiency Level, ≤1/stage per
+    /// §55) and `AirFacility` (§41.84 — destroy grounded Axis planes at 10%/level, §41.36, the
+    /// facility result ignored) are permitted. Box flak is the constant printed AA (§41.85); night is
+    /// allowed only against the port of Tripoli (§41.86). The §41.85 Axis CAP over a box is an
+    /// owner-ruled abstraction (B6–B8) and is not modeled here — the raid meets flak only.
+    #[allow(clippy::too_many_arguments)]
+    fn cmd_fly_bombing_mission_at_box(
+        &mut self,
+        squadron: crate::state::air::SquadronId,
+        box_name: &str,
+        mission: crate::reference::aircraft::BombingMission,
+        planes: u32,
+        bombload_per_plane: u32,
+        night: bool,
+        flak_destroy_roll: u32,
+        flak_abort_roll: u32,
+        bomb_roll: u32,
+    ) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::aircraft::{BombingMission as M, Mission};
+        use crate::state::game::Weather;
+        self.require_phase(Phase::LandSupportAir)?;
+        let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+        // §41.81: only the Commonwealth bombs the Axis boxes, and only these two mission types.
+        if sgsu.nationality.side() != Side::Commonwealth {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        if !matches!(mission, M::Port | M::AirFacility) {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        if sgsu.in_transit() {
+            return Err(CommandError::SquadronInTransit);
+        }
+        if !self.squadron_is_based(squadron) {
+            return Err(CommandError::SquadronNotBased);
+        }
+        // §41.86: night missions may be flown only against the port of Tripoli.
+        if night && !(matches!(mission, M::Port) && box_name == "Tripoli") {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        // §43.23: Crete bombers are committed to Suez for four Operations Stages a month.
+        if sgsu.med_base == Some(crate::state::air::MedBase::Crete) && self.crete_suez_window() {
+            return Err(CommandError::CreteSuezCommitment);
+        }
+        // The target box, its constant flak (§41.85) and its port (§41.83), from the §8.8 chart.
+        let node = self
+            .reference
+            .off_map
+            .as_ref()
+            .and_then(|n| n.node(box_name))
+            .ok_or(CommandError::NoTable)?;
+        let box_flak = node.aa_points as u32;
+        let port_name = node.port.clone();
+        // §41.83 needs a port in the box; §41.84 needs grounded Axis planes to hit.
+        if matches!(mission, M::Port) && port_name.is_none() {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        // §37.22: no flight out of an on-map base sitting in a sandstorm/rainstorm (the off-map box
+        // target has no weather).
+        if self.flight_base_weather_hex(squadron).is_some_and(|b| matches!(self.weather_at(b), Weather::Sandstorm | Weather::Rainstorm)) {
+            return Err(CommandError::WeatherGrounded);
+        }
+        // §41.82/§37.12: range to the box, and (§39.42) at least one flying type able to bomb as required.
+        let distance = self.flight_distance_to_box(squadron, box_name);
+        let nationality = sgsu.nationality;
+        let chart = self.reference.aircraft_charts.get(&nationality);
+        let mut min_range = u32::MAX;
+        let mut any_can_bomb = false;
+        for g in sgsu.planes.iter().filter(|g| g.ready > 0) {
+            if let Some(ac) = chart.and_then(|c| c.get(&g.aircraft_type)) {
+                min_range = min_range.min(ac.max_range());
+                if crate::rules::air::can_perform(&ac.missions, Mission::ConvoyLandBombing, night)
+                    || crate::rules::air::can_perform(&ac.missions, Mission::Strike, night)
+                {
+                    any_can_bomb = true;
+                }
+            }
+        }
+        if min_range == u32::MAX {
+            return Err(CommandError::NoReadyPlanes);
+        }
+        if !distance.is_some_and(|d| crate::rules::air::can_fly(min_range, d, false)) {
+            return Err(CommandError::TargetOutOfRange);
+        }
+        if !any_can_bomb {
+            return Err(CommandError::MissionNotPermitted);
+        }
+        let group = crate::rules::air::bombing_target_group(mission).ok_or(CommandError::NoTable)?;
+        // §41.85: the box's constant flak; CAP is not modeled (owner-ruled abstraction). Resolve the
+        // raid through flak and the Air-Bombardment CRT.
+        let outcome = self
+            .resolve_bombing_mission(
+                squadron, planes, bombload_per_plane, group, None, None,
+                box_flak, flak_destroy_roll, flak_abort_roll, bomb_roll, night, &[], &[],
+            )
+            .ok_or(CommandError::NoSuchSquadron)?;
+        let result = outcome.result.max(0) as u32;
+        match mission {
+            M::Port => {
+                // §41.83/§41.39B/§55: reduce the box's port Efficiency Level (≤1 per Operations Stage).
+                if result > 0 {
+                    if let Some(p) = port_name.and_then(|pn| self.ports.get_mut(&pn)) {
+                        p.reduce_efficiency(result.min(crate::rules::naval::MAX_PORT_LEVEL_REDUCTION_PER_STAGE));
+                    }
+                }
+            }
+            M::AirFacility => {
+                // §41.84/§41.36: destroy 10%/level of the Axis planes grounded in the box; the
+                // facility itself is unaffected. Losses fall across the box's Axis squadrons.
+                let grounded: u32 = self
+                    .sgsus
+                    .values()
+                    .filter(|s| s.nationality.side() == Side::Axis && s.off_map_box.as_deref() == Some(box_name))
+                    .map(|s| s.planes.iter().map(|g| g.count).sum::<u32>())
+                    .sum();
+                let mut remaining = crate::rules::air::air_facility_planes_lost(result as i32, grounded);
+                if remaining > 0 {
+                    let ids: Vec<crate::state::air::SquadronId> = self
+                        .sgsus
+                        .values()
+                        .filter(|s| s.nationality.side() == Side::Axis && s.off_map_box.as_deref() == Some(box_name))
+                        .map(|s| s.id)
+                        .collect();
+                    for id in ids {
+                        if remaining == 0 {
+                            break;
+                        }
+                        if let Some(s) = self.sgsus.get_mut(&id) {
+                            remaining -= s.lose_planes(remaining);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
         Ok(CommandOutcome::BombingMission(outcome))
     }
 

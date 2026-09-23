@@ -35,7 +35,8 @@ impl StageCost {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OffMapNode {
     pub name: String,
-    /// Air-defense value (Air Game, §33+; recorded, not yet used).
+    /// §41.85 constant, non-destructable AA/Flak capacity printed in the box — the flak fired at a
+    /// Commonwealth raid bombing this box (`FlyBombingMissionAtBox`).
     #[serde(default)]
     pub aa_points: u8,
     #[serde(default)]

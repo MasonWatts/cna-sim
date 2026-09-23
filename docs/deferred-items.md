@@ -539,10 +539,21 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   `bizerta_opens_on_a_twelve_from_gt35_55_17`. Also generalized `SystemLogEntry` (it now carries its own
   `label` + `rule_refs` and an `Option<UnitId>`) so system events are labelled correctly in the Action
   Log — fixing a latent bug where the AU51 salt-marsh strandings were mislabelled "Refit / §4.44a".
-- [-] **AU46 — §41.81/§41.84/§41.86 CW bombing of the Axis Tripoli/Tunisia off-map boxes.** Deferred:
-  the §8.8 off-map complex is modeled as transit *nodes* (name/transit/direction), not facilities with
-  a port level or grounded-plane state to reduce. Needs an off-map-box facility model (port level +
-  based-plane state) before the bombing effect (incl. night-vs-Tripoli) has anything to act on.
+- [x] **AU46 — §41.81/§41.84/§41.86 CW bombing of the Axis Tripoli/Tunisia off-map boxes — DONE
+  (2026-09-23).** The substrate already existed: the §8.8 off-map nodes carry the §41.85 constant flak
+  (`aa_points`: Tripolitania 10 / Tripoli 26 / Gabes 10 / Tunis 15) and the box→port link (Tripoli→
+  Tripoli, Tunis→Bizerta); Tripoli/Bizerta are runtime ports; the §37.4 chart has the box distances;
+  and Axis planes base off-map via `Sgsu.off_map_box`. New `Command::FlyBombingMissionAtBox { squadron,
+  box_name, mission, planes, bombload_per_plane, night }` (Land Support Air, Commonwealth-only, Port or
+  AirFacility only). `cmd_fly_bombing_mission_at_box` validates range via the new
+  `flight_distance_to_box` (routes on-map/off-map bases through the Nofilia/Benghazi chart anchors,
+  §41.82), applies the §41.85 box flak, resolves through the shared `resolve_bombing_mission`, then:
+  **Port** (§41.83/§55) reduces the box port's Efficiency Level ≤1/stage; **AirFacility** (§41.84/§41.36)
+  destroys 10%/level of the Axis planes grounded in the box (facility result ignored). §41.86 gates
+  night to the Tripoli port only. Flak/bomb dice are rolled inside the boundary; the replay
+  `describe_command`/`activity_target` arms give a friendly line + jump-to-box. Test
+  `cw_bombing_of_axis_off_map_boxes_41_8`. *Simplification:* the §41.85 Axis CAP over a box is the
+  owner-ruled air abstraction (B6–B8) and is not modeled — the raid meets flak only.
 - [-] **AU47 — §30.5/§30.51–59 CW port-to-port naval troop transport.** Deferred (modeling gap, NOT
   missing data): the Port Personnel Capacity (§30.54/§30.59) is already digitized as
   `PortSpec.stacking_in`/`stacking_out` in `port-capacity.ron`. The blocker is that the engine keys

@@ -1248,6 +1248,11 @@ fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) -> S
         Command::Strafe { squadron, target, strafe_target, planes } => format!("Strafed the {strafe_target:?} in {} with {planes} planes of squadron {}.", hx_str(*target), sq_name(g, *squadron)),
         Command::FlyBombingMission { squadron, planes, .. } => format!("Flew a bombing mission: {planes} bombers of squadron {}.", sq_name(g, *squadron)),
         Command::FlyBombingMissionAt { squadron, target, planes, .. } => format!("Flew {planes} bombers of squadron {} to bomb {}.", sq_name(g, *squadron), hx_str(*target)),
+        Command::FlyBombingMissionAtBox { squadron, box_name, mission, planes, night, .. } => {
+            use cna_engine::reference::aircraft::BombingMission as BM;
+            let what = match mission { BM::Port => "the port", BM::AirFacility => "grounded aircraft", _ => "targets" };
+            format!("Flew {planes} bombers of squadron {} to bomb {what} in the {box_name} box{}.", sq_name(g, *squadron), if *night { " at night" } else { "" })
+        }
         Command::BombAirFacility { hex, levels, .. } => format!("Bombed the air facility at {}, reducing it {levels} level(s).", hx_str(*hex)),
         Command::BombShip { squadron, planes, ship_index, .. } => format!("Bombed {} with {planes} planes of squadron {}.", ship_name(g, *ship_index), sq_name(g, *squadron)),
         Command::AirdropSupplies { target, commodity, amount, .. } => format!("Airdropped {amount} {commodity:?} into {}.", hx_str(*target)),
@@ -1307,6 +1312,7 @@ fn activity_target(g: &GameState, cmd: &Command) -> Option<ActivityTarget> {
     use cna_engine::state::naval::ShipLocation;
     match cmd {
         Command::MoveOffMap { .. } => return Some(t_box("axis_land")),
+        Command::FlyBombingMissionAtBox { box_name, .. } => return Some(t_box(box_name)),
         Command::BombMaltaBase { .. }
         | Command::ConstructMaltaFacility { .. }
         | Command::DivertMaltaAA { .. }
@@ -1485,7 +1491,8 @@ fn activity_hex(g: &GameState, cmd: &Command) -> Option<HexCoord> {
         | Command::MoveMaltaFlak { .. }
         | Command::BaseMaltaPlanes { .. }
         | Command::MoveMaltaPlanes { .. }
-        | Command::InterdictConvoy { .. } => None,
+        | Command::InterdictConvoy { .. }
+        | Command::FlyBombingMissionAtBox { .. } => None, // handled by the box early-return above
     }
 }
 

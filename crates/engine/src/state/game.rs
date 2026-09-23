@@ -8346,6 +8346,55 @@ impl GameState {
         }
     }
 
+    /// §41.82/§37.4: air distance in hexes from a squadron's base to a named Axis off-map box
+    /// (Tripolitania/Tripoli/Gabes/Tunis). On-map bases (and Commonwealth off-map §36.53 facilities)
+    /// route through the nearest chart-listed on-map reference area — Nofilia/Benghazi, the two the
+    /// §37.4 chart prints box distances from — adding the on-map hexes flown (§41.82); a Mediterranean
+    /// Box base uses its direct chart entry. `None` if unbased, the chart is unloaded, or no route.
+    pub fn flight_distance_to_box(&self, squadron: SquadronId, box_name: &str) -> Option<u32> {
+        use crate::reference::air_distance::AirDist;
+        use crate::state::map::HexId;
+        let chart = self.reference.air_distance.as_ref()?;
+        let s = self.sgsus.get(&squadron)?;
+        const REFS: [(&str, &str); 2] = [("Nofilia", "A2703"), ("Benghazi", "A4827")];
+        let via_hex = |base: HexCoord| -> Option<u32> {
+            let mut best: Option<u32> = None;
+            for (name, hexid) in REFS {
+                let Some(rhex) = HexId::parse(hexid).map(|h| h.to_hex_coord()) else { continue };
+                if let Some(AirDist::Hexes(bd)) = chart.distance(name, box_name) {
+                    let total = bd + base.distance(rhex);
+                    best = Some(best.map_or(total, |b| b.min(total)));
+                }
+            }
+            best
+        };
+        match s.location {
+            Some(hex) => via_hex(hex),
+            None => {
+                if let Some(fac) = &s.off_map_box {
+                    let f = self
+                        .reference
+                        .off_map_air_facilities
+                        .as_ref()?
+                        .facilities
+                        .iter()
+                        .find(|x| &x.name == fac)?;
+                    let entry = HexId::parse(&f.entry_hex)?.to_hex_coord();
+                    via_hex(entry).map(|d| d + f.distance)
+                } else {
+                    let src = match s.med_base? {
+                        crate::state::air::MedBase::Crete => "Crete",
+                        crate::state::air::MedBase::ItalySicily => "Sicily",
+                    };
+                    match chart.distance(src, box_name)? {
+                        AirDist::Hexes(n) => Some(n),
+                        AirDist::Prohibited => None,
+                    }
+                }
+            }
+        }
+    }
+
     /// The on-map hex whose weather grounds a squadron's flight (§37.22), or `None` for an off-map
     /// Box base (no on-map weather).
     pub fn flight_base_weather_hex(&self, squadron: SquadronId) -> Option<HexCoord> {
