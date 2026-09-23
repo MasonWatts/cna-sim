@@ -1,8 +1,9 @@
 # Visualization Architecture
 
-Plan for a website where viewers watch CNA-Sim games play out — current board state, a running
-log of player actions, and the rule behind each action. Recorded (scrub a finished game) first;
-live spectating (watch as it plays) as a follow-on. Status: **design agreed, not yet built.**
+A website where viewers watch CNA-Sim games play out — current board state, a running log of player
+actions, and the rule behind each action. Recorded (scrub a finished game) first; live spectating
+(watch as it plays) as a follow-on. Status: **recorded viewer built and deployed** (React + SVG,
+`web/`); WASM client-side replay and live spectating remain future work.
 
 ## Guiding principle: exploit determinism
 
@@ -43,10 +44,11 @@ Compile the engine to WASM (`wasm-bindgen` / `wasm-pack`). The browser holds
   makes checkpoint caching cheap.
 - **Static hosting** — replays are JSON files on S3/CloudFront; no live server. Scales trivially.
 
-### v0 quick cut: server-side snapshots, dumb client (no WASM)
-Recorder emits a full state snapshot per step as JSON (state is small, ~150 units); the frontend is
-a pure renderer with no engine. Fastest to stand up. Same event-log schema, so WASM replay can be
-added later without changing it.
+### Current: delta event log, dumb client (no WASM) — **built**
+The recorder emits a **delta-encoded JSONL** event log (see "Snapshots vs deltas" below); the
+frontend is a pure renderer with no engine — it folds the per-step deltas into full frames and
+draws them. This is what ships today. The same event-log schema is the WASM-replay stepping stone,
+so client-side replay can be added later without changing it.
 
 ## Live vs recorded
 - **Recorded** (scrub a finished AI-vs-AI game): static JSON + WASM replay. Covers ~90% of the use
@@ -58,19 +60,23 @@ added later without changing it.
 ## Frontend stack
 - **React + TypeScript** for the shell (timeline scrubber, action log, rules panel, agent name
   plates). Svelte is an acceptable leaner alternative.
-- **Hex map: SVG** at CNA scale (~150 units) — crisp, every hex/counter is a clickable node with
-  native tooltips (click a unit → its TOE / supply / the rule governing its last action). Move to
-  **Canvas / WebGL (PixiJS or deck.gl)** only if counts or animation demand it later.
+- **Hex map: SVG** at CNA scale (~150 units) — crisp, every hex/counter is a hoverable node.
+  Hovering a stacked hex (or an off-map counter) opens a **master-detail info panel** — a scrollable
+  list of the stack's occupants and, for the selected one, its rules blurb + dynamic state (a unit's
+  TOE / combat / movement / supply / formation, a depot's contents, an airfield's occupancy, …).
+  Place / terrain / unit-type hovers add historical lore. Move to **Canvas / WebGL (PixiJS or
+  deck.gl)** only if counts or animation demand it later.
 - **`ts-rs` or `typeshare`** to auto-generate the TypeScript types for the event-log / `Command` /
   state structs *from the Rust definitions*, so frontend types cannot drift from the engine. Adopt
   from day one.
 
-## The "relevant rules" feature
-`Command` / `CommandOutcome` and the engine are densely annotated with `§` citations. Carry those
-refs in each event-log entry; the rules panel then shows, e.g., "this Close Assault resolved on the
-§15.7 CRT with a §15.4 combined-arms shift," optionally linking to a glossary built from
-`design.md` / the rulebook. Surfacing the *why* per action is a high-value differentiator and nearly
-free given the existing annotations.
+## The "relevant rules" feature — **built**
+`Command::rule_refs()` (engine, co-located with the `Command` variants) maps every command to its
+governing `§` section(s); the recorder carries them in `Event.rules` and the viewer's **Relevant
+Rules** panel shows them. Separately, each event gets a friendly plain-language `Event.summary`
+(from `describe_command`, resolving unit/ship/squadron ids to names and hexes) shown in **Current
+Action** — the summary carries no `§`, so the two panels don't duplicate. Per-*outcome* refs (which
+CRT/shift a resolution actually used) would live on `CommandOutcome` — a later enhancement.
 
 ## Relationship to the MCP goal
 The event log's `Command` schema is the *same* action vocabulary an MCP-driven model would use to
@@ -78,20 +84,28 @@ play. Define the `Command` (de)serialization once (serde + `ts-rs`) as a first-c
 schema serving three consumers: the recorder/visualizer, the future MCP action interface, and
 external tooling.
 
-## Snapshots vs deltas — resolved (deltas)
+## Snapshots vs deltas — resolved (deltas), streamed as JSONL, gzipped
 Full snapshots were fine for the toy skirmish but blew up on the real map: Scenario 1 (7,011 hexes,
-80 units) was **15.5 MB for one turn**. So the event log is now **delta-encoded** — each `Event.units`
+80 units) was **15.5 MB for one turn**. So the event log is **delta-encoded** — each `Event.units`
 lists only the units that changed since the previous step (step 0 lists all), with `Event.removed`
-for eliminations; the frontend folds them into full per-step frames on load. The static map is still
-serialized once. Result: the same Scenario-1 turn dropped to **~0.9 MB (~17×)**, mean 0.68 changed
-units/event. This is also the WASM-replay stepping stone (a command log is the eventual end state).
+for eliminations; every other dynamic layer (weather, dumps, convoys, raiders, air, naval, off-map,
+overlays, prisoners, …) is likewise a `Some`-on-change delta. The frontend folds them into full
+per-step frames on load. The static map is serialized once.
+
+The recorder **streams** the log as **JSONL** — a header line (scenario/seed/agents + map) then one
+JSON `Event` per line — so `record` writes it incrementally and the file need never be held whole in
+memory. For the web asset it is **gzipped** to `game.jsonl.gz`: the JSONL is ~97% redundant, so a
+full campaign compresses tens of MB → under 1 MB, staying beneath Cloudflare Pages' 25 MB/file limit
+and cutting transfer. The browser inflates it with the native `DecompressionStream`. This is also
+the WASM-replay stepping stone (a command log is the eventual end state).
 
 ## Build order
-1. ✅ **Done** — recorder crate (`crates/replay`) dumps an AI-vs-AI game to `game.json`.
-   `cna_replay::record_game` mirrors `self_play` and emits one event per accepted command; the
-   `record` bin writes a Greedy-vs-Random skirmish (`cargo run --release -p cna-replay --bin record
-   -- game.json [turns]`). Header carries scenario/seed/agents + the static map; each event carries
-   phase/turn/stage/side, the action + outcome (v0: `Debug` strings), and post-action unit views.
+1. ✅ **Done** — recorder crate (`crates/replay`) streams an AI-vs-AI game to a `.jsonl` log.
+   `cna_replay::record_game_streaming` mirrors `self_play` and emits one event per accepted command;
+   the `record` bin writes it (`cargo run --release -p cna-replay --bin record -- <out.jsonl>
+   [turns] [scenario]`). The header line carries scenario/seed/agents + the static map; each event
+   carries phase/turn/stage/side, the raw action + outcome (`Debug` strings), a friendly `summary`,
+   `rules`, an `activity` jump target, and the post-action delta of dynamic state.
 2. ✅ **Done** — `ts-rs` emits the TypeScript types from the record structs into
    `crates/replay/bindings/*.ts` when `cargo test` runs (committed; regenerated by the auto-added
    export tests, so a struct change that isn't reflected shows up as a git diff). `u64` maps to
@@ -99,26 +113,30 @@ units/event. This is also the WASM-replay stepping stone (a command log is the e
 3. ✅ **Done** — React + SVG renderer (`web/`, Vite + TS). `HexMap` draws the terrain grid + unit
    counters; hex geometry (`web/src/hex.ts`) mirrors the engine's pointy-top / even-r layout so
    adjacency matches. Consumes the ts-rs bindings via a `@bindings/*` alias. `npm run dev` after
-   recording to `web/public/game.json`.
+   recording + gzipping to `web/public/game.jsonl.gz`.
 4. ✅ **Done** — `Scrubber` (play/pause, step, slider) + `ActionLog` (click-to-jump, current
-   highlighted) + a side panel showing the current action/outcome **and its governing rule
+   highlighted) + a side panel showing the **friendly action description** and its **governing rule
    sections**. The recorder populates `event.rules` from `Command::rule_refs()` (engine method,
-   co-located with the `Command` variants; covers every enumerated command, `&[]` for the rest).
-   These are static per-command citations; per-*outcome* refs (which CRT/shift a resolution used)
-   would live on `CommandOutcome` — a later enhancement.
-5. WASM-compile the engine; swap the dumb client's "state at N" for `engine.replay_to(N)`.
-6. *(Optional)* WebSocket service for live games.
+   co-located with the `Command` variants) — now **exhaustive**, so every command has a citation —
+   and `event.summary` from `describe_command` (a plain-language sentence per command, ids resolved
+   to names/hexes). Each event also carries an `activity` jump target (a hex, or a named off-map box)
+   so a "jump to activity" control can center the map on the action. Per-*outcome* refs (which
+   CRT/shift a resolution used) would live on `CommandOutcome` — a later enhancement.
+5. **Future** — WASM-compile the engine; swap the dumb client's folded delta log for a replayable
+   command log and `engine.replay_to(N)`.
+6. **Future** — *(Optional)* WebSocket service for live games.
 
-## v0 recorder notes / follow-ups
+## Recorder notes / follow-ups
 - **Event granularity:** one event per accepted command → fine-grained action tracking.
-- **Scenarios:** the `record` bin takes a scenario arg — `skirmish` (synthetic), `scenario1` (§60
-  Italian Offensive on the real five-section map + historical OB, 7,011 hexes / 80 units), or
-  `campaign` (§64). The committed sample (`web/public/game.json`) is a 2-turn Scenario 1 (~1 MB).
-- **`rules` is empty for now.** The `§` citations live in engine doc-comments, not runtime data, so
-  the per-action rules panel needs a `Command → §` mapping built later (step 4).
-- **Actions/outcomes are `Debug` strings** in the *event log* for v0. The round-trippable `Command`
-  schema now exists: `Command` and `CommandOutcome` derive `Serialize`/`Deserialize` (round-trip
-  test in the engine). This is the shared action vocabulary for **WASM replay** (step 5 — emit a
-  structured command log the browser replays) and the **MCP interface**. Remaining for step 5: swap
-  the recorder's per-step snapshots for a command log, compile the engine to WASM, and expose
-  `replay_to(N)`.
+- **Scenarios:** the `record` bin takes `record <out.jsonl> [turns] [scenario]` — scenario is
+  `skirmish` (synthetic), `scenario1` (§60 Italian Offensive on the real five-section map + historical
+  OB, 7,011 hexes / 80 units), or `campaign` (§64, the default demo). The committed web asset
+  (`web/public/game.jsonl.gz`) is a gzipped 5-turn campaign run.
+- **Rules citations are done.** `Command::rule_refs()` is exhaustive and the recorder emits them per
+  event; the viewer's Relevant Rules panel is always populated. The friendly `summary` deliberately
+  carries no `§` so it doesn't duplicate that panel.
+- **Actions/outcomes are still `Debug` strings** in the event log (alongside the friendly `summary`).
+  A round-trippable `Command` schema exists (`Command`/`CommandOutcome` derive `Serialize`/
+  `Deserialize`, round-trip tested), i.e. the shared action vocabulary for **WASM replay** and the
+  **MCP interface**. Remaining for WASM replay (step 5): emit a structured command log the browser
+  replays, compile the engine to WASM, and expose `replay_to(N)`.

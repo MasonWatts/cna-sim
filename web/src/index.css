@@ -168,6 +168,18 @@ button:hover {
   background: #333b49;
 }
 
+/* "Jump to activity" control in the Current Action panel. */
+.jump-btn {
+  margin-top: 8px;
+  font-size: 12px;
+  padding: 3px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Match the Search icon to the button text scale. */
+.jump-icon { font-size: 14px; line-height: 1; }
+
 .chip {
   display: inline-block;
   padding: 1px 7px;
@@ -305,6 +317,10 @@ code {
 .info-stacklist .sl-list::-webkit-scrollbar { width: 8px; }
 .info-stacklist .sl-list::-webkit-scrollbar-thumb { background: #b7a97a; border-radius: 4px; }
 .info-stacklist .sl-list::-webkit-scrollbar-track { background: transparent; }
+/* Scrollable off-map list panels (Incoming Replacements, Axis Convoys). */
+.panel-scroll::-webkit-scrollbar { width: 8px; }
+.panel-scroll::-webkit-scrollbar-thumb { background: #b19a55; border-radius: 4px; }
+.panel-scroll::-webkit-scrollbar-track { background: transparent; }
 .info-stacklist .sl-item {
   flex: 0 0 auto;
   text-align: left; background: none; border: none; cursor: pointer;

@@ -250,8 +250,9 @@ Settled foundations (no longer open):
   Logistics systems (D15, superseding the §32 abstract mode named in §5) are now
   substantially built. §5's phasing is the original plan; this section is ground truth.
 
-The engine **builds clean and 366 tests pass** across the workspace (unit tests in each
-module plus integration tests in `lib.rs`). `cargo run --bin demo` narrates the three
+The engine **builds clean and the workspace passes 492 tests** (450 in `cna-engine` — unit
+tests in each module plus integration tests in `lib.rs` — and 42 in `cna-replay`).
+`cargo run --bin demo` narrates the three
 land-combat systems end to end. The layering is consistent throughout: **reference**
 (`reference/*.rs`, pure chart data from RON) → **rules** (`rules/*.rs`, pure stateless
 arithmetic/eligibility, no game state) → **state** (`state/*.rs`, mutable instances) →

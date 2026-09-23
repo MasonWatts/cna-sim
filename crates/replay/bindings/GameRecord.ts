@@ -6,7 +6,7 @@ import type { MapView } from "./MapView";
  * A complete recorded game: header (scenario, seed, agents, static map) + the ordered event log.
  *
  * The `#[derive(TS)]` on this and the types below generates the frontend's TypeScript types into
- * `crates/replay/bindings/` when `cargo test` runs — the `game.json` schema is single-sourced here.
+ * `crates/replay/bindings/` when `cargo test` runs — the event-log schema is single-sourced here.
  */
 export type GameRecord = { scenario: string, seed: bigint, commonwealth_agent: string, axis_agent: string, map: MapView, 
 /**

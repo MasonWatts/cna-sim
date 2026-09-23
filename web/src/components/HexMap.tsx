@@ -110,8 +110,8 @@ function UnitCounter({ u, extra = 0, noTitle }: { u: UnitView; extra?: number; n
 // E=133–165), the same `(col-1)/33` split the weather engine uses.
 const SECTION_BOUNDS = [33, 66, 99, 132]; // last col of A, B, C, D
 const SECTION_CENTERS = [17, 50, 83, 116, 149]; // representative mid-column of A…E
-const LABEL_HEADROOM = 52; // extra viewBox space above the map so Region labels clear all coastlines
-const LEFT_MARGIN = 1140; // extra viewBox space west of the map for the §8.8 Tripoli/Tunisia complex
+export const LABEL_HEADROOM = 52; // extra viewBox space above the map so Region labels clear all coastlines
+export const LEFT_MARGIN = 1140; // extra viewBox space west of the map for the §8.8 Tripoli/Tunisia complex
 const RIGHT_MARGIN = 220; // extra viewBox space east of the map for the §36.53 Canal-zone air boxes
 const BOTTOM_MARGIN = 120; // extra viewBox space south of the map for the Ethiopia off-map box
 
@@ -166,7 +166,10 @@ function weatherGlyph(kind: string): JSX.Element {
  *  Perf: `memo`'d so pan/zoom (which only change the parent's transform, not these props) skip it
  *  entirely, and the ~7k-polygon terrain layer is `useMemo`'d on `map` so scrubbing (units change)
  *  never rebuilds it — only the small units layer re-renders. */
-export const HexMap = memo(function HexMap({ map, units, weather, replacements, supplyDumps, truckConvoys, raiders, rommel, overlays, hexsides, air, naval, offMap, prisoners, captured, dummyTanks, brokenVehicles, placeLore, unitLore, onPlaceHover, onPlaceLeave, onInfoHover, legend, unitKey }: { map: MapView; units: UnitView[]; weather?: string[]; replacements?: ReplacementView[]; supplyDumps?: SupplyDumpView[]; truckConvoys?: TruckConvoyView[]; raiders?: RaiderView[]; rommel?: RommelView[]; overlays?: MapOverlaysView; hexsides?: MapView["hexsides"]; air?: AirView; naval?: NavalView; offMap?: OffMapView; prisoners?: PrisonerView[]; captured?: CapturedView[]; dummyTanks?: DummyTankView[]; brokenVehicles?: BrokenVehicleView[]; placeLore?: Record<string, unknown>; unitLore?: Record<string, unknown>; onPlaceHover?: (name: string, x: number, y: number) => void; onPlaceLeave?: () => void; onInfoHover?: (data: InfoPanelData, x: number, y: number) => void; legend?: React.ReactNode; unitKey?: React.ReactNode }) {
+export const HexMap = memo(function HexMap({ map, units, weather, replacements, supplyDumps, truckConvoys, raiders, rommel, overlays, hexsides, air, naval, offMap, prisoners, captured, dummyTanks, brokenVehicles, placeLore, unitLore, onPlaceHover, onPlaceLeave, onInfoHover, anchorsRef, legend, compass, unitKey }: { map: MapView; units: UnitView[]; weather?: string[]; replacements?: ReplacementView[]; supplyDumps?: SupplyDumpView[]; truckConvoys?: TruckConvoyView[]; raiders?: RaiderView[]; rommel?: RommelView[]; overlays?: MapOverlaysView; hexsides?: MapView["hexsides"]; air?: AirView; naval?: NavalView; offMap?: OffMapView; prisoners?: PrisonerView[]; captured?: CapturedView[]; dummyTanks?: DummyTankView[]; brokenVehicles?: BrokenVehicleView[]; placeLore?: Record<string, unknown>; unitLore?: Record<string, unknown>; onPlaceHover?: (name: string, x: number, y: number) => void; onPlaceLeave?: () => void; onInfoHover?: (data: InfoPanelData, x: number, y: number) => void; anchorsRef?: React.MutableRefObject<Record<string, [number, number]>>; legend?: React.ReactNode; compass?: React.ReactNode; unitKey?: React.ReactNode }) {
+  // "Jump to activity" anchors — off-map panel centres (map coords) reported up so App can center on
+  // them. Reset each render; the box blocks below populate it during render.
+  if (anchorsRef) anchorsRef.current = {};
   // Generic hover-attrs for an SVG element that should open the hybrid info panel, anchored to the
   // element's on-screen box; reuses onPlaceLeave (the shared hide) for leaving.
   const infoHover = (data: InfoPanelData) =>
@@ -194,12 +197,25 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
   // Section C region label at the top-centre.
   const WPW = 250; // weather panel width
   const WPH = 104; // weather panel height (glyph + condition name)
+  // Fixed height for the dynamically-populated off-map list panels (Incoming Replacements, Axis
+  // Convoys) — roughly a full Ports box; the list scrolls internally past this so the layout is stable.
+  const PANEL_LIST_H = 132;
   const panelX = minX + w / 2 - 40;
   const panelY = minY + 58;
   const LW = 400;
   const LH = 360;
   const legendX = panelX + WPW + 24;
   const legendY = panelY;
+  // Uniform spacing between adjacent off-map boxes (matches the legend's Terrain-Key ↔ Unit-Key gap).
+  // The legend (Unit Key) and the Malta box are the fixed anchors; the floating top-row cluster
+  // (Orientation · Ports · Weather) is laid out leftward from the legend with this gap, and the
+  // panels that sit below Weather/Ports (Incoming Replacements, Axis Convoys) use it vertically.
+  const boxGap = 12;
+  const portsW = 372; // Ports box width
+  const compassW = 150; // Orientation (compass) box width
+  const weatherX = legendX - boxGap - WPW; // Weather one gap left of the (fixed) legend
+  const portsX = weatherX - boxGap - portsW; // Ports one gap left of Weather
+  const compassX = portsX - boxGap - compassW; // Orientation one gap left of Ports
 
   // Static terrain layer — built once per map, reused across every step.
   const terrain = useMemo(
@@ -1220,7 +1236,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
       {/* Weather panel: one cell per section (A–E), pictorial condition. Floats in the off-map
           zone (top-left), pans/zooms with the board; the on-map A–E dividers tie cells to regions. */}
       {(() => {
-        const px = panelX;
+        const px = weatherX;
         const py = panelY;
         const cellW = (WPW - 16) / 5;
         return (
@@ -1272,28 +1288,38 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
               const b = hexCenter(dst[0], dst[1]);
               return <line key={`rpl${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#c8b06a" strokeWidth={1.2} strokeDasharray="4 3" opacity={0.6} />;
             })}
-            <g {...infoHover({ title: "Incoming Replacements (§20)", rules: { description: "Replacement Points rebuild units' losses (§20). Produced points are scheduled and arrive after a planning delay (Axis 2 / Commonwealth 4 Game-Turns, §20.21), then must Train (§17.3/§20.43) before they can absorb into a unit. This panel lists points still in transit — their arrival Game-Turn, side, class, and count — before they appear on the map." } })}>
-              <rect x={panelX - 234} y={panelY} width={220} height={28 + Math.max(1, staged.length) * 15} rx={6} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.96} />
-              <text x={panelX - 124} y={panelY + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#4a3d16">Incoming Replacements</text>
-              {staged.length > 0 ? staged.map((r, i) => (
-                <text key={i} x={panelX - 224} y={panelY + 34 + i * 15} fontFamily="Courier New, monospace" fontSize={10} fill="#6b5a2e">
-                  {`GT ${r.arrival ? `${r.arrival[0]}/${r.arrival[1]}` : "?"} — ${r.side.slice(0, 2)} ${r.class} ×${r.count}`}
-                </text>
-              )) : (
-                <text x={panelX - 124} y={panelY + 34} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={10} fontStyle="italic" fill="#8a7a3a">None pending</text>
-              )}
-            </g>
+            {/* Below the Weather panel, same width. Fixed height (like the Ports box) with an internal
+                scrollbar when the list overflows, so this dynamically-sized panel doesn't reflow. */}
+            {(() => {
+              const irX = weatherX, irY = panelY + WPH + boxGap, irW = WPW;
+              return (
+                <g {...infoHover({ title: "Incoming Replacements (§20)", rules: { description: "Replacement Points rebuild units' losses (§20). Produced points are scheduled and arrive after a planning delay (Axis 2 / Commonwealth 4 Game-Turns, §20.21), then must Train (§17.3/§20.43) before they can absorb into a unit. This panel lists points still in transit — their arrival Game-Turn, side, class, and count — before they appear on the map." } })}>
+                  <rect x={irX} y={irY} width={irW} height={PANEL_LIST_H} rx={6} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.96} />
+                  <text x={irX + irW / 2} y={irY + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#4a3d16">Incoming Replacements</text>
+                  <foreignObject x={irX + 4} y={irY + 24} width={irW - 8} height={PANEL_LIST_H - 30}>
+                    <div className="panel-scroll" style={{ height: PANEL_LIST_H - 30, overflowY: "auto", fontFamily: "Courier New, monospace", fontSize: 10, lineHeight: 1.5, color: "#6b5a2e", paddingLeft: 6 }}>
+                      {staged.length > 0 ? staged.map((r, i) => (
+                        <div key={i}>{`GT ${r.arrival ? `${r.arrival[0]}/${r.arrival[1]}` : "?"} — ${r.side.slice(0, 2)} ${r.class} ×${r.count}`}</div>
+                      )) : (
+                        <div style={{ fontStyle: "italic", color: "#8a7a3a", textAlign: "center" }}>None pending</div>
+                      )}
+                    </div>
+                  </foreignObject>
+                </g>
+              );
+            })()}
           </g>
         );
       })()}
       {/* Naval panels (§55/§56): a Ports box (efficiencies) and, below it, an Axis Convoys box —
           abstract/named naval state that has no map hex, so it lives in off-map panels. */}
       {naval && (naval.ports.length > 0 || naval.convoys.length > 0) && (() => {
-        const boxW = 372;
-        const px = panelX - boxW - 14;
-        const py = panelY + 150;
+        const boxW = portsW;
+        const px = portsX;
+        const py = panelY; // top edge aligned with the Weather box
         const portsH = 42 + naval.ports.length * 14;
-        const convoyY = py + (naval.ports.length > 0 ? portsH + 10 : 0);
+        const convoyY = py + (naval.ports.length > 0 ? portsH + boxGap : 0);
+        if (anchorsRef) anchorsRef.current.axis_convoys = [px + boxW / 2, convoyY + PANEL_LIST_H / 2];
         return (
           <g>
             {naval.ports.length > 0 && (
@@ -1335,19 +1361,22 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
                 })()}
               </g>
             )}
-            {/* Always shown (a stable panel), with a placeholder when no convoy is in transit. */}
-            <g>
-              <rect x={px} y={convoyY} width={boxW} height={28 + Math.max(1, naval.convoys.length) * 14} rx={6} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.96} />
-              <text x={px + boxW / 2} y={convoyY + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#4a3d16" {...infoHover(CONVOY_SYSTEM_INFO)}>Axis Convoys</text>
-              {naval.convoys.length > 0 ? (
-                naval.convoys.map((c, i) => (
-                  <text key={`nc${i}`} x={px + 10} y={convoyY + 34 + i * 14} fontFamily="Courier New, monospace" fontSize={10} fill="#4a3f22">
-                    {`GT${c.arrival_gt} L${c.lane}→${c.destination} ${c.tons}t`}
-                  </text>
-                ))
-              ) : (
-                <text x={px + 10} y={convoyY + 34} fontFamily="Courier New, monospace" fontSize={10} fontStyle="italic" fill="#8a7a3a">None scheduled</text>
-              )}
+            {/* Always shown (a stable panel): fixed height with an internal scrollbar when the convoy
+                list overflows, so it doesn't grow unboundedly. Placeholder when none in transit. */}
+            <g {...infoHover(CONVOY_SYSTEM_INFO)}>
+              <rect x={px} y={convoyY} width={boxW} height={PANEL_LIST_H} rx={6} fill="#e7d9a8" stroke="#b19a55" strokeWidth={1} opacity={0.96} />
+              <text x={px + boxW / 2} y={convoyY + 17} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={13} fontWeight={700} fill="#4a3d16">Axis Convoys</text>
+              <foreignObject x={px + 4} y={convoyY + 24} width={boxW - 8} height={PANEL_LIST_H - 30}>
+                <div className="panel-scroll" style={{ height: PANEL_LIST_H - 30, overflowY: "auto", fontFamily: "Courier New, monospace", fontSize: 10, lineHeight: 1.5, color: "#4a3f22", paddingLeft: 6 }}>
+                  {naval.convoys.length > 0 ? (
+                    naval.convoys.map((c, i) => (
+                      <div key={`nc${i}`}>{`GT${c.arrival_gt} L${c.lane}→${c.destination} ${c.tons}t`}</div>
+                    ))
+                  ) : (
+                    <div style={{ fontStyle: "italic", color: "#8a7a3a" }}>None scheduled</div>
+                  )}
+                </div>
+              </foreignObject>
             </g>
           </g>
         );
@@ -1377,7 +1406,9 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
         const trackW = (slow: number) => Math.max(1, slow - 1) * (cellW + cGap) - cGap;
         // Right edge just west of the map; lay columns out right→left.
         const rightX = minX - 16;
-        const topY = hexCenter(3, 27).y - boxH / 2;
+        // Vertically centre the complex on hex (2,28) — the on-map entry the Nofilia connector points
+        // to — so that connector arrow is perfectly horizontal.
+        const topY = hexCenter(2, 28).y - boxH / 2;
         let x = rightX;
         const nofX = x - nofW; x = nofX - gap;
         const trackX: number[] = [], boxX: number[] = [];
@@ -1387,6 +1418,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           boxX[k] = x - boxW; x = boxX[k] - gap;
         });
         const leftX = x + gap;
+        if (anchorsRef) anchorsRef.current.axis_land = [(leftX + rightX) / 2, topY + boxH / 2];
         // Tolerate an older game.jsonl whose off-map units predate the embedded full `unit`: fall back
         // to a minimal counter synthesized from the legacy name/abbr/side fields (TOE/glyph blank).
         const unitOf = (u: OffMapUnitView): UnitView => {
@@ -1403,7 +1435,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
             <g>
               <rect x={nofX} y={topY} width={nofW} height={boxH} rx={4} fill="#dfe7ef" stroke="#8aa0b4" strokeWidth={1} opacity={0.95} />
               <text x={nofX + nofW / 2} y={topY + boxH / 2 - 4} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={8} fontWeight={700} fill="#33465a">Nofilia</text>
-              <text x={nofX + nofW / 2} y={topY + boxH / 2 + 7} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={7} fill="#55697d">A2802 →</text>
+              <text x={nofX + nofW / 2} y={topY + boxH / 2 + 7} textAnchor="middle" fontFamily="Courier New, monospace" fontSize={7} fill="#55697d">(2,28)</text>
             </g>
             {nodes.map((n, k) => {
               // Transit track between box k and the box one step closer to the map — three lanes for
@@ -1511,17 +1543,39 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           </g>
         );
       })()}
+      {/* Connector from the Nofilia off-map junction box (§8.8) to the map hex it feeds — hex (2,28),
+          the Axis on-map entry. A single arrow from the midpoint of the box's right edge to that hex,
+          arrowhead pointing into hex (2,28), in the box's darker-blue label stroke. Rendered after the
+          off-map complex so it sits on top of the box; geometry mirrors that complex's layout. */}
+      {offMap && offMap.nodes.length > 0 && (() => {
+        const midY = hexCenter(2, 28).y; // box vertical centre → right-edge midpoint (level with the hex)
+        const nofRightX = minX - 16;
+        const t = hexCenter(2, 28);
+        const hx = t.x, hy = t.y; // arrowhead (at the hex)
+        const dx = hx - nofRightX, dy = hy - midY;
+        const len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len, uy = dy / len; // unit vector toward the head
+        const ah = 7; // arrowhead length
+        const bx = hx - ux * ah, by = hy - uy * ah; // where the shaft meets the head
+        const px = -uy, py = ux; // perpendicular
+        return (
+          <g stroke="#33465a" strokeWidth={1} fill="#33465a">
+            <line x1={nofRightX} y1={midY} x2={bx} y2={by} strokeDasharray="4 3" />
+            <path d={`M${hx},${hy} L${bx + px * 3.5},${by + py * 3.5} L${bx - px * 3.5},${by - py * 3.5} Z`} stroke="none" />
+          </g>
+        );
+      })()}
       {/* §43 Axis Mediterranean bomber bases: a manila swatch per off-map box holding a stack of
-          squadron counters. Italy/Sicily above Region A, Crete above the top-left of Section C
-          (roughly their paper-map positions). Empty until the Luftwaffe arrives (GT26+). */}
+          squadron counters. Italy/Sicily above Region A, with Crete immediately to its right on the
+          same row. Empty until the Luftwaffe arrives (GT26+). */}
       {(air?.med_bases?.length ? air.med_bases : [{ name: "Italy/Sicily", squadrons: [] }, { name: "Crete", squadrons: [] }]).map((mb) => {
         const bw = 152;
         const bh = 60;
-        const cx = mb.name === "Crete" ? hexCenter(72, 1).x : hexCenter(17, 1).x;
+        // Both boxes share Italy/Sicily's column below the "Region A" label; Crete stacks directly
+        // beneath Italy/Sicily (one box-height + the uniform 12px gap down).
+        const cx = hexCenter(17, 1).x;
         const bx = cx - bw / 2;
-        // Crete sits in the top margin; Italy/Sicily drops below the "Region A" label (44px, baseline
-        // ~minY-12) so it clears it.
-        const by = mb.name === "Crete" ? minY - 46 : minY + 2;
+        const by = mb.name === "Crete" ? minY + 2 + bh + 12 : minY + 2;
         const shown = mb.squadrons.slice(0, 5);
         const extra = mb.squadrons.length - shown.length;
         const title = `Axis ${mb.name.replace("/", " & ")} Air Bases`;
@@ -1578,6 +1632,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
         // tops aligned, with a 12px gutter.
         const bx = hexCenter(17, 1).x + 76 + 12;
         const by = minY + 2;
+        if (anchorsRef) anchorsRef.current.malta = [bx + bw / 2, by + bh / 2];
         // Historical-context lore (from public/lore/places.json) for the island and each field, shown
         // as the panel's lore section alongside the rules text.
         const loreOf = (key: string) => {
@@ -1670,6 +1725,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           const bx = Math.min(Math.max((a?.x ?? minX + w / 2) - bw / 2, minX), minX + w - bw);
           placed.push({ f: eth, bx, by: belowMapY, conn: a ? { ax: bx + bw / 2, ay: belowMapY, hx: a.x, hy: a.y + 26 } : null });
         }
+        if (anchorsRef) for (const { f, bx, by } of placed) anchorsRef.current[`air:${f.name}`] = [bx + bw / 2, by + bh / 2];
         return (
           <g>
             {placed.map(({ f, bx, by, conn }) => {
@@ -1713,8 +1769,14 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
           </g>
         );
       })()}
+      {/* Orientation (compass) box, one gap left of the Ports box. */}
+      {compass && (
+        <foreignObject x={compassX} y={panelY} width={compassW} height={210} style={{ overflow: "visible" }}>
+          <div className="legend-map compass-box">{compass}</div>
+        </foreignObject>
+      )}
       {/* Legend inset drawn in map coordinates (foreignObject) so it pans/zooms with the board.
-          Terrain Key (+ compass) on the left; Unit Key to its right. */}
+          Terrain Key on the left; Unit Key to its right. */}
       {(legend || unitKey) && (
         <foreignObject x={legendX} y={legendY} width={LW * 2} height={LH} style={{ overflow: "visible" }}>
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>

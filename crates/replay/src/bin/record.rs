@@ -1,11 +1,14 @@
-//! Record one deterministic AI-vs-AI game to a JSON event log for the spectator website.
+//! Record one deterministic AI-vs-AI game to an event log for the spectator website.
 //!
-//! Run: `cargo run --release --bin record -- [out.json] [turns] [scenario]`
+//! Run: `cargo run --release --bin record -- [out] [turns] [scenario]`
 //!   defaults: game.json, 5 turns, skirmish
+//!   An `out` path ending in `.jsonl` streams the delta-encoded JSONL the viewer prefers (header
+//!   line + one event per line); any other extension writes a single pretty-printed JSON doc.
 //!   scenario = `skirmish` (synthetic 6-unit demo) | `scenario1` (§60 Italian Offensive on the
 //!              real section-C map + OB) | `campaign` (full §64)
 //! The real scenarios load all five map sections and the historical order of battle — larger maps
-//! and unit sets, so recording is slower and the JSON is bigger (snapshots per step).
+//! and unit sets, so recording is slower and the log is bigger. For the web asset, gzip the `.jsonl`
+//! to `web/public/game.jsonl.gz`.
 
 use cna_engine::agent::{GreedyAgent, RandomAgent};
 use cna_engine::reference::terrain::HexTerrain;

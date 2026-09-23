@@ -13,17 +13,22 @@ Italian Offensive"** is the first playable milestone.
 
 The Land Game, the air and naval games, and the **full** Logistics system (§20 production,
 convoys, and the §54.4 Axis railroad included) are built, and all three faction Orders of
-Battle are loaded and chart-verified. The engine builds clean and **366 tests pass**. See
-[`docs/design.md` §8](docs/design.md) for the detailed, current implementation status.
+Battle are loaded and chart-verified. The engine builds clean and the workspace passes
+**492 tests** (450 engine + 42 replay). See [`docs/design.md` §8](docs/design.md) for the
+detailed, current implementation status.
 
 ## Architecture
 
 The system has three major components, built roughly in order:
 
-1. **Core engine** (this repo, in progress) — an authoritative data model plus rules
-   enforcement. No UI, no I/O in the core.
-2. **AI agents** (future) — programmatic players that observe state and issue legal actions.
-3. **Visualization** (future) — a web-hosted view of live/replayed games.
+1. **Core engine** (this repo) — an authoritative data model plus rules enforcement. No UI,
+   no I/O in the core.
+2. **AI agents** (built) — programmatic players (e.g. Greedy, Random) that observe state and
+   issue legal actions; used by the self-play/tournament drivers and the replay recorder.
+3. **Visualization** (built) — a React + SVG spectator viewer (`web/`) that replays a recorded
+   game: hex map, timeline scrubber, friendly action log, and per-action rule citations. Records
+   are produced by the `cna-replay` recorder. WASM client-side replay and live spectating remain
+   future work (see `docs/visualization-architecture.md`).
 
 Key design principles (full rationale in `docs/design.md`):
 
@@ -48,6 +53,8 @@ crates/engine/        Rust rules engine (the core)
   src/rules/           Pure rule logic (movement, combat, air, naval)
   src/state/           Mutable game state (map, units, combat, turn driver, commands)
   src/bin/demo.rs      Scripted narration of the three land-combat systems
+crates/replay/        Records a game to a JSONL event log (+ ts-rs TS bindings) for the viewer
+web/                  React + SVG spectator viewer (Vite + TypeScript)
 data/                 RON reference data, maps, orders of battle, scenarios
 docs/design.md        Project design document (vision, principles, roadmap, status)
 docs/source-materials/ Human-readable transcriptions of digitized game charts (provenance)
@@ -58,6 +65,18 @@ tools/                OCR → order-of-battle pipeline and map utilities
 
 ```bash
 cargo build              # build the workspace
-cargo test --workspace   # run the full test suite (366 tests)
+cargo test --workspace   # run the full test suite (492 tests)
 cargo run --bin demo     # narrate barrage, anti-armor, and close assault in sequence
 ```
+
+## Spectator viewer
+
+```bash
+# Record a game to a JSONL event log, gzip it as the web asset, then serve the viewer:
+cargo run --release -p cna-replay --bin record -- /tmp/game.jsonl 5 campaign
+gzip -9 -c /tmp/game.jsonl > web/public/game.jsonl.gz
+cd web && npm install && npm run dev   # open the printed localhost URL
+```
+
+See [`docs/visualization-architecture.md`](docs/visualization-architecture.md) and
+[`web/README.md`](web/README.md).

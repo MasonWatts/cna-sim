@@ -5259,9 +5259,9 @@ mod tests {
         assert_eq!(mv.rule_refs(), &["§8.13", "§8.14"]);
         let ca = Command::CloseAssault { attackers: vec![UnitId(0)], target: HexCoord::new(0, 0) };
         assert_eq!(ca.rule_refs(), &["§15"]);
-        // A variant not in the map returns empty (the map is extensible, not exhaustive).
+        // rule_refs is now exhaustive — every command carries at least one citation.
         let well = Command::PoisonWell { hex: HexCoord::new(0, 0) };
-        assert!(well.rule_refs().is_empty());
+        assert_eq!(well.rule_refs(), &["§52.16"]);
     }
 
     #[test]

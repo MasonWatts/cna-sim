@@ -676,60 +676,143 @@ pub enum Command {
 }
 
 impl Command {
-    /// The primary rulebook section(s) that govern this command — for surfacing "the rule behind
-    /// this action" in tools (e.g. the spectator viewer's rules panel). Covers the commands the
-    /// action enumerator (`legal_commands`) emits, plus the prominent combat/reorg ones; other
-    /// variants return `&[]` for now (extend as needed). These are *static* per-command citations;
-    /// richer per-*outcome* refs (which CRT/shift a resolution used) would live on `CommandOutcome`.
+    /// The primary rulebook section(s) that govern this command — surfaced in the viewer's "Relevant
+    /// Rules" panel (the sole home for § citations; the friendly action description carries none).
+    /// Exhaustive (no wildcard) so every command has its citation and new variants must add one.
     pub fn rule_refs(&self) -> &'static [&'static str] {
         match self {
-            // Movement & Combat.
+            // ── Movement & Rommel ──
             Command::MoveStep { .. } | Command::FormationMove { .. } => &["§8.13", "§8.14"],
+            Command::MoveRommel { .. } | Command::RetreatRommel { .. } => &["§31"],
+            Command::DesignateRommelUnit { .. } => &["§31.4"],
+            Command::RailMove { .. } => &["§8.72"],
+            Command::MoveOffMap { .. } => &["§8.8"],
+            // ── Combat ──
             Command::CloseAssault { .. } => &["§15"],
             Command::AntiArmor { .. } => &["§14"],
             Command::Barrage { .. } => &["§12.6", "§12.23"],
             Command::BarrageFacility { .. } => &["§12.5", "§12.53", "§12.54"],
-            Command::TowBrokenVehicle { .. } => &["§21.6", "§21.63", "§22.65"],
-            Command::SatisfyWithdrawalChoice { .. } => &["§20.81", "§20.82"],
-            Command::TowDestroyedTank { .. } => &["§14.54", "§21.6"],
-            Command::PlanChariotRaid => &["§30.41", "§30.42"],
-            Command::ExecuteChariotRaid => &["§30.44", "§30.46"],
-            Command::OffShoreBombard { .. } => &["§30.2"],
-            Command::Strafe { .. } => &["§40.5"],
-            // Organization / reorganization & logistics.
+            Command::Retreat { .. } => &["§15.82"],
+            Command::React { .. } => &["§8.5"],
+            Command::RetreatBeforeAssault { .. } => &["§13"],
+            Command::Patrol { .. } => &["§16"],
+            Command::SetGunPosition { .. } => &["§12.11", "§12.12"],
+            Command::PlaceDummyTank { .. } => &["§16.4"],
+            // ── Reorganization ──
             Command::AttachUnit { .. } => &["§19.41", "§19.5"],
             Command::DetachUnit { .. } => &["§19.43"],
             Command::ReassignUnit { .. } => &["§19.21"],
-            Command::RefuelUnit { .. } => &["§49"],
-            Command::RearmUnit { .. } => &["§50"],
-            // Air.
-            Command::ReconHex { .. } => &["§42.27"],
-            Command::DesignateCap { .. } => &["§40.2"],
-            Command::FlyBombingMissionAt { .. } | Command::FlyBombingMission { .. } => &["§39", "§41.3"],
-            // Truck convoy & prisoners.
-            Command::MoveTruckConvoy { .. } => &["§8.98"],
-            Command::MoveReplacement { .. } => &["§20.46", "§20.42"],
-            Command::LoadReplacement { .. } | Command::UnloadReplacement { .. } => &["§20.44"],
-            Command::ConstructSupplyDump { .. } => &["§24.9"],
-            Command::LoadConvoy { .. } | Command::UnloadConvoy { .. } => &["§53.14", "§53.24"],
-            Command::RepairConvoyTrucks { .. } => &["§22.13"],
-            Command::MovePrisoners { .. } => &["§28.13"],
-            // Organization / training.
             Command::TrainUnit { .. } => &["§17.3"],
-            Command::SetGunPosition { .. } => &["§12.11", "§12.12"],
-            Command::VoluntarySurrender { .. } => &["§17.5", "§17.54", "§17.56"],
+            Command::DesignateReserve { .. } => &["§18"],
+            Command::WithdrawUnit { .. } | Command::ReturnUnit { .. } => &["§64.75"],
+            Command::UpgradeRecce { .. } => &["§20.5", "§20.53", "§20.54"],
             Command::AugmentAntiTank { .. } => &["§19.8", "§19.82", "§19.83"],
             Command::AugmentBattalionAntiTank { .. } => &["§19.9", "§19.92", "§19.94"],
-            Command::UpgradeRecce { .. } => &["§20.5", "§20.53", "§20.54"],
-            // Repair.
+            Command::SatisfyWithdrawalChoice { .. } => &["§20.81", "§20.82"],
+            // ── Unit supply / logistics ──
+            Command::RefuelUnit { .. } => &["§49"],
+            Command::RearmUnit { .. } => &["§50"],
+            Command::SiphonFuel { .. } => &["§49.17"],
+            Command::LoadTrucks { .. } | Command::UnloadTrucks { .. } => &["§53.24"],
+            Command::AssignTrucks { .. } | Command::ReleaseTrucks { .. } => &["§53.11"],
             Command::Repair { .. } => &["§22"],
+            // ── Dumps / convoys / replacements ──
+            Command::ConstructSupplyDump { .. } => &["§24.9"],
+            Command::FormTruckConvoy { .. } => &["§8.97"],
+            Command::MoveTruckConvoy { .. } => &["§8.98"],
+            Command::LoadConvoy { .. } | Command::UnloadConvoy { .. } => &["§53.14", "§53.24"],
+            Command::RepairConvoyTrucks { .. } => &["§22.13"],
+            Command::MoveReplacement { .. } => &["§20.46", "§20.42"],
+            Command::LoadReplacement { .. } | Command::UnloadReplacement { .. } => &["§20.44"],
+            Command::AbsorbReplacement { .. } => &["§20"],
+            // ── Construction ──
+            Command::LayMinefield { .. } | Command::ClearMinefield { .. } => &["§24.3"],
+            Command::BuildPipeline { .. } => &["§52.2"],
+            Command::BuildFortification { .. } => &["§24.4"],
+            Command::BuildRailroad { .. } => &["§24.6"],
+            Command::DemolishRailroad { .. } => &["§24.66"],
+            Command::BuildRoad { .. } => &["§24.5"],
+            Command::RailMoveSupply { .. } => &["§54.3"],
+            Command::ImportRollingStock { .. } => &["§54.43"],
+            // ── Wells ──
+            Command::PoisonWell { .. } => &["§52.16"],
+            Command::SweetenWell { .. } => &["§52.17"],
+            // ── Prisoners / captured / surrender ──
+            Command::FormGuard { .. } | Command::ReturnGuard { .. } => &["§28.22"],
+            Command::MovePrisoners { .. } => &["§28.13"],
             Command::RepairCapturedEquipment { .. } => &["§28.3"],
-            // Commonwealth fleet & naval convoy.
-            Command::RepairShip { .. } => &["§30.37"],
+            Command::VoluntarySurrender { .. } => &["§17.5", "§17.54", "§17.56"],
+            // ── Raiders / commandos ──
+            Command::FormRaider { .. } => &["§27.13"],
+            Command::MoveRaider { .. } => &["§27.3"],
+            Command::SpotRaider { .. } => &["§27.44"],
+            Command::ResupplyRaider { .. } => &["§27.35"],
+            Command::RaidRommel { .. } => &["§27.6"],
+            Command::RaidPipeline { .. } => &["§27.52"],
+            Command::RaidAirfield { .. } => &["§27.53"],
+            Command::RaidPlanes { .. } => &["§27.54"],
+            Command::RaidSupplyDump { .. } => &["§27.55"],
+            Command::RaidTruckConvoy { .. } => &["§27.57"],
+            Command::InterceptTruckConvoy { .. } => &["§27.59"],
+            Command::LandLayforce { .. } => &["§27.72"],
+            Command::EmbarkLayforce { .. } => &["§27.77"],
+            Command::LandSas { .. } => &["§27.83"],
+            Command::RaidAirfieldSas { .. } => &["§27.85"],
+            // ── Naval ──
             Command::AssignShip { .. } => &["§30.15"],
+            Command::RepairShip { .. } => &["§30.37"],
+            Command::NavalTransferTroops { .. } => &["§30.51", "§30.52"],
+            Command::OffShoreBombard { .. } => &["§30.2"],
+            Command::ArtilleryBombardShip { .. } => &["§30.35"],
+            Command::SanGiorgioAttackShip { .. } => &["§30.39"],
+            Command::BlockHarbor { .. } => &["§55.22"],
+            Command::UnblockHarbor { .. } => &["§55.26"],
+            Command::LayHarborMine { .. } => &["§41.39", "§55.27"],
+            Command::RemoveHarborMine { .. } => &["§55.27"],
+            Command::PlanChariotRaid => &["§30.41", "§30.42"],
+            Command::ExecuteChariotRaid => &["§30.44", "§30.46"],
+            Command::TowBrokenVehicle { .. } => &["§21.6", "§21.63", "§22.65"],
+            Command::TowDestroyedTank { .. } => &["§14.54", "§21.6"],
+            // ── Axis convoys / production ──
             Command::PlanConvoy { .. } => &["§56.15"],
+            Command::BombConvoy { .. } => &["§41.6"],
             Command::DeliverConvoy { .. } => &["§56.16"],
-            _ => &[],
+            Command::ReconConvoyLane { .. } => &["§42.53"],
+            Command::PlanProduction { .. } => &["§20.66", "§20.78C"],
+            Command::ProduceCommonwealthTrucks { .. } => &["§20.78A"],
+            Command::ProduceCommonwealthInfantry { .. } => &["§20.78B"],
+            Command::ProduceAxisTrucks { .. } => &["§20.66a"],
+            // ── Air: squadrons ──
+            Command::DeploySgsu { .. } => &["§34.82"],
+            Command::WithdrawSquadron { .. } => &["§34.84"],
+            Command::BaseSquadronOffMap { .. } => &["§36.53"],
+            Command::AssignSquadronPlanes { .. } => &["§35.2"],
+            Command::RefitSquadron { .. } => &["§38.34"],
+            Command::ReadySquadron { .. } => &["§38.2", "§38.3"],
+            Command::ArmSquadron { .. } => &["§38.4"],
+            Command::FlySquadronMission { .. } => &["§37"],
+            Command::AssignPilot { .. } => &["§40.12"],
+            Command::TransferSquadron { .. } => &["§43.14"],
+            Command::DeclareInitiativeOrder { .. } => &["§33.0"],
+            Command::DetermineMaltaAvailability { .. } => &["§44.42"],
+            // ── Air: missions ──
+            Command::DesignateCap { .. } => &["§40.2"],
+            Command::ReconHex { .. } => &["§42.27"],
+            Command::Strafe { .. } => &["§40.5"],
+            Command::FlyBombingMission { .. } | Command::FlyBombingMissionAt { .. } => &["§39", "§41.3"],
+            Command::BombAirFacility { .. } => &["§41.36"],
+            Command::BombShip { .. } => &["§30.34", "§41.34"],
+            Command::AirdropSupplies { .. } => &["§42.4"],
+            Command::TransportUnit { .. } => &["§42.3"],
+            Command::AirdropUnit { .. } => &["§42.41"],
+            // ── Malta ──
+            Command::BombMaltaBase { .. } => &["§44.24"],
+            Command::ConstructMaltaFacility { .. } => &["§44.13"],
+            Command::DivertMaltaAA { .. } => &["§44.18"],
+            Command::MoveMaltaFlak { .. } => &["§44.15", "§44.18"],
+            Command::BaseMaltaPlanes { .. } => &["§44.14"],
+            Command::MoveMaltaPlanes { .. } => &["§44.15"],
+            Command::InterdictConvoy { .. } => &["§40.24"],
         }
     }
 }

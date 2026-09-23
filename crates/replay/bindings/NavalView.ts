@@ -6,4 +6,9 @@ import type { ShipView } from "./ShipView";
 /**
  * The naval layer (§30/§55/§56): on-map ships (tiles) plus port state and Axis convoys (panel).
  */
-export type NavalView = { ships: Array<ShipView>, ports: Array<PortStateView>, convoys: Array<NavalConvoyView>, };
+export type NavalView = { ships: Array<ShipView>, ports: Array<PortStateView>, convoys: Array<NavalConvoyView>, 
+/**
+ * Fleet ship names, index-aligned with the engine's `ship_index` (all ships, in port or at sea),
+ * so the viewer can name a ship referenced by a command's `ship_index`.
+ */
+fleet_names: Array<string>, };

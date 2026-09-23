@@ -1,21 +1,28 @@
-//! Records a deterministic CNA-Sim game as a JSON event log for the spectator website.
+//! Records a deterministic CNA-Sim game as a JSONL event log for the spectator website.
 //!
-//! See `docs/visualization-architecture.md`. The static map is serialized **once**; each event
-//! carries the acting side, a human-readable action + outcome, and the dynamic unit state *after*
-//! the action, so a dumb (no-engine) frontend can render the board at every step. Commands are
-//! rendered as strings for this v0 — a round-trippable `Command` schema (shared with the future
-//! MCP interface) and per-action `§` rule citations are follow-on passes.
+//! See `docs/visualization-architecture.md`. The header line carries the scenario/seed/agents and
+//! the static map (serialized **once**); each subsequent line is one `Event` carrying the acting
+//! side, the raw command + outcome, a friendly plain-language `summary`, its `§` rule citations
+//! (`Command::rule_refs`), a jump-to-activity target, and the *delta* of dynamic state since the
+//! previous step, so a dumb (no-engine) frontend folds the deltas to render the board at every step.
+//! The `record` bin streams this to a `.jsonl` file (gzipped to `game.jsonl.gz` for the web asset).
+//! The raw command/outcome are still `Debug` strings; a round-trippable `Command` schema for the
+//! future WASM replay / MCP interface is a follow-on.
 
 use cna_engine::agent::Agent;
 use cna_engine::reference::units::Side;
+use cna_engine::state::air::SquadronId;
+use cna_engine::state::command::{Command, CommandOutcome};
 use cna_engine::state::game::{GameState, Phase};
+use cna_engine::state::map::HexCoord;
+use cna_engine::state::unit::UnitId;
 use serde::Serialize;
 use ts_rs::TS;
 
 /// A complete recorded game: header (scenario, seed, agents, static map) + the ordered event log.
 ///
 /// The `#[derive(TS)]` on this and the types below generates the frontend's TypeScript types into
-/// `crates/replay/bindings/` when `cargo test` runs — the `game.json` schema is single-sourced here.
+/// `crates/replay/bindings/` when `cargo test` runs — the event-log schema is single-sourced here.
 #[derive(Serialize, TS)]
 #[ts(export)]
 pub struct GameRecord {
@@ -94,11 +101,20 @@ pub struct Event {
     pub phase: String,
     /// Acting side (`"-"` for the initial frame).
     pub side: String,
-    /// Human-readable command (v0: `Debug`).
+    /// Human-readable command (v0: `Debug`) — the raw command, kept for reference.
     pub action: String,
     /// Human-readable command outcome (v0: `Debug`).
     pub outcome: String,
-    /// `§` rule citations for this action — populated in a later pass.
+    /// Friendly, plain-language description of the action (see `describe_command`). Empty for the
+    /// initial frame; empty on older logs, where the viewer falls back to prettifying `action`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub summary: String,
+    /// Where the viewer's "jump to activity" control should center for this action, or `null` when
+    /// there is no clear target (production / strategic actions). See [`ActivityTarget`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<ActivityTarget>,
+    /// `§` rule citations governing this action (from `Command::rule_refs`), shown in the viewer's
+    /// "Relevant Rules" panel. Every command carries at least one; the friendly `summary` has none.
     pub rules: Vec<String>,
     /// **Delta**: only the units whose view changed since the previous event (step 0 lists them
     /// all). To render the board at step N, fold `units` from step 0 through N. Keeps the log small
@@ -764,6 +780,9 @@ pub struct NavalView {
     pub ships: Vec<ShipView>,
     pub ports: Vec<PortStateView>,
     pub convoys: Vec<NavalConvoyView>,
+    /// Fleet ship names, index-aligned with the engine's `ship_index` (all ships, in port or at sea),
+    /// so the viewer can name a ship referenced by a command's `ship_index`.
+    pub fleet_names: Vec<String>,
 }
 
 fn naval_views(g: &GameState) -> NavalView {
@@ -817,7 +836,8 @@ fn naval_views(g: &GameState) -> NavalView {
         .map(|c| NavalConvoyView { lane: c.lane, destination: c.destination.clone(), arrival_gt: c.arrival_gt, tons: c.fuel_tons + c.ammo_tons + c.stores_tons + c.replacement_tons })
         .collect();
     convoys.sort_by_key(|c| (c.arrival_gt, c.lane));
-    NavalView { ships, ports, convoys }
+    let fleet_names: Vec<String> = g.fleet.iter().map(|s| s.name.clone()).collect();
+    NavalView { ships, ports, convoys, fleet_names }
 }
 
 /// A unit sitting in or transiting an off-map §8.8 box (Tripoli/Tunisia complex).
@@ -975,6 +995,495 @@ fn hexside_views(g: &GameState) -> Vec<HexsideView> {
 
 /// Build the viewer `UnitView` for a single unit — shared by the on-map unit layer and the off-map
 /// complex so both render identical counters (TOE, glyph, status).
+// ── Friendly action descriptions ────────────────────────────────────────────────────────────────
+// Turn an accepted (Command, CommandOutcome) into one plain-language sentence for the viewer's
+// Current Action panel, resolving unit/ship/squadron ids to names and hexes as "(col,row)". The
+// match is exhaustive (no wildcard) so the compiler guarantees every Command variant has a phrasing.
+fn hx_str(h: HexCoord) -> String {
+    format!("({},{})", h.col, h.row)
+}
+fn un_bare(g: &GameState, id: UnitId) -> String {
+    match g.units.get(&id) {
+        Some(u) => u.name.clone(),
+        None => format!("unit #{}", id.0),
+    }
+}
+fn un_name(g: &GameState, id: UnitId) -> String {
+    match g.effective_hex(id) {
+        Some(h) => format!("{} {}", un_bare(g, id), hx_str(h)),
+        None => un_bare(g, id),
+    }
+}
+fn unit_list(g: &GameState, ids: &[UnitId]) -> String {
+    if ids.is_empty() {
+        return "no units".into();
+    }
+    ids.iter().map(|&i| un_bare(g, i)).collect::<Vec<_>>().join(", ")
+}
+fn sq_name(g: &GameState, id: SquadronId) -> String {
+    g.sgsus.get(&id).map(|s| s.designation.clone()).unwrap_or_else(|| format!("squadron #{}", id.0))
+}
+/// "a"/"an" for a following word (rough — good enough for the nationality/class words we use).
+fn article(word: &str) -> &'static str {
+    match word.chars().next() {
+        Some(c) if "AEIOUaeiou".contains(c) => "an",
+        _ => "a",
+    }
+}
+fn ship_name(g: &GameState, idx: usize) -> String {
+    g.fleet.get(idx).map(|s| s.name.clone()).unwrap_or_else(|| format!("ship #{idx}"))
+}
+fn last_hex(path: &[HexCoord]) -> Option<HexCoord> {
+    path.last().copied()
+}
+
+fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) -> String {
+    use cna_engine::state::naval::ShipLocation;
+    let mv = |m: &str| if m.contains("Motor") { "motorized" } else { "on foot" };
+    match cmd {
+        // ---- Movement & Rommel ----
+        Command::MoveStep { unit, to, mode } => format!("Moved {} to {} ({}).", un_bare(g, *unit), hx_str(*to), mv(&format!("{mode:?}"))),
+        Command::FormationMove { formation, to, mode } => format!("Advanced formation {} to {} ({}).", un_bare(g, *formation), hx_str(*to), mv(&format!("{mode:?}"))),
+        Command::MoveRommel { to } => format!("Rommel advanced to {}.", hx_str(*to)),
+        Command::RetreatRommel { to } => format!("Rommel fell back to {}.", hx_str(*to)),
+        Command::DesignateRommelUnit { unit } => format!("Placed {} under Rommel's command (+5 CPA this stage).", un_name(g, *unit)),
+        Command::RailMove { unit, to } => format!("Moved {} by rail to {}.", un_bare(g, *unit), hx_str(*to)),
+        Command::MoveOffMap { unit, direction } => {
+            let dir = if format!("{direction:?}").contains("Toward") { "toward the map" } else { "further off-map" };
+            let base = format!("Marched {} {} along the off-map track", un_bare(g, *unit), dir);
+            match outcome {
+                CommandOutcome::OffMapMoved(m) => {
+                    let s = format!("{m:?}");
+                    if let Some(box_name) = s.split('"').nth(1) { format!("{base} — arrived in the {box_name} box.") } else { format!("{base}.") }
+                }
+                _ => format!("{base}."),
+            }
+        }
+        // ---- Combat ----
+        Command::CloseAssault { attackers, target } => format!("Close assault: {} attacked {}.", unit_list(g, attackers), hx_str(*target)),
+        Command::AntiArmor { attackers, target_hex, .. } => format!("Anti-armor fire: {} engaged the tanks in {}.", unit_list(g, attackers), hx_str(*target_hex)),
+        Command::Barrage { attackers, target, target_class, .. } => format!("Barrage: {} shelled the {:?} in {}.", unit_list(g, attackers), target_class, hx_str(*target)),
+        Command::BarrageFacility { barragers, target, facility } => format!("Barrage: {} shelled the {:?} at {}.", unit_list(g, barragers), facility, hx_str(*target)),
+        Command::Retreat { unit, path } => match last_hex(path) {
+            Some(h) => format!("{} retreated to {}.", un_bare(g, *unit), hx_str(h)),
+            None => format!("{} stood its ground under a retreat order.", un_name(g, *unit)),
+        },
+        Command::React { unit, path } => match last_hex(path) {
+            Some(h) => format!("{} reacted, pulling back to {}.", un_bare(g, *unit), hx_str(h)),
+            None => format!("{} held in place.", un_name(g, *unit)),
+        },
+        Command::RetreatBeforeAssault { unit, path } => match last_hex(path) {
+            Some(h) => format!("{} withdrew before the assault to {}.", un_bare(g, *unit), hx_str(h)),
+            None => format!("{} chose not to withdraw.", un_name(g, *unit)),
+        },
+        Command::Patrol { patrol_points, target, .. } => {
+            let pts: u32 = patrol_points.iter().map(|(_, p)| *p).sum();
+            format!("Patrolled {} with {pts} reconnaissance point(s).", hx_str(*target))
+        }
+        Command::SetGunPosition { unit, forward } => format!("Set {}'s guns to the {} position.", un_name(g, *unit), if *forward { "forward" } else { "back" }),
+        // ---- Reorganization ----
+        Command::AttachUnit { unit, parent } => format!("Attached {} to formation {}.", un_bare(g, *unit), un_bare(g, *parent)),
+        Command::DetachUnit { unit } => format!("Detached {} to operate independently.", un_name(g, *unit)),
+        Command::ReassignUnit { unit, parent } => format!("Reassigned {} to formation {}.", un_bare(g, *unit), un_bare(g, *parent)),
+        Command::TrainUnit { unit } => format!("Set {} to train up toward its target morale.", un_name(g, *unit)),
+        Command::DesignateReserve { unit, status } => format!("Set {} to {:?} reserve status.", un_name(g, *unit), status),
+        Command::WithdrawUnit { unit } => format!("Withdrew {} from play.", un_name(g, *unit)),
+        Command::ReturnUnit { unit, hex } => format!("Returned {} to play at {}.", un_bare(g, *unit), hx_str(*hex)),
+        Command::UpgradeRecce { unit } => format!("Upgraded {} with a light tank.", un_name(g, *unit)),
+        Command::AugmentAntiTank { hq, gun_system, count } => format!("Augmented HQ {} with {count} TOE of {gun_system} anti-tank guns.", un_bare(g, *hq)),
+        Command::AugmentBattalionAntiTank { battalion, gun_system, count } => format!("Gave {} {count} TOE of {gun_system} anti-tank guns.", un_bare(g, *battalion)),
+        Command::SatisfyWithdrawalChoice { units, .. } => format!("Withdrew {} to satisfy a mandatory withdrawal.", unit_list(g, units)),
+        // ---- Supply / logistics on units ----
+        Command::RefuelUnit { unit } => match outcome {
+            CommandOutcome::UnitRefueled(n) => format!("Refuelled {} — fuel now {n}.", un_name(g, *unit)),
+            _ => format!("Refuelled {}.", un_name(g, *unit)),
+        },
+        Command::RearmUnit { unit } => match outcome {
+            CommandOutcome::UnitRearmed(n) => format!("Rearmed {} — ammo now {n}.", un_name(g, *unit)),
+            _ => format!("Rearmed {}.", un_name(g, *unit)),
+        },
+        Command::SiphonFuel { donor, receiver, amount } => format!("Siphoned {amount} fuel from {} to {}.", un_bare(g, *donor), un_bare(g, *receiver)),
+        Command::LoadTrucks { unit, commodity, amount } => format!("Loaded {amount} {commodity:?} onto {}'s trucks.", un_name(g, *unit)),
+        Command::UnloadTrucks { unit, commodity, amount } => format!("Unloaded {amount} {commodity:?} from {}'s trucks into the hex.", un_name(g, *unit)),
+        Command::AssignTrucks { unit, light, medium, heavy } => format!("Assigned trucks ({light}L/{medium}M/{heavy}H) to {}.", un_name(g, *unit)),
+        Command::ReleaseTrucks { unit, light, medium, heavy } => format!("Released trucks ({light}L/{medium}M/{heavy}H) from {} to the pool.", un_name(g, *unit)),
+        Command::Repair { unit, kind } => match outcome {
+            CommandOutcome::Repaired(n) => format!("Repaired {}'s {:?} — {n} point(s) recovered.", un_name(g, *unit), kind),
+            _ => format!("Repaired {}'s {:?}.", un_name(g, *unit), kind),
+        },
+        // ---- Supply dumps / convoys / replacements ----
+        Command::ConstructSupplyDump { unit, hex, dummy } => format!("{} built a {} at {}.", un_bare(g, *unit), if *dummy { "dummy (decoy) dump" } else { "supply dump" }, hx_str(*hex)),
+        Command::FormTruckConvoy { from_unit, light, medium, heavy } => format!("Formed a truck convoy ({light}L/{medium}M/{heavy}H) from {}.", un_name(g, *from_unit)),
+        Command::MoveTruckConvoy { to, .. } => format!("Moved a free truck convoy to {}.", hx_str(*to)),
+        Command::LoadConvoy { commodity, amount, .. } => format!("Loaded {amount} {commodity:?} from a dump onto a truck convoy.", ),
+        Command::UnloadConvoy { commodity, amount, .. } => format!("Off-loaded {amount} {commodity:?} from a truck convoy into a dump.", ),
+        Command::RepairConvoyTrucks { .. } => match outcome {
+            CommandOutcome::Repaired(n) => format!("Repaired a convoy's broken-down trucks — {n} recovered."),
+            _ => "Repaired a convoy's broken-down trucks.".into(),
+        },
+        Command::MoveReplacement { to, .. } => format!("Moved a replacement pool toward the front, to {}.", hx_str(*to)),
+        Command::LoadReplacement { .. } => "Loaded a replacement pool onto a truck convoy.".into(),
+        Command::UnloadReplacement { .. } => "Unloaded a replacement pool from its convoy.".into(),
+        Command::AbsorbReplacement { unit, .. } => match outcome {
+            CommandOutcome::ReplacementAbsorbed(n) => format!("{} absorbed replacements (+{n} TOE).", un_name(g, *unit)),
+            _ => format!("{} absorbed a replacement pool.", un_name(g, *unit)),
+        },
+        // ---- Construction ----
+        Command::LayMinefield { builder, hex, dummy } => format!("{} began laying a {}minefield at {}.", un_bare(g, *builder), if *dummy { "dummy " } else { "" }, hx_str(*hex)),
+        Command::ClearMinefield { builder, hex } => format!("{} began clearing the minefield at {}.", un_bare(g, *builder), hx_str(*hex)),
+        Command::BuildPipeline { builder, hex } => format!("{} began building a water pipeline into {}.", un_bare(g, *builder), hx_str(*hex)),
+        Command::BuildFortification { hex, level, .. } => format!("Began building a level-{level} fortification at {}.", hx_str(*hex)),
+        Command::BuildRailroad { a, b, .. } => format!("Began building railroad between {} and {}.", hx_str(*a), hx_str(*b)),
+        Command::DemolishRailroad { a, b, .. } => format!("Began demolishing railroad between {} and {}.", hx_str(*a), hx_str(*b)),
+        Command::BuildRoad { builder, a, b } => format!("{} began building a road between {} and {}.", un_bare(g, *builder), hx_str(*a), hx_str(*b)),
+        Command::RailMoveSupply { from, to, cargo, points } => format!("Moved {points} {cargo:?} supply by rail from {} to {}.", hx_str(*from), hx_str(*to)),
+        Command::ImportRollingStock { hex } => format!("Activated imported Axis rolling stock at {} (+300 tons haulage).", hx_str(*hex)),
+        // ---- Wells ----
+        Command::PoisonWell { hex } => format!("Poisoned the well at {} — {}.", hx_str(*hex), if matches!(outcome, CommandOutcome::WellPoisoned(true)) { "the well is now poisoned" } else { "the attempt failed" }),
+        Command::SweetenWell { hex } => format!("Sweetened the well at {} — {}.", hx_str(*hex), if matches!(outcome, CommandOutcome::WellSweetened(true)) { "it is drinkable again" } else { "the attempt failed" }),
+        // ---- Prisoners / captured / surrender ----
+        Command::FormGuard { group_hex } => format!("Formed a prisoner guard at {}.", hx_str(*group_hex)),
+        Command::ReturnGuard { group_hex } => format!("Returned a prisoner guard to its unit at {}.", hx_str(*group_hex)),
+        Command::MovePrisoners { from, to } => {
+            let base = format!("Marched prisoners from {} to {}", hx_str(*from), hx_str(*to));
+            match outcome {
+                CommandOutcome::PrisonersMoved { escaped } if *escaped > 0 => format!("{base} — {escaped} point(s) escaped for want of escort."),
+                _ => format!("{base}."),
+            }
+        }
+        Command::RepairCapturedEquipment { hex, system } => format!("Repaired captured {system} at {} — now usable.", hx_str(*hex)),
+        Command::VoluntarySurrender { hex, captor, .. } => {
+            let base = format!("The stack at {} surrendered to {}", hx_str(*hex), un_bare(g, *captor));
+            match outcome {
+                CommandOutcome::VoluntarilySurrendered { toe_lost, .. } => format!("{base} — {toe_lost} TOE taken prisoner."),
+                _ => format!("{base}."),
+            }
+        }
+        Command::PlaceDummyTank { hex, designation } => format!("Placed a dummy tank formation \"{designation}\" at {}.", hx_str(*hex)),
+        // ---- Raiders / commandos ----
+        Command::FormRaider { kind, from_unit } => format!("Formed a {:?} desert raider from {}.", kind, un_bare(g, *from_unit)),
+        Command::MoveRaider { to, .. } => format!("A desert raider slipped to {}.", hx_str(*to)),
+        Command::SpotRaider { .. } => format!("Attempted to spot a desert raider — {}.", if matches!(outcome, CommandOutcome::RaiderSpotChecked { eliminated: true }) { "spotted and destroyed" } else { "it evaded" }),
+        Command::ResupplyRaider { .. } => "A desert raider resupplied on fuel, ammo and water.".into(),
+        Command::RaidRommel { .. } => "An LRDG patrol raided Rommel.".into(),
+        Command::RaidPipeline { .. } => "A raider struck the water pipeline.".into(),
+        Command::RaidAirfield { .. } => "A raider struck an enemy airfield.".into(),
+        Command::RaidPlanes { .. } => "A raider struck grounded enemy planes.".into(),
+        Command::RaidSupplyDump { .. } => "A raider struck an enemy supply dump.".into(),
+        Command::RaidTruckConvoy { .. } => "A raider struck an enemy truck convoy.".into(),
+        Command::InterceptTruckConvoy { .. } => "A raider intercepted a passing enemy convoy.".into(),
+        Command::LandLayforce { unit, to, .. } => format!("Landed {} (Layforce commando) at {} by sea.", un_bare(g, *unit), hx_str(*to)),
+        Command::EmbarkLayforce { unit } => format!("Re-embarked {} (Layforce) for Alexandria.", un_bare(g, *unit)),
+        Command::LandSas { unit, to, .. } => format!("Landed {} (SAS Brigade) at {} by sea.", un_bare(g, *unit), hx_str(*to)),
+        Command::RaidAirfieldSas { unit } => match outcome {
+            CommandOutcome::SasRaided { planes_pct } => format!("{} (SAS) raided the airfield — {planes_pct}% of grounded planes destroyed.", un_bare(g, *unit)),
+            _ => format!("{} (SAS) raided the airfield.", un_bare(g, *unit)),
+        },
+        // ---- Naval ----
+        Command::AssignShip { ship_index, location } => {
+            let where_to = match location { ShipLocation::AtSea(h) => format!("to sea at {}", hx_str(*h)), other => format!("to {other:?}") };
+            format!("Positioned {} {}.", ship_name(g, *ship_index), where_to)
+        }
+        Command::RepairShip { ship_index } => match outcome {
+            CommandOutcome::ShipRepaired(n) => format!("Repaired {} — gun rating now {n}.", ship_name(g, *ship_index)),
+            _ => format!("Repaired {}.", ship_name(g, *ship_index)),
+        },
+        Command::NavalTransferTroops { unit, to_port } => format!("Shipped {} by sea to {to_port}.", un_bare(g, *unit)),
+        Command::OffShoreBombard { ship_index, target, target_class } => format!("{} bombarded the {:?} in {}.", ship_name(g, *ship_index), target_class, hx_str(*target)),
+        Command::ArtilleryBombardShip { attackers, ship_index } => format!("{} fired on {}.", unit_list(g, attackers), ship_name(g, *ship_index)),
+        Command::SanGiorgioAttackShip { ship_index } => format!("The San Giorgio fired on {}.", ship_name(g, *ship_index)),
+        Command::BlockHarbor { port, .. } => format!("Blocked the harbour at {port} by scuttling."),
+        Command::UnblockHarbor { port, .. } => format!("Cleared harbour blocking at {port}."),
+        Command::LayHarborMine { port } => format!("Air-laid a mine in {port}'s harbour."),
+        Command::RemoveHarborMine { port } => format!("Attempted to clear a harbour mine at {port} — {}.", if matches!(outcome, CommandOutcome::HarborMineRemoved(true)) { "cleared" } else { "still mined" }),
+        Command::PlanChariotRaid => "Planned the Italian Chariot raid on Alexandria.".into(),
+        Command::ExecuteChariotRaid => match outcome {
+            CommandOutcome::ChariotRaidExecuted { damage } => format!("Executed the Chariot raid — {damage} gun-damage inflicted at Alexandria."),
+            _ => "Executed the Chariot raid.".into(),
+        },
+        // ---- Axis convoys / production ----
+        Command::PlanConvoy { destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, .. } => {
+            let tons = fuel_tons + ammo_tons + stores_tons + replacement_tons;
+            format!("Scheduled an Axis convoy to {destination}, ~{tons} tons, arriving GT {arrival_gt}.")
+        }
+        Command::BombConvoy { .. } => match outcome {
+            CommandOutcome::ConvoyBombed(pct) => format!("Bombed a planned Axis convoy — {pct}% of its cargo lost."),
+            _ => "Bombed a planned Axis convoy.".into(),
+        },
+        Command::DeliverConvoy { .. } => "Delivered an arrived convoy's cargo into supply.".into(),
+        Command::ReconConvoyLane { lane, .. } => format!("Flew naval reconnaissance over shipping lane {lane}."),
+        Command::PlanProduction { nationality, item, count } => format!("Planned production of {count} {item} for the {nationality:?}."),
+        Command::ProduceCommonwealthTrucks {} => "Rolled Commonwealth truck production.".into(),
+        Command::ProduceCommonwealthInfantry {} => match outcome {
+            CommandOutcome::InfantryProduced { points, .. } => format!("Rolled Commonwealth infantry production — {points} replacement point(s)."),
+            _ => "Rolled Commonwealth infantry production.".into(),
+        },
+        Command::ProduceAxisTrucks { kind, count } => format!("Planned {count} {kind:?} Axis truck point(s)."),
+        // ---- Air: squadrons ----
+        Command::DeploySgsu { nationality, class, at } => {
+            let nat = format!("{nationality:?}");
+            format!("Deployed {} {nat} {class:?} squadron at {}.", article(&nat), hx_str(*at))
+        }
+        Command::WithdrawSquadron { squadron } => format!("Withdrew squadron {} to meet a withdrawal requirement.", sq_name(g, *squadron)),
+        Command::BaseSquadronOffMap { squadron, facility } => format!("Based squadron {} at the off-map field {facility}.", sq_name(g, *squadron)),
+        Command::AssignSquadronPlanes { squadron, aircraft_type, class, count } => format!("Assigned {count} × {aircraft_type} ({class:?}) to squadron {}.", sq_name(g, *squadron)),
+        Command::RefitSquadron { squadron, .. } => match outcome {
+            CommandOutcome::SquadronRefitted(n) => format!("Refit squadron {} — {n} planes returned to service.", sq_name(g, *squadron)),
+            _ => format!("Refit squadron {}.", sq_name(g, *squadron)),
+        },
+        Command::ReadySquadron { squadron, count } => format!("Readied {count} planes of squadron {}.", sq_name(g, *squadron)),
+        Command::ArmSquadron { squadron, count } => format!("Armed {count} planes of squadron {} for a strike.", sq_name(g, *squadron)),
+        Command::FlySquadronMission { squadron, count } => format!("Flew {count} planes of squadron {} on a mission.", sq_name(g, *squadron)),
+        Command::AssignPilot { rating, squadron } => format!("Assigned a rating-{rating} pilot to squadron {}.", sq_name(g, *squadron)),
+        Command::TransferSquadron { squadron, to } => format!("Began transferring squadron {} to {to:?}.", sq_name(g, *squadron)),
+        Command::DeclareInitiativeOrder { initiative_moves_first } => format!("Declared to move {} this stage.", if *initiative_moves_first { "first" } else { "second" }),
+        Command::DetermineMaltaAvailability { level } => format!("Determined Malta raid availability at level {level}."),
+        // ---- Air: missions ----
+        Command::DesignateCap { squadron, center, cap_type, planes } => format!("Flew {planes} fighters of squadron {} on a {cap_type:?} Combat Air Patrol over {}.", sq_name(g, *squadron), hx_str(*center)),
+        Command::ReconHex { squadron, target, planes } => format!("Flew {planes} planes of squadron {} on reconnaissance over {}.", sq_name(g, *squadron), hx_str(*target)),
+        Command::Strafe { squadron, target, strafe_target, planes } => format!("Strafed the {strafe_target:?} in {} with {planes} planes of squadron {}.", hx_str(*target), sq_name(g, *squadron)),
+        Command::FlyBombingMission { squadron, planes, .. } => format!("Flew a bombing mission: {planes} bombers of squadron {}.", sq_name(g, *squadron)),
+        Command::FlyBombingMissionAt { squadron, target, planes, .. } => format!("Flew {planes} bombers of squadron {} to bomb {}.", sq_name(g, *squadron), hx_str(*target)),
+        Command::BombAirFacility { hex, levels, .. } => format!("Bombed the air facility at {}, reducing it {levels} level(s).", hx_str(*hex)),
+        Command::BombShip { squadron, planes, ship_index, .. } => format!("Bombed {} with {planes} planes of squadron {}.", ship_name(g, *ship_index), sq_name(g, *squadron)),
+        Command::AirdropSupplies { target, commodity, amount, .. } => format!("Airdropped {amount} {commodity:?} into {}.", hx_str(*target)),
+        Command::TransportUnit { unit, target, .. } => format!("Air-transported {} to {}.", un_bare(g, *unit), hx_str(*target)),
+        Command::AirdropUnit { unit, target, .. } => format!("Airdropped {} into {}.", un_bare(g, *unit), hx_str(*target)),
+        // ---- Malta ----
+        Command::BombMaltaBase { base_index, planes, .. } => match outcome {
+            CommandOutcome::MaltaBaseBombed { levels_lost, .. } => format!("Axis raided Malta base #{} with {planes} planes — {levels_lost} capacity level(s) lost.", base_index + 1),
+            _ => format!("Axis raided Malta base #{} with {planes} planes.", base_index + 1),
+        },
+        Command::ConstructMaltaFacility { base_index } => match outcome {
+            CommandOutcome::MaltaFacilityConstructed(n) => format!("Built up Malta base #{} by {n} level(s).", base_index + 1),
+            _ => format!("Built up Malta base #{}.", base_index + 1),
+        },
+        Command::DivertMaltaAA { base_index, heavy } => format!("Diverted a {} AA point to Malta base #{}.", if *heavy { "heavy" } else { "light" }, base_index + 1),
+        Command::MoveMaltaFlak { from_base, to_base, light, heavy } => format!("Redistributed Malta flak ({light} light / {heavy} heavy) from base #{} to base #{}.", from_base + 1, to_base + 1),
+        Command::BaseMaltaPlanes { base_index, aircraft_type, count } => format!("Based {count} × {aircraft_type} on Malta base #{}.", base_index + 1),
+        Command::MoveMaltaPlanes { from_base, to_base, aircraft_type, count } => format!("Moved {count} × {aircraft_type} from Malta base #{} to #{}.", from_base + 1, to_base + 1),
+        Command::InterdictConvoy { aircraft_type, planes, torpedo, .. } => {
+            let base = format!("Flew {planes} × {aircraft_type} from Malta to {} an Axis convoy", if *torpedo { "torpedo" } else { "bomb" });
+            match outcome {
+                CommandOutcome::ConvoyInterdicted { percent, attackers_lost } => format!("{base} — {percent}% of its tonnage sunk, {attackers_lost} plane(s) lost to flak."),
+                _ => format!("{base}."),
+            }
+        }
+        // ---- Towing ----
+        Command::TowBrokenVehicle { to, .. } => format!("Towed a broken-down vehicle to {}.", hx_str(*to)),
+        Command::TowDestroyedTank { to, .. } => format!("Towed a knocked-out tank to {} for recovery.", hx_str(*to)),
+    }
+}
+
+/// Where the viewer's "jump to activity" control centers. `kind` is `"hex"` (an on-map hex, `hex`
+/// set), `"box"` (an off-map panel named by `name`: `"axis_land"` / `"malta"` / `"axis_convoys"`),
+/// or `"cwair"` (a Commonwealth off-map air-field box named by `name`).
+#[derive(Serialize, TS, Clone, PartialEq)]
+#[ts(export)]
+pub struct ActivityTarget {
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hex: Option<[i16; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+fn t_hex(h: HexCoord) -> ActivityTarget {
+    ActivityTarget { kind: "hex".into(), hex: Some([h.col, h.row]), name: None }
+}
+fn t_box(id: &str) -> ActivityTarget {
+    ActivityTarget { kind: "box".into(), hex: None, name: Some(id.into()) }
+}
+fn t_air(name: &str) -> ActivityTarget {
+    ActivityTarget { kind: "cwair".into(), hex: None, name: Some(name.into()) }
+}
+
+/// The jump-to-activity target for an action. Layers off-map/box/port targets over the on-map hex
+/// classifier `activity_hex`. `None` → the viewer hides the jump control (production/strategic).
+fn activity_target(g: &GameState, cmd: &Command) -> Option<ActivityTarget> {
+    use cna_engine::state::naval::ShipLocation;
+    match cmd {
+        Command::MoveOffMap { .. } => return Some(t_box("axis_land")),
+        Command::BombMaltaBase { .. }
+        | Command::ConstructMaltaFacility { .. }
+        | Command::DivertMaltaAA { .. }
+        | Command::MoveMaltaFlak { .. }
+        | Command::BaseMaltaPlanes { .. }
+        | Command::MoveMaltaPlanes { .. }
+        | Command::InterdictConvoy { .. }
+        | Command::DetermineMaltaAvailability { .. } => return Some(t_box("malta")),
+        Command::PlanConvoy { .. } | Command::BombConvoy { .. } | Command::DeliverConvoy { .. } | Command::ReconConvoyLane { .. } => {
+            return Some(t_box("axis_convoys"))
+        }
+        Command::BaseSquadronOffMap { facility, .. } => return Some(t_air(facility)),
+        Command::NavalTransferTroops { to_port, .. } => return g.port_hex(to_port).map(t_hex),
+        Command::BlockHarbor { port, .. } | Command::UnblockHarbor { port, .. } | Command::LayHarborMine { port } | Command::RemoveHarborMine { port } => {
+            return g.port_hex(port).map(t_hex)
+        }
+        Command::RepairShip { ship_index } => {
+            return g.fleet.get(*ship_index).and_then(|s| match &s.location {
+                ShipLocation::AtSea(h) => Some(*h),
+                ShipLocation::Alexandria => g.port_hex("Alexandria"),
+                ShipLocation::Valetta => g.port_hex("Valetta"),
+            }).map(t_hex)
+        }
+        Command::UnloadReplacement { pool } => {
+            return g.replacement_points.get(*pool).and_then(|rp| rp.location.as_ref().and_then(|l| l.hex())).map(t_hex)
+        }
+        _ => {}
+    }
+    activity_hex(g, cmd).map(t_hex)
+}
+
+// The on-map hex a "jump to activity" control should center for an action, or `None` when the
+// action has no clear on-map hex (off-map movement, Malta, shipping-lane/production/strategic
+// actions, in-port ship/harbour actions). `None` → the viewer hides the jump control.
+fn activity_hex(g: &GameState, cmd: &Command) -> Option<HexCoord> {
+    use cna_engine::state::naval::ShipLocation;
+    let uh = |id: UnitId| g.effective_hex(id);
+    let rh = |i: usize| g.raiders.get(i).and_then(|r| r.hex);
+    let ch = |i: usize| g.truck_convoys.get(i).map(|c| c.hex);
+    let shh = |i: usize| g.fleet.get(i).and_then(|s| match s.location {
+        ShipLocation::AtSea(h) => Some(h),
+        _ => None,
+    });
+    let sqh = |id: SquadronId| g.sgsus.get(&id).and_then(|s| s.location);
+    match cmd {
+        // Destination-hex actions.
+        Command::MoveStep { to, .. }
+        | Command::FormationMove { to, .. }
+        | Command::MoveRommel { to }
+        | Command::RetreatRommel { to }
+        | Command::RailMove { to, .. }
+        | Command::MoveTruckConvoy { to, .. }
+        | Command::MoveReplacement { to, .. }
+        | Command::RailMoveSupply { to, .. }
+        | Command::MovePrisoners { to, .. }
+        | Command::MoveRaider { to, .. }
+        | Command::LandLayforce { to, .. }
+        | Command::LandSas { to, .. }
+        | Command::TowBrokenVehicle { to, .. }
+        | Command::TowDestroyedTank { to, .. } => Some(*to),
+        Command::ReturnUnit { hex, .. } => Some(*hex),
+        // Target-hex actions (combat, air missions, patrol).
+        Command::CloseAssault { target, .. }
+        | Command::Barrage { target, .. }
+        | Command::BarrageFacility { target, .. }
+        | Command::OffShoreBombard { target, .. }
+        | Command::Patrol { target, .. }
+        | Command::Strafe { target, .. }
+        | Command::ReconHex { target, .. }
+        | Command::AirdropSupplies { target, .. }
+        | Command::TransportUnit { target, .. }
+        | Command::AirdropUnit { target, .. }
+        | Command::FlyBombingMissionAt { target, .. } => Some(*target),
+        Command::AntiArmor { target_hex, .. } => Some(*target_hex),
+        Command::DesignateCap { center, .. } => Some(*center),
+        // Explicit-hex actions (construction, wells, dumps, captures).
+        Command::ConstructSupplyDump { hex, .. }
+        | Command::RepairCapturedEquipment { hex, .. }
+        | Command::PlaceDummyTank { hex, .. }
+        | Command::LayMinefield { hex, .. }
+        | Command::ClearMinefield { hex, .. }
+        | Command::BuildPipeline { hex, .. }
+        | Command::BuildFortification { hex, .. }
+        | Command::ImportRollingStock { hex }
+        | Command::PoisonWell { hex }
+        | Command::SweetenWell { hex }
+        | Command::VoluntarySurrender { hex, .. }
+        | Command::BombAirFacility { hex, .. } => Some(*hex),
+        Command::FormGuard { group_hex } | Command::ReturnGuard { group_hex } => Some(*group_hex),
+        Command::DeploySgsu { at, .. } => Some(*at),
+        // Hexside-project actions — anchor on the first endpoint.
+        Command::BuildRailroad { a, .. } | Command::DemolishRailroad { a, .. } | Command::BuildRoad { a, .. } => Some(*a),
+        // The acting unit's own hex.
+        Command::DesignateRommelUnit { unit }
+        | Command::TrainUnit { unit }
+        | Command::AttachUnit { unit, .. }
+        | Command::DetachUnit { unit }
+        | Command::ReassignUnit { unit, .. }
+        | Command::SetGunPosition { unit, .. }
+        | Command::Repair { unit, .. }
+        | Command::RefuelUnit { unit }
+        | Command::RearmUnit { unit }
+        | Command::LoadTrucks { unit, .. }
+        | Command::UnloadTrucks { unit, .. }
+        | Command::AssignTrucks { unit, .. }
+        | Command::ReleaseTrucks { unit, .. }
+        | Command::UpgradeRecce { unit }
+        | Command::DesignateReserve { unit, .. }
+        | Command::WithdrawUnit { unit }
+        | Command::AbsorbReplacement { unit, .. }
+        | Command::EmbarkLayforce { unit }
+        | Command::RaidAirfieldSas { unit } => uh(*unit),
+        Command::FormTruckConvoy { from_unit, .. } | Command::FormRaider { from_unit, .. } => uh(*from_unit),
+        Command::AugmentAntiTank { hq, .. } => uh(*hq),
+        Command::AugmentBattalionAntiTank { battalion, .. } => uh(*battalion),
+        Command::SiphonFuel { receiver, .. } => uh(*receiver),
+        Command::SatisfyWithdrawalChoice { units, .. } => units.first().and_then(|u| uh(*u)),
+        Command::ArtilleryBombardShip { attackers, .. } => attackers.first().and_then(|u| uh(*u)),
+        // Retreat/react — the hex actually reached (or the unit's hex if it stood).
+        Command::Retreat { unit, path } | Command::React { unit, path } | Command::RetreatBeforeAssault { unit, path } => {
+            path.last().copied().or_else(|| uh(*unit))
+        }
+        // Index-referenced raiders / convoys / ships.
+        Command::SpotRaider { raider }
+        | Command::ResupplyRaider { raider }
+        | Command::RaidRommel { raider }
+        | Command::RaidPipeline { raider }
+        | Command::RaidAirfield { raider }
+        | Command::RaidPlanes { raider }
+        | Command::RaidSupplyDump { raider }
+        | Command::RaidTruckConvoy { raider, .. }
+        | Command::InterceptTruckConvoy { raider, .. } => rh(*raider),
+        Command::LoadReplacement { convoy, .. }
+        | Command::LoadConvoy { convoy, .. }
+        | Command::UnloadConvoy { convoy, .. }
+        | Command::RepairConvoyTrucks { convoy } => ch(*convoy),
+        Command::AssignShip { ship_index, .. }
+        | Command::RepairShip { ship_index }
+        | Command::BombShip { ship_index, .. }
+        | Command::SanGiorgioAttackShip { ship_index } => shh(*ship_index),
+        // Squadron-base actions — the squadron's on-map base hex (None if off-map).
+        Command::ReadySquadron { squadron, .. }
+        | Command::ArmSquadron { squadron, .. }
+        | Command::RefitSquadron { squadron, .. }
+        | Command::AssignSquadronPlanes { squadron, .. }
+        | Command::AssignPilot { squadron, .. }
+        | Command::FlySquadronMission { squadron, .. }
+        | Command::FlyBombingMission { squadron, .. }
+        | Command::WithdrawSquadron { squadron } => sqh(*squadron),
+        // No clear on-map hex — off-map / Malta / shipping-lane / production / strategic / port.
+        Command::MoveOffMap { .. }
+        | Command::UnloadReplacement { .. }
+        | Command::BaseSquadronOffMap { .. }
+        | Command::TransferSquadron { .. }
+        | Command::DetermineMaltaAvailability { .. }
+        | Command::DeclareInitiativeOrder { .. }
+        | Command::NavalTransferTroops { .. }
+        | Command::BlockHarbor { .. }
+        | Command::UnblockHarbor { .. }
+        | Command::LayHarborMine { .. }
+        | Command::RemoveHarborMine { .. }
+        | Command::PlanChariotRaid
+        | Command::ExecuteChariotRaid
+        | Command::PlanConvoy { .. }
+        | Command::BombConvoy { .. }
+        | Command::DeliverConvoy { .. }
+        | Command::ReconConvoyLane { .. }
+        | Command::PlanProduction { .. }
+        | Command::ProduceCommonwealthTrucks { .. }
+        | Command::ProduceCommonwealthInfantry { .. }
+        | Command::ProduceAxisTrucks { .. }
+        | Command::BombMaltaBase { .. }
+        | Command::ConstructMaltaFacility { .. }
+        | Command::DivertMaltaAA { .. }
+        | Command::MoveMaltaFlak { .. }
+        | Command::BaseMaltaPlanes { .. }
+        | Command::MoveMaltaPlanes { .. }
+        | Command::InterdictConvoy { .. } => None,
+    }
+}
+
 fn unit_view(g: &GameState, u: &cna_engine::state::unit::Unit) -> UnitView {
     use cna_engine::state::unit::RatingKind;
     UnitView {
@@ -1383,6 +1892,8 @@ fn delta_frame(
         side: side.to_string(),
         action,
         outcome,
+        summary: String::new(),
+        activity: None,
         rules,
         units,
         removed,
@@ -1462,9 +1973,15 @@ pub fn record_game(
                         let cmd = legal.swap_remove(i);
                         let action = format!("{cmd:?}");
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
+                        let cmd_desc = cmd.clone();
                         if let Ok(outcome) = game.apply(cmd) {
                             step += 1;
-                            events.push(delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken));
+                            let summary = describe_command(&game, &cmd_desc, &outcome);
+                            let act = activity_target(&game, &cmd_desc);
+                            let mut ev = delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken);
+                            ev.summary = summary;
+                            ev.activity = act;
+                            events.push(ev);
                             progress = true;
                         }
                         acted += 1;
@@ -1570,9 +2087,14 @@ pub fn record_game_streaming(
                         let cmd = legal.swap_remove(i);
                         let action = format!("{cmd:?}");
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
+                        let cmd_desc = cmd.clone();
                         if let Ok(outcome) = game.apply(cmd) {
                             step += 1;
-                            let ev = delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken);
+                            let summary = describe_command(&game, &cmd_desc, &outcome);
+                            let act = activity_target(&game, &cmd_desc);
+                            let mut ev = delta_frame(&game, step, &format!("{side:?}"), action, format!("{outcome:?}"), rules, &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken);
+                            ev.summary = summary;
+                            ev.activity = act;
                             writeln!(out, "{}", serde_json::to_string(&ev)?)?;
                             progress = true;
                         }

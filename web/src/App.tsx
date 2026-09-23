@@ -17,14 +17,15 @@ import type { PrisonerView } from "@bindings/PrisonerView";
 import type { CapturedView } from "@bindings/CapturedView";
 import type { DummyTankView } from "@bindings/DummyTankView";
 import type { BrokenVehicleView } from "@bindings/BrokenVehicleView";
-import { mapBounds } from "./hex";
-import { HexMap } from "./components/HexMap";
+import { mapBounds, hexCenter } from "./hex";
+import { HexMap, LEFT_MARGIN, LABEL_HEADROOM } from "./components/HexMap";
 import { Scrubber } from "./components/Scrubber";
 import { ActionLog } from "./components/ActionLog";
 import { TerrainKey } from "./components/TerrainKey";
 import { UnitKey } from "./components/UnitKey";
 import { CompassRose } from "./components/CompassRose";
 import { LEVELS, buildNodes, nodeIndexOf, type Level, type Node } from "./hierarchy";
+import { describeAction } from "./actionText";
 
 export function App() {
   const [record, setRecord] = useState<GameRecord | null>(null);
@@ -75,11 +76,44 @@ export function App() {
     setPan({ x: (el.clientWidth - b.w * z) / 2, y: (el.clientHeight - b.h * z) / 2 });
   };
 
+  // Center the pane on a point in map coordinates, keeping the current zoom. HexMap's SVG origin is
+  // (minX - LEFT_MARGIN, minY - LABEL_HEADROOM), so the content pixel of a map point is that offset.
+  const jumpToPoint = (x: number, y: number) => {
+    if (!record || !mapWrap.current) return;
+    const b = mapBounds(record.map.hexes);
+    const el = mapWrap.current;
+    const z = clampZ(1.5); // jump zooms in to 150% for a close-up of the activity
+    setZoom(z);
+    setPan({
+      x: el.clientWidth / 2 - (x - b.minX + LEFT_MARGIN) * z,
+      y: el.clientHeight / 2 - (y - b.minY + LABEL_HEADROOM) * z,
+    });
+  };
+  const jumpToHex = (col: number, row: number) => {
+    const c = hexCenter(col, row);
+    jumpToPoint(c.x, c.y);
+  };
+  // "Jump to activity": center on the action's target — an on-map hex, or an off-map panel whose
+  // anchor (map-coord centre) HexMap reports into `jumpAnchors`.
+  const jumpAnchors = useRef<Record<string, [number, number]>>({});
+  const jumpTo = (t: { kind: string; hex?: [number, number] | null; name?: string | null }) => {
+    if (t.kind === "hex" && t.hex) {
+      jumpToHex(t.hex[0], t.hex[1]);
+      return;
+    }
+    const key = t.kind === "cwair" ? `air:${t.name}` : t.name ?? "";
+    const pt = jumpAnchors.current[key];
+    if (pt) jumpToPoint(pt[0], pt[1]);
+  };
+
   // Scroll-wheel zoom toward the cursor (native listener so we can preventDefault the page scroll).
   useEffect(() => {
     const el = mapWrap.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      // Let a scrollable off-map panel (e.g. Incoming Replacements / Axis Convoys) consume the wheel
+      // for its own scrollbar instead of zooming the map.
+      if ((e.target as Element)?.closest?.(".panel-scroll")) return;
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
@@ -334,7 +368,7 @@ export function App() {
   const navalFrames = useMemo<NavalView[]>(() => {
     if (!record) return [];
     const out: NavalView[] = [];
-    let cur: NavalView = { ships: [], ports: [], convoys: [] };
+    let cur: NavalView = { ships: [], ports: [], convoys: [], fleet_names: [] };
     for (const e of record.events) {
       if (e.naval) cur = e.naval;
       out.push(cur);
@@ -433,8 +467,20 @@ export function App() {
   const nodeTotal = level === "step" ? lastStep + 1 : curNodes.length;
   const curNodeLabel = level === "step" ? `step ${idx}` : (curNodes[nodeIndex]?.label ?? "");
 
-  if (error) return <div style={{ padding: 24 }}>Failed to load <code>game.json</code>: {error}</div>;
+  if (error) return <div style={{ padding: 24 }}>Failed to load <code>game.jsonl.gz</code>: {error}</div>;
   if (!record || !event) return <div style={{ padding: 24 }}>Loading…</div>;
+
+  // Friendly, human-readable rendering of the current action (resolving unit ids to a name + hex
+  // from the folded unit set at this step, e.g. "1 SoStff (28,48)").
+  const unitById = new Map<number, UnitView>((frames[idx] ?? []).map((u) => [u.id, u]));
+  const unitName = (id: number) => {
+    const u = unitById.get(id);
+    if (!u) return `unit #${id}`;
+    return u.hex ? `${u.name} (${u.hex[0]},${u.hex[1]})` : u.name;
+  };
+  const fleetNames = navalFrames[idx]?.fleet_names ?? [];
+  const shipName = (i: number) => fleetNames[i] ?? `ship #${i}`;
+  const actionDesc = describeAction(event.action, event.outcome, unitName, shipName);
 
   return (
     <div className="app">
@@ -492,11 +538,10 @@ export function App() {
         <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0", width: "max-content" }}>
           {/* Variant C is drawn inside HexMap in map coordinates (see `legend`), so it pans/zooms
               with the board and sits off-shore at the map's horizontal center. */}
-          <HexMap map={record.map} units={frames[idx] ?? []} weather={weatherFrames[idx]} replacements={replacementFrames[idx] ?? []} supplyDumps={supplyDumpFrames[idx] ?? []} truckConvoys={truckConvoyFrames[idx] ?? []} raiders={raiderFrames[idx] ?? []} rommel={rommelFrames[idx] ?? []} overlays={overlayFrames[idx]} hexsides={hexsideFrames[idx]} air={airFrames[idx]} naval={navalFrames[idx]} offMap={offMapFrames[idx]} prisoners={prisonerFrames[idx] ?? []} captured={capturedFrames[idx] ?? []} dummyTanks={dummyTankFrames[idx] ?? []} brokenVehicles={brokenVehicleFrames[idx] ?? []} placeLore={placeLore} unitLore={unitLore} onPlaceHover={onPlaceHover} onPlaceLeave={hideInfo} onInfoHover={showInfo} legend={<>
-              <div className="legend-map"><TerrainKey lore={terrainLore} onInfoHover={showInfo} onInfoLeave={hideInfo} /></div>
-              <div className="legend-map compass-box"><div className="tk-title">Orientation</div><CompassRose /></div>
-            </>}
-            unitKey={<div className="legend-map"><UnitKey unitTypes={record.unit_types} /></div>} />
+          <HexMap map={record.map} units={frames[idx] ?? []} weather={weatherFrames[idx]} replacements={replacementFrames[idx] ?? []} supplyDumps={supplyDumpFrames[idx] ?? []} truckConvoys={truckConvoyFrames[idx] ?? []} raiders={raiderFrames[idx] ?? []} rommel={rommelFrames[idx] ?? []} overlays={overlayFrames[idx]} hexsides={hexsideFrames[idx]} air={airFrames[idx]} naval={navalFrames[idx]} offMap={offMapFrames[idx]} prisoners={prisonerFrames[idx] ?? []} captured={capturedFrames[idx] ?? []} dummyTanks={dummyTankFrames[idx] ?? []} brokenVehicles={brokenVehicleFrames[idx] ?? []} placeLore={placeLore} unitLore={unitLore} onPlaceHover={onPlaceHover} onPlaceLeave={hideInfo} onInfoHover={showInfo} legend={<div className="legend-map"><TerrainKey lore={terrainLore} onInfoHover={showInfo} onInfoLeave={hideInfo} /></div>}
+            anchorsRef={jumpAnchors}
+            compass={<><div className="tk-title">Orientation</div><CompassRose size={118} /></>}
+            unitKey={<div className="legend-map"><UnitKey unitTypes={record.unit_types} onInfoHover={showInfo} onInfoLeave={hideInfo} /></div>} />
         </div>
       </div>
 
@@ -504,24 +549,39 @@ export function App() {
         <div className="panel-section">
           <h3>Current action</h3>
           {event.side !== "-" && <span className={`chip ${event.side === "Commonwealth" ? "cw" : "axis"}`}>{event.side}</span>}
-          <div style={{ marginTop: 6 }}>
-            <code>{event.action}</code>
-          </div>
-          {event.outcome && (
-            <div style={{ marginTop: 6, color: "var(--muted)" }}>
-              → <code>{event.outcome}</code>
-            </div>
+          {/* Prefer the recorder's friendly summary (full engine context); fall back to the client-side
+              humanizer for older logs that predate the `summary` field. */}
+          {event.summary ? (
+            <div style={{ marginTop: 6 }}>{event.summary}</div>
+          ) : (
+            <>
+              <div style={{ marginTop: 6 }}>{actionDesc.headline}</div>
+              {actionDesc.detail && <div style={{ marginTop: 6, color: "var(--muted)" }}>{actionDesc.detail}</div>}
+            </>
+          )}
+          {event.activity && (
+            <button className="jump-btn" onClick={() => jumpTo(event.activity!)} title="Center the map on this action">
+              <span className="material-symbols-outlined jump-icon" aria-hidden="true">visibility</span> Jump to activity
+            </button>
           )}
         </div>
         <div className="panel-section">
           <h3>Relevant rules</h3>
           <div style={{ color: "var(--muted)" }}>
-            {event.rules.length ? event.rules.join(", ") : "— (per-action § citations pending)"}
+            {event.rules.length ? event.rules.join(", ") : "—"}
           </div>
         </div>
         <div className="panel-section">
           <h3>Action log</h3>
-          <ActionLog events={record.events} current={step} onSelect={setStep} />
+          <ActionLog
+            events={record.events}
+            current={step}
+            onSelect={(s) => {
+              setStep(s);
+              const a = record.events[s]?.activity;
+              if (a) jumpTo(a);
+            }}
+          />
         </div>
       </div>
 
