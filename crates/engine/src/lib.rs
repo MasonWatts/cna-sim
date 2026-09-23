@@ -9773,6 +9773,49 @@ mod tests {
     }
 
     #[test]
+    fn squadron_plane_nationality_composition_35_28() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::units::Nationality;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+
+        let mut refs = ReferenceData::new();
+        refs.load_aircraft_chart(Nationality::German, include_str!("../../../data/reference/aircraft/german.ron")).unwrap();
+        refs.load_aircraft_chart(Nationality::Italian, include_str!("../../../data/reference/aircraft/italian.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.phase = Phase::Organization;
+        // Plane pools for both Axis nationalities.
+        g.plane_pool.entry(Nationality::German).or_default().insert("Bf.109F".into(), 20);
+        g.plane_pool.entry(Nationality::Italian).or_default().insert("C.R.42 Falco".into(), 20);
+        // Med-box squadrons (no location) skip the §36.3 facility check.
+        g.sgsus.insert(SquadronId(1), Sgsu::new(SquadronId(1), Nationality::Italian, SquadronClass::Fighter, "150° Gr", 12, None));
+        g.sgsus.insert(SquadronId(2), Sgsu::new(SquadronId(2), Nationality::German, SquadronClass::Fighter, "JG 27", 12, None));
+
+        let assign = |g: &mut GameState, sq: u32, ty: &str| g.apply(Command::AssignSquadronPlanes {
+            squadron: SquadronId(sq), aircraft_type: ty.into(), class: AircraftClass::Fighter, count: 4,
+        });
+
+        // §35.28 exception: an Italian squadron may field German planes — drawn from the German pool.
+        assert_eq!(assign(&mut g, 1, "Bf.109F"), Ok(CommandOutcome::SquadronPlanesAssigned));
+        assert_eq!(g.pool_planes(Nationality::German, "Bf.109F"), 16, "spent from the German pool");
+        assert_eq!(g.pool_planes(Nationality::Italian, "C.R.42 Falco"), 20, "Italian pool untouched");
+
+        // No mixing: that Italian squadron now holds German planes and can't also take Italian ones.
+        assert_eq!(assign(&mut g, 1, "C.R.42 Falco"), Err(CommandError::SquadronNationalityMismatch));
+
+        // §35.28: a German squadron may NOT take Italian planes.
+        assert_eq!(assign(&mut g, 2, "C.R.42 Falco"), Err(CommandError::SquadronNationalityMismatch));
+        // …but a German squadron takes German planes normally.
+        assert_eq!(assign(&mut g, 2, "Bf.109F"), Ok(CommandOutcome::SquadronPlanesAssigned));
+
+        // A fresh Italian squadron may of course be all-Italian.
+        g.sgsus.insert(SquadronId(3), Sgsu::new(SquadronId(3), Nationality::Italian, SquadronClass::Fighter, "9° Gr", 12, None));
+        assert_eq!(assign(&mut g, 3, "C.R.42 Falco"), Ok(CommandOutcome::SquadronPlanesAssigned));
+    }
+
+    #[test]
     fn cw_bombing_of_axis_off_map_boxes_41_8() {
         use crate::reference::aircraft::{AircraftClass, BombingMission};
         use crate::reference::squadron::SquadronClass;

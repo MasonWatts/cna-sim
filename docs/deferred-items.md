@@ -572,7 +572,17 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   the §35.21 same-class rule, the §35.23 capacity cap, and the §35.22 "transfer mission" (fly to the
   new base unless co-located) with its in-transit grounding — a real air-management subsystem for a
   niche action the operational abstraction never issues. Better as a dedicated effort.
-- [-] **AU50 — §35.28 Italian squadrons all-German planes.** Deferred: plane groups key by aircraft-type string, not per-plane nationality, so enforcing it needs a cross-chart nationality lookup for a minor historical edge.
+- [x] **AU50 — §35.28 Italian squadrons all-German planes — DONE (2026-09-23).** New
+  `GameState::aircraft_nationality(type)` resolves an aircraft type's nationality via the Aircraft
+  Chart that lists it (each type is unique to one chart, so the mapping is unambiguous).
+  `cmd_assign_squadron_planes` now enforces §35.28: German and Italian planes may not coexist in one
+  squadron (the squadron's existing planes must all share the incoming nationality); a **German**
+  squadron may hold only German planes; an **Italian** squadron may hold Italian *or* German planes
+  (the §35.28 exception — the previously-unmodeled permission); a Commonwealth squadron holds
+  Commonwealth planes. Planes are drawn from the *plane's* nationality pool, so an Italian squadron
+  fielding Bf 109s spends German aircraft. Violations return `CommandError::SquadronNationalityMismatch`.
+  Test `squadron_plane_nationality_composition_35_28`. (The prior single-pool draw already blocked
+  mixing implicitly; this makes the rule explicit *and* adds the Italian-all-German exception.)
 - [x] **AU51 — §53.31/§53.32 trucks/guns off-track in salt-marsh auto-abandoned — DONE (2026-09-23).**
   Unblocked once AU33 (§8.44/§8.45) landed the Salt Marsh subtype + prohibited-vehicle predicate. The
   §8.44 gate only blocks *voluntary* entry, but a mandated retreat (§15.82, which routes through

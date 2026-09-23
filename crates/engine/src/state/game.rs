@@ -5547,6 +5547,14 @@ impl GameState {
         self.plane_pool.get(&nationality).and_then(|m| m.get(aircraft)).copied().unwrap_or(0)
     }
 
+    /// §35.28: the nationality that fields an aircraft type — the Aircraft Chart that lists it. Each
+    /// type appears on exactly one nation's chart, so the mapping is unambiguous; `None` if unknown.
+    pub fn aircraft_nationality(&self, aircraft: &str) -> Option<Nationality> {
+        [Nationality::Commonwealth, Nationality::German, Nationality::Italian]
+            .into_iter()
+            .find(|n| self.reference.aircraft_charts.get(n).is_some_and(|c| c.contains_key(aircraft)))
+    }
+
     /// Unassigned rated pilots of `rating` in `nationality`'s pool (§60.32/§60.42). Rating 0 is
     /// unlimited (§40.16) and always reports 0 here — it is not drawn from the pool.
     pub fn pool_pilots(&self, nationality: Nationality, rating: u32) -> u32 {

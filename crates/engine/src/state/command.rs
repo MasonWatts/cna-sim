@@ -804,7 +804,7 @@ impl Command {
             Command::DeploySgsu { .. } => &["§34.82"],
             Command::WithdrawSquadron { .. } => &["§34.84"],
             Command::BaseSquadronOffMap { .. } => &["§36.53"],
-            Command::AssignSquadronPlanes { .. } => &["§35.2"],
+            Command::AssignSquadronPlanes { .. } => &["§35.2", "§35.28"],
             Command::RefitSquadron { .. } => &["§38.34"],
             Command::ReadySquadron { .. } => &["§38.2", "§38.3"],
             Command::ArmSquadron { .. } => &["§38.4"],
@@ -1334,6 +1334,10 @@ pub enum CommandError {
     /// §36.3: this aircraft class may not base at this facility kind (flying-boats need a
     /// basin/alighting area; land planes need an airfield/strip).
     WrongAircraftForFacility,
+    /// §35.28: the plane's nationality may not be assigned to this squadron — German and Italian
+    /// planes may not coexist in one squadron; an Italian squadron may hold German planes, but a
+    /// German squadron may not hold Italian planes (and each side's squadrons take their own planes).
+    SquadronNationalityMismatch,
     /// §43.11: the transfer would drop German strategic bombers below the 75% Mediterranean basing
     /// requirement.
     BasingRequirementViolated,
@@ -4683,7 +4687,34 @@ impl GameState {
     ) -> Result<CommandOutcome, CommandError> {
         self.require_phase(Phase::Organization)?;
         let gt = self.game_turn;
-        let nationality = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?.nationality;
+        let sq_nat = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?.nationality;
+        // §35.28: German and Italian planes may not coexist in a squadron — they need separate
+        // maintenance. An Italian squadron may be composed *entirely* of German planes, but a German
+        // squadron may not take Italian planes; each side otherwise flies its own aircraft. The plane's
+        // nationality is the chart that lists its type (unique across charts). Planes are then drawn
+        // from *that* nationality's pool (so an Italian squadron fielding Bf 109s spends German planes).
+        let nationality = self.aircraft_nationality(aircraft_type).unwrap_or(sq_nat);
+        {
+            use crate::reference::units::Nationality;
+            let allowed = match sq_nat {
+                Nationality::German => nationality == Nationality::German,
+                Nationality::Italian => matches!(nationality, Nationality::Italian | Nationality::German),
+                Nationality::Commonwealth => nationality == Nationality::Commonwealth,
+            };
+            if !allowed {
+                return Err(CommandError::SquadronNationalityMismatch);
+            }
+            // No mixing: every plane already in the squadron must share the incoming nationality.
+            let sgsu = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+            let mixes = sgsu
+                .planes
+                .iter()
+                .filter(|g| g.count > 0)
+                .any(|g| self.aircraft_nationality(&g.aircraft_type).is_some_and(|n| n != nationality));
+            if mixes {
+                return Err(CommandError::SquadronNationalityMismatch);
+            }
+        }
         // §36.3: a squadron may only take planes its facility kind can service — flying-boats need a
         // basin/alighting area, land planes need an airfield/strip. Applies both on the map and at an
         // off-map §36.53 facility (Port Said is a flying-boat basin; the rest are airfields). Axis
