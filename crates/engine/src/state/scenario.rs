@@ -197,6 +197,7 @@ impl GameState {
                 unit.is_tds = u.is_tds; // §22.6 Tank Delivery Squadron / Mobile Tank Repair Squad
                 unit.unit_type = u.unit_type; // leaf type, if the OB sets it
                 unit.mandatory_withdrawal = u.withdrawal; // §20.8 [4.43a] withdrawal deadline
+                unit.pending_refit = u.refit.clone(); // §4.44a scheduled in-place equipment refit
                 unit.return_at = u.return_at; // §20.8 [4.43a] scheduled return ("Rtn")
                 unit.return_toe = u.return_toe;
                 unit.withdrawal_after_return = u.withdrawal_after_return; // "[again]" re-withdrawal

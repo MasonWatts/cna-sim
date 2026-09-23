@@ -285,6 +285,10 @@ pub struct Unit {
     /// the [4.43a] withdrawal schedule when bound to the scenario Order of Battle.
     #[serde(default)]
     pub mandatory_withdrawal: Option<(u32, u32)>,
+    /// §4.44a: a scheduled in-place equipment refit (stamped from the OB at deploy). Applied — and
+    /// cleared — by `process_refits` when its `(Game-Turn, Operations Stage)` is reached.
+    #[serde(default)]
+    pub pending_refit: Option<crate::reference::ob::ObRefit>,
     /// §20.8 ("Rtn"): a withdrawn unit's scheduled return `(Game-Turn, Operations Stage)` — it
     /// re-enters play at Cairo. `None` = does not return.
     #[serde(default)]
@@ -441,6 +445,7 @@ impl Unit {
             recce_upgraded: false,
             garrison_location: None,
             mandatory_withdrawal: None,
+            pending_refit: None,
             return_at: None,
             return_toe: None,
             withdrawal_after_return: None,

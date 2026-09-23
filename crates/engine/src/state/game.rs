@@ -867,6 +867,15 @@ const STAGE_SEQUENCE: [(Phase, StageActor); 17] = [
     (Phase::Patrol, StageActor::PlayerB),
 ];
 
+/// A system-initiated event (not a player Command) surfaced in the viewer's Action Log — currently a
+/// §4.44a scheduled equipment refit. `summary` is the friendly one-line description; `unit` lets the
+/// recorder resolve the acting side and the jump-to-activity hex when it drains these.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SystemLogEntry {
+    pub unit: UnitId,
+    pub summary: String,
+}
+
 /// The complete mutable game state plus reference data and RNG.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
@@ -1051,6 +1060,10 @@ pub struct GameState {
     /// city is an unlimited water source.
     #[serde(default)]
     pub pipelines: std::collections::HashSet<HexCoord>,
+    /// System-initiated events (not player Commands) awaiting surfacing in the viewer's Action Log —
+    /// currently §4.44a equipment refits. Drained by the recorder after each phase advance.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub system_log: Vec<SystemLogEntry>,
     /// §52.24: sides that have already built a pipeline hex this Operations Stage (at most one hex
     /// per side per stage). Cleared at the start of each Operations Stage.
     #[serde(default)]
@@ -1347,6 +1360,7 @@ impl GameState {
             well_known_by: std::collections::HashMap::new(),
             revealed_wells: std::collections::HashSet::new(),
             pipelines: std::collections::HashSet::new(),
+            system_log: Vec::new(),
             pipeline_built_this_stage: std::collections::HashSet::new(),
             repair_facilities: std::collections::HashMap::new(),
             replacement_points: Vec::new(),
@@ -3059,6 +3073,49 @@ impl GameState {
             returned += 1;
         }
         returned
+    }
+
+    /// §4.44a: apply any scheduled equipment refits due this Operations Stage — in place, swapping the
+    /// unit's `from` weapon system to `to` (TOE counts unchanged) and re-typing the counter. Each is
+    /// recorded in `system_log` so the viewer's Action Log shows it (it isn't a player Command).
+    /// Called at each Operations Stage, alongside `process_returns`.
+    pub fn process_refits(&mut self) {
+        let now = self.global_ops_stage();
+        let due: Vec<UnitId> = self
+            .units
+            .iter()
+            .filter(|(_, u)| {
+                u.pending_refit
+                    .as_ref()
+                    .is_some_and(|r| r.at.0.saturating_sub(1) * 3 + r.at.1 <= now)
+            })
+            .map(|(&id, _)| id)
+            .collect();
+        for id in due {
+            let Some(refit) = self.units.get(&id).and_then(|u| u.pending_refit.clone()) else {
+                continue;
+            };
+            let name = self.units.get(&id).map(|u| u.name.clone()).unwrap_or_default();
+            let mut swapped = 0u32;
+            if let Some(u) = self.units.get_mut(&id) {
+                if let Composition::Weapons { groups } = &mut u.composition {
+                    for g in groups.iter_mut() {
+                        if g.system == refit.from {
+                            g.system = refit.to.clone();
+                            swapped += g.count;
+                        }
+                    }
+                }
+                if let Some(t) = refit.unit_type {
+                    u.unit_type = Some(t);
+                }
+                u.pending_refit = None;
+            }
+            if swapped > 0 {
+                let summary = format!("{name} re-equipped ({} → {}).", refit.from, refit.to);
+                self.system_log.push(SystemLogEntry { unit: id, summary });
+            }
+        }
     }
 
     /// §20.81/§20.82: satisfy a by-type Mandatory Withdrawal choice by withdrawing the chosen
@@ -9440,6 +9497,7 @@ impl GameState {
             self.process_tds_returns();
         }
         self.process_returns(); // §20.8 "Rtn": bring returning units back before the withdrawal sweep
+        self.process_refits(); // §4.44a scheduled in-place equipment refits (11 RHA Bishop, etc.)
         self.enforce_mandatory_withdrawals();
         self.flag_overdue_withdrawal_choices(); // §20.83 by-type choices the player never satisfied
         // §31: refresh Rommel's 60-CP Movement Allowance (600 tenths) for the new stage, record

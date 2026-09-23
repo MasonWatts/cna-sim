@@ -102,6 +102,22 @@ pub struct ObUnit {
     /// for §19.3 (`arm()`) and the counter glyph (`glyph()`); `None` falls back to the classifier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unit_type: Option<crate::reference::formation_org::UnitType>,
+    /// §4.44a: a scheduled in-place equipment refit. Replaces the old workaround of listing the
+    /// refitted unit as a second dated OB counter (e.g. 11 RHA's Bishop, 106 RHA's Deacon).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refit: Option<ObRefit>,
+}
+
+/// §4.44a: at `at` (Game-Turn, Operations Stage) this unit re-equips in place — every weapon group
+/// whose system is `from` becomes `to` (TOE counts unchanged), and the counter's leaf `unit_type`
+/// updates if given (e.g. Artillery → SelfPropelledArtillery when 25-pdr → SP 25-pdr).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObRefit {
+    pub at: (u32, u32),
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
+    pub unit_type: Option<crate::reference::formation_org::UnitType>,
 }
 
 /// TOE composition from the chart's "TOE & Weapon System(s)" column.

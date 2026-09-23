@@ -51,8 +51,8 @@
         // 1st Armored Division — §4.44B (PDF p116). Transcribed 2026-09-16 to close the p116-117 gap
         // (the cw-ob-4.44a transcription began at p118). Basic Morale +2, arrives at +1. Arrival "n/mm"
         // (Ops Stage n, Game-Turn mm) -> Turn(game_turn: mm, stage: n). Types read from the p185 §4.46
-        // counters. NOTE: 11 RHA here is the original 25-pdr regiment; the SP 25-pdr "11 RHA" in the
-        // Unassigned Artillery pool (turn 92) is its later Bishop refit (refit rules deferred).
+        // counters. NOTE: 11 RHA arrives as the 25-pdr regiment and re-equips in place to the SP 25-pdr
+        // "Bishop" at turn 92 (§4.44a `refit`), replacing the old duplicate SP counter in the pool.
         (
             name: "1st Armored Division",
             org_size: Division,
@@ -68,7 +68,7 @@
                 (name: "1st Support Group HQ", abbr: "1Spt", id: "a", comp: Organic(Normal), org_size: StandardBrigade, arrival: Turn(game_turn: 59, stage: 3), parent: "1st Armored Div HQ", unit_type: Some(Infantry)),
                 (name: "2nd KRRC", abbr: "2 KRRC", id: "l", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 59, stage: 3), parent: "1st Support Group HQ", unit_type: Some(MotorizedInfantry)),
                 (name: "76th Anti-tank Regt", abbr: "76", id: "aa", comp: Weapons([("2-pounder", 8)]), org_size: Battalion, arrival: Turn(game_turn: 59, stage: 3), parent: "1st Support Group HQ", unit_type: Some(AntiTank)),
-                (name: "11th Royal Horse Arty Regt (1st Armd)", abbr: "11 RHA", id: "x", comp: Weapons([("25-pounder Gun", 6)]), org_size: Battalion, arrival: Turn(game_turn: 59, stage: 3), parent: "1st Support Group HQ", unit_type: Some(Artillery)),
+                (name: "11th Royal Horse Arty Regt (1st Armd)", abbr: "11 RHA", id: "x", comp: Weapons([("25-pounder Gun", 6)]), org_size: Battalion, arrival: Turn(game_turn: 59, stage: 3), parent: "1st Support Group HQ", unit_type: Some(Artillery), refit: Some((at: (92, 3), from: "25-pounder Gun", to: "SP 25-pounder Gun", unit_type: Some(SelfPropelledArtillery)))),
                 (name: "61st Light AA Regt", abbr: "61 LAA", id: "ee", comp: Weapons([("Light AA (Bofors 40mm)", 6)]), org_size: Battalion, arrival: Turn(game_turn: 59, stage: 3), parent: "1st Support Group HQ", unit_type: Some(AntiAir)),
                 (name: "12th Lancers Bn", abbr: "12 Lancr", id: "ll", comp: Organic(Normal), org_size: Battalion, arrival: Turn(game_turn: 58, stage: 3), parent: "1st Armored Div HQ", unit_type: Some(ArmoredRecon)),
             ],
@@ -415,7 +415,8 @@
                 (name: "69th Medium Artillery Regt", abbr: "69 Med", id: "x", comp: Weapons([("5.5\" Gun/Howitzer", 6)]), org_size: Battalion, arrival: Turn(game_turn: 83, stage: 3), parent: "", unit_type: Some(Artillery)),
                 (name: "1st Royal Horse Arty Regt", abbr: "1 RHA", id: "x", comp: Weapons([("25-pounder Gun", 6)]), org_size: Battalion, arrival: Turn(game_turn: 15, stage: 1), parent: "", unit_type: Some(Artillery)),
                 (name: "5th Royal Horse Arty Regt", abbr: "5 RHA", id: "x", comp: Weapons([("105mm SP Howitzer", 6)]), org_size: Battalion, arrival: Turn(game_turn: 89, stage: 3), parent: "", unit_type: Some(SelfPropelledArtillery)),
-                (name: "11th Royal Horse Arty Regt", abbr: "11 RHA", id: "x", comp: Weapons([("SP 25-pounder Gun", 6)]), org_size: Battalion, arrival: Turn(game_turn: 92, stage: 3), parent: "", unit_type: Some(SelfPropelledArtillery)),
+                // 11 RHA's Bishop (SP 25-pdr) is now the §4.44a in-place refit of the 1st-Armoured 11 RHA
+                // (turn 92) — not a separate counter; see the `refit:` on that unit above.
                 (name: "104th Royal Horse Arty Regt", abbr: "104 RHA", id: "x", comp: Weapons([("25-pounder Gun", 4)]), org_size: Battalion, arrival: Turn(game_turn: 15, stage: 2), parent: "", unit_type: Some(Artillery)),
                 (name: "107th Royal Horse Arty Regt", abbr: "107 RHA", id: "x", comp: Weapons([("25-pounder Gun", 6)]), org_size: Battalion, arrival: Turn(game_turn: 9, stage: 3), parent: "", unit_type: Some(Artillery)),
             ],

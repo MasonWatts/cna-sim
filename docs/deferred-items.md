@@ -218,16 +218,17 @@ New shared helper `within_cp_budget` (cost-limited Dijkstra over `move_step_cost
   chart, and §4.44 "D" is a master-OB availability marker gated per-scenario (the loader only
   schedules `Arrival::Turn` units for reinforcement-only formations). Supersedes the "arrival dates
   not all transcribed" gap noted in design.md §8.8 / campaign.ron header.
-- [ ] **H4 — Ground-unit equipment refit subsystem (TODO, after OB sheets).** The §4.44 OA sheets list
-  several units in two equipment states, linked by refit rules that are not yet modeled: **11 RHA**
-  (1st Armored Div 25-pdr → **Bishop SP 25-pdr**, listed as a separate 3/92 entry in the Unassigned
-  Artillery pool), **106 RHA** (Deacon refit, §4.44a Unassigned A/T note b), and the **1st Army Tank
-  Bde RTRs** (Scorpion anti-mine tank refit for El Alamein, §4.44a note). The aircraft refit table
-  (§38.37) exists (`data/reference/aircraft-refit.ron`); there is **no ground equivalent**. Until it
-  exists, refits are represented as duplicate dated OB entries (e.g. two "11 RHA" counters coexist —
-  the 25-pdr original in 1st Armd Div and the SP version in Unassigned Artillery). Scope: a refit
-  mechanism that swaps a unit's weapon TOE in place on a trigger/turn, collapsing these duplicates to
-  one counter. **Deferred until the OB completeness pass (CW done p116–132; Axis next) is finished.**
+- [x] **H4 — Ground-unit equipment refit subsystem — DONE (2026-09-22).** §4.44a scheduled, in-place
+  equipment refit: `ObUnit.refit: Option<ObRefit>` (data) is stamped onto `Unit.pending_refit` at
+  deploy; `GameState::process_refits` (called each Operations Stage beside `process_returns`) swaps the
+  unit's `from` weapon system to `to` (TOE counts unchanged) and re-types the counter when its
+  `(Game-Turn, Op-Stage)` is reached, queuing a `SystemLogEntry` so the refit shows in the viewer's
+  **Action Log** (recorder drains `game.system_log` after each phase advance → a "Refit" event with
+  `summary`, `§4.44a`, and a jump-to-activity hex). **11 RHA** is now one counter (25-pdr, turn 59)
+  that refits to the **Bishop SP 25-pdr** at turn 92 — the old duplicate pool entry was removed. Test
+  `scheduled_equipment_refit_4_44a`. **Remaining (data only):** wire the same `refit:` on **106 RHA**
+  (→ Deacon SP 6-pdr) and the **1st Army Tank Bde RTRs** (→ Scorpion) once their historical refit
+  Game-Turns are confirmed — they are single counters today (not duplicates), so no wrong state.
 - [x] **H5 — CNA Addenda (Sep 1979) rules-logic corrections — DONE (2026-09-22).** OB/chart *data*
   corrections were applied 2026-09-16 (see `docs/source-materials/CNA Addenda Sep 79.pdf`); the
   rules-logic items were closed 2026-09-22:

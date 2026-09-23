@@ -2216,6 +2216,48 @@ mod tests {
     }
 
     #[test]
+    fn scheduled_equipment_refit_4_44a() {
+        use crate::reference::formation_org::UnitType;
+        use crate::reference::ob::ObRefit;
+        use crate::reference::units::Nationality;
+        use crate::state::game::GameState;
+        use crate::state::unit::{Composition, WeaponGroup};
+
+        let mut g = GameState::new(ReferenceData::new(), 1); // starts at Game-Turn 1, Op-Stage 1
+        let u = g.spawn_unit(
+            Nationality::Commonwealth,
+            "x",
+            "11th Royal Horse Arty Regt",
+            Composition::Weapons { groups: vec![WeaponGroup { system: "25-pounder Gun".into(), count: 6 }] },
+        );
+        g.unit_mut(u).unwrap().pending_refit = Some(ObRefit {
+            at: (1, 1),
+            from: "25-pounder Gun".into(),
+            to: "SP 25-pounder Gun".into(),
+            unit_type: Some(UnitType::SelfPropelledArtillery),
+        });
+        g.process_refits();
+        // §4.44a: the weapon system swaps in place (counts unchanged), the counter re-types, the
+        // schedule clears, and a system-log entry is queued for the Action Log.
+        let unit = g.unit(u).unwrap();
+        match &unit.composition {
+            Composition::Weapons { groups } => {
+                assert_eq!(groups[0].system, "SP 25-pounder Gun");
+                assert_eq!(groups[0].count, 6);
+            }
+            _ => panic!("expected weapons composition"),
+        }
+        assert_eq!(unit.unit_type, Some(UnitType::SelfPropelledArtillery));
+        assert!(unit.pending_refit.is_none());
+        assert_eq!(g.system_log.len(), 1);
+        assert!(g.system_log[0].summary.contains("re-equipped"));
+        // Idempotent: a second sweep does nothing (schedule already cleared).
+        g.system_log.clear();
+        g.process_refits();
+        assert!(g.system_log.is_empty());
+    }
+
+    #[test]
     fn salt_marsh_and_desert_movement_subtypes_8_44_8_45() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;
