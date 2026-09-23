@@ -280,6 +280,10 @@ impl GameState {
 
         let mut remaining = damage;
         let mut removed = 0u32;
+        // §14.48 (Addenda): at most two TOE points of halftrack-motorized units may be lost per
+        // Anti-Armor Fire segment, regardless of situation.
+        const HALFTRACK_LOSS_CAP: u32 = 2;
+        let mut halftrack_removed = 0u32;
         for (id, gi, absorb, is_tank, halftrack, nat, system) in armored {
             if remaining <= 0 {
                 break;
@@ -293,7 +297,13 @@ impl GameState {
                 continue;
             }
             let needed = ((remaining + absorb - 1) / absorb) as u32; // ceil(remaining / absorb)
-            let take = needed.min(count);
+            let mut take = needed.min(count);
+            if halftrack {
+                take = take.min(HALFTRACK_LOSS_CAP.saturating_sub(halftrack_removed));
+                if take == 0 {
+                    continue;
+                }
+            }
             if let Some(unit) = self.units.get_mut(&id) {
                 match (&mut unit.composition, gi) {
                     (Composition::Weapons { groups }, Some(g)) => groups[g].count -= take,
@@ -314,7 +324,9 @@ impl GameState {
             if is_tank && take > 0 {
                 self.record_destroyed_tank(hex, nat, system, take);
             }
-            let _ = halftrack;
+            if halftrack {
+                halftrack_removed += take;
+            }
             removed += take;
             remaining -= (take as i32) * absorb;
         }

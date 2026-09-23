@@ -229,21 +229,37 @@ New shared helper `within_cp_budget` (cost-limited Dijkstra over `move_step_cost
   mechanism that swaps a unit's weapon TOE in place on a trigger/turn, collapsing these duplicates to
   one counter. **Deferred until the OB completeness pass (CW done p116–132; Axis next) is finished.**
 - [ ] **H5 — CNA Addenda (Sep 1979) rules-logic corrections (backlog).** The addenda's OB/chart *data*
-  corrections were applied 2026-09-16 (see `docs/source-materials/cna-addenda-sep79.transcribed.md`);
+  corrections were applied 2026-09-16 (see `docs/source-materials/CNA Addenda Sep 79.pdf`);
   these remaining items are rules-logic or need review, not simple data edits:
-  - **§14.47/48** SP guns use their Armor Protection Rating like any other armored unit when barraging
-    "Back" (may not absorb, and are affected by Anti-Armor Fire); **a max of two TOE points of
-    "halftrack-motorized" units may be lost per Anti-Armor Fire segment** regardless of situation.
-  - **§50.12** a unit without ammunition must be *assaulted* (anti-armor/close) to surrender — simply
-    being in an Enemy ZOC or being barraged does not cause surrender.
-  - **§50.2** infantry units consume one Ammo point per TOE point used.
-  - **§49.4** infantry-in-trucks / mechanized / tank-AC-recce units with no fuel may not Close Assault
-    (defend at normal strength; two-column shift toward a defending tank-type unit with no fuel).
-  - **§8.37 (verify)** "Tracks do not cost 1 CP; they halve the terrain cost of the hex they're in."
-    `terrain.ron` Track has `cross: Cost(1)` + note [8]; confirm the along-move code halves rather than
-    charging a flat 1 (movement.rs), and fix if it charges flat.
-  - **§54.17 (verify)** the Axis-railroad table "% under −1 = 0, under +7 = 100%" is not loaded as data
-    (§54.4 is code/logistics); confirm the code matches.
+  - **§14.48 halftrack loss cap — DONE (2026-09-22).** `apply_armor_damage` (combat.rs) caps
+    halftrack-motorized TOE loss at 2 per Anti-Armor Fire segment (`HALFTRACK_LOSS_CAP`). Test
+    `halftrack_absorption_14_48` updated (5 → 2 removed).
+  - **§49.4 no-fuel Close-Assault bar — DONE (2026-09-22).** `cmd_close_assault` rejects an offensive
+    close assault by a fuel-using unit (motorized / mechanized / tank-AC-recce) with no accessible Fuel
+    (`move_fuel_available(..,1)`); foot infantry is unaffected. **Remaining:** the §49.4 *defensive*
+    two-column shift toward a defending no-fuel tank-type unit (a combat-shift refinement) is not modeled.
+  - **§14.47 SP-gun "Back" (open — needs decision).** SP guns should use their Armor Protection Rating
+    like an ordinary armored unit when barraging "Back" (no absorb bonus, affected by Anti-Armor Fire);
+    `apply_armor_damage` currently applies the `ap + vulnerability` absorb bonus unconditionally. Guns
+    default to `GunPosition::Back`, so gating the bonus on Forward would flip the default absorption for
+    every SP gun — confirm the intended reading before changing.
+  - **§50.12 no-ammo surrender on anti-armor (open — needs decision).** Barrage/ZOC correctly do NOT
+    surrender; close assault of an out-of-ammo defender DOES (`cmd_close_assault`). The addenda also
+    requires an *anti-armor* assault of a no-ammunition unit to surrender — not implemented. Needs a
+    general "no ammunition" predicate (the current `out_of_close_assault_ammo` is CA-melee-specific) and
+    outcome handling when the assault clears the hex.
+  - **§50.2 infantry ammo 1/TOE (open — interpretation).** The code charges action-specific rates
+    (barrage 4 / anti-armor 3 / close-assault 2 per TOE, `ammo-consumption.ron`, read as §50.14) and
+    rifle infantry pays 0 for close assault. The addenda line "one Ammo point per TOE point used"
+    conflicts with that model — confirm which reading governs before changing (a balance-affecting edit).
+  - **§8.37 track cost (open — movement redesign).** Confirmed DIVERGES: `step_cost` charges hex entry
+    **plus** the Track crossing Cost(1) (e.g. Clear-across-track = 3 CP) rather than halving the hex's
+    terrain cost. A faithful fix reshapes the along-move model (Road replaces entry with the road rate;
+    Track halves the entered hex's terrain cost, with a rounding rule) and rebalances several movement
+    tests — do it as a deliberate, reviewed change.
+  - **§54.17 (open — new mechanic).** No probabilistic Axis-railroad reliability exists; §54.4 rail is
+    deterministic (contiguity + tonnage). The "−1 → 0%, +7 → 100%" ramp needs its die/modifier semantics
+    pinned down before implementing (adds randomness to rail movement).
   - **§62.33 (review)** "142 Blenheim IV F's should be Blenheim IV's (not F's)" — ambiguous whether this
     reclassifies the fighter `Blenheim Mk.IVF` reinforcement entries to the bomber `Blenheim Mk.IV`, or
     is a one-off chart reference; left unchanged in `air-reinforcements.ron` pending source review.

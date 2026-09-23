@@ -5059,6 +5059,12 @@ impl GameState {
         if attackers.iter().any(|&a| self.unit_water_deprived(a)) {
             return Err(CommandError::NoWater);
         }
+        // §49.4 (Addenda): a fuel-using unit (infantry-in-trucks / mechanized / tank-AC-recce) with
+        // no Fuel available may not make an offensive Close Assault. Foot infantry (no fuel cost) is
+        // unaffected — `move_fuel_available` reports true for non-fuel-users.
+        if attackers.iter().any(|&a| self.effective_hex(a).is_some_and(|ah| !self.move_fuel_available(a, ah, 1))) {
+            return Err(CommandError::InsufficientFuel);
+        }
         let side = self.attackers_side(attackers)?;
         // §18.23.2/§18.24.2: a unit released from Reserve this stage may make only one offensive
         // Close Assault.

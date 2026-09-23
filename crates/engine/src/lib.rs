@@ -2158,7 +2158,11 @@ mod tests {
 
         // §8.44: a tank (AFV) may not close-assault a Salt Marsh defender.
         let tank = g.spawn_unit(Nationality::Commonwealth, "rtr", "tank", Composition::Weapons { groups: vec![WeaponGroup { system: "A9 Cruiser".into(), count: 4 }] });
-        g.unit_mut(tank).unwrap().location = Some(UnitLocation::OnMap(atk));
+        {
+            let u = g.unit_mut(tank).unwrap();
+            u.location = Some(UnitLocation::OnMap(atk));
+            u.fuel = 20; // §49.4: fuelled, so the bar here is §8.44 (salt marsh), not lack of fuel
+        }
         assert!(g.unit_is_afv(tank));
         assert_eq!(
             g.apply(Command::CloseAssault { attackers: vec![tank], target: marsh }),
@@ -13834,11 +13838,12 @@ mod tests {
             u.trucks = TruckPoints { light: 0, medium: 7, heavy: 0 };
         }
         // Dice 66 → 9 Damage. §14.48: halftracks are the only affectable points, so AP 1 doubles to
-        // 2 → ceil(9/2) = 5 TOE lost (not 7, which AP 1 would give). Trucks scale to the 2/7 survivors.
+        // 2 → ceil(9/2) = 5 would be removed, but the §14.48 Addenda cap limits halftrack-motorized
+        // loss to at most 2 TOE per Anti-Armor Fire segment. Trucks scale to the 5/7 survivors.
         let out = g.resolve_anti_armor_with_dice(&[atk], hex, 66);
-        assert_eq!(out.armor_toe_removed, 5, "§14.48 doubled AP (2): ceil(9/2)=5 removed, not 7");
-        assert_eq!(g.unit(ht).unwrap().total_toe(), 2);
-        assert_eq!(g.unit(ht).unwrap().trucks.medium, 2, "§14.48 transporting trucks lost with the halftracks (7→2)");
+        assert_eq!(out.armor_toe_removed, 2, "§14.48 Addenda: at most 2 halftrack TOE lost per segment");
+        assert_eq!(g.unit(ht).unwrap().total_toe(), 5);
+        assert_eq!(g.unit(ht).unwrap().trucks.medium, 5, "§14.48 transporting trucks lost with the halftracks (7→5)");
 
         // Dismounted (no Truck Points) the same unit is ordinary infantry — unaffected by anti-armor.
         let ht2 = g.spawn_unit(Nationality::German, "i", "Schützen (dismounted)", Composition::Organic { current_toe: 7 });
