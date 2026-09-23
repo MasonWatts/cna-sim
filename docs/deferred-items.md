@@ -333,11 +333,24 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   close assault gains 3 Disorganization Points (all involved units). Losses are computed but no DP.
 
 ### ZOC / reserve / status gates
-- [-] **AU4 — §10.3/§10.31–36 mandatory attack of ZOC-exerting hexes.** Deferred: a mandatory-combat
-  *obligation* (Holding-Off Barrage + §10.36 forced 3-hex retreat/3-DP fallback) reshapes the turn
-  structure and the self-play agents' action enumeration — all combat is currently modeled as
-  voluntary. High-regression, cross-cutting subsystem better done as a dedicated effort; ZOC/Contact/
-  Engaged are computed, only the obligation is missing.
+- [x] **AU4 — §10.3/§10.31–36 mandatory attack of ZOC-exerting hexes (Holding Off) — DONE (2026-09-23).**
+  `GameState::enforce_holding_off(phasing)` runs at the end of the phasing player's Movement & Combat
+  (the `enter_stage_step` hook, active_player still the phasing side; Sep-79 erratum: phasing player
+  only). Every enemy hex projecting a ZOC (via the existing `hex_projects_zoc`/`zoc_hexes`) onto a
+  phasing **combat** unit must have been attacked this stage — Close Assault or Barrage
+  (`close_assaulted_hexes_this_stage`/`barraged_hexes_this_stage`, attack by *any* friendly unit
+  discharges the hex, §10.31/§10.33). A unit still in an un-attacked enemy ZOC that is not §10.32-exempt
+  (Pinned, or zero offensive Close-Assault strength — the Artillery/AT/AA/support proxy) is forced by
+  §10.36 via `holding_off_retreat`: three hexes directly away from the enemy hex (never through an
+  enemy ZOC or onto an enemy/off-map hex), all CP spent, +3 Disorganization Points; if no legal path
+  exists it Surrenders. Each event logs to the Action Log ("Holding Off"). Test
+  `holding_off_mandatory_zoc_combat_10_3` (retreat / satisfied / surrender). The feared regression did
+  not occur — the full engine + replay suites pass unchanged. *Simplifications:* any barrage against
+  the hex satisfies §10.31 (the §10.34 barrage-point threshold is not separately required); the §10.36
+  retreat is a greedy max-distance path (no stacking check at the destination); the Sep-79 §10.31
+  Probe-satisfies-if-basic-differential-≥-−4 clause is subsumed by "the hex was attacked". *Note:* this
+  changes agent play (a phasing unit left in an un-attacked ZOC now falls back) — a fresh recorded demo
+  (`regen`) will differ from the committed one; not regenerated here.
 - [x] **AU5 — §18.2 Reserve I/II effects.** §18.22: Reserve II never moves; Reserve I moves one hex/
   stage (`reserve_moved_this_stage`). §18.23/§18.24 release restrictions: releasing a unit from Reserve
   (DesignateReserve→None) sets `Unit.released_from_reserve`, which imposes a hard CPA cap on movement —

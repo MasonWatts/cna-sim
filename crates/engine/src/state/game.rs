@@ -3052,6 +3052,102 @@ impl GameState {
         }
     }
 
+    /// §10.31/§10.36 Holding Off (Sep-79 erratum: phasing player only). At the end of the phasing
+    /// player's Movement & Combat, every enemy hex exerting a Zone of Control on one of its combat
+    /// units must have been attacked this stage (Close Assault or Artillery Barrage — a §10.34
+    /// Holding-Off Barrage, modeled here as any barrage against the hex). A phasing combat unit that
+    /// is *not* §10.32-exempt (solely Artillery/AT/AA/non-combat — modeled as zero offensive
+    /// Close-Assault strength — or Pinned) and still sits in an *un-attacked* enemy ZOC must, per
+    /// §10.36, retreat three hexes away (all CP, +3 Disorganization Points), never through an enemy
+    /// ZOC; if it cannot, it Surrenders. `phasing` is the side whose combat segment just ended.
+    pub(crate) fn enforce_holding_off(&mut self, phasing: Side) {
+        let enemy = phasing.opponent();
+        // Phasing combat units in an enemy ZOC, not §10.32-exempt.
+        let obligated: Vec<UnitId> = self
+            .units
+            .values()
+            .filter(|u| u.nationality.side() == phasing && u.hex().is_some())
+            .map(|u| u.id)
+            .filter(|&id| self.is_combat_unit(id))
+            .filter(|&id| {
+                let pinned = self.units.get(&id).is_some_and(|u| u.status.pinned);
+                // §10.32: units that cannot make an offensive Close Assault (Artillery/AT/AA/support)
+                // or that are Pinned are exempt.
+                !pinned && self.close_assault_raw(&[id], true) > 0
+            })
+            .collect();
+        for id in obligated {
+            let Some(uh) = self.units.get(&id).and_then(|u| u.hex()) else { continue };
+            // An enemy hex whose ZOC covers this unit and that was neither Close-Assaulted nor
+            // Barraged this stage (§10.31: attacking the hex — by anyone — discharges the obligation).
+            let unattacked = uh.neighbors().into_iter().find(|&adj| {
+                self.hex_projects_zoc(adj) == Some(enemy)
+                    && self.zoc_hexes(adj).contains(&uh)
+                    && !self.close_assaulted_hexes_this_stage.contains(&adj)
+                    && !self.barraged_hexes_this_stage.contains(&adj)
+            });
+            if let Some(enemy_hex) = unattacked {
+                self.holding_off_retreat(id, enemy_hex);
+            }
+        }
+    }
+
+    /// §10.36: force `unit` to retreat three hexes directly away from `enemy_hex` (never entering an
+    /// enemy ZOC or an enemy-occupied/off-map hex), expending all CP and taking 3 Disorganization
+    /// Points. If no legal three-hex path exists, the unit Surrenders in its entirety.
+    fn holding_off_retreat(&mut self, unit: UnitId, enemy_hex: HexCoord) {
+        let side = match self.units.get(&unit) {
+            Some(u) => u.nationality.side(),
+            None => return,
+        };
+        let enemy = side.opponent();
+        let name = self.units.get(&unit).map(|u| u.name.clone()).unwrap_or_default();
+        let mut cur = match self.units.get(&unit).and_then(|u| u.hex()) {
+            Some(h) => h,
+            None => return,
+        };
+        for _ in 0..3 {
+            let next = cur
+                .neighbors()
+                .into_iter()
+                .filter(|&n| {
+                    self.map.hex(n).is_some()
+                        && n.distance(enemy_hex) > cur.distance(enemy_hex)
+                        && !self.hex_in_zoc_of(n, enemy)
+                        && !self.units_in_hex(n).into_iter().any(|o| {
+                            self.units.get(&o).map(|u| u.nationality.side()) == Some(enemy)
+                        })
+                })
+                .max_by_key(|n| n.distance(enemy_hex));
+            match next {
+                Some(n) => cur = n,
+                None => {
+                    // §10.36: cannot complete the retreat without entering a ZOC → surrender.
+                    self.surrender_units(&[unit]);
+                    self.system_log.push(SystemLogEntry::new(
+                        Some(unit),
+                        "Holding Off",
+                        format!("{name} could not fall back from an unattacked enemy Zone of Control and surrendered (§10.36)."),
+                        &["§10.31", "§10.36"],
+                    ));
+                    return;
+                }
+            }
+        }
+        let cpa = self.unit_cpa(unit).unwrap_or(0).max(0);
+        if let Some(u) = self.units.get_mut(&unit) {
+            u.location = Some(UnitLocation::OnMap(cur));
+            u.cohesion -= 3; // §10.36: 3 Disorganization Points
+            u.cp_expended = crate::reference::terrain::Fixed(cpa * 10);
+        }
+        self.system_log.push(SystemLogEntry::new(
+            Some(unit),
+            "Holding Off",
+            format!("{name} was in an unattacked enemy Zone of Control and fell back three hexes (+3 Disorganization, §10.36)."),
+            &["§10.31", "§10.36"],
+        ));
+    }
+
     /// §21.53: whether a Broken Down Vehicle marker at index `i` is protected from capture — stacked
     /// with a friendly (owner-side) combat unit / HQ / Engineer, or in an owner-controlled hex.
     fn broken_vehicle_protected(&self, i: usize) -> bool {
@@ -10110,9 +10206,13 @@ impl GameState {
         let prev_phase = self.phase;
         self.stage_step = i;
         let (phase, actor) = STAGE_SEQUENCE[i];
-        // §53.31: when the Movement portion concludes, strand any prohibited vehicle left in a Salt
-        // Marsh off a road/track (e.g. an artillery unit forced there by a mandated retreat).
+        // End of the phasing player's Movement & Combat portion:
         if prev_phase == Phase::MovementAndCombat && phase != Phase::MovementAndCombat {
+            // §10.31/§10.36: enforce the Holding-Off obligation (active_player is still the phasing
+            // side here — it is reassigned to the new step's actor below).
+            self.enforce_holding_off(self.active_player);
+            // §53.31: then strand any prohibited vehicle left in a Salt Marsh off a road/track (e.g.
+            // an artillery unit forced there by a §10.36 mandated retreat).
             self.strand_salt_marsh_vehicles();
         }
         self.phase = phase;

@@ -1558,6 +1558,83 @@ mod tests {
     }
 
     #[test]
+    fn holding_off_mandatory_zoc_combat_10_3() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = close_assault_refs();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+
+        // Two German battalions (2 SP, raw defensive CA ≥ 10) project a ZOC from `enemy_hex`.
+        let enemy_hex = HexCoord::new(10, 10);
+        let make = |g: &mut GameState| {
+            // Two battalions in one hex → 2 Stacking Points (> 1, §10.11) and raw def CA ≥ 10 (§10.15).
+            for _ in 0..2 {
+                let d = g.spawn_unit(Nationality::German, "h", "def", Composition::Organic { current_toe: 7 });
+                g.unit_mut(d).unwrap().location = Some(UnitLocation::OnMap(enemy_hex));
+            }
+        };
+
+        // A: a phasing Commonwealth combat unit sits in the un-attacked enemy ZOC with open ground to
+        // fall back into → §10.36 forces it to retreat three hexes and take 3 Disorganization Points.
+        {
+            let mut g = GameState::new(refs.clone(), 1);
+            for c in 10..=16 {
+                g.map.set_hex(HexCoord::new(c, 10), HexTerrain::Clear);
+            }
+            g.map.set_hex(HexCoord::new(10, 9), HexTerrain::Clear);
+            make(&mut g);
+            let start = HexCoord::new(11, 10);
+            let atk = g.spawn_unit(Nationality::Commonwealth, "h", "atk", Composition::Organic { current_toe: 4 });
+            g.unit_mut(atk).unwrap().location = Some(UnitLocation::OnMap(start));
+            let coh0 = g.unit(atk).unwrap().cohesion;
+            assert!(g.hex_projects_zoc(enemy_hex) == Some(Side::Axis), "enemy stack projects a ZOC");
+            assert!(g.hex_in_zoc_of(start, Side::Axis));
+
+            g.enforce_holding_off(Side::Commonwealth);
+
+            let u = g.unit(atk).unwrap();
+            assert!(u.total_toe() > 0, "it retreats, not surrenders (open ground behind)");
+            let end = g.effective_hex(atk).unwrap();
+            assert!(end.distance(enemy_hex) >= start.distance(enemy_hex) + 3, "§10.36: three hexes farther from the enemy");
+            assert_eq!(u.cohesion, coh0 - 3, "§10.36: +3 Disorganization Points");
+        }
+
+        // B: attacking the ZOC-projecting hex this stage discharges the obligation — no retreat.
+        {
+            let mut g = GameState::new(refs.clone(), 1);
+            for c in 10..=16 {
+                g.map.set_hex(HexCoord::new(c, 10), HexTerrain::Clear);
+            }
+            g.map.set_hex(HexCoord::new(10, 9), HexTerrain::Clear);
+            make(&mut g);
+            let start = HexCoord::new(11, 10);
+            let atk = g.spawn_unit(Nationality::Commonwealth, "h", "atk", Composition::Organic { current_toe: 4 });
+            g.unit_mut(atk).unwrap().location = Some(UnitLocation::OnMap(start));
+            g.close_assaulted_hexes_this_stage.insert(enemy_hex); // the hex was Close-Assaulted
+            g.enforce_holding_off(Side::Commonwealth);
+            assert_eq!(g.effective_hex(atk), Some(start), "§10.31 satisfied: the unit stays put");
+        }
+
+        // C: boxed in (no legal away-hex — the only opening is itself in the enemy ZOC) → §10.36 surrender.
+        {
+            let mut g = GameState::new(refs.clone(), 1);
+            // Only the unit's hex and the two enemy hexes exist; every away-neighbour is off-map.
+            g.map.set_hex(HexCoord::new(11, 10), HexTerrain::Clear);
+            g.map.set_hex(HexCoord::new(10, 9), HexTerrain::Clear);
+            g.map.set_hex(enemy_hex, HexTerrain::Clear);
+            make(&mut g);
+            let atk = g.spawn_unit(Nationality::Commonwealth, "h", "atk", Composition::Organic { current_toe: 4 });
+            g.unit_mut(atk).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(11, 10)));
+            g.enforce_holding_off(Side::Commonwealth);
+            assert_eq!(g.unit(atk).unwrap().total_toe(), 0, "§10.36: cannot fall back → surrenders");
+        }
+    }
+
+    #[test]
     fn probe_close_assault_15_9() {
         use crate::reference::terrain::{Fixed, HexTerrain};
         use crate::reference::units::Side;
