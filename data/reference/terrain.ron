@@ -34,7 +34,10 @@
         DownEscarpment: ( cross: ( non_mot: Cost(4), mot: Cost(8) ),      breakdown: 6,   anti_armor: Shift(-2), close_assault: Shift(1),  blocks_zoc: true,  notes: [9] ),
         MajorRiver:     ( cross: ( non_mot: Cost(8), mot: Prohibited ),   breakdown: 0,   anti_armor: NoShift,   close_assault: Shift(-6), blocks_zoc: true,  notes: [11] ),
         MinorRiver:     ( cross: ( non_mot: Cost(3), mot: Cost(6) ),      breakdown: 1,   anti_armor: NoShift,   close_assault: Shift(-2), blocks_zoc: false, notes: [] ),
-        // Road/Track: "along-move" overlay — cost replaces hex terrain cost (code rule).
+        // Road/Track along-move (§8.37 [6]/[8], handled in movement::step_cost, not additively here):
+        // a Road negates the hex terrain + all hexside features → the flat road rate below; a Track
+        // HALVES the entered hex's terrain cost and hexside crossings (except a down-escarpment).
+        // The `cross` values below are the Road along-move rate and the pre-erratum Track figure.
         Road:           ( cross: ( non_mot: Cost(1), mot: Cost(0.5) ),    breakdown: 0.5, anti_armor: NoShift,   close_assault: NoShift,   blocks_zoc: false, notes: [6] ),
         Track:          ( cross: ( non_mot: Cost(1), mot: Cost(1) ),      breakdown: 0,   anti_armor: NoShift,   close_assault: NoShift,   blocks_zoc: false, notes: [8] ),
         Railroad:       ( cross: ( non_mot: Cost(0), mot: Cost(0) ),      breakdown: 0,   anti_armor: NoShift,   close_assault: NoShift,   blocks_zoc: false, notes: [] ),

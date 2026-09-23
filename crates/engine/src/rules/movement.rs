@@ -115,8 +115,13 @@ pub fn crossing_cost_with(
         .unwrap_or(MoveCost::Cost(Fixed(0)))
 }
 
-/// RULE: total CP to step from `from` to adjacent `to` = hex entry cost + hexside
-/// crossing cost. `None` if `to` is off the map; prohibited on either part is prohibited.
+/// RULE (§8.37 chart footnotes [6]/[8], §8.46): total CP to step from `from` into adjacent `to`.
+/// A **Road** hexside negates the hex terrain and *all* hexside features — the step costs the flat
+/// road rate (footnote 6). A **Track** (or an unfinished road, §24.52) *halves* the entered hex's
+/// terrain cost and its hexside-crossing costs, except the down-escarpment CP (footnote 8, §8.42).
+/// Otherwise the cost is the terrain entry cost plus the most-restrictive hexside obstacle. `None`
+/// if `to` is off the map; Prohibited on either part is Prohibited (a Track never makes a Prohibited
+/// crossing legal — halving Prohibited stays Prohibited).
 pub fn step_cost(
     refs: &ReferenceData,
     map: &crate::state::map::Map,
@@ -124,8 +129,109 @@ pub fn step_cost(
     to: crate::state::map::HexCoord,
     mode: MoveMode,
 ) -> Option<MoveCost> {
+    step_cost_with(refs, map, from, to, mode, false)
+}
+
+/// `step_cost`, but when `road_as_track` a Road hexside behaves like a Track (§29.56: during a
+/// rainstorm road hexes cost the same as tracks).
+pub fn step_cost_with(
+    refs: &ReferenceData,
+    map: &crate::state::map::Map,
+    from: crate::state::map::HexCoord,
+    to: crate::state::map::HexCoord,
+    mode: MoveMode,
+    road_as_track: bool,
+) -> Option<MoveCost> {
+    use crate::state::map::HexsideKind;
     let entry = hex_entry_cost(refs, map, to, mode)?;
-    Some(combine_cost(entry, crossing_cost(refs, map, from, to, mode)))
+    let sides = map.hexsides_on(from, to);
+    let mut has_road = sides.iter().any(|h| h.kind == HexsideKind::Road);
+    let mut has_track = sides
+        .iter()
+        .any(|h| matches!(h.kind, HexsideKind::Track | HexsideKind::UnfinishedRoad));
+    if road_as_track && has_road {
+        has_road = false;
+        has_track = true;
+    }
+    let (obstacle, down_escarp) = obstacle_crossing(refs, map, from, to, mode);
+    if has_road {
+        // §8.37 [6]: a road negates terrain + all hexside features → flat road rate.
+        Some(road_rate(refs, mode))
+    } else if has_track {
+        // §8.37 [8]: a track halves the terrain entry and hexside costs, except a down-escarpment.
+        let obs = if down_escarp { obstacle } else { halve_cost(obstacle) };
+        Some(combine_cost(halve_cost(entry), obs))
+    } else {
+        Some(combine_cost(entry, obstacle))
+    }
+}
+
+/// The flat Road along-move rate for `mode` (§8.37 Road row).
+fn road_rate(refs: &ReferenceData, mode: MoveMode) -> MoveCost {
+    use crate::reference::terrain::HexsideTerrain;
+    refs.hexsides
+        .get(&HexsideTerrain::Road)
+        .map(|p| match mode {
+            MoveMode::NonMotorized => p.cross.non_mot,
+            MoveMode::Motorized => p.cross.mot,
+        })
+        .unwrap_or(MoveCost::Cost(Fixed(0)))
+}
+
+/// Halve a movement cost (§8.37 [8]); EntireCpa/Prohibited are not halved (Prohibited stays so).
+fn halve_cost(c: MoveCost) -> MoveCost {
+    match c {
+        MoveCost::Cost(f) => MoveCost::Cost(Fixed(f.0 / 2)),
+        other => other,
+    }
+}
+
+/// The most-restrictive **non-route** hexside crossing obstacle (rivers, escarpments, ridges,
+/// slopes, wadi, lake) between `from` and `to`, and whether that worst obstacle is a down-escarpment
+/// (which a Track does not halve, §8.37 [8]). Route features (road/track/railroad) are excluded.
+fn obstacle_crossing(
+    refs: &ReferenceData,
+    map: &crate::state::map::Map,
+    from: crate::state::map::HexCoord,
+    to: crate::state::map::HexCoord,
+    mode: MoveMode,
+) -> (MoveCost, bool) {
+    use crate::reference::terrain::HexsideTerrain;
+    use crate::state::map::HexsideKind;
+    let rank = |c: MoveCost| match c {
+        MoveCost::Cost(f) => (0, f.0),
+        MoveCost::EntireCpa => (1, 0),
+        MoveCost::Prohibited => (2, 0),
+    };
+    let mut worst = MoveCost::Cost(Fixed(0));
+    let mut worst_down_escarp = false;
+    for h in map.hexsides_on(from, to) {
+        if matches!(
+            h.kind,
+            HexsideKind::Road
+                | HexsideKind::Track
+                | HexsideKind::UnfinishedRoad
+                | HexsideKind::Railroad
+                | HexsideKind::UnfinishedRailroad
+                | HexsideKind::DestroyedRailroad
+        ) {
+            continue;
+        }
+        let key = h.resolve(from, to);
+        let c = refs
+            .hexsides
+            .get(&key)
+            .map(|p| match mode {
+                MoveMode::NonMotorized => p.cross.non_mot,
+                MoveMode::Motorized => p.cross.mot,
+            })
+            .unwrap_or(MoveCost::Cost(Fixed(0)));
+        if rank(c) > rank(worst) {
+            worst = c;
+            worst_down_escarp = key == HexsideTerrain::DownEscarpment;
+        }
+    }
+    (worst, worst_down_escarp)
 }
 
 fn combine_cost(a: MoveCost, b: MoveCost) -> MoveCost {

@@ -8260,6 +8260,39 @@ mod tests {
     }
 
     #[test]
+    fn track_halves_road_negates_step_cost_8_37() {
+        use crate::reference::terrain::{Fixed, HexTerrain, MoveCost};
+        use crate::rules::movement::{step_cost, MoveMode};
+        use crate::state::map::{HexCoord, HexsideKind, Map};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        let mut m = Map::new();
+        let mot = MoveMode::Motorized;
+        let edge = |m: &mut Map, r: i16, terr: HexTerrain, kinds: &[HexsideKind]| {
+            let (a, b) = (HexCoord::new(0, r), HexCoord::new(1, r));
+            m.set_hex(a, HexTerrain::Clear);
+            m.set_hex(b, terr);
+            for &k in kinds {
+                m.set_hexside(a, b, k, None);
+            }
+            (a, b)
+        };
+        // §8.37 [8]: a Track HALVES the entered hex's terrain cost (Rough mot 4 → 2 CP), no flat +1.
+        let (a, b) = edge(&mut m, 0, HexTerrain::Rough, &[HexsideKind::Track]);
+        assert_eq!(step_cost(&refs, &m, a, b, mot), Some(MoveCost::Cost(Fixed(20))));
+        // §8.37 [6]: a Road NEGATES the terrain → flat road rate (mot ½ CP), whatever the hex terrain.
+        let (c, d) = edge(&mut m, 1, HexTerrain::Rough, &[HexsideKind::Road]);
+        assert_eq!(step_cost(&refs, &m, c, d, mot), Some(MoveCost::Cost(Fixed(5))));
+        // No route into Rough: full terrain entry (4 CP).
+        let (e, f) = edge(&mut m, 2, HexTerrain::Rough, &[]);
+        assert_eq!(step_cost(&refs, &m, e, f, mot), Some(MoveCost::Cost(Fixed(40))));
+        // Track over a Minor River into Clear: half(terrain 2 → 1) + half(river 6 → 3) = 4 CP.
+        let (g, h) = edge(&mut m, 3, HexTerrain::Clear, &[HexsideKind::Track, HexsideKind::MinorRiver]);
+        assert_eq!(step_cost(&refs, &m, g, h, mot), Some(MoveCost::Cost(Fixed(40))));
+    }
+
+    #[test]
     fn italian_pasta_rule() {
         use crate::reference::terrain::{Fixed, HexTerrain};
         use crate::rules::movement::MoveMode;
