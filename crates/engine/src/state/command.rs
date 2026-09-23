@@ -5325,6 +5325,19 @@ impl GameState {
             return Err(CommandError::InsufficientFuel);
         }
         let side = self.attackers_side(attackers)?;
+        // §15.91/§15.94: a Probe is a Close Assault committing less than 50% of the phasing side's
+        // available TOE Strength Points (auto-detected — it need not be announced). "Available" is
+        // modeled as the side's total on-map combat-unit TOE.
+        let is_probe = {
+            let attacker_toe: u32 = attackers.iter().filter_map(|&a| self.unit(a)).map(|u| u.total_toe()).sum();
+            let available_toe: u32 = self
+                .units
+                .values()
+                .filter(|u| u.nationality.side() == side && u.hex().is_some() && self.is_combat_unit(u.id))
+                .map(|u| u.total_toe())
+                .sum();
+            available_toe > 0 && attacker_toe * 2 < available_toe
+        };
         // §18.23.2/§18.24.2: a unit released from Reserve this stage may make only one offensive
         // Close Assault.
         if attackers.iter().any(|&a| {
@@ -5369,14 +5382,26 @@ impl GameState {
         // applied before resolution so any §6.21 over-CPA Disorganization feeds the morale check.
         let mut cp_hexes: Vec<HexCoord> = attackers.iter().filter_map(|&a| self.effective_hex(a)).collect();
         cp_hexes.push(target);
-        self.charge_combat_hexes(&cp_hexes, false);
+        self.charge_combat_hexes(&cp_hexes, is_probe);
         // Snapshot TOE of all involved units for the §15.87 loss check.
         let involved: Vec<(UnitId, u32)> = attackers
             .iter()
             .chain(defenders.iter())
             .map(|&id| (id, self.unit(id).map(|u| u.total_toe()).unwrap_or(0)))
             .collect();
-        let outcome = self.resolve_close_assault(attackers, &defenders);
+        let outcome = self.resolve_close_assault_probe(attackers, &defenders, is_probe);
+        // §11.27/§15.96: a defender facing a Final Assault Differential of −4 or worse spends only
+        // 1 CP (full assault, §11.27) — or none at all if it was a Probe (§15.96). Applied post-resolve
+        // (the differential is now known), reducing the 3 CP charged above.
+        if outcome.differential <= -4 {
+            let reduced = if is_probe { 0 } else { 1 };
+            let ids = self.units_in_hex(target);
+            for d in ids {
+                if self.unit(d).map(|u| u.nationality.side()) == Some(side.opponent()) {
+                    self.refund_combat_cp(d, reduced);
+                }
+            }
+        }
         // §15.87/§6.21: a unit that loses ≥30% of its TOE in one close assault earns 3 Disorganization
         // Points (−3 cohesion).
         for (id, before) in &involved {

@@ -1558,6 +1558,86 @@ mod tests {
     }
 
     #[test]
+    fn probe_close_assault_15_9() {
+        use crate::reference::terrain::{Fixed, HexTerrain};
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = close_assault_refs();
+        refs.load_unit_characteristics(Nationality::German, include_str!("../../../data/reference/unit-characteristics/german.ron")).unwrap();
+        let mut g = GameState::new(refs, 3);
+        let (a, d, reserve_hex) = (HexCoord::new(5, 5), HexCoord::new(6, 5), HexCoord::new(9, 9));
+        for h in [a, d, reserve_hex] {
+            g.map.set_hex(h, HexTerrain::Clear);
+        }
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+
+        // A small Commonwealth attacker, with a large uncommitted reserve elsewhere → the assault
+        // commits well under 50% of the side's available TOE, so it is a Probe (§15.91/§15.94).
+        let atk = g.spawn_unit(Nationality::Commonwealth, "h", "atk", Composition::Organic { current_toe: 2 });
+        g.unit_mut(atk).unwrap().location = Some(UnitLocation::OnMap(a));
+        g.unit_mut(atk).unwrap().basic_morale = 8;
+        let reserve = g.spawn_unit(Nationality::Commonwealth, "h", "reserve", Composition::Organic { current_toe: 50 });
+        g.unit_mut(reserve).unwrap().location = Some(UnitLocation::OnMap(reserve_hex));
+        // A strong German defender (def rating 5) → the differential is far worse than −4.
+        let def = g.spawn_unit(Nationality::German, "h", "def", Composition::Organic { current_toe: 7 });
+        g.unit_mut(def).unwrap().location = Some(UnitLocation::OnMap(d));
+        g.unit_mut(def).unwrap().basic_morale = 8;
+
+        match g.apply(Command::CloseAssault { attackers: vec![atk], target: d }) {
+            Ok(CommandOutcome::CloseAssault(o)) => {
+                assert!(o.differential <= -4, "weak probe vs strong defender: differential {}", o.differential);
+                // §15.93: a Probe leaves neither side Engaged or In Contact.
+                let atk_u = g.unit(atk).unwrap();
+                assert!(!atk_u.status.engaged && !atk_u.status.in_contact, "probers not Engaged/In Contact");
+                let def_u = g.unit(def).unwrap();
+                assert!(!def_u.status.engaged && !def_u.status.in_contact, "defenders not Engaged/In Contact");
+                // §11.23: the probing attacker spends 2 CP (not the 5 of a full assault).
+                assert_eq!(g.unit(atk).unwrap().combat_cp, Fixed(20));
+                // §15.96: the defender facing a ≤ −4 Probe expends no CP.
+                assert_eq!(g.unit(def).unwrap().combat_cp, Fixed(0));
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn probe_all_recce_loss_reduction_15_95() {
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        // Identical all-Recce assaults resolved with the same rolls: the Probe takes ≤ the losses of
+        // the full assault (§15.95: all-Recce probers' Close-Assault losses reduced 10%).
+        let setup = || {
+            let mut g = GameState::new(close_assault_refs(), 3);
+            let (a, d) = (HexCoord::new(5, 5), HexCoord::new(6, 5));
+            g.map.set_hex(a, HexTerrain::Clear);
+            g.map.set_hex(d, HexTerrain::Clear);
+            // "hh" is a Reconnaissance battalion (is_recce_unit) with a full attacking strength.
+            let atk = g.spawn_unit(Nationality::Commonwealth, "hh", "recce", Composition::Organic { current_toe: 20 });
+            g.unit_mut(atk).unwrap().location = Some(UnitLocation::OnMap(a));
+            g.unit_mut(atk).unwrap().basic_morale = 8;
+            assert!(g.is_recce_unit(atk));
+            let def = g.spawn_unit(Nationality::Commonwealth, "h", "def", Composition::Organic { current_toe: 60 });
+            g.unit_mut(def).unwrap().location = Some(UnitLocation::OnMap(d));
+            g.unit_mut(def).unwrap().basic_morale = 8;
+            (g, atk, def)
+        };
+        use crate::reference::terrain::HexTerrain;
+        let (mut gf, af, df) = setup();
+        let full = gf.resolve_close_assault_with_rolls_ex(&[af], &[df], 33, 33, 11, 66, false);
+        let (mut gp, ap, dp) = setup();
+        let probe = gp.resolve_close_assault_with_rolls_ex(&[ap], &[dp], 33, 33, 11, 66, true);
+        assert!(full.attacker_toe_removed > 0, "sanity: the full assault should inflict losses");
+        assert!(probe.attacker_toe_removed < full.attacker_toe_removed, "§15.95: all-Recce probe loses strictly fewer (probe {} vs full {})", probe.attacker_toe_removed, full.attacker_toe_removed);
+    }
+
+    #[test]
     fn overrun_detection_and_defender_round_up() {
         use crate::state::game::GameState;
         use crate::state::unit::Composition;

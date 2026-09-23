@@ -352,10 +352,21 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   (currently only RBA/Reaction check the −26 gate; no auto-surrender).
 
 ### Combat detail (§12–§15, §23, §26)
-- [-] **AU8 — §15.9 Probe combat mode.** Deferred: a distinct combat *mode* (new command + agent
-  wiring + the §15.95 all-recce −10% / §15.96 no-defender-CP modifiers) that the operational
-  abstraction never invokes; a discrete opt-in feature, best as its own effort rather than bolted
-  onto the atomic close-assault resolver.
+- [x] **AU8 — §15.9 Probe combat mode — DONE (2026-09-23).** The note over-scoped it — §15.94 says a
+  Probe is *not* announced, so it needs no command/agent wiring: it is **auto-detected**. `cmd_close_assault`
+  flags a Close Assault as a Probe when the attackers commit < 50% of the phasing side's available TOE
+  (§15.91; "available" = the side's total on-map combat-unit TOE). Effects: §15.93 — a Probe ignores all
+  Engaged results and leaves neither side In Contact (the resolver's status-setting is gated on
+  `!is_probe`); §15.95 — an all-Recce probe takes 10% fewer Close-Assault losses; §11.23 — the probing
+  attacker spends 2 CP not 5 (via `charge_combat_hexes(probe=true)`, fixed so the defender still pays its
+  §11.21 3 CP); §15.96 — a defender facing a Probe with a differential ≤ −4 spends **no** CP
+  (`refund_combat_cp`). Also implemented the adjacent **§11.27** (a defender facing a *full* assault at a
+  ≤ −4 differential spends 1 CP), the same code path. Resolver refactored to
+  `resolve_close_assault_probe` / `resolve_close_assault_with_rolls_ex` (existing signatures preserved as
+  `is_probe = false` wrappers). Tests `probe_close_assault_15_9`, `probe_all_recce_loss_reduction_15_95`.
+  *(The probe test also surfaced and fixed a latent u8 overflow in the §15.95 percentage math.)*
+  *Simplification:* "Final Adjusted Differential" is read as the strength differential
+  (`outcome.differential`), not a shift-adjusted column.
 - [-] **AU9 — §15.29 decline-to-defend.** Deferred: tied to the defender-allocation choice model (the
   remaining A3 detail, §15.16 per-TOE defensive commitment). `cmd_close_assault` resolves atomically
   with the *whole* enemy stack defending, so there is no "allocate zero units" trigger to hang the

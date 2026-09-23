@@ -853,17 +853,30 @@ impl GameState {
         attackers: &[UnitId],
         defenders: &[UnitId],
     ) -> CloseAssaultOutcome {
+        self.resolve_close_assault_probe(attackers, defenders, false)
+    }
+
+    /// `resolve_close_assault`, but flagging whether the assault is a §15.9 Probe (< 50% of the
+    /// phasing side's available TOE): a Probe ignores all Engaged results and leaves neither side In
+    /// Contact (§15.93), and an all-Recce probe takes 10% fewer Close-Assault losses (§15.95).
+    pub fn resolve_close_assault_probe(
+        &mut self,
+        attackers: &[UnitId],
+        defenders: &[UnitId],
+        is_probe: bool,
+    ) -> CloseAssaultOutcome {
         let attacker_morale_read = self.rng.two_dice_raw();
         let defender_morale_read = self.rng.two_dice_raw();
         let attacker_read = self.rng.two_dice_raw();
         let defender_read = self.rng.two_dice_raw();
-        self.resolve_close_assault_with_rolls(
+        self.resolve_close_assault_with_rolls_ex(
             attackers,
             defenders,
             attacker_morale_read,
             defender_morale_read,
             attacker_read,
             defender_read,
+            is_probe,
         )
     }
 
@@ -883,6 +896,23 @@ impl GameState {
         defender_morale_read: u8,
         attacker_read: u8,
         defender_read: u8,
+    ) -> CloseAssaultOutcome {
+        self.resolve_close_assault_with_rolls_ex(
+            attackers, defenders, attacker_morale_read, defender_morale_read, attacker_read, defender_read, false,
+        )
+    }
+
+    /// `resolve_close_assault_with_rolls` with the §15.9 Probe flag (see `resolve_close_assault_probe`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn resolve_close_assault_with_rolls_ex(
+        &mut self,
+        attackers: &[UnitId],
+        defenders: &[UnitId],
+        attacker_morale_read: u8,
+        defender_morale_read: u8,
+        attacker_read: u8,
+        defender_read: u8,
+        is_probe: bool,
     ) -> CloseAssaultOutcome {
         // Raw & actual strengths (§15.28 + §15.4 combined arms) and the base differential.
         let a_raw_off = self.close_assault_raw(attackers, true);
@@ -973,8 +1003,11 @@ impl GameState {
         if attacker_morale.surrendered && defender_morale.surrendered {
             out.attacker_morale.surrendered = false;
             out.defender_morale.surrendered = false;
-            self.set_status(attackers, |s| s.engaged = true);
-            self.set_status(defenders, |s| s.engaged = true);
+            // §15.93: a Probe leaves neither side Engaged / In Contact.
+            if !is_probe {
+                self.set_status(attackers, |s| s.engaged = true);
+                self.set_status(defenders, |s| s.engaged = true);
+            }
             out.attacker.engaged = true;
             out.defender.engaged = true;
             return out;
@@ -994,7 +1027,9 @@ impl GameState {
                 out.defender_toe_removed = lost;
                 out.defender_prisoners = lost;
             }
-            self.set_status(other, |s| s.in_contact = true);
+            if !is_probe {
+                self.set_status(other, |s| s.in_contact = true); // §15.93: no Contact from a Probe
+            }
             return out;
         }
 
@@ -1043,8 +1078,11 @@ impl GameState {
         out.attacker_toe_removed = if zero_def_loner {
             0 // §15.54: the attacking unit takes no casualties.
         } else {
+            // §15.95: an all-Recce Probe takes 10% fewer Close-Assault losses.
+            let all_recce = is_probe && !attackers.is_empty() && attackers.iter().all(|&a| self.is_recce_unit(a));
+            let loss_percent = if all_recce { (attacker.loss_percent as u16 * 9 / 10) as u8 } else { attacker.loss_percent };
             // §15.83c: the attacker rounds raw points lost up.
-            self.apply_raw_loss(attackers, attacker.loss_percent, true, true)
+            self.apply_raw_loss(attackers, loss_percent, true, true)
         };
         out.defender_toe_removed = {
             // §15.21/§15.84a: only melee troops take Close Assault losses outside an Overrun;
@@ -1098,14 +1136,17 @@ impl GameState {
         // side's In-Contact result marks its units In Contact. (A defender Retreat
         // requirement is carried on `defender.retreat_hexes` for the owning player to
         // satisfy — retreat movement is a follow-on decision, not auto-applied here.)
-        if attacker.engaged {
-            self.set_status(defenders, |s| s.engaged = true);
-        }
-        if attacker.in_contact {
-            self.set_status(attackers, |s| s.in_contact = true);
-        }
-        if defender.in_contact {
-            self.set_status(defenders, |s| s.in_contact = true);
+        // §15.93: a Probe ignores all Engaged results and leaves neither side In Contact.
+        if !is_probe {
+            if attacker.engaged {
+                self.set_status(defenders, |s| s.engaged = true);
+            }
+            if attacker.in_contact {
+                self.set_status(attackers, |s| s.in_contact = true);
+            }
+            if defender.in_contact {
+                self.set_status(defenders, |s| s.in_contact = true);
+            }
         }
         // §15.82: record a mandated Retreat on each on-map defender counter (the owning
         // player satisfies it with a Retreat command; attached sub-units ride the parent).

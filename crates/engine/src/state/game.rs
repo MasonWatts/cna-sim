@@ -9157,14 +9157,29 @@ impl GameState {
         ids.sort_unstable();
         ids.dedup();
         for id in ids {
-            let cap = if probe {
-                2
-            } else if self.units.get(&id).map(|u| u.nationality.side()) == Some(phasing) {
-                5
+            let phasing_side = self.units.get(&id).map(|u| u.nationality.side()) == Some(phasing);
+            // §11.22/§11.23: the phasing side pays 5 CP for a full attack, 2 for a Probe. §11.21: the
+            // non-phasing (defending) side pays 3 regardless (its §11.27/§15.96 reduction to 1/0 at a
+            // ≤ −4 differential is applied by the caller once the differential is known).
+            let cap = if phasing_side {
+                if probe { 2 } else { 5 }
             } else {
                 3
             };
             self.charge_combat_cp(id, cap);
+        }
+    }
+
+    /// §11.27/§15.96: reduce a unit's already-charged combat CP down to `new_cap` (the defender's
+    /// reduced expenditure against a ≤ −4-differential assault). No-op if it is already at or below.
+    pub(crate) fn refund_combat_cp(&mut self, id: UnitId, new_cap: i32) {
+        let target = new_cap * 10;
+        if let Some(u) = self.unit_mut(id) {
+            let excess = (u.combat_cp.0 - target).max(0);
+            if excess > 0 {
+                u.combat_cp = Fixed(u.combat_cp.0 - excess);
+                u.cp_expended = Fixed((u.cp_expended.0 - excess).max(0));
+            }
         }
     }
 
