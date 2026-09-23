@@ -1212,7 +1212,10 @@ fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) -> S
             format!("Scheduled an Axis convoy to {destination}, ~{tons} tons, arriving GT {arrival_gt}.")
         }
         Command::BombConvoy { .. } => match outcome {
-            CommandOutcome::ConvoyBombed(pct) => format!("Bombed a planned Axis convoy — {pct}% of its cargo lost."),
+            CommandOutcome::ConvoyBombed { percent, attackers_lost } => {
+                let flak = if *attackers_lost > 0 { format!(" ({attackers_lost} bomber(s) lost to convoy flak, §56.16)") } else { String::new() };
+                format!("Bombed a planned Axis convoy — {percent}% of its cargo lost{flak}.")
+            }
             _ => "Bombed a planned Axis convoy.".into(),
         },
         Command::DeliverConvoy { .. } => "Delivered an arrived convoy's cargo into supply.".into(),

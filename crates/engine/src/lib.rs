@@ -1558,6 +1558,40 @@ mod tests {
     }
 
     #[test]
+    fn convoy_flak_downs_bombers_56_16() {
+        use crate::reference::aircraft::AircraftClass;
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::naval::Convoy;
+
+        let mut refs = ReferenceData::new();
+        refs.load_air_bombardment(include_str!("../../../data/reference/air-bombardment.ron")).unwrap();
+        refs.load_equivalent_weights(include_str!("../../../data/reference/equivalent-weights.ron")).unwrap();
+        refs.load_anti_aircraft(include_str!("../../../data/reference/anti-aircraft.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        // A heavily-laden convoy → strong flak (§56.16: 15,000 t / 1000 = 15 Flak Points).
+        g.convoys.push(Convoy { lane: 1, destination: "Tripoli".into(), arrival_gt: 1, fuel_tons: 15000, ammo_tons: 0, stores_tons: 0, replacement_tons: 0, cancelled: false });
+        let mut sq = Sgsu::new(SquadronId(1), Nationality::Commonwealth, SquadronClass::Bomber, "bombers", 0, Some(HexCoord::new(5, 5)));
+        sq.add_planes("Blenheim Mk.IV", AircraftClass::Bomber, 10, 1);
+        g.sgsus.insert(SquadronId(1), sq);
+        g.phase = Phase::ConvoyResolution;
+        g.active_player = crate::reference::units::Side::Commonwealth;
+
+        g.rng.force([6, 6, 6, 6]); // bomb roll 66, then flak roll 66
+        match g.apply(Command::BombConvoy { convoy_index: 0, squadron: Some(SquadronId(1)), bomb_points: 250, torpedo_planes: 0, total_planes: 10 }) {
+            Ok(CommandOutcome::ConvoyBombed { percent, attackers_lost }) => {
+                assert!(percent > 0);
+                assert!(attackers_lost > 0, "§56.16: 15-point convoy flak downs some bombers");
+                assert_eq!(g.sgsus[&SquadronId(1)].plane_count(), 10 - attackers_lost, "losses removed from the squadron");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
     fn transfer_planes_between_squadrons_35_22() {
         use crate::reference::aircraft::AircraftClass;
         use crate::reference::squadron::SquadronClass;
@@ -12851,8 +12885,8 @@ mod tests {
         }
         g.rng.force([6, 6]); // two_dice_raw = 66
         assert_eq!(
-            g.apply(Command::BombConvoy { convoy_index: 0, bomb_points: 250, torpedo_planes: 0, total_planes: 10 }),
-            Ok(CommandOutcome::ConvoyBombed(25))
+            g.apply(Command::BombConvoy { convoy_index: 0, squadron: None, bomb_points: 250, torpedo_planes: 0, total_planes: 10 }),
+            Ok(CommandOutcome::ConvoyBombed { percent: 25, attackers_lost: 0 })
         );
         assert_eq!(g.convoys[0].fuel_tons, 7500);
 

@@ -281,9 +281,12 @@ pub enum Command {
         replacement_tons: u32,
     },
     /// §41.6: resolve a Commonwealth strategic bombing attack on a planned convoy (Convoy
-    /// Resolution Phase). `roll` is a 2d6 value encoded `10*d1+d2`.
+    /// Resolution Phase). `roll` is a 2d6 value encoded `10*d1+d2`. If `squadron` is given, the
+    /// convoy's flak fires back (§56.16) and any downed bombers are removed from that squadron; the
+    /// fully-abstract `None` case (numeric bomber count only) takes no modeled flak losses.
     BombConvoy {
         convoy_index: usize,
+        squadron: Option<crate::state::air::SquadronId>,
         bomb_points: u32,
         torpedo_planes: u32,
         total_planes: u32,
@@ -932,7 +935,7 @@ pub enum CommandOutcome {
     /// A convoy was planned (§56.15).
     ConvoyPlanned,
     /// A convoy was bombed (§41.6): the percentage of cargo lost.
-    ConvoyBombed(u32),
+    ConvoyBombed { percent: u32, attackers_lost: u32 },
     /// A convoy was delivered (§56.16): the supply points landed.
     ConvoyDelivered(crate::state::game::Commodities),
     /// A harbour action succeeded (§55.2): the Ammunition/Stores cost to expend.
@@ -1504,9 +1507,9 @@ impl GameState {
                 let die = self.rng.d6() as u32;
                 self.cmd_plan_convoy(lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, die)
             }
-            Command::BombConvoy { convoy_index, bomb_points, torpedo_planes, total_planes } => {
+            Command::BombConvoy { convoy_index, squadron, bomb_points, torpedo_planes, total_planes } => {
                 let roll = self.rng.two_dice_raw() as u32;
-                self.cmd_bomb_convoy(convoy_index, bomb_points, torpedo_planes, total_planes, roll)
+                self.cmd_bomb_convoy(convoy_index, squadron, bomb_points, torpedo_planes, total_planes, roll)
             }
             Command::InterdictConvoy { base_index, aircraft_type, planes, torpedo, convoy_index } => {
                 self.cmd_interdict_convoy(base_index, &aircraft_type, planes, torpedo, convoy_index)
@@ -2441,19 +2444,41 @@ impl GameState {
     }
 
     /// §41.6 BombConvoy: gated to the Convoy Resolution Phase.
+    #[allow(clippy::too_many_arguments)]
     fn cmd_bomb_convoy(
         &mut self,
         convoy_index: usize,
+        squadron: Option<crate::state::air::SquadronId>,
         bomb_points: u32,
         torpedo_planes: u32,
         total_planes: u32,
         roll: u32,
     ) -> Result<CommandOutcome, CommandError> {
         self.require_phase(Phase::ConvoyResolution)?;
-        match self.resolve_convoy_bombing(convoy_index, bomb_points, torpedo_planes, total_planes, roll) {
-            Some(pct) => Ok(CommandOutcome::ConvoyBombed(pct)),
-            None => Err(CommandError::InvalidConvoy),
+        let percent = self
+            .resolve_convoy_bombing(convoy_index, bomb_points, torpedo_planes, total_planes, roll)
+            .ok_or(CommandError::InvalidConvoy)?;
+        // §56.16: the convoy's flak fires back at the attacking bombers. Only the plane-tracking path
+        // (a named `squadron`) takes losses; the fully-abstract numeric case has no squadron to
+        // subtract from.
+        let mut attackers_lost = 0u32;
+        if let Some(sq) = squadron {
+            let flak = self.convoys.get(convoy_index).map(|c| c.flak_points()).unwrap_or(0);
+            if flak > 0 {
+                if let Some(aa) = self.reference.anti_aircraft.as_ref() {
+                    use crate::reference::anti_aircraft::AaSection;
+                    let flak_roll = self.rng.sequential_read() as u32;
+                    attackers_lost = aa.result(AaSection::OtherDestroyed, flak, 0, flak_roll).max(0) as u32;
+                }
+            }
+            attackers_lost = attackers_lost.min(total_planes);
+            if attackers_lost > 0 {
+                if let Some(s) = self.sgsus.get_mut(&sq) {
+                    attackers_lost = s.lose_planes(attackers_lost);
+                }
+            }
         }
+        Ok(CommandOutcome::ConvoyBombed { percent, attackers_lost })
     }
 
     /// §40.24/§44: a Malta-based convoy-interdiction strike. Draws real planes from a Malta field,

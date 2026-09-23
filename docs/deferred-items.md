@@ -570,7 +570,15 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   nationality, per §35.27 overriding §35.28). Test extended in sgsu_overrun_by_land_35_12.
 - [x] **AU43 — §49.19/§50.16/§51.16 captured supply dumps** change ownership on overrun + captured-usable
   fraction (fuel non-denominational; ⅓ ammo, ½ stores) — dumps currently never change hands.
-- [-] **AU44 — §56.16 convoy flak fires back.** The flak-point formula exists (rules::naval::convoy_flak_points); applying the losses to the attacking bombers needs a squadron ref, but the convoy-bombing command is numeric/abstracted — within the owner-ruled air-combat abstraction (B6–B8).
+- [x] **AU44 — §56.16 convoy flak fires back — DONE (2026-09-23).** The Malta path (`InterdictConvoy`)
+  already applied §56.16 (flak losses removed from the field). The generic `BombConvoy` gained an
+  optional `squadron: Option<SquadronId>`: when supplied, `cmd_bomb_convoy` computes the convoy's flak
+  (`Convoy::flak_points`, tonnage/1000), rolls the §46 AA table, and removes the downed bombers from
+  that squadron (`lose_planes`); the outcome is now `ConvoyBombed { percent, attackers_lost }` and the
+  Action-Log line notes the bombers lost. The fully-abstract `None` case (numeric bomber count only,
+  no squadron to subtract from) is unchanged — no modeled losses, no RNG shift. Test
+  `convoy_flak_downs_bombers_56_16`. So convoy flak now bites the attacker on **both** the Malta strike
+  and the strategic `BombConvoy` path whenever a real squadron flies it.
 - [x] **AU45 — §55.17 Bizerta annual 2d6=12 roll — DONE (2026-09-23).** Bizerta (Tunis Box) is skipped
   at campaign setup (`setup_campaign_ports`, its `available_from_gt = 35`), and previously had no path
   back into play. `GameState::roll_bizerta_availability` (called once per Game-Turn at Initiative
