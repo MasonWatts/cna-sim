@@ -2909,6 +2909,124 @@ impl GameState {
         });
     }
 
+    /// §53.31: whether `hex` is crossed by any Road/Track hexside — i.e. a vehicle in it counts as
+    /// "on a road or track" and is therefore not stranded.
+    fn hex_on_road_or_track(&self, hex: HexCoord) -> bool {
+        use crate::state::map::HexsideKind;
+        hex.neighbors().iter().any(|&n| {
+            self.map
+                .hexsides_on(hex, n)
+                .iter()
+                .any(|h| matches!(h.kind, HexsideKind::Road | HexsideKind::Track | HexsideKind::UnfinishedRoad))
+        })
+    }
+
+    /// §53.31/§8.44: a vehicle prohibited from a Salt Marsh off a road/track — any motorized unit or
+    /// AFV that is not a Light Truck / Recce / motorcycle / camel (the §8.44-exempt movers).
+    pub(crate) fn is_marsh_prohibited_vehicle(&self, id: UnitId) -> bool {
+        let exempt = self.is_recce_unit(id)
+            || self.unit_is_motorcycle(id)
+            || self.unit_is_camel(id)
+            || self.unit_is_light_truck_borne(id);
+        (self.unit_is_motorized(id) || self.unit_is_afv(id)) && !exempt
+    }
+
+    /// §53.31: shed a stranded unit's *active* Truck Points (and, for a gun/AFV unit, its vehicle
+    /// weapon groups) onto the map as a Broken Down Vehicle marker — recoverable by an adjacent
+    /// engineering-capable unit (§53.32) and capturable by the enemy (§21.52). With `mark == false`
+    /// the vehicles are instead lost outright (overrun — the enemy took the hex). Infantry Organic
+    /// TOE is never shed here: the people surrender or walk, they are not "vehicles".
+    fn abandon_marsh_vehicles(&mut self, id: UnitId, mark: bool) {
+        let Some(hex) = self.effective_hex(id) else { return };
+        let Some(u) = self.units.get_mut(&id) else { return };
+        let (side, nationality) = (u.nationality.side(), u.nationality);
+        let trucks = std::mem::take(&mut u.trucks);
+        let weapons = match &u.composition {
+            Composition::Weapons { groups } => groups.clone(),
+            Composition::Organic { .. } => Vec::new(),
+        };
+        if !mark || (trucks == crate::state::unit::TruckPoints::default() && weapons.is_empty()) {
+            return;
+        }
+        self.broken_vehicles.push(BrokenVehicle { side, hex, nationality, weapons, toe: 0, trucks, tow_cp_used: 0 });
+    }
+
+    /// §53.31: at the end of the Movement Stage, strand (abandon) any prohibited vehicle left in a
+    /// Salt Marsh hex that is not on a road or track. Reachable when a mandated retreat (§15.82) or a
+    /// road demolition leaves a truck/gun/AFV unit off-track in a marsh — the §8.44 *movement* gate
+    /// only blocks voluntary entry. Per §53.31: if an Enemy combat unit is within three hexes and no
+    /// Friendly combat unit is as near, carried infantry surrender and guns are captured; otherwise
+    /// the infantry dismount and continue on foot and the vehicles/guns are left as a recoverable
+    /// Broken Down Vehicle marker (§53.32 recovery = the §21.5/§21.63 tow machinery). The "three
+    /// *traversable* hexes" test is approximated by hex distance ≤ 3 (a documented simplification —
+    /// at that range on the open desert around the Qattara marshes the two rarely differ).
+    pub(crate) fn strand_salt_marsh_vehicles(&mut self) {
+        use crate::reference::terrain::HexTerrain;
+        let stranded: Vec<UnitId> = self
+            .units
+            .values()
+            .filter_map(|u| u.hex().map(|h| (u.id, h)))
+            .filter(|&(id, h)| {
+                self.map.terrain(h) == Some(HexTerrain::SaltMarsh)
+                    && self.is_marsh_prohibited_vehicle(id)
+                    && !self.hex_on_road_or_track(h)
+            })
+            .map(|(id, _)| id)
+            .collect();
+        for id in stranded {
+            let Some(hex) = self.units.get(&id).and_then(|u| u.hex()) else { continue };
+            let side = self.units[&id].nationality.side();
+            let enemy = side.opponent();
+            let combat_within_3 = |g: &GameState, s: Side, skip: Option<UnitId>| -> bool {
+                g.units.values().any(|o| {
+                    Some(o.id) != skip
+                        && o.nationality.side() == s
+                        && g.is_combat_unit(o.id)
+                        && g.effective_hex(o.id).is_some_and(|h| h.distance(hex) <= 3)
+                })
+            };
+            let enemy_near = combat_within_3(self, enemy, None);
+            let friendly_near = combat_within_3(self, side, Some(id));
+            let capture = enemy_near && !friendly_near;
+            let name = self.units[&id].name.clone();
+            let is_inf = matches!(self.units[&id].composition, Composition::Organic { .. });
+            let is_art = self.unit_is_artillery(id);
+
+            if capture {
+                // §53.31: infantry surrender / guns captured; the vehicles are lost with the position.
+                self.abandon_marsh_vehicles(id, false);
+                self.surrender_units(&[id]);
+                self.system_log.push(SystemLogEntry {
+                    unit: id,
+                    summary: format!("{name} was stranded in a salt marsh and overrun — personnel surrendered and equipment was captured (§53.31)."),
+                });
+            } else if is_inf {
+                // §53.31: dismount — the trucks are abandoned (recoverable) and the infantry walk.
+                self.abandon_marsh_vehicles(id, true);
+                self.system_log.push(SystemLogEntry {
+                    unit: id,
+                    summary: format!("{name}'s trucks were abandoned in a salt marsh; the infantry continue on foot (§53.31)."),
+                });
+            } else {
+                // §53.31: an artillery or AFV unit's guns/vehicles are abandoned as a recoverable
+                // marker and the counter leaves play.
+                self.abandon_marsh_vehicles(id, true);
+                if let Some(u) = self.units.get_mut(&id) {
+                    match &mut u.composition {
+                        Composition::Organic { current_toe } => *current_toe = 0,
+                        Composition::Weapons { groups } => groups.iter_mut().for_each(|g| g.count = 0),
+                    }
+                    u.location = None;
+                }
+                let what = if is_art { "guns" } else { "vehicles" };
+                self.system_log.push(SystemLogEntry {
+                    unit: id,
+                    summary: format!("{name} was stranded in a salt marsh; its {what} were abandoned and may be recovered by an adjacent engineer unit (§53.31/§53.32)."),
+                });
+            }
+        }
+    }
+
     /// §21.53: whether a Broken Down Vehicle marker at index `i` is protected from capture — stacked
     /// with a friendly (owner-side) combat unit / HQ / Engineer, or in an owner-controlled hex.
     fn broken_vehicle_protected(&self, i: usize) -> bool {
@@ -9819,8 +9937,14 @@ impl GameState {
 
     /// Enter stage step `i`, setting the phase and the acting (Phasing) side.
     fn enter_stage_step(&mut self, i: usize) {
+        let prev_phase = self.phase;
         self.stage_step = i;
         let (phase, actor) = STAGE_SEQUENCE[i];
+        // §53.31: when the Movement portion concludes, strand any prohibited vehicle left in a Salt
+        // Marsh off a road/track (e.g. an artillery unit forced there by a mandated retreat).
+        if prev_phase == Phase::MovementAndCombat && phase != Phase::MovementAndCombat {
+            self.strand_salt_marsh_vehicles();
+        }
         self.phase = phase;
         self.active_player = match actor {
             StageActor::Initiative => self.initiative,

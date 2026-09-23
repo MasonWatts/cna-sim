@@ -555,9 +555,23 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   new base unless co-located) with its in-transit grounding — a real air-management subsystem for a
   niche action the operational abstraction never issues. Better as a dedicated effort.
 - [-] **AU50 — §35.28 Italian squadrons all-German planes.** Deferred: plane groups key by aircraft-type string, not per-plane nationality, so enforcing it needs a cross-chart nationality lookup for a minor historical edge.
-- [-] **AU51 — §53.31/§53.32 trucks/guns off-track in salt-marsh auto-abandoned.** Deferred: hinges on
-  the Salt Marsh terrain subtype + "on a road/track" per-unit state that AU33 (§8.44/§8.45, INPUT
-  NEEDED) has to establish first; a Qattara corner case with nothing to trigger it until then.
+- [x] **AU51 — §53.31/§53.32 trucks/guns off-track in salt-marsh auto-abandoned — DONE (2026-09-23).**
+  Unblocked once AU33 (§8.44/§8.45) landed the Salt Marsh subtype + prohibited-vehicle predicate. The
+  §8.44 gate only blocks *voluntary* entry, but a mandated retreat (§15.82, which routes through
+  `move_step_cost` without the vehicle gate) or a road demolition can leave a truck/gun/AFV unit
+  off-track in a marsh — so §53.31 is reachable, not dead code. `GameState::strand_salt_marsh_vehicles`
+  (run from `enter_stage_step` when the Movement portion ends) sweeps every prohibited vehicle
+  (`is_marsh_prohibited_vehicle`) sitting in a Salt Marsh hex with no Road/Track hexside
+  (`hex_on_road_or_track`): if an enemy combat unit is within three hexes with no friendly as near, the
+  crew surrenders and the guns/tanks are captured (`surrender_units` → §28 prisoners/equipment);
+  otherwise infantry dismount and walk (their trucks abandoned) and a gun/AFV unit's equipment is left
+  as a **recoverable Broken Down Vehicle marker** (`abandon_marsh_vehicles`), which the existing
+  §21.52 capture / §21.63 tow machinery recovers — satisfying §53.32 without a bespoke recovery
+  command. A `system_log` entry surfaces each stranding in the Action Log. Test
+  `salt_marsh_stranded_vehicles_abandoned_and_captured_53_31`. *Simplifications:* the "three
+  *traversable* hexes" test uses hex distance ≤ 3 (rarely differs on open desert at that range); §53.32's
+  exact recovery cost (10 CP both / explicit engineering / non-salt-marsh adjacency) is approximated by
+  the shared broken-vehicle recovery path.
 - [-] **AU52 — §53.25 leapfrogging prohibition.** Deferred: requires per-cargo CP *provenance* (the
   supplies/men remember the CP their first truck expended and cap at that truck's CPA), which the
   abstracted truck-convoy movement doesn't track; needs a cargo-provenance model.

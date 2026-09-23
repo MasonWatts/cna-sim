@@ -2330,6 +2330,60 @@ mod tests {
     }
 
     #[test]
+    fn salt_marsh_stranded_vehicles_abandoned_and_captured_53_31() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let marsh = HexCoord::new(5, 5);
+
+        // Case A — no enemy nearby: the stranded tank is abandoned as a recoverable marker and the
+        // counter leaves play (§53.31 / §53.32).
+        {
+            let mut g = GameState::new(close_assault_refs(), 1);
+            g.map.set_hex(marsh, HexTerrain::SaltMarsh);
+            let tank = g.spawn_unit(Nationality::Commonwealth, "rtr", "42nd RTR", Composition::Weapons { groups: vec![WeaponGroup { system: "A9 Cruiser".into(), count: 4 }] });
+            g.unit_mut(tank).unwrap().location = Some(UnitLocation::OnMap(marsh));
+            assert!(g.is_marsh_prohibited_vehicle(tank));
+
+            g.strand_salt_marsh_vehicles();
+
+            let u = g.unit(tank).unwrap();
+            assert!(u.location.is_none(), "abandoned counter leaves play");
+            assert_eq!(u.total_toe(), 0);
+            assert_eq!(g.broken_vehicles.len(), 1);
+            let m = &g.broken_vehicles[0];
+            assert_eq!(m.hex, marsh);
+            assert_eq!(m.side, Side::Commonwealth);
+            assert_eq!(m.weapons.iter().find(|w| w.system == "A9 Cruiser").map(|w| w.count), Some(4));
+            assert!(g.system_log.iter().any(|e| e.summary.contains("stranded in a salt marsh")));
+        }
+
+        // Case B — an enemy combat unit within three hexes and no friendly as near: the crew
+        // surrenders and the tanks are captured (§53.31).
+        {
+            let mut g = GameState::new(close_assault_refs(), 1);
+            g.map.set_hex(marsh, HexTerrain::SaltMarsh);
+            let tank = g.spawn_unit(Nationality::Commonwealth, "rtr", "42nd RTR", Composition::Weapons { groups: vec![WeaponGroup { system: "A9 Cruiser".into(), count: 4 }] });
+            g.unit_mut(tank).unwrap().location = Some(UnitLocation::OnMap(marsh));
+            // Axis combat unit two hexes away; no other Commonwealth unit nearby.
+            let axis = g.spawn_unit(Nationality::German, "pz", "enemy", Composition::Weapons { groups: vec![WeaponGroup { system: "A9 Cruiser".into(), count: 4 }] });
+            g.unit_mut(axis).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(5, 3)));
+            assert!(g.is_combat_unit(axis));
+
+            g.strand_salt_marsh_vehicles();
+
+            let u = g.unit(tank).unwrap();
+            assert!(u.status.surrendered, "crew surrenders when overrun");
+            assert_eq!(u.total_toe(), 0);
+            assert!(!g.captured_equipment.is_empty(), "tanks captured as equipment by the Axis");
+            assert!(g.captured_equipment.iter().any(|e| e.captor == Side::Axis && e.system == "A9 Cruiser"));
+        }
+    }
+
+    #[test]
     fn salt_marsh_and_desert_movement_subtypes_8_44_8_45() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;
