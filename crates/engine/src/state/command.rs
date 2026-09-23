@@ -418,6 +418,10 @@ pub enum Command {
     /// §20: absorb a Replacement-Point group (by index) into a unit (Organization Phase). Returns
     /// the points absorbed.
     AbsorbReplacement { index: usize, unit: UnitId },
+    /// §4.44a footnote b: refit the 102nd Anti-tank Regt with Deacons (Organization Phase). Repeatable;
+    /// requires the unit + trained SP-6-pdr AT Replacement Points at Cairo for two continuous
+    /// Game-Turns. Returns the number of TOE points converted to Deacons.
+    RefitDeacons { unit: UnitId },
     /// §49.17: siphon Fuel from one unit to another (Organization Phase). Returns the amount moved.
     SiphonFuel { donor: UnitId, receiver: UnitId, amount: u32 },
     /// §22: attempt to repair a broken-down unit's vehicles (Repair Phase). Returns points repaired.
@@ -725,6 +729,7 @@ impl Command {
             Command::MoveReplacement { .. } => &["§20.46", "§20.42"],
             Command::LoadReplacement { .. } | Command::UnloadReplacement { .. } => &["§20.44"],
             Command::AbsorbReplacement { .. } => &["§20"],
+            Command::RefitDeacons { .. } => &["§4.44a"],
             // ── Construction ──
             Command::LayMinefield { .. } | Command::ClearMinefield { .. } => &["§24.3"],
             Command::BuildPipeline { .. } => &["§52.2"],
@@ -921,6 +926,8 @@ pub enum CommandOutcome {
     MaltaAvailability { percentages: Option<(u32, u32)>, planes_available: u32 },
     /// §38.34: the number of a squadron's planes successfully refitted.
     SquadronRefitted(u32),
+    /// §4.44a footnote b: the number of the 102nd's TOE points converted to Deacons.
+    DeaconsRefitted(u32),
     /// §53.24: supply loaded onto / unloaded from trucks (the amount moved).
     TrucksLoaded(u32),
     TrucksUnloaded(u32),
@@ -1699,6 +1706,17 @@ impl GameState {
                 self.require_units_exist(&[unit])?;
                 match self.absorb_replacement(index, unit) {
                     Some(points) => Ok(CommandOutcome::ReplacementAbsorbed(points)),
+                    None => Err(CommandError::ReplacementFailed),
+                }
+            }
+            Command::RefitDeacons { unit } => {
+                self.require_phase(Phase::Organization)?;
+                if self.active_player != Side::Commonwealth {
+                    return Err(CommandError::WrongPhase);
+                }
+                self.require_units_exist(&[unit])?;
+                match self.refit_deacons(unit) {
+                    Some(n) => Ok(CommandOutcome::DeaconsRefitted(n)),
                     None => Err(CommandError::ReplacementFailed),
                 }
             }

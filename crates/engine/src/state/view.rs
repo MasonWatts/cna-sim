@@ -730,6 +730,7 @@ impl GameState {
                 Command::RearmUnit { unit },
                 Command::DetachUnit { unit },
                 Command::FormRaider { kind: raider_kind, from_unit: unit },
+                Command::RefitDeacons { unit }, // §4.44a b: dry_run gates to the eligible 102nd
             ] {
                 if self.dry_run(&cmd).is_ok() {
                     out.push(cmd);

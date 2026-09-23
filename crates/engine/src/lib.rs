@@ -2258,6 +2258,78 @@ mod tests {
     }
 
     #[test]
+    fn deacon_refit_player_command_4_44a_b() {
+        use crate::reference::formation_org::UnitType;
+        use crate::reference::units::{Nationality, Side};
+        use crate::state::game::{GameState, GunSub, ReplacementClass, ReplacementPoints};
+        use crate::state::map::{HexCoord, HexId};
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut g = GameState::new(ReferenceData::new(), 1);
+        let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
+        let u = g.spawn_unit(
+            Nationality::Commonwealth,
+            "aa",
+            "102nd Anti-tank Regt",
+            Composition::Weapons { groups: vec![WeaponGroup { system: "2-pounder".into(), count: 8 }] },
+        );
+        {
+            let unit = g.unit_mut(u).unwrap();
+            unit.can_refit_deacons = true;
+            unit.unit_type = Some(UnitType::AntiTank);
+            unit.location = Some(UnitLocation::OnMap(cairo));
+        }
+        // Three trained SP-6-pdr AT Replacement Points sit at Cairo.
+        g.replacement_points.push(ReplacementPoints {
+            class: ReplacementClass::Gun,
+            sub: Some(GunSub::LtAt),
+            count: 3,
+            side: Side::Commonwealth,
+            location: Some(UnitLocation::OnMap(cairo)),
+            training_remaining: 0,
+            assigned_to: None,
+            cpa_used: 0,
+            carried_by: None,
+        });
+
+        // Not yet two continuous Game-Turns at Cairo → refused.
+        assert_eq!(g.refit_deacons(u), None);
+
+        // One Game-Turn of dwell is still not enough; two enables it.
+        g.update_deacon_dwell();
+        assert_eq!(g.unit(u).unwrap().cairo_dwell, 1);
+        assert_eq!(g.refit_deacons(u), None);
+        g.update_deacon_dwell();
+        assert_eq!(g.unit(u).unwrap().cairo_dwell, 2);
+
+        // Refit converts min(stock=3, tradeable=8) = 3 guns to Deacons.
+        assert_eq!(g.refit_deacons(u), Some(3));
+        match &g.unit(u).unwrap().composition {
+            Composition::Weapons { groups } => {
+                let two = groups.iter().find(|x| x.system == "2-pounder").map(|x| x.count);
+                let dea = groups.iter().find(|x| x.system == "SP 6-pounder").map(|x| x.count);
+                assert_eq!(two, Some(5));
+                assert_eq!(dea, Some(3));
+            }
+            _ => panic!("expected weapons composition"),
+        }
+        // The Deacon pool is consumed; the traded-in 2-pounders return as a trained Gun pool at Cairo.
+        let deacon_stock: u32 = g.replacement_points.iter()
+            .filter(|p| p.class == ReplacementClass::Gun && p.sub == Some(GunSub::LtAt) && p.location.as_ref().and_then(|l| l.hex()) == Some(cairo))
+            .map(|p| p.count).sum();
+        assert_eq!(deacon_stock, 0);
+        let recycled: u32 = g.replacement_points.iter()
+            .filter(|p| p.class == ReplacementClass::Gun && p.sub.is_none() && p.training_remaining == 0 && p.location.as_ref().and_then(|l| l.hex()) == Some(cairo))
+            .map(|p| p.count).sum();
+        assert_eq!(recycled, 3);
+
+        // Leaving Cairo resets the dwell counter (§4.44a b "two continuous Game-Turns").
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(1, 1)));
+        g.update_deacon_dwell();
+        assert_eq!(g.unit(u).unwrap().cairo_dwell, 0);
+    }
+
+    #[test]
     fn salt_marsh_and_desert_movement_subtypes_8_44_8_45() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;

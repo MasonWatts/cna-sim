@@ -1128,6 +1128,10 @@ fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) -> S
             CommandOutcome::ReplacementAbsorbed(n) => format!("{} absorbed replacements (+{n} TOE).", un_name(g, *unit)),
             _ => format!("{} absorbed a replacement pool.", un_name(g, *unit)),
         },
+        Command::RefitDeacons { unit } => match outcome {
+            CommandOutcome::DeaconsRefitted(n) => format!("{} re-equipped {n} anti-tank guns with Deacons (SP 6-pounders) at Cairo.", un_name(g, *unit)),
+            _ => format!("{} refit with Deacons at Cairo.", un_name(g, *unit)),
+        },
         // ---- Construction ----
         Command::LayMinefield { builder, hex, dummy } => format!("{} began laying a {}minefield at {}.", un_bare(g, *builder), if *dummy { "dummy " } else { "" }, hx_str(*hex)),
         Command::ClearMinefield { builder, hex } => format!("{} began clearing the minefield at {}.", un_bare(g, *builder), hx_str(*hex)),
@@ -1413,6 +1417,7 @@ fn activity_hex(g: &GameState, cmd: &Command) -> Option<HexCoord> {
         | Command::DesignateReserve { unit, .. }
         | Command::WithdrawUnit { unit }
         | Command::AbsorbReplacement { unit, .. }
+        | Command::RefitDeacons { unit }
         | Command::EmbarkLayforce { unit }
         | Command::RaidAirfieldSas { unit } => uh(*unit),
         Command::FormTruckConvoy { from_unit, .. } | Command::FormRaider { from_unit, .. } => uh(*from_unit),

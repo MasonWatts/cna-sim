@@ -230,8 +230,10 @@
             units: [
                 (name: "1st Army Tank Bde HQ", abbr: "1 Army", id: "d", comp: Weapons([("A9 Cruiser", 1)]), org_size: StandardBrigade, arrival: Turn(game_turn: 36, stage: 1), parent: "", unit_type: Some(Armor)),
                 (name: "8th Royal Tank Regt", abbr: "8 RTR", id: "g", comp: Weapons([("Matilda Mk.II", 10)]), org_size: Battalion, arrival: Turn(game_turn: 36, stage: 1), parent: "1st Army Tank Bde HQ", unit_type: Some(Armor)),
-                (name: "42nd Royal Tank Regt", abbr: "42 RTR", id: "g", comp: Weapons([("Matilda Mk.II", 10)]), org_size: Battalion, arrival: Turn(game_turn: 28, stage: 2), parent: "1st Army Tank Bde HQ", withdrawal: Some((93,2)), return_at: Some((99,1)), unit_type: Some(Armor)),
-                (name: "44th Royal Tank Regt", abbr: "44 RTR", id: "g", comp: Weapons([("Matilda Mk.II", 10)]), org_size: Battalion, arrival: Turn(game_turn: 36, stage: 1), parent: "1st Army Tank Bde HQ", withdrawal: Some((93,2)), return_at: Some((99,1)), unit_type: Some(Armor)),
+                // §23.15: 42 & 44 RTR withdraw (93/2) and return (99/1) completely re-equipped with
+                // Scorpion anti-mine tanks (engineer units) — modeled as a refit-on-return at 99/1.
+                (name: "42nd Royal Tank Regt", abbr: "42 RTR", id: "g", comp: Weapons([("Matilda Mk.II", 10)]), org_size: Battalion, arrival: Turn(game_turn: 28, stage: 2), parent: "1st Army Tank Bde HQ", withdrawal: Some((93,2)), return_at: Some((99,1)), unit_type: Some(Armor), refit: Some((at: (99, 1), from: "Matilda Mk.II", to: "Scorpion", unit_type: Some(Engineer)))),
+                (name: "44th Royal Tank Regt", abbr: "44 RTR", id: "g", comp: Weapons([("Matilda Mk.II", 10)]), org_size: Battalion, arrival: Turn(game_turn: 36, stage: 1), parent: "1st Army Tank Bde HQ", withdrawal: Some((93,2)), return_at: Some((99,1)), unit_type: Some(Armor), refit: Some((at: (99, 1), from: "Matilda Mk.II", to: "Scorpion", unit_type: Some(Engineer)))),
             ],
         ),
         // 51st (Highland) Infantry Division — §4.44a (PDF p120). Basic Morale +1.
@@ -342,7 +344,9 @@
                 (name: "73rd Anti-tank Regt", abbr: "73", id: "z", comp: Weapons([("18-pounder Gun", 2), ("2-pounder", 8)]), org_size: Battalion, arrival: Turn(game_turn: 27, stage: 1), parent: "", unit_type: Some(AntiTank)),
                 (name: "84th Anti-tank Regt", abbr: "84", id: "aa", comp: Weapons([("6-pounder", 8)]), org_size: Battalion, arrival: Turn(game_turn: 75, stage: 1), parent: "", unit_type: Some(AntiTank)),
                 (name: "95th Anti-tank Regt", abbr: "95", id: "aa", comp: Weapons([("2-pounder", 8)]), org_size: Battalion, arrival: Turn(game_turn: 60, stage: 3), parent: "", unit_type: Some(AntiTank)),
-                (name: "102nd Anti-tank Regt", abbr: "102", id: "aa", comp: Weapons([("2-pounder", 8)]), org_size: Battalion, arrival: Turn(game_turn: 45, stage: 1), parent: "", unit_type: Some(AntiTank)),
+                // §4.44a footnote b: the Commonwealth may repeatedly refit this unit with Deacons
+                // (Command::RefitDeacons) once it + trained SP-6-pdr AT Replacement Points sit at Cairo.
+                (name: "102nd Anti-tank Regt", abbr: "102", id: "aa", comp: Weapons([("2-pounder", 8)]), org_size: Battalion, arrival: Turn(game_turn: 45, stage: 1), parent: "", unit_type: Some(AntiTank), deacon_refit: true),
                 (name: "149th Anti-tank Regt", abbr: "149", id: "aa", comp: Weapons([("2-pounder", 8)]), org_size: Battalion, arrival: Deployed, parent: "", unit_type: Some(AntiTank)),
                 (name: "106th Royal Horse Arty Regt", abbr: "106 RHA", id: "aa", comp: Weapons([("2-pounder", 8)]), org_size: Battalion, arrival: Turn(game_turn: 11, stage: 1), parent: "", unit_type: Some(AntiTank)),
             ],

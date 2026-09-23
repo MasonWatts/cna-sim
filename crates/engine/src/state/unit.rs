@@ -305,6 +305,16 @@ pub struct Unit {
     /// cycle twice (the 2nd NZ Division's 4th Bde: WD→Rtn→WD-again→Rtn-again). `None` = single cycle.
     #[serde(default)]
     pub return_at_2: Option<(u32, u32)>,
+    /// §4.44a footnote b: this unit (the 102nd Anti-tank Regt) may be player-refit with Deacons. Set
+    /// from the OB `deacon_refit` flag. Unlike `pending_refit`, this is not schedule-driven — it
+    /// enables the repeatable `Command::RefitDeacons` once the dwell/stock preconditions are met.
+    #[serde(default)]
+    pub can_refit_deacons: bool,
+    /// §4.44a footnote b: consecutive Game-Turns this unit has sat at Cairo (E1430). Bumped once per
+    /// Game-Turn in `begin_operations_stage`; reset to 0 when the unit is elsewhere. The Deacon refit
+    /// requires two continuous Game-Turns in Cairo, i.e. `cairo_dwell >= 2`.
+    #[serde(default)]
+    pub cairo_dwell: u32,
 
     // Dynamic state (path-dependent primitives).
     pub cohesion: i32,
@@ -450,6 +460,8 @@ impl Unit {
             return_toe: None,
             withdrawal_after_return: None,
             return_at_2: None,
+            can_refit_deacons: false,
+            cairo_dwell: 0,
             cohesion: 0,
             cp_expended: Fixed(0),
             combat_cp: Fixed(0),

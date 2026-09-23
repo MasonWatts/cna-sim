@@ -226,18 +226,28 @@ New shared helper `within_cp_budget` (cost-limited Dijkstra over `move_step_cost
   **Action Log** (recorder drains `game.system_log` after each phase advance → a "Refit" event with
   `summary`, `§4.44a`, and a jump-to-activity hex). **11 RHA** is now one counter (25-pdr, turn 59)
   that refits to the **Bishop SP 25-pdr** at turn 92 — the old duplicate pool entry was removed. Test
-  `scheduled_equipment_refit_4_44a`. **Remaining — two other CW refits are NOT schedule-driven, so
-  they need different mechanisms (not `ObRefit`):**
-  - **Deacon → 102nd Anti-tank Regt (Northumberland Hussars), player-triggered & repeatable** (§4.44a
-    footnote b — the `102` A/T Regt, id `aa`, *not* the `102(NH)` LAA/AT unit). No fixed date: the CW
-    may refit the 102nd with Deacons any number of times, requiring the 102nd + *trained* armored
-    6-pdr AT TOE points in Cairo for two continuous Game-Turns; on refit it adds Deacons and converts
-    an equal number of AT-gun TOE points to trained Replacement Points (Deacons may also go to other
-    AT units up to their TOE-limit gap). Needs a `Refit`-style **command**, not a schedule.
-  - **Scorpion → 1st Army Tank Bde (42nd & 44th RTR), via §23.15** — the two battalions arrive
-    *completely re-equipped* with Scorpions (anti-mine engineer units; ≥6 Scorpion TOE = engineer
-    status) via the Reinforcement Track; aligns with their `return_at (99,1)`. Best modeled as a
-    refit-on-return, not a mid-life in-place swap.
+  `scheduled_equipment_refit_4_44a`. **The two other CW refits — which are NOT schedule-driven — were
+  implemented 2026-09-22 with their own mechanisms (not `ObRefit`):**
+  - **Deacon → 102nd Anti-tank Regt — player-triggered & repeatable command — DONE.** §4.44a footnote b
+    (the `102` A/T Regt, id `aa`, *not* the `102(NH)` LAA/AT unit). `Command::RefitDeacons { unit }`
+    (Organization Phase, Commonwealth): gated by `Unit.can_refit_deacons` (stamped from the OB
+    `deacon_refit: true` flag), the unit at Cairo (E1430) for two continuous Game-Turns
+    (`Unit.cairo_dwell >= 2`, bumped once per Game-Turn in `begin_operations_stage` via
+    `update_deacon_dwell`), and ≥1 trained SP-6-pdr AT (`Gun`/`LtAt`) Replacement Point co-located at
+    Cairo. `GameState::refit_deacons` converts `min(stock, tradeable AT TOE)` guns: consumes that many
+    Deacon RP, swaps that many of the unit's AT-gun TOE to `SP 6-pounder`, and returns the traded-in
+    guns as *trained* `Gun` RP at Cairo. Offered via `legal_organization_commands` (dry-run gated to the
+    eligible 102nd); friendly Action-Log summary + jump-to-hex via the replay `describe_command` /
+    `activity_target` arms. Test `deacon_refit_player_command_4_44a_b`. *Modeling note:* the pool's own
+    "two continuous Game-Turns in Cairo" is approximated by requiring it to be trained (`training_remaining
+    == 0`) and co-located — the §20.43 stage-counted Training already encodes the pool's wait; only the
+    unit's dwell is tracked explicitly. The rule's optional clause (Deacons to *other* AT units up to
+    their TOE-limit gap) is not modeled — the historical use is the 102nd.
+  - **Scorpion → 1st Army Tank Bde (42nd & 44th RTR), via §23.15 — refit-on-return — DONE.** Data-only,
+    reusing the H4 subsystem: 42/44 RTR carry `refit: (at:(99,1), from:"Matilda Mk.II", to:"Scorpion",
+    unit_type: Some(Engineer))`. They withdraw at (93,2) and return at (99,1); `process_returns` runs
+    before `process_refits` in the same stage, so they re-enter and are immediately re-equipped as
+    Scorpion anti-mine engineer units, matching §23.15. (8 RTR is unaffected.)
 - [x] **H5 — CNA Addenda (Sep 1979) rules-logic corrections — DONE (2026-09-22).** OB/chart *data*
   corrections were applied 2026-09-16 (see `docs/source-materials/CNA Addenda Sep 79.pdf`); the
   rules-logic items were closed 2026-09-22:

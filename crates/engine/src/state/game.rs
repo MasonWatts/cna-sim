@@ -3118,6 +3118,102 @@ impl GameState {
         }
     }
 
+    /// The Cairo hex (E1430), the Commonwealth home base where the Deacon refit is performed.
+    fn cairo_hex(&self) -> Option<HexCoord> {
+        crate::state::map::HexId::parse("E1430").map(|h| h.to_hex_coord())
+    }
+
+    /// §4.44a footnote b: once per Game-Turn, bump the Deacon-eligible unit's consecutive-Cairo-dwell
+    /// counter (reset to 0 when it is anywhere else). Called from `begin_operations_stage` at the
+    /// Game-Turn's first Operations Stage.
+    pub(crate) fn update_deacon_dwell(&mut self) {
+        let cairo = self.cairo_hex();
+        let ids: Vec<UnitId> = self
+            .units
+            .iter()
+            .filter(|(_, u)| u.can_refit_deacons)
+            .map(|(&id, _)| id)
+            .collect();
+        for id in ids {
+            let at_cairo = self.effective_hex(id) == cairo && cairo.is_some();
+            if let Some(u) = self.units.get_mut(&id) {
+                u.cairo_dwell = if at_cairo { u.cairo_dwell.saturating_add(1) } else { 0 };
+            }
+        }
+    }
+
+    /// §4.44a footnote b: refit the 102nd Anti-tank Regt with Deacons (SP 6-pounders). Adds as many
+    /// Deacon TOE points as there are trained SP-6-pdr AT Replacement Points co-located at Cairo (up
+    /// to the unit's current AT-gun TOE), converting an equal number of its existing AT-gun TOE into
+    /// *trained* Replacement Points. Returns the number of points converted, or `None` if the
+    /// preconditions (eligibility, two continuous Game-Turns at Cairo, stock) are not met.
+    ///
+    /// The rule's "trained armored 6-pounder AT points in Cairo for two continuous Game-Turns" is
+    /// modeled as: a trained (`training_remaining == 0`) Gun/`LtAt` pool co-located at Cairo, plus the
+    /// unit's own `cairo_dwell >= 2`. The pool having finished Training already encodes its own
+    /// stage-counted wait (§20.43), so a separate 2-turn dwell for the pool is not tracked.
+    pub(crate) fn refit_deacons(&mut self, unit: UnitId) -> Option<u32> {
+        let cairo = self.cairo_hex()?;
+        let u = self.units.get(&unit)?;
+        if !u.can_refit_deacons || u.cairo_dwell < 2 || self.effective_hex(unit) != Some(cairo) {
+            return None;
+        }
+        // Current AT-gun TOE the unit can trade in (anything not already a Deacon).
+        let tradeable: u32 = match &u.composition {
+            Composition::Weapons { groups } => groups
+                .iter()
+                .filter(|g| g.system != "SP 6-pounder")
+                .map(|g| g.count)
+                .sum(),
+            _ => return None,
+        };
+        let available = self.available_replacement_class(ReplacementClass::Gun, Some(GunSub::LtAt), unit, cairo);
+        let n = tradeable.min(available);
+        if n == 0 {
+            return None;
+        }
+        // Consume the trained Deacon Replacement Points delivering the new guns.
+        self.draw_replacement_class(ReplacementClass::Gun, Some(GunSub::LtAt), unit, cairo, n);
+        // Swap `n` of the unit's existing AT-gun TOE for Deacons, in group order.
+        let mut owed = n;
+        if let Some(u) = self.units.get_mut(&unit) {
+            if let Composition::Weapons { groups } = &mut u.composition {
+                for g in groups.iter_mut() {
+                    if owed == 0 {
+                        break;
+                    }
+                    if g.system == "SP 6-pounder" {
+                        continue;
+                    }
+                    let take = owed.min(g.count);
+                    g.count -= take;
+                    owed -= take;
+                }
+                groups.retain(|g| g.count > 0);
+                match groups.iter_mut().find(|g| g.system == "SP 6-pounder") {
+                    Some(g) => g.count += n,
+                    None => groups.push(crate::state::unit::WeaponGroup {
+                        system: "SP 6-pounder".to_string(),
+                        count: n,
+                    }),
+                }
+            }
+        }
+        // The traded-in guns become *trained* Replacement Points back in the Cairo pool (§4.44a b).
+        self.replacement_points.push(ReplacementPoints {
+            class: ReplacementClass::Gun,
+            sub: None,
+            count: n,
+            side: Side::Commonwealth,
+            location: Some(UnitLocation::OnMap(cairo)),
+            training_remaining: 0,
+            assigned_to: None,
+            cpa_used: 0,
+            carried_by: None,
+        });
+        Some(n)
+    }
+
     /// §20.81/§20.82: satisfy a by-type Mandatory Withdrawal choice by withdrawing the chosen
     /// `units` — they must be `count` units of the matching type, at Cairo/Alexandria at ≥75% max
     /// TOE (§20.82), of the Commonwealth side. On success they are removed from play (§20.84) and the
@@ -9495,6 +9591,7 @@ impl GameState {
         // Game-Turn's first stage, return any Tank Delivery Squadrons whose recovery has elapsed.
         if self.operations_stage == 1 {
             self.process_tds_returns();
+            self.update_deacon_dwell(); // §4.44a footnote b: track the 102nd's continuous Cairo dwell
         }
         self.process_returns(); // §20.8 "Rtn": bring returning units back before the withdrawal sweep
         self.process_refits(); // §4.44a scheduled in-place equipment refits (11 RHA Bishop, etc.)

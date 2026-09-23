@@ -106,6 +106,10 @@ pub struct ObUnit {
     /// refitted unit as a second dated OB counter (e.g. 11 RHA's Bishop, 106 RHA's Deacon).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refit: Option<ObRefit>,
+    /// §4.44a footnote b: this unit (the 102nd Anti-tank Regt) may be player-refit with Deacons, a
+    /// repeatable Organization-Phase command (not a scheduled `refit`). See `Unit::can_refit_deacons`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub deacon_refit: bool,
 }
 
 /// §4.44a: at `at` (Game-Turn, Operations Stage) this unit re-equips in place — every weapon group
