@@ -3962,6 +3962,14 @@ mod tests {
         g.ports.get_mut("Tobruk").unwrap().efficiency = 0;
         assert_eq!(g.apply(to("Tobruk")), Err(CommandError::PortCannotTransfer));
         g.ports.get_mut("Tobruk").unwrap().efficiency = 5;
+        // §30.58: a destination below two-thirds of its maximum Efficiency (2 of 5) can't take men.
+        g.ports.get_mut("Tobruk").unwrap().efficiency = 2;
+        assert_eq!(g.apply(to("Tobruk")), Err(CommandError::PortCannotTransfer));
+        g.ports.get_mut("Tobruk").unwrap().efficiency = 5;
+        // §30.55: a unit that has already spent Capability Points this stage may not transfer.
+        g.unit_mut(unit).unwrap().cp_expended = crate::reference::terrain::Fixed(5);
+        assert_eq!(g.apply(to("Tobruk")), Err(CommandError::PortCannotTransfer));
+        g.unit_mut(unit).unwrap().cp_expended = crate::reference::terrain::Fixed(0);
         // Enumerated as a legal Commonwealth action in this phase.
         assert!(
             g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::NavalTransferTroops { to_port, .. } if to_port == "Tobruk")),
@@ -3970,12 +3978,14 @@ mod tests {
         // The transfer succeeds and moves the unit; both ports are now used for the stage.
         assert_eq!(g.apply(to("Tobruk")), Ok(CommandOutcome::TroopsTransferred));
         assert_eq!(g.effective_hex(unit), Some(tobruk));
+        assert!(g.unit(unit).unwrap().cp_expended.0 > 0, "§30.55: lands having spent its full CPA — no further move this stage");
         // §30.52: a second transfer touching either used port this stage is rejected.
         assert_eq!(g.apply(Command::NavalTransferTroops { unit, to_port: "Alex".into() }), Err(CommandError::PortTransferUnavailable));
 
         // §30.5/§55: a port held by an enemy combat unit may not receive a transfer. Reset the stage,
         // give Bardia real capacity, and garrison it with an Axis unit → the transfer is refused.
         g.ports_transferred_this_stage.clear();
+        g.unit_mut(unit).unwrap().cp_expended = crate::reference::terrain::Fixed(0); // §30.55: reset for a fresh stage
         g.ports.insert("Bardia".into(), port("Bardia", 6, 6));
         let axis = g.spawn_unit(Nationality::Italian, "p", "garrison", Composition::Organic { current_toe: 6 });
         g.unit_mut(axis).unwrap().location = Some(UnitLocation::OnMap(bardia));

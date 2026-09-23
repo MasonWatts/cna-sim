@@ -56,6 +56,13 @@ impl Port {
         self.efficiency > 0
     }
 
+    /// §30.56/§30.58: whether the port may receive or send *personnel*. A port incapacitated by
+    /// bombing (Efficiency 0) never can; blocking/damage otherwise permits personnel until the port
+    /// falls below two-thirds (rounded up) of its maximum Efficiency Level.
+    pub fn personnel_operable(&self) -> bool {
+        self.efficiency > 0 && self.efficiency * 3 >= self.max_efficiency * 2
+    }
+
     /// Reduce the Efficiency Level by `levels` (bombing/scuttling/mines), clamped at zero (§55.14).
     pub fn reduce_efficiency(&mut self, levels: u32) {
         self.efficiency = self.efficiency.saturating_sub(levels);

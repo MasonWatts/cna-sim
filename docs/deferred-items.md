@@ -554,14 +554,23 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   `describe_command`/`activity_target` arms give a friendly line + jump-to-box. Test
   `cw_bombing_of_axis_off_map_boxes_41_8`. *Simplification:* the §41.85 Axis CAP over a box is the
   owner-ruled air abstraction (B6–B8) and is not modeled — the raid meets flak only.
-- [-] **AU47 — §30.5/§30.51–59 CW port-to-port naval troop transport.** Deferred (modeling gap, NOT
-  missing data): the Port Personnel Capacity (§30.54/§30.59) is already digitized as
-  `PortSpec.stacking_in`/`stacking_out` in `port-capacity.ron`. The blocker is that the engine keys
-  ports by **name** (`ports: HashMap<String, Port>`) with no general port-name↔hex association (the
-  map only marks a nameless `Feature::Port`; only San Giorgio carries an ad-hoc hex↔port link), so a
-  unit transfer between port *hexes* can't resolve which port (and capacity) a hex is. Needs a
-  port↔hex mapping (+ scenario port-hex data) before §30.51–58 can be located; the capacity math is
-  then trivial.
+- [x] **AU47 — §30.5/§30.51–59 CW port-to-port naval troop transport — DONE (2026-09-23).** The note
+  above is superseded: the port↔hex link the "blocker" assumed was missing already exists — port hexes
+  are **labelled** on the map (`set_hex_labeled(.., Feature::Port, Some(name))`), and `GameState::port_hex`
+  resolves a port name to its labelled hex. `Command::NavalTransferTroops { unit, to_port }` (Truck
+  Convoy Phase) ships a Commonwealth combat unit from the labelled port at its hex to `to_port`:
+  origin is the port on the unit's hex; the destination must be a friendly-controlled (not
+  enemy-garrisoned) labelled port; capacity uses `min(origin.stacking_out, dest.stacking_in)` ≥ the
+  unit's Stacking Points (§30.54, minor ports with `stacking_in 0` refused per §55.11); one transfer
+  per port per Operations Stage (§30.52, `ports_transferred_this_stage`). Enumerated in
+  `legal_organization`/logistics commands. **Completed 2026-09-23** with the two remaining faithfulness
+  gaps: §30.55 — the unit must have spent **no** CP this stage (`cp_expended == 0`) and, on landing,
+  is charged its full CPA (`cp_expended = cpa*10`) so it can't move again this stage; §30.58 —
+  personnel operability now uses the two-thirds-of-max Efficiency threshold (`Port::personnel_operable`)
+  rather than mere `is_operable`. Errors `PortTransferUnavailable` (capacity/one-per-stage) and
+  `PortCannotTransfer` (control/operability/CP). Test `naval_troop_transfer_30_5`. *Simplification:*
+  the §30.57 per-Stacking-Point supply-tonnage penalty is not applied — port max-tonnage isn't
+  enforced as a per-stage consumable in the current convoy model, so there is nothing to reduce.
 - [x] **AU48 — §30.4/§30.41–46 Italian Chariot raid on Alexandria.** New Command::PlanChariotRaid +
   ExecuteChariotRaid (Axis). §30.41 not before July 1941 (`date_of`); §30.42 executes on the 7th
   Operations Stage after planning (`global_ops_stage`); §30.45 once per game; §30.46 Chariot Raid

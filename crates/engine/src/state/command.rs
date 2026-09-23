@@ -779,7 +779,7 @@ impl Command {
             // ── Naval ──
             Command::AssignShip { .. } => &["§30.15"],
             Command::RepairShip { .. } => &["§30.37"],
-            Command::NavalTransferTroops { .. } => &["§30.51", "§30.52"],
+            Command::NavalTransferTroops { .. } => &["§30.51", "§30.52", "§30.54", "§30.55", "§30.58"],
             Command::OffShoreBombard { .. } => &["§30.2"],
             Command::ArtilleryBombardShip { .. } => &["§30.35"],
             Command::SanGiorgioAttackShip { .. } => &["§30.39"],
@@ -2202,6 +2202,16 @@ impl GameState {
         if origin == to_port {
             return Err(CommandError::PortCannotTransfer);
         }
+        // §30.52: one transfer per port per Operations Stage (either end) — independent of the unit,
+        // so it is checked before the unit-specific gates below.
+        if self.ports_transferred_this_stage.contains(&origin) || self.ports_transferred_this_stage.contains(to_port) {
+            return Err(CommandError::PortTransferUnavailable);
+        }
+        // §30.55: the unit must have started the stage in the port and spent no Capability Points
+        // before the Truck Convoy Segment.
+        if self.unit(unit).is_none_or(|u| u.cp_expended.0 != 0) {
+            return Err(CommandError::PortCannotTransfer);
+        }
         let dest_hex = self.port_hex(to_port).ok_or(CommandError::PortCannotTransfer)?;
         // §30.5/§55: troops may only be shipped through friendly ports — the destination must not be
         // held by an enemy combat unit (you can't land men in an enemy-garrisoned port, e.g. Tobruk
@@ -2216,11 +2226,11 @@ impl GameState {
         // Copy out the port capacities/operability (scalars) so the ports borrow ends before mutation.
         let (origin_out, origin_op) = {
             let p = self.ports.get(&origin).ok_or(CommandError::PortCannotTransfer)?;
-            (p.stacking_out.unwrap_or(0), p.is_operable())
+            (p.stacking_out.unwrap_or(0), p.personnel_operable())
         };
         let (dest_in, dest_op) = {
             let p = self.ports.get(to_port).ok_or(CommandError::PortCannotTransfer)?;
-            (p.stacking_in.unwrap_or(0), p.is_operable())
+            (p.stacking_in.unwrap_or(0), p.personnel_operable())
         };
         if !origin_op || !dest_op {
             return Err(CommandError::PortCannotTransfer);
@@ -2230,11 +2240,13 @@ impl GameState {
         if dest_in == 0 || dest_in < sp || origin_out < sp {
             return Err(CommandError::PortTransferUnavailable);
         }
-        // §30.52: one transfer per port per Operations Stage (either end).
-        if self.ports_transferred_this_stage.contains(&origin) || self.ports_transferred_this_stage.contains(to_port) {
-            return Err(CommandError::PortTransferUnavailable);
+        // §30.55: it is landed at the port of embarkation at a cost equal to its full Capability Point
+        // Allowance — so it may make no further move this Operations Stage.
+        let cpa = self.unit_cpa(unit).unwrap_or(0).max(0);
+        if let Some(u) = self.unit_mut(unit) {
+            u.location = Some(crate::state::unit::UnitLocation::OnMap(dest_hex));
+            u.cp_expended = crate::reference::terrain::Fixed(cpa * 10);
         }
-        self.unit_mut(unit).expect("unit exists").location = Some(crate::state::unit::UnitLocation::OnMap(dest_hex));
         self.ports_transferred_this_stage.insert(origin);
         self.ports_transferred_this_stage.insert(to_port.to_string());
         Ok(CommandOutcome::TroopsTransferred)
