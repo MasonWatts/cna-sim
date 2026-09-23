@@ -4025,6 +4025,93 @@ mod tests {
     }
 
     #[test]
+    fn road_track_stacking_limit_9_33() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::{HexCoord, HexsideKind};
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut g = GameState::new(close_assault_refs(), 1);
+        let (from, to) = (HexCoord::new(5, 5), HexCoord::new(6, 5));
+        g.map.set_hex(from, HexTerrain::Clear);
+        g.map.set_hex(to, HexTerrain::Clear);
+        // A road along the from→to edge that also crosses an up-escarpment: the road negates the
+        // escarpment for a motorized mover, but off-road the escarpment is prohibited to motors.
+        g.map.set_hexside(from, to, HexsideKind::Road, None);
+        g.map.set_hexside(from, to, HexsideKind::Escarpment, Some(to)); // `to` on the high side → up-escarpment
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+
+        let tank = |g: &mut GameState, hex: HexCoord| {
+            let t = g.spawn_unit(Nationality::Commonwealth, "g", "tk", Composition::Weapons { groups: vec![WeaponGroup { system: "A9 Cruiser".into(), count: 10 }] });
+            g.unit_mut(t).unwrap().location = Some(UnitLocation::OnMap(hex));
+            t
+        };
+        // Five friendly motorized (tank) battalions already fill the road hex — 5 Stacking Points, the
+        // §9.29 Road/Track Stacking Limit.
+        let occupants: Vec<_> = (0..5).map(|_| tank(&mut g, to)).collect();
+        let mover = tank(&mut g, from);
+        assert!(g.unit_is_motorized(mover));
+        assert_eq!(g.effective_stacking_points(mover), 1, "tank battalion = 1 SP");
+
+        // §9.33: the mover would push the road hex to 6 road-points; the road benefit is denied, and
+        // off-road the escarpment bars a motorized unit → the move is refused. (Clear's stacking limit
+        // is 6, so this is the road limit biting, not the terrain limit.)
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: mover, to, mode: MoveMode::Motorized }),
+            Err(CommandError::ProhibitedTerrain)
+        );
+
+        // Drop one occupant to 4 road-points: mover makes 5 ≤ limit, keeps the road benefit, crosses.
+        g.unit_mut(occupants[0]).unwrap().location = None;
+        assert!(g.dry_run(&Command::MoveStep { unit: mover, to, mode: MoveMode::Motorized }).is_ok());
+    }
+
+    #[test]
+    fn non_motorized_cpa_ceiling_8_17() {
+        use crate::reference::terrain::{Fixed, HexTerrain};
+        use crate::reference::units::Side;
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation};
+
+        let mut g = GameState::new(close_assault_refs(), 1);
+        let (a, b) = (HexCoord::new(5, 5), HexCoord::new(6, 5));
+        g.map.set_hex(a, HexTerrain::Clear);
+        g.map.set_hex(b, HexTerrain::Clear);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+
+        // CW id "u" is a non-motorized infantry battalion with base CPA 8 → 150% ceiling = 12 CP.
+        let u = g.spawn_unit(Nationality::Commonwealth, "u", "inf", Composition::Organic { current_toe: 4 });
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(a));
+        assert_eq!(g.unit_cpa(u), Some(8));
+        let ceiling = 8 * 15; // tenths of a CP (150% of 8)
+
+        // Fresh (0 CP spent): a step is fine.
+        assert!(g.dry_run(&Command::MoveStep { unit: u, to: b, mode: MoveMode::NonMotorized }).is_ok());
+        // At the 150% ceiling, any further voluntary step is barred (§8.17).
+        g.unit_mut(u).unwrap().cp_expended = Fixed(ceiling);
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: u, to: b, mode: MoveMode::NonMotorized }),
+            Err(CommandError::CpaCeilingExceeded)
+        );
+
+        // A motorized unit (base CPA > 10 once trucked) is not subject to the §8.17 ceiling.
+        g.unit_mut(u).unwrap().trucks = TruckPoints { light: 0, medium: 1, heavy: 0 };
+        assert!(g.unit_is_motorized(u));
+        assert!(
+            g.dry_run(&Command::MoveStep { unit: u, to: b, mode: MoveMode::NonMotorized }).is_ok(),
+            "§8.17 does not cap a motorized unit"
+        );
+    }
+
+    #[test]
     fn naval_troop_transfer_30_5() {
         // §30.51/§30.52: the Commonwealth ships a combat unit by sea between ports in the Truck
         // Convoy Phase — one transfer per port per stage, only to a men-capable operable port.

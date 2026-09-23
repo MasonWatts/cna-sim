@@ -166,6 +166,24 @@ pub fn step_cost_with(
     }
 }
 
+/// §9.29/§9.33: the Road/Track Stacking Limit — road-space points a road/track hex can hold.
+pub const ROAD_TRACK_STACK_LIMIT: u32 = 5;
+
+/// §9.33 "move around": the step cost *ignoring* any Road/Track route benefit — the full terrain
+/// entry cost plus the worst hexside obstacle. Used when a motorized unit is denied the road benefit
+/// because the destination road/track hex is already at its Road/Track Stacking Limit.
+pub fn step_cost_offroad(
+    refs: &ReferenceData,
+    map: &crate::state::map::Map,
+    from: crate::state::map::HexCoord,
+    to: crate::state::map::HexCoord,
+    mode: MoveMode,
+) -> Option<MoveCost> {
+    let entry = hex_entry_cost(refs, map, to, mode)?;
+    let (obstacle, _) = obstacle_crossing(refs, map, from, to, mode);
+    Some(combine_cost(entry, obstacle))
+}
+
 /// The flat Road along-move rate for `mode` (§8.37 Road row).
 fn road_rate(refs: &ReferenceData, mode: MoveMode) -> MoveCost {
     use crate::reference::terrain::HexsideTerrain;

@@ -475,15 +475,24 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   OB placement is a scenario follow-on.)
 
 ### Movement / stacking / terrain (§8–§9)
-- [-] **AU29 — §9.33/§9.34 road/track 5-SP transit limit.** Deferred: presupposes the §9.29 base
-  5-point Road/Track Stacking Limit and an explicit "on-the-road / off-road-marker" per-hex state,
-  neither of which the current cost-only movement model represents (a road is just a cheap hexside
-  crossing; there is no road-bonus/negate-terrain state to lose by "going around"). Implementing the
-  transit refinement alone would fabricate a mechanic on top of an absent base rule; needs the road
-  stacking + on-road-state model first.
-- [-] **AU30 — §8.17 150% CPA hard ceiling.** Deferred: a hard ceiling blocks a single expensive
-  step (escarpment/sandstorm) that current cost-mechanics tests rely on, and likely needs a §8.16
-  minimum-move exception; low value vs. the §6.21 over-CPA Disorganization already modeled.
+- [x] **AU29 — §9.33/§9.34 road/track 5-SP transit limit — DONE (2026-09-23).** `plan_move_step` now
+  enforces the §9.29 Road/Track Stacking Limit: when a motorized unit enters a hex **using a Road/Track
+  hexside benefit**, if the friendly motorized units already there plus the mover exceed
+  `ROAD_TRACK_STACK_LIMIT` (5 Stacking Points), the road benefit is denied — the mover "moves around"
+  at the full off-road terrain cost (`rules::movement::step_cost_offroad`), or is blocked
+  (`ProhibitedTerrain`) if that is prohibited (e.g. a road negating an up-escarpment that a motor
+  couldn't otherwise cross). §9.34's no-split rule holds trivially (a unit is one counter). Test
+  `road_track_stacking_limit_9_33`. *Simplifications:* every friendly motorized unit in the hex is
+  treated as "on the road" (no separate off-road-marker state, §9.29), free-convoy road-space is not
+  separately counted, and road-space uses `unit_is_motorized` (trucks/tank/recce — towed artillery not
+  counted).
+- [x] **AU30 — §8.17 150% CPA hard ceiling — DONE (2026-09-23).** The feared test-breakage didn't
+  materialise (no test relies on a non-motorized unit voluntarily exceeding 150%). `plan_move_step`
+  now bars a **non-motorized** unit (`!unit_is_motorized`) with base CPA ≤ 10 from a *voluntary* step
+  that would push `cp_expended` past 150% of its base CPA (`base * 15` tenths), returning
+  `CpaCeilingExceeded`. Reaction / Retreat-Before-Assault use other code paths (the enemy's portion of
+  the stage), so they are exempt as the rule requires; motorized units (effective CPA > 10) are not
+  capped. Applies the Sep-79 erratum (150%, not 50%). Test `non_motorized_cpa_ceiling_8_17`.
 - [x] **AU31 — §9.25 ≤ five independent 0-SP companies/batteries per hex** (unlimited in a Major City; attached units ride their parent). Enforced in move_step_plan. Test zero_sp_company_stacking_cap_9_25.
 - [x] **AU32 — §9.16 free-stacking exceptions.** Mechanics done in `effective_stacking_points`:
   §9.16a a garrison unit occupies 0 SP while in its assigned hex (new `Unit.garrison_location`);

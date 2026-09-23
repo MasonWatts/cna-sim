@@ -1338,6 +1338,9 @@ pub enum CommandError {
     /// planes may not coexist in one squadron; an Italian squadron may hold German planes, but a
     /// German squadron may not hold Italian planes (and each side's squadrons take their own planes).
     SquadronNationalityMismatch,
+    /// §8.17: a non-motorized unit (base CPA ≤ 10) may not voluntarily expend more than 150% of its
+    /// base Capability Point Allowance in its own portion of the Operations Stage.
+    CpaCeilingExceeded,
     /// §43.11: the transfer would drop German strategic bombers below the 75% Mediterranean basing
     /// requirement.
     BasingRequirementViolated,
@@ -6626,6 +6629,39 @@ impl GameState {
                 return Err(CommandError::ProhibitedTerrain)
             }
         };
+        // §9.33/§9.29: a motorized unit may not enter a Road/Track hex using the route benefit if the
+        // hex is already at its five-point Road/Track Stacking Limit — it must "move around" at the
+        // full off-road (terrain) cost, or is blocked if that is prohibited. (Simplification: every
+        // friendly motorized unit in the hex counts as on-road; free-convoy road-space and off-road
+        // markers, §9.29, are not separately tracked. §9.34's no-split rule holds trivially — a unit
+        // is a single counter here.)
+        if self.unit_is_motorized(unit) {
+            use crate::state::map::HexsideKind;
+            let uses_route = self
+                .map
+                .hexsides_on(from, to)
+                .iter()
+                .any(|h| matches!(h.kind, HexsideKind::Road | HexsideKind::Track | HexsideKind::UnfinishedRoad));
+            if uses_route {
+                let side = self.unit(unit).expect("checked").nationality.side();
+                let occupied: u32 = self
+                    .units_in_hex(to)
+                    .into_iter()
+                    .filter(|&o| {
+                        o != unit
+                            && self.unit(o).is_some_and(|x| x.nationality.side() == side)
+                            && self.unit_is_motorized(o)
+                    })
+                    .map(|o| self.effective_stacking_points(o))
+                    .sum();
+                if occupied + self.effective_stacking_points(unit) > crate::rules::movement::ROAD_TRACK_STACK_LIMIT {
+                    match crate::rules::movement::step_cost_offroad(&self.reference, &self.map, from, to, mode) {
+                        Some(MoveCost::Cost(f)) => cp = f, // move around at full terrain cost
+                        _ => return Err(CommandError::ProhibitedTerrain), // can't go around
+                    }
+                }
+            }
+        }
         // §8.6 break-off: in an enemy ZOC at segment start = In Contact (§8.62, +2 CP); Engaged
         // (§8.63) costs +4 CP and applies even when the unit is not in a ZOC (§8.66).
         let engaged = self.unit(unit).expect("checked").status.engaged;
@@ -6767,6 +6803,20 @@ impl GameState {
             let already = self.unit(unit).map(|u| u.cp_expended.0).unwrap_or(0);
             if already + cp.0 > cpa * 10 {
                 return Err(CommandError::AirdropCpaLimit);
+            }
+        }
+        // §8.17 (Sep-79 erratum): a non-motorized unit (base CPA ≤ 10) may never voluntarily expend
+        // Capability Points beyond 150% of its base CPA in its own portion of the Operations Stage —
+        // e.g. an '8' may not pass 12, a '10' may not pass 15. Reaction and Retreat-Before-Assault are
+        // involuntary (the enemy's portion) and use other code paths, so they are unaffected.
+        if !self.unit_is_motorized(unit) {
+            if let Some(base) = self.unit_cpa(unit) {
+                if base <= 10 {
+                    let already = self.unit(unit).map(|u| u.cp_expended.0).unwrap_or(0);
+                    if already + cp.0 > base * 15 {
+                        return Err(CommandError::CpaCeilingExceeded);
+                    }
+                }
             }
         }
         // §18.23.1/§18.24.1: a unit released from Reserve this stage may not voluntarily exceed its
