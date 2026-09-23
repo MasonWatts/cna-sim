@@ -529,9 +529,16 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
 - [x] **AU43 — §49.19/§50.16/§51.16 captured supply dumps** change ownership on overrun + captured-usable
   fraction (fuel non-denominational; ⅓ ammo, ½ stores) — dumps currently never change hands.
 - [-] **AU44 — §56.16 convoy flak fires back.** The flak-point formula exists (rules::naval::convoy_flak_points); applying the losses to the attacking bombers needs a squadron ref, but the convoy-bombing command is numeric/abstracted — within the owner-ruled air-combat abstraction (B6–B8).
-- [-] **AU45 — §55.17 Bizerta annual 2d6=12 roll.** Deferred: the port's `available_from_gt` isn't
-  wired into runtime `Port::is_operable` (which is just efficiency>0), so both the GT-35 gate and the
-  annual roll need a Port open-flag set at turn start; low impact (Tunis-box late-war edge port).
+- [x] **AU45 — §55.17 Bizerta annual 2d6=12 roll — DONE (2026-09-23).** Bizerta (Tunis Box) is skipped
+  at campaign setup (`setup_campaign_ports`, its `available_from_gt = 35`), and previously had no path
+  back into play. `GameState::roll_bizerta_availability` (called once per Game-Turn at Initiative
+  Determination in `advance_phase`) now implements §55.17: from GT 35 (Jun I 1941) the Axis throws two
+  dice each Game-Turn; on a 12 the port is instantiated from its chart spec (`Port::from_spec`) and
+  stays open, with a `system_log` "Port" entry surfacing it in the Action Log. No-op before GT 35 or
+  once open, so no RNG-stream shift for the common GT 1–34 span (nor the demo). Test
+  `bizerta_opens_on_a_twelve_from_gt35_55_17`. Also generalized `SystemLogEntry` (it now carries its own
+  `label` + `rule_refs` and an `Option<UnitId>`) so system events are labelled correctly in the Action
+  Log — fixing a latent bug where the AU51 salt-marsh strandings were mislabelled "Refit / §4.44a".
 - [-] **AU46 — §41.81/§41.84/§41.86 CW bombing of the Axis Tripoli/Tunisia off-map boxes.** Deferred:
   the §8.8 off-map complex is modeled as transit *nodes* (name/transit/direction), not facilities with
   a port level or grounded-plane state to reduce. Needs an off-map-box facility model (port level +

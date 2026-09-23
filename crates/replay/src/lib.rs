@@ -2005,9 +2005,9 @@ pub fn record_game(
         // §4.44a and other system-initiated events surface as their own Action-Log entries.
         for entry in std::mem::take(&mut game.system_log) {
             step += 1;
-            let side = game.units.get(&entry.unit).map(|u| format!("{:?}", u.nationality.side())).unwrap_or_else(|| "-".into());
-            let act = game.effective_hex(entry.unit).map(t_hex);
-            let mut ev = delta_frame(&game, step, &side, "Refit".into(), String::new(), vec!["§4.44a".to_string()], &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken);
+            let side = entry.unit.and_then(|u| game.units.get(&u)).map(|u| format!("{:?}", u.nationality.side())).unwrap_or_else(|| "-".into());
+            let act = entry.unit.and_then(|u| game.effective_hex(u)).map(t_hex);
+            let mut ev = delta_frame(&game, step, &side, entry.label.clone(), String::new(), entry.rule_refs.clone(), &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken);
             ev.summary = entry.summary;
             ev.activity = act;
             events.push(ev);
@@ -2129,9 +2129,9 @@ pub fn record_game_streaming(
         // §4.44a and other system-initiated events surface as their own Action-Log entries.
         for entry in std::mem::take(&mut game.system_log) {
             step += 1;
-            let side = game.units.get(&entry.unit).map(|u| format!("{:?}", u.nationality.side())).unwrap_or_else(|| "-".into());
-            let act = game.effective_hex(entry.unit).map(t_hex);
-            let mut ev = delta_frame(&game, step, &side, "Refit".into(), String::new(), vec!["§4.44a".to_string()], &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken);
+            let side = entry.unit.and_then(|u| game.units.get(&u)).map(|u| format!("{:?}", u.nationality.side())).unwrap_or_else(|| "-".into());
+            let act = entry.unit.and_then(|u| game.effective_hex(u)).map(t_hex);
+            let mut ev = delta_frame(&game, step, &side, entry.label.clone(), String::new(), entry.rule_refs.clone(), &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken);
             ev.summary = entry.summary;
             ev.activity = act;
             writeln!(out, "{}", serde_json::to_string(&ev)?)?;

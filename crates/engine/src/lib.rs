@@ -2258,6 +2258,43 @@ mod tests {
     }
 
     #[test]
+    fn bizerta_opens_on_a_twelve_from_gt35_55_17() {
+        use crate::reference::ReferenceData;
+        use crate::state::game::GameState;
+
+        let mut refs = ReferenceData::new();
+        refs.load_ports_chart(include_str!("../../../data/reference/port-capacity.ron")).unwrap();
+
+        // Before GT 35 the Axis never rolls for Bizerta — it stays out of play.
+        let mut early = GameState::new(refs.clone(), 1);
+        early.game_turn = 34;
+        for _ in 0..500 {
+            early.roll_bizerta_availability();
+        }
+        assert!(!early.ports.contains_key("Bizerta"), "no Bizerta roll before GT 35");
+
+        // From GT 35 a 12 eventually comes up (deterministic for the seed) and opens the port.
+        let mut g = GameState::new(refs, 1);
+        g.game_turn = 35;
+        let mut opened_after = None;
+        for i in 0..1000 {
+            g.roll_bizerta_availability();
+            if g.ports.contains_key("Bizerta") {
+                opened_after = Some(i);
+                break;
+            }
+        }
+        assert!(opened_after.is_some(), "a 12 should come up within 1000 rolls");
+        // §55.17: it enters at its full charted Efficiency Level and stays open (idempotent roll).
+        let eff = g.ports["Bizerta"].efficiency;
+        assert!(eff > 0);
+        g.roll_bizerta_availability();
+        assert_eq!(g.ports["Bizerta"].efficiency, eff, "already-open Bizerta is untouched");
+        // A system-log entry surfaces the opening in the Action Log (§55.17).
+        assert!(g.system_log.iter().any(|e| e.label == "Port" && e.rule_refs.iter().any(|r| r == "§55.17")));
+    }
+
+    #[test]
     fn deacon_refit_player_command_4_44a_b() {
         use crate::reference::formation_org::UnitType;
         use crate::reference::units::{Nationality, Side};

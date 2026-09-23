@@ -867,13 +867,32 @@ const STAGE_SEQUENCE: [(Phase, StageActor); 17] = [
     (Phase::Patrol, StageActor::PlayerB),
 ];
 
-/// A system-initiated event (not a player Command) surfaced in the viewer's Action Log — currently a
-/// §4.44a scheduled equipment refit. `summary` is the friendly one-line description; `unit` lets the
-/// recorder resolve the acting side and the jump-to-activity hex when it drains these.
+/// A system-initiated event (not a player Command) surfaced in the viewer's Action Log — e.g. a
+/// §4.44a scheduled equipment refit, a §53.31 salt-marsh stranding, or the §55.17 Bizerta opening.
+/// `summary` is the friendly one-line description; `unit` lets the recorder resolve the acting side
+/// and the jump-to-activity hex; `label` is the short Action-Log kind and `rule_refs` its citations.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SystemLogEntry {
-    pub unit: UnitId,
+    /// The acting/affected unit, if any — lets the recorder resolve the side and jump-to hex.
+    /// `None` for events with no single unit (e.g. the §55.17 Bizerta opening).
+    pub unit: Option<UnitId>,
     pub summary: String,
+    /// Short Action-Log label for this event kind (e.g. "Refit", "Stranded", "Port").
+    pub label: String,
+    /// Rulebook citations for the "Relevant Rules" panel (e.g. `["§53.31", "§53.32"]`).
+    pub rule_refs: Vec<String>,
+}
+
+impl SystemLogEntry {
+    /// Build a system-log entry. `refs` are the rulebook citations for the Relevant-Rules panel.
+    pub fn new(unit: Option<UnitId>, label: impl Into<String>, summary: impl Into<String>, refs: &[&str]) -> Self {
+        SystemLogEntry {
+            unit,
+            summary: summary.into(),
+            label: label.into(),
+            rule_refs: refs.iter().map(|s| s.to_string()).collect(),
+        }
+    }
 }
 
 /// The complete mutable game state plus reference data and RNG.
@@ -2996,17 +3015,21 @@ impl GameState {
                 // §53.31: infantry surrender / guns captured; the vehicles are lost with the position.
                 self.abandon_marsh_vehicles(id, false);
                 self.surrender_units(&[id]);
-                self.system_log.push(SystemLogEntry {
-                    unit: id,
-                    summary: format!("{name} was stranded in a salt marsh and overrun — personnel surrendered and equipment was captured (§53.31)."),
-                });
+                self.system_log.push(SystemLogEntry::new(
+                    Some(id),
+                    "Stranded",
+                    format!("{name} was stranded in a salt marsh and overrun — personnel surrendered and equipment was captured."),
+                    &["§53.31"],
+                ));
             } else if is_inf {
                 // §53.31: dismount — the trucks are abandoned (recoverable) and the infantry walk.
                 self.abandon_marsh_vehicles(id, true);
-                self.system_log.push(SystemLogEntry {
-                    unit: id,
-                    summary: format!("{name}'s trucks were abandoned in a salt marsh; the infantry continue on foot (§53.31)."),
-                });
+                self.system_log.push(SystemLogEntry::new(
+                    Some(id),
+                    "Stranded",
+                    format!("{name}'s trucks were abandoned in a salt marsh; the infantry continue on foot."),
+                    &["§53.31", "§53.32"],
+                ));
             } else {
                 // §53.31: an artillery or AFV unit's guns/vehicles are abandoned as a recoverable
                 // marker and the counter leaves play.
@@ -3019,10 +3042,12 @@ impl GameState {
                     u.location = None;
                 }
                 let what = if is_art { "guns" } else { "vehicles" };
-                self.system_log.push(SystemLogEntry {
-                    unit: id,
-                    summary: format!("{name} was stranded in a salt marsh; its {what} were abandoned and may be recovered by an adjacent engineer unit (§53.31/§53.32)."),
-                });
+                self.system_log.push(SystemLogEntry::new(
+                    Some(id),
+                    "Stranded",
+                    format!("{name} was stranded in a salt marsh; its {what} were abandoned and may be recovered by an adjacent engineer unit."),
+                    &["§53.31", "§53.32"],
+                ));
             }
         }
     }
@@ -3231,7 +3256,7 @@ impl GameState {
             }
             if swapped > 0 {
                 let summary = format!("{name} re-equipped ({} → {}).", refit.from, refit.to);
-                self.system_log.push(SystemLogEntry { unit: id, summary });
+                self.system_log.push(SystemLogEntry::new(Some(id), "Refit", summary, &["§4.44a"]));
             }
         }
     }
@@ -9622,6 +9647,35 @@ impl GameState {
     /// Advance to the next step in the Sequence of Play (§5.2): through the stage steps
     /// (setup + Player A block + Player B block), rolling over Operations Stages and
     /// Game-Turns, re-determining Initiative at the start of each Game-Turn.
+    /// §55.17: the port of Bizerta (Tunis Box) is non-operable until the start of the June I 1941
+    /// Game-Turn (GT 35). From that Game-Turn on, the Axis Player throws two dice each Game-Turn; on a
+    /// 12 the port opens and may be used from then on (it stays open). Called once per Game-Turn at
+    /// Initiative Determination; a no-op once Bizerta is in play or before GT 35. Bizerta is otherwise
+    /// skipped at campaign setup (`setup_campaign_ports`), so this is the only path it enters play.
+    pub(crate) fn roll_bizerta_availability(&mut self) {
+        if self.ports.contains_key("Bizerta")
+            || self.game_turn < crate::rules::naval::BIZERTA_AVAILABLE_FROM_GT
+        {
+            return;
+        }
+        if self.rng.d6() + self.rng.d6() != 12 {
+            return;
+        }
+        let Some(chart) = self.reference.ports_chart.clone() else {
+            return;
+        };
+        if let Some(spec) = chart.ports.get("Bizerta") {
+            self.ports
+                .insert("Bizerta".to_string(), crate::state::naval::Port::from_spec("Bizerta", spec));
+            self.system_log.push(SystemLogEntry::new(
+                None,
+                "Port",
+                "Bizerta (Tunis Box) opened to Axis shipping — the Axis rolled a 12.",
+                &["§55.17"],
+            ));
+        }
+    }
+
     pub fn advance_phase(&mut self) {
         // Stage VII — Strategic Air Recovery (after the three Operations Stages).
         if let Some(i) = self.post_turn_step {
@@ -9657,6 +9711,7 @@ impl GameState {
         if self.phase == Phase::InitiativeDetermination {
             self.update_victory_hold();
             self.expend_stores();
+            self.roll_bizerta_availability(); // §55.17: Axis 2d6 for the Bizerta opening (from GT 35)
             self.determine_initiative();
             self.operations_stage = 0;
             self.enter_pre_turn(0);
