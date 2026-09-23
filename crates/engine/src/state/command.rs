@@ -2247,6 +2247,11 @@ impl GameState {
             u.location = Some(crate::state::unit::UnitLocation::OnMap(dest_hex));
             u.cp_expended = crate::reference::terrain::Fixed(cpa * 10);
         }
+        // §30.57: bringing troops in reduces the receiving port's supply tonnage for the turn by 10%
+        // per Stacking Point (SPs shipped *out* — at `origin` — have no effect).
+        if let Some(p) = self.ports.get_mut(to_port) {
+            p.record_troops_landed(sp);
+        }
         self.ports_transferred_this_stage.insert(origin);
         self.ports_transferred_this_stage.insert(to_port.to_string());
         Ok(CommandOutcome::TroopsTransferred)

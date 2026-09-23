@@ -5978,15 +5978,42 @@ impl GameState {
             return None;
         }
         let dest = c.destination.clone();
+        let (fuel_tons, ammo_tons, stores_tons) = (c.fuel_tons, c.ammo_tons, c.stores_tons);
+        let supply_tons = fuel_tons + ammo_tons + stores_tons;
+        // §55.13/§55.14/§55.16/§30.57: a destination port with a charted capacity can land only up to
+        // its remaining supply tonnage this Game-Turn. On overflow the convoy lands its proportional
+        // share and stays in transit with the remainder (delivered on a later Game-Turn once capacity
+        // frees up). A port that is not instantiated (abstract/off-map, e.g. the test harness) is
+        // ungated and takes the whole convoy, as before.
+        let avail = self.ports.get(&dest).map(|p| p.available_tonnage());
+        let (num, den) = match avail {
+            Some(cap) if supply_tons > 0 && cap < supply_tons => (cap, supply_tons),
+            _ => (1, 1),
+        };
+        let land = |t: u32| if den == 1 { t } else { t * num / den };
+        let (lf, la, ls) = (land(fuel_tons), land(ammo_tons), land(stores_tons));
+        let landed_tons = lf + la + ls;
         let delivered = Commodities {
-            fuel: fuel_rate.points(c.fuel_tons),
-            ammo: ammo_rate.points(c.ammo_tons),
-            stores: stores_rate.points(c.stores_tons),
+            fuel: fuel_rate.points(lf),
+            ammo: ammo_rate.points(la),
+            stores: stores_rate.points(ls),
             water: 0,
         };
-        self.convoys.remove(convoy_index);
-        // §56.16: the surviving tonnage is landed as Axis supply at the destination port — deposited
-        // into a constructed (loadable) Supply Dump on the port's hex (created if none exists yet).
+        if let Some(p) = self.ports.get_mut(&dest) {
+            p.tonnage_used_this_turn += landed_tons;
+        }
+        let fully = den == 1 || landed_tons >= supply_tons;
+        if fully {
+            self.convoys.remove(convoy_index);
+        } else {
+            // Keep the convoy with the undelivered remainder (§55.16 shipments span the Game-Turn).
+            let cv = &mut self.convoys[convoy_index];
+            cv.fuel_tons -= lf;
+            cv.ammo_tons -= la;
+            cv.stores_tons -= ls;
+        }
+        // §56.16: the landed tonnage becomes Axis supply at the destination port — deposited into a
+        // constructed (loadable) Supply Dump on the port's hex (created if none exists yet).
         if let Some(hex) = self.port_hex(&dest) {
             self.deposit_supply_at(hex, Side::Axis, &delivered);
         }
@@ -9747,6 +9774,11 @@ impl GameState {
                 // §44.13: each Malta base's construction allowance refreshes each Game-Turn.
                 for base in self.malta_bases.iter_mut() {
                     base.begin_turn();
+                }
+                // §55.16/§30.57: each port's per-Game-Turn shipment tonnage + troop-landing penalty
+                // reset for the new Game-Turn.
+                for port in self.ports.values_mut() {
+                    port.begin_turn();
                 }
                 // §34.84/§34.85: this Game-Turn's airplane reinforcements arrive into the pool.
                 self.accrue_air_reinforcements();

@@ -33,6 +33,14 @@ pub struct Port {
     /// §55.13: personnel (TOE Stacking-Point) capacity that may be shipped out per Operations Stage.
     #[serde(default)]
     pub stacking_out: Option<u32>,
+    /// §55.16: supply tonnage already landed at this port this Game-Turn (a port's capacity applies
+    /// across all the turn's shipments). Reset each Game-Turn by `begin_turn`.
+    #[serde(default)]
+    pub tonnage_used_this_turn: u32,
+    /// §30.57: Stacking Points of personnel shipped *in* to this port this Game-Turn — each reduces
+    /// the port's Maximum supply Tonnage for the turn by 10%. Reset each Game-Turn.
+    #[serde(default)]
+    pub troops_landed_sp_this_turn: u32,
 }
 
 impl Port {
@@ -48,7 +56,29 @@ impl Port {
             wreck_block: spec.starts_blocked,
             stacking_in: spec.stacking_in,
             stacking_out: spec.stacking_out,
+            tonnage_used_this_turn: 0,
+            troops_landed_sp_this_turn: 0,
         }
+    }
+
+    /// §55.13/§55.14/§30.57: supply tonnage the port can still land this Game-Turn — its effective
+    /// capacity, reduced 10% per Stacking Point of personnel brought in this turn (§30.57), less what
+    /// has already been landed (§55.16). Floored at zero.
+    pub fn available_tonnage(&self) -> u32 {
+        let penalty_pct = (self.troops_landed_sp_this_turn * 10).min(100);
+        let reduced = self.effective_capacity() * (100 - penalty_pct) / 100;
+        reduced.saturating_sub(self.tonnage_used_this_turn)
+    }
+
+    /// §30.57: record `sp` Stacking Points of personnel landed at this port this Game-Turn.
+    pub fn record_troops_landed(&mut self, sp: u32) {
+        self.troops_landed_sp_this_turn += sp;
+    }
+
+    /// §55.16: reset the port's per-Game-Turn shipment accounting (called at each new Game-Turn).
+    pub fn begin_turn(&mut self) {
+        self.tonnage_used_this_turn = 0;
+        self.troops_landed_sp_this_turn = 0;
     }
 
     /// The port is destroyed/inoperable when at zero Efficiency Level.

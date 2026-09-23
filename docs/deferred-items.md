@@ -568,9 +568,19 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   is charged its full CPA (`cp_expended = cpa*10`) so it can't move again this stage; §30.58 —
   personnel operability now uses the two-thirds-of-max Efficiency threshold (`Port::personnel_operable`)
   rather than mere `is_operable`. Errors `PortTransferUnavailable` (capacity/one-per-stage) and
-  `PortCannotTransfer` (control/operability/CP). Test `naval_troop_transfer_30_5`. *Simplification:*
-  the §30.57 per-Stacking-Point supply-tonnage penalty is not applied — port max-tonnage isn't
-  enforced as a per-stage consumable in the current convoy model, so there is nothing to reduce.
+  `PortCannotTransfer` (control/operability/CP). Test `naval_troop_transfer_30_5`.
+  - **§55.13/§55.14/§55.16 per-port tonnage enforcement + §30.57 — DONE (2026-09-23).** The earlier
+    "§30.57 is a no-op" note is superseded. Layer 1: a port now tracks `tonnage_used_this_turn` and
+    `deliver_convoy` caps landed supply tonnage at the destination port's `available_tonnage()` for the
+    Game-Turn (§55.16), landing the convoy's proportional share on overflow and keeping the remainder
+    in transit for a later Game-Turn; the counter resets each Game-Turn (`Port::begin_turn`). A port
+    not instantiated in `g.ports` (abstract/off-map) stays ungated. Layer 2 (§30.57):
+    `NavalTransferTroops` records `troops_landed_sp_this_turn` on the receiving port, and
+    `available_tonnage()` cuts the port's Maximum Tonnage by 10% per Stacking Point landed (SPs shipped
+    *out* have no effect). Test `port_tonnage_capacity_and_troop_penalty_55_13_30_57`. *Note:* the CW
+    supply-in path is bottomless home bases (§57), so the §30.57 penalty bites only where port capacity
+    actually gates supply — Axis convoy delivery. The Sep-79 "excess may divert to Tripoli on G turns"
+    clause is not modeled (excess simply waits in transit).
 - [x] **AU48 — §30.4/§30.41–46 Italian Chariot raid on Alexandria.** New Command::PlanChariotRaid +
   ExecuteChariotRaid (Axis). §30.41 not before July 1941 (`date_of`); §30.42 executes on the 7th
   Operations Stage after planning (`global_ops_stage`); §30.45 once per game; §30.46 Chariot Raid

@@ -2445,7 +2445,7 @@ mod tests {
         // An in-port ship is omitted from the map tiles.
         g.fleet.push(Ship { name: "HMS Port".into(), max_gun: 5, gun_rating: 5, max_aa: 2, location: ShipLocation::Alexandria, at_sea_stages: 0, repair_stages: 0, fired_this_stage: false, rest_owed: 0 });
         g.place_san_giorgio(HexCoord::new(43, 21), "Tobruk", 3, 2);
-        g.ports.insert("Tobruk".into(), Port { name: "Tobruk".into(), max_efficiency: 3, efficiency: 1, max_tonnage: 100, mines: 0, wreck_block: 2, stacking_in: Some(1), stacking_out: Some(3) });
+        g.ports.insert("Tobruk".into(), Port { name: "Tobruk".into(), max_efficiency: 3, efficiency: 1, max_tonnage: 100, mines: 0, wreck_block: 2, stacking_in: Some(1), stacking_out: Some(3), tonnage_used_this_turn: 0, troops_landed_sp_this_turn: 0 });
         g.convoys.push(Convoy { lane: 3, destination: "Benghazi".into(), arrival_gt: 3, fuel_tons: 20, ammo_tons: 20, stores_tons: 20, replacement_tons: 0, cancelled: false });
         g.convoys.push(Convoy { lane: 1, destination: "Tripoli".into(), arrival_gt: 2, fuel_tons: 10, ammo_tons: 0, stores_tons: 0, replacement_tons: 0, cancelled: true });
 

@@ -3480,7 +3480,8 @@ mod tests {
         let mut refs = close_assault_refs();
         refs.load_barrage_crt(include_str!("../../../data/reference/crt/barrage.ron"))
             .unwrap();
-        let mut g = GameState::new(refs, 5);
+        let mut g = GameState::new(refs, 1);
+        g.game_turn = 5;
 
         let hex_d = HexCoord::new(0, 0);
         let hex_a = HexCoord::new(1, 0);
@@ -3924,6 +3925,58 @@ mod tests {
     }
 
     #[test]
+    fn port_tonnage_capacity_and_troop_penalty_55_13_30_57() {
+        use crate::reference::units::Side;
+        use crate::state::game::GameState;
+        use crate::state::naval::Port;
+
+        let mut refs = ReferenceData::new();
+        refs.load_equivalent_weights(include_str!("../../../data/reference/equivalent-weights.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        g.game_turn = 5; // the convoy's scheduled arrival Game-Turn (the ctor's 2nd arg is the seed)
+        let port = |cap: u32| Port {
+            name: "Tripoli".into(), max_efficiency: 1, efficiency: 1, max_tonnage: cap,
+            mines: 0, wreck_block: 0, stacking_in: Some(10), stacking_out: Some(15),
+            tonnage_used_this_turn: 0, troops_landed_sp_this_turn: 0,
+        };
+
+        // §55.13/§55.14/§55.16: a convoy exceeding the port's tonnage lands its proportional share;
+        // the remainder stays in transit and the port records the landed tonnage.
+        g.ports.insert("Tripoli".into(), port(600));
+        assert!(g.plan_convoy(2, "Tripoli", 5, 500, 0, 500, 0, 25000)); // 1000 supply tons
+        assert!(g.deliver_convoy(0).is_some());
+        assert_eq!(g.ports["Tripoli"].tonnage_used_this_turn, 600, "landed up to capacity (2×300)");
+        assert_eq!(g.convoys.len(), 1, "the over-capacity remainder stays in transit");
+        assert_eq!((g.convoys[0].fuel_tons, g.convoys[0].stores_tons), (200, 200), "400 tons left");
+        // The port is now full for the turn — a further delivery lands nothing.
+        assert_eq!(g.ports["Tripoli"].available_tonnage(), 0);
+
+        // §55.16: the per-turn accounting resets at the next Game-Turn.
+        g.ports.get_mut("Tripoli").unwrap().begin_turn();
+        assert_eq!(g.ports["Tripoli"].available_tonnage(), 600);
+
+        // §30.57: every Stacking Point of personnel landed cuts the turn's Maximum Tonnage by 10%.
+        let mut p = port(1000);
+        p.record_troops_landed(3);
+        assert_eq!(p.available_tonnage(), 700, "3 SP → −30%");
+        p.record_troops_landed(7); // 10 SP total → capped at −100%
+        assert_eq!(p.available_tonnage(), 0);
+        p.begin_turn();
+        assert_eq!(p.available_tonnage(), 1000, "penalty clears next Game-Turn");
+
+        // A port not instantiated in `g.ports` is ungated (abstract/off-map) — full delivery.
+        let mut g2 = {
+            let mut r = ReferenceData::new();
+            r.load_equivalent_weights(include_str!("../../../data/reference/equivalent-weights.ron")).unwrap();
+            { let mut gg = GameState::new(r, 1); gg.game_turn = 5; gg }
+        };
+        assert!(g2.plan_convoy(2, "Benghazi", 5, 1000, 0, 0, 0, 25000));
+        assert!(g2.deliver_convoy(0).is_some());
+        assert!(g2.convoys.is_empty(), "ungated destination takes the whole convoy");
+        let _ = Side::Axis;
+    }
+
+    #[test]
     fn naval_troop_transfer_30_5() {
         // §30.51/§30.52: the Commonwealth ships a combat unit by sea between ports in the Truck
         // Convoy Phase — one transfer per port per stage, only to a men-capable operable port.
@@ -3945,6 +3998,7 @@ mod tests {
         let port = |name: &str, sin: u32, sout: u32| Port {
             name: name.into(), max_efficiency: 5, efficiency: 5, max_tonnage: 1000,
             mines: 0, wreck_block: 0, stacking_in: Some(sin), stacking_out: Some(sout),
+            tonnage_used_this_turn: 0, troops_landed_sp_this_turn: 0,
         };
         g.ports.insert("Alex".into(), port("Alex", 6, 6));
         g.ports.insert("Tobruk".into(), port("Tobruk", 6, 6));
