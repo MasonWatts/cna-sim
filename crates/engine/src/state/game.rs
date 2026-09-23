@@ -1642,19 +1642,19 @@ impl GameState {
         let Some(rates) = self.reference.ammo_rates else {
             return 0;
         };
-        let rate = match action {
+        let mut rate = match action {
             CombatAction::Barrage => rates.barrage,
             CombatAction::AntiArmor => rates.anti_armor,
             CombatAction::CloseAssault => rates.close_assault,
             CombatAction::AntiAir => rates.anti_air,
         };
+        // §50.2 (Sep 1979 erratum): plain (Organic) infantry consume 1 Ammo per TOE point used —
+        // the chart's close-assault rate (2) is for Armor/Gun/MG/HvyWpn (Weapons) units. Infantry
+        // have no barrage/anti-armor/AA strengths, so this only bites on Close Assault.
         if matches!(action, CombatAction::CloseAssault)
-            && !matches!(
-                self.units.get(&id).map(|u| &u.composition),
-                Some(Composition::Weapons { .. })
-            )
+            && !matches!(self.units.get(&id).map(|u| &u.composition), Some(Composition::Weapons { .. }))
         {
-            return 0; // plain rifle infantry pays no Ammo for close assault (§50.2)
+            rate = 1;
         }
         let toe = self.units.get(&id).map_or(0, |u| u.total_toe());
         rate * toe
@@ -1754,7 +1754,7 @@ impl GameState {
     /// §50.14: expend **defensive** close-assault Ammunition for the units defending a Close Assault.
     /// A defender fires defensively as it is assaulted, so — like the attacker — its melee weapons
     /// units spend the close-assault rate × TOE in Ammo. Guns take no part in the melee (§15.21/§15.84a)
-    /// and plain rifle infantry pays no Ammo (§50.2), so neither is charged. Unlike the attacker's
+    /// and pay nothing; melee weapons units and (per the §50.2 erratum) Organic infantry are charged. Unlike the attacker's
     /// pre-combat check (§50.12, which can forbid the assault), the defender is already committed:
     /// each unit pays what it has (onboard reserve, then co-located dumps), capped at what is
     /// available — a best-effort drain that never rejects the resolved combat. No-op without the
@@ -1765,11 +1765,10 @@ impl GameState {
         }
         let mut spent = 0;
         for &id in defenders {
-            // Only melee weapons units pay: guns don't fight the melee; Organic infantry pays none.
+            // Guns don't fight the melee (§15.21/§15.84a) so they pay nothing; every other defender —
+            // melee weapons units and, per the §50.2 erratum, Organic infantry — pays the close-assault
+            // rate × TOE (`unit_combat_ammo_cost`, which is 1/TOE for infantry, 2/TOE for weapon units).
             if self.is_gun_unit(id) {
-                continue;
-            }
-            if !matches!(self.units.get(&id).map(|u| &u.composition), Some(Composition::Weapons { .. })) {
                 continue;
             }
             let cost = self.unit_combat_ammo_cost(id, CombatAction::CloseAssault);

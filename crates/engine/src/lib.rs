@@ -2179,6 +2179,43 @@ mod tests {
     }
 
     #[test]
+    fn no_fuel_bars_close_assault_49_4() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
+
+        let mut g = GameState::new(close_assault_refs(), 1);
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let atk = HexCoord::new(0, 0);
+        let tgt = HexCoord::new(1, 0);
+        g.map.set_hex(atk, HexTerrain::Clear);
+        g.map.set_hex(tgt, HexTerrain::Clear);
+        let def = g.spawn_unit(Nationality::Commonwealth, "h", "def", Composition::Organic { current_toe: 4 });
+        g.unit_mut(def).unwrap().location = Some(UnitLocation::OnMap(tgt));
+        let tank = g.spawn_unit(Nationality::Commonwealth, "rtr", "tank", Composition::Weapons { groups: vec![WeaponGroup { system: "A9 Cruiser".into(), count: 4 }] });
+        {
+            let u = g.unit_mut(tank).unwrap();
+            u.location = Some(UnitLocation::OnMap(atk));
+            u.ammo = 800;
+            u.fuel = 0; // §49.4: a tank with no fuel may not close-assault
+        }
+        assert_eq!(
+            g.apply(Command::CloseAssault { attackers: vec![tank], target: tgt }),
+            Err(CommandError::InsufficientFuel),
+        );
+        // Fuelled, the §49.4 bar no longer applies (the assault proceeds or fails for another reason).
+        g.unit_mut(tank).unwrap().fuel = 50;
+        assert_ne!(
+            g.apply(Command::CloseAssault { attackers: vec![tank], target: tgt }),
+            Err(CommandError::InsufficientFuel),
+        );
+    }
+
+    #[test]
     fn salt_marsh_and_desert_movement_subtypes_8_44_8_45() {
         use crate::reference::terrain::HexTerrain;
         use crate::rules::movement::MoveMode;
@@ -7558,22 +7595,24 @@ mod tests {
         assert!(g.consume_combat_ammo(&[tank], CombatAction::AntiArmor));
         assert_eq!(g.unit(tank).unwrap().ammo, 0);
         assert_eq!(g.supply_dumps[0].supply.ammo, 6);
-        // Plain rifle infantry (Organic) pays no Ammo for close assault (§50.2).
+        // §50.2 (Sep 1979 erratum): plain rifle infantry (Organic) consumes 1 Ammo per TOE point —
+        // here 1 × 3 = 3 for close assault (the chart's rate-2 is only for weapon units).
         let inf = g.spawn_unit(
             Nationality::Commonwealth,
             "h",
             "i",
             Composition::Organic { current_toe: 3 },
         );
-        assert_eq!(g.unit_combat_ammo_cost(inf, CombatAction::CloseAssault), 0);
+        assert_eq!(g.unit_combat_ammo_cost(inf, CombatAction::CloseAssault), 3);
 
-        // §50.14 defensive assault: a defending melee tank spends its defensive close-assault Ammo
-        // (best-effort). Rearm the tank to a full reserve, then defend: 4 Ammo drawn from onboard 8.
+        // §50.14 defensive assault: a defending tank spends 2×2=4; the Organic infantry now spends
+        // 1×3=3 (§50.2 erratum). inf spawned with a one-fire reserve (4×3=12), so it can pay.
         g.rearm_fire_once(tank); // onboard = 8
         assert_eq!(g.unit(tank).unwrap().ammo, 8);
         let spent = g.expend_defensive_assault_ammo(&[tank, inf]);
-        assert_eq!(spent, 4); // tank pays 4; the Organic infantry pays nothing
+        assert_eq!(spent, 7); // tank 4 + infantry 3
         assert_eq!(g.unit(tank).unwrap().ammo, 4);
+        assert_eq!(g.unit(inf).unwrap().ammo, 9); // 12 → 9
         // A defender with only 1 Ammo and no dump pays what it has (1), never failing.
         g.unit_mut(tank).unwrap().ammo = 1;
         // Drain the co-located dump so onboard is the only source.

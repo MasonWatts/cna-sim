@@ -238,16 +238,15 @@ impl GameState {
                     for (gi, g) in groups.iter().enumerate() {
                         let ws = self.reference.weapons_systems.get(&nat).and_then(|m| m.get(&g.system));
                         let ap = ws.and_then(|w| w.armor_protection).map(|r| r.value).unwrap_or(0);
-                        // §14.47 self-propelled gun: a gun weapon that also has armor protection.
-                        let sp_bonus = ws
-                            .filter(|w| matches!(w.kind, WeaponKind::Artillery | WeaponKind::AntiTank))
-                            .and_then(|w| w.vulnerability)
-                            .map(|r| r.value)
-                            .unwrap_or(0);
+                        // §14.47 (Sep 1979 erratum): a self-propelled gun (a gun weapon that also has
+                        // armor protection) absorbs at its Armor Protection Rating like any other
+                        // armored unit — NOT AP + Vulnerability. And an SP gun barraging "Back" may
+                        // neither absorb nor be affected by Anti-Armor Fire, so it's excluded here.
+                        let is_gun = ws.map(|w| matches!(w.kind, WeaponKind::Artillery | WeaponKind::AntiTank)).unwrap_or(false);
                         let is_tank = ws.map(|w| matches!(w.kind, WeaponKind::Tank)).unwrap_or(false);
-                        let absorb = ap + sp_bonus;
-                        if absorb > 0 && g.count > 0 {
-                            armored.push((id, Some(gi), absorb, is_tank, false, nat, g.system.clone()));
+                        let gun_back = is_gun && ap > 0 && matches!(unit.gun_position, crate::state::unit::GunPosition::Back);
+                        if ap > 0 && g.count > 0 && !gun_back {
+                            armored.push((id, Some(gi), ap, is_tank, false, nat, g.system.clone()));
                         }
                     }
                 }
@@ -1012,7 +1011,8 @@ impl GameState {
         };
         let terrain_shift = self.close_assault_terrain_shift(attackers, defenders);
         let env_shift = self.close_assault_env_shift(attackers, defenders);
-        let total_shift = morale_shift + size_shift + terrain_shift + env_shift;
+        let fuel_shift = self.close_assault_fuel_shift(defenders);
+        let total_shift = morale_shift + size_shift + terrain_shift + env_shift + fuel_shift;
         let adjusted_column = (base_column as i32 + total_shift).clamp(0, 17) as usize;
         out.morale_shift = morale_shift;
         out.size_shift = size_shift;
@@ -1231,6 +1231,15 @@ impl GameState {
     /// battalion / Pioneer) among the assaulting units, against a fortified *non-major-city* hex,
     /// shifts +1 to the attacker. §26.26: if the assaulting units stand in — or the assaulted hex is —
     /// an enemy (real) minefield, the defender adjusts one column in his favor (−1 here).
+    /// §49.4 (Sep 1979 erratum): a two-column adjustment in the attacker's favour when a defending
+    /// tank-type (AFV) unit has no Fuel. Returns +2 in that case, else 0.
+    pub(crate) fn close_assault_fuel_shift(&self, defenders: &[UnitId]) -> i32 {
+        let no_fuel_tank = defenders.iter().any(|&d| {
+            self.unit_is_afv(d) && self.effective_hex(d).is_some_and(|h| !self.move_fuel_available(d, h, 1))
+        });
+        if no_fuel_tank { 2 } else { 0 }
+    }
+
     pub(crate) fn close_assault_env_shift(&self, attackers: &[UnitId], defenders: &[UnitId]) -> i32 {
         use crate::reference::terrain::HexTerrain;
         let Some(def_hex) = defenders.iter().find_map(|&id| self.effective_hex(id)) else {

@@ -5020,6 +5020,29 @@ impl GameState {
         cp_hexes.push(target_hex);
         self.charge_combat_hexes(&cp_hexes, false);
         self.anti_armor_hexes_this_stage.insert(target_hex); // §14.22
+        // §50.12 (Sep 1979 erratum): a unit fired upon by Anti-Armor Fire while out of ammunition
+        // surrenders (merely being in a ZOC or barraged does not — only an assault). Mirrors the
+        // close-assault auto-surrender; if the fire found only out-of-ammo armor, the hex is cleared.
+        let surrendered: Vec<UnitId> = self
+            .units_in_hex(target_hex)
+            .into_iter()
+            .filter(|&d| {
+                self.unit(d).is_some_and(|u| u.nationality.side() == enemy_side && u.total_toe() > 0) && self.out_of_close_assault_ammo(d)
+            })
+            .collect();
+        if !surrendered.is_empty() {
+            let toe: u32 = surrendered.iter().filter_map(|&d| self.unit(d)).map(|u| u.total_toe()).sum();
+            self.surrender_units(&surrendered);
+            let live = self
+                .units_in_hex(target_hex)
+                .into_iter()
+                .any(|id| self.unit(id).is_some_and(|u| u.nationality.side() == enemy_side && u.total_toe() > 0));
+            if !live {
+                return Ok(CommandOutcome::AntiArmor(crate::state::combat::AntiArmorOutcome {
+                    dice: 0, raw_points: 0, actual_points: 0, terrain_shift: 0, column: 0, damage: 0, armor_toe_removed: toe, phasing_penalty: false,
+                }));
+            }
+        }
         let dice = self.rng.two_dice_raw();
         let outcome = self.resolve_anti_armor_core(attackers, target_hex, dice, withheld);
         // §16.46: anti-armor fire eliminates a Dummy Tank once the defender has no real armor left.
