@@ -226,9 +226,18 @@ New shared helper `within_cp_budget` (cost-limited Dijkstra over `move_step_cost
   **Action Log** (recorder drains `game.system_log` after each phase advance → a "Refit" event with
   `summary`, `§4.44a`, and a jump-to-activity hex). **11 RHA** is now one counter (25-pdr, turn 59)
   that refits to the **Bishop SP 25-pdr** at turn 92 — the old duplicate pool entry was removed. Test
-  `scheduled_equipment_refit_4_44a`. **Remaining (data only):** wire the same `refit:` on **106 RHA**
-  (→ Deacon SP 6-pdr) and the **1st Army Tank Bde RTRs** (→ Scorpion) once their historical refit
-  Game-Turns are confirmed — they are single counters today (not duplicates), so no wrong state.
+  `scheduled_equipment_refit_4_44a`. **Remaining — two other CW refits are NOT schedule-driven, so
+  they need different mechanisms (not `ObRefit`):**
+  - **Deacon → 102nd Anti-tank Regt (Northumberland Hussars), player-triggered & repeatable** (§4.44a
+    footnote b — the `102` A/T Regt, id `aa`, *not* the `102(NH)` LAA/AT unit). No fixed date: the CW
+    may refit the 102nd with Deacons any number of times, requiring the 102nd + *trained* armored
+    6-pdr AT TOE points in Cairo for two continuous Game-Turns; on refit it adds Deacons and converts
+    an equal number of AT-gun TOE points to trained Replacement Points (Deacons may also go to other
+    AT units up to their TOE-limit gap). Needs a `Refit`-style **command**, not a schedule.
+  - **Scorpion → 1st Army Tank Bde (42nd & 44th RTR), via §23.15** — the two battalions arrive
+    *completely re-equipped* with Scorpions (anti-mine engineer units; ≥6 Scorpion TOE = engineer
+    status) via the Reinforcement Track; aligns with their `return_at (99,1)`. Best modeled as a
+    refit-on-return, not a mid-life in-place swap.
 - [x] **H5 — CNA Addenda (Sep 1979) rules-logic corrections — DONE (2026-09-22).** OB/chart *data*
   corrections were applied 2026-09-16 (see `docs/source-materials/CNA Addenda Sep 79.pdf`); the
   rules-logic items were closed 2026-09-22:
