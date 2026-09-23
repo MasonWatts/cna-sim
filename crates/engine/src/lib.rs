@@ -3977,6 +3977,54 @@ mod tests {
     }
 
     #[test]
+    fn commonwealth_barred_west_of_marble_arch_8_19() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::{Nationality, Side};
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexId;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let ma = HexId::parse("A2109").unwrap().to_hex_coord();
+        let west = ma.neighbors().into_iter().find(|n| n.col < ma.col).unwrap();
+        let east = ma.neighbors().into_iter().find(|n| n.col > ma.col).unwrap();
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap(); // so ordinary moves are otherwise legal (isolate §8.19)
+        let mut g = GameState::new(refs, 1);
+        // Label A2109 "Marble Arch" (as the campaign map does) so §8.19 activates.
+        g.map.set_hex_labeled(ma, HexTerrain::Clear, vec![], Some("Marble Arch".into()));
+        for c in [west, east] {
+            g.map.set_hex(c, HexTerrain::Clear);
+        }
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+
+        let cw = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 4 });
+        g.unit_mut(cw).unwrap().location = Some(UnitLocation::OnMap(ma));
+        // §8.19: a Commonwealth unit may not step west of Marble Arch…
+        assert_eq!(
+            g.apply(Command::MoveStep { unit: cw, to: west, mode: MoveMode::NonMotorized }),
+            Err(CommandError::ProhibitedTerrain)
+        );
+        // …but may move east of it.
+        assert!(g.dry_run(&Command::MoveStep { unit: cw, to: east, mode: MoveMode::NonMotorized }).is_ok());
+        assert!(g.west_of_marble_arch(west));
+        assert!(!g.west_of_marble_arch(east));
+
+        // §8.19 is Commonwealth-only — the Axis may move freely west of Marble Arch.
+        g.active_player = Side::Axis;
+        let ax = g.spawn_unit(Nationality::German, "p", "inf", Composition::Organic { current_toe: 4 });
+        g.unit_mut(ax).unwrap().location = Some(UnitLocation::OnMap(ma));
+        assert!(g.dry_run(&Command::MoveStep { unit: ax, to: west, mode: MoveMode::NonMotorized }).is_ok());
+
+        // A synthetic map without the "Marble Arch" label is never barred (unit tests are unaffected).
+        let plain = GameState::new(ReferenceData::new(), 1);
+        assert!(!plain.west_of_marble_arch(west));
+    }
+
+    #[test]
     fn naval_troop_transfer_30_5() {
         // §30.51/§30.52: the Commonwealth ships a combat unit by sea between ports in the Truck
         // Convoy Phase — one transfer per port per stage, only to a men-capable operable port.

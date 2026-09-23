@@ -3266,6 +3266,17 @@ impl GameState {
         crate::state::map::HexId::parse("E1430").map(|h| h.to_hex_coord())
     }
 
+    /// §8.19: whether `to` is west of Marble Arch (A2109), where no Commonwealth land unit may move.
+    /// O(1): confirms the real campaign map is loaded (the A2109 hex is labelled "Marble Arch") and
+    /// that `to`'s column is west of it. A synthetic map without that label is never barred (so unit
+    /// tests placing Commonwealth units at low columns are unaffected).
+    pub fn west_of_marble_arch(&self, to: HexCoord) -> bool {
+        let Some(ma) = crate::state::map::HexId::parse("A2109").map(|h| h.to_hex_coord()) else {
+            return false;
+        };
+        self.map.hex(ma).and_then(|h| h.label.as_deref()) == Some("Marble Arch") && to.col < ma.col
+    }
+
     /// §4.44a footnote b: once per Game-Turn, bump the Deacon-eligible unit's consecutive-Cairo-dwell
     /// counter (reset to 0 when it is anywhere else). Called from `begin_operations_stage` at the
     /// Game-Turn's first Operations Stage.

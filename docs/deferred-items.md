@@ -504,9 +504,12 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   Light-Truck/Recce/motorcycle/camel — needs a Road/Track hexside to enter/leave a Salt Marsh); §8.45
   Desert entry barred to Light Trucks and motorcycle units. Tests salt_marsh_no_vehicle_assault_8_44,
   salt_marsh_and_desert_movement_subtypes_8_44_8_45.
-- [-] **AU34 — §8.19 no CW west of Marble Arch (A2109 = col 9).** Deferred: a blanket col-9 gate
-  breaks the many synthetic tests that place CW units at low columns; it's a map-convenience
-  boundary of little gameplay value on the real map.
+- [x] **AU34 — §8.19 no CW west of Marble Arch (A2109 = col 9) — DONE (2026-09-23).** The test-breakage
+  concern is avoided by keying the gate to the map **label** rather than a blanket column: `west_of_marble_arch(to)`
+  is O(1) — it confirms the A2109 hex is labelled "Marble Arch" (only the real campaign map is, so
+  synthetic unit-test maps stay ungated) and that `to.col` is west of it. `plan_move_step` (MoveStep +
+  the dry-run enumeration) and `cmd_rail_move` reject a Commonwealth land move west of Marble Arch with
+  `ProhibitedTerrain`; the Axis is unaffected. Test `commonwealth_barred_west_of_marble_arch_8_19`.
 
 ### Weather (§29) — rainstorm terrain cluster
 - [x] **AU35 — §29.55 rainstorm: wadi hexsides uncrossable except by road; no wadi water draw.**

@@ -1664,6 +1664,12 @@ impl GameState {
                     Some(Side::Axis) => self.require_phase(Phase::TruckConvoy)?,
                     None => return Err(CommandError::UnitNotFound),
                 }
+                // §8.19: the Commonwealth may not rail west of Marble Arch either (for any reason).
+                if self.unit(unit).map(|u| u.nationality.side()) == Some(Side::Commonwealth)
+                    && self.west_of_marble_arch(to)
+                {
+                    return Err(CommandError::ProhibitedTerrain);
+                }
                 if self.rail_move(unit, to) {
                     Ok(CommandOutcome::RailMoved)
                 } else {
@@ -6586,6 +6592,12 @@ impl GameState {
         }
         if !from.is_adjacent(to) {
             return Err(CommandError::NotAdjacent);
+        }
+        // §8.19: no Commonwealth land unit may move west of Marble Arch (A2109), for any reason.
+        if self.unit(unit).expect("checked").nationality.side() == Side::Commonwealth
+            && self.west_of_marble_arch(to)
+        {
+            return Err(CommandError::ProhibitedTerrain);
         }
         // §10.24 / §8.15.1: a unit may not move directly from one enemy-controlled hex
         // into another.
