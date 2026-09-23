@@ -590,9 +590,21 @@ Scope items excluded from "address them all" are marked `[-]` (by design).
   *traversable* hexes" test uses hex distance ≤ 3 (rarely differs on open desert at that range); §53.32's
   exact recovery cost (10 CP both / explicit engineering / non-salt-marsh adjacency) is approximated by
   the shared broken-vehicle recovery path.
-- [-] **AU52 — §53.25 leapfrogging prohibition.** Deferred: requires per-cargo CP *provenance* (the
-  supplies/men remember the CP their first truck expended and cap at that truck's CPA), which the
-  abstracted truck-convoy movement doesn't track; needs a cargo-provenance model.
+- [x] **AU52 — §53.25 leapfrogging prohibition — DONE (implemented 2026-09-17, verified 2026-09-23).**
+  The note above is superseded — this was closed by the §53/§54 truck-system completion. A relay would
+  need supply that a free convoy off-loaded *this* Truck Convoy Phase to be re-loaded and carried
+  onward the same phase; that is now blocked directly (no per-cargo CP ledger required). `unload_convoy`
+  records each fresh off-load in `GameState.leapfrog_locked[hex][commodity]`; `load_convoy` subtracts
+  that locked amount from the loadable total, so just-dropped supplies cannot be picked up again until
+  the lock lapses — which it does at the start of the next Truck Convoy Phase (cleared alongside the
+  §8.98 convoy-CPA refresh). A second, independent layer also holds: §24.9 lets a convoy load only from
+  a **constructed** dump, and a convoy off-load drops **loose** supplies, so relayed supply isn't
+  convoy-loadable even after the lock lapses (a TOE point must construct a dump first). Men move as
+  Replacement pools, which separately cap at their assigned unit's CPA (§20.46, `cpa_used`). Test
+  `hot_weather_water_and_convoy_repair_and_leapfrog_*` (§53.25 assertions). *Simplification:* the lock
+  is a full same-phase re-load ban — stricter than §53.25's "up to the first truck's CPA" allowance,
+  but it prevents the cross-map relay exploit the rule targets and never blocks legitimate play (a
+  convoy carries its own load the whole phase; only *relaying between* convoys is barred).
 - [-] **AU53 — §28.18 prisoners by truck.** Deferred: the rule is underspecified ("if you are feeling profligate with your transport" — no capacity/CP mechanics), and the foot path (§28.13) is modeled; low value.
 
 ### Scope — won't-do / out of scope (excluded from "address them all")
