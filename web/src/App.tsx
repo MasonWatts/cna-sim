@@ -165,6 +165,16 @@ export function App() {
       const stream = new Response(buf).body!.pipeThrough(new DecompressionStream("gzip"));
       return new Response(stream).text();
     };
+    // `?game=<file>` loads another recorded log from public/ (e.g. a harness run copied to
+    // public/runs/) instead of the default demo; `.gz` or plain `.jsonl` both work.
+    const alt = new URLSearchParams(window.location.search).get("game");
+    if (alt) {
+      fetchGzipText(alt.startsWith("/") ? alt : `/${alt}`)
+        .then(parseJsonl)
+        .then((r: GameRecord) => setRecord(r))
+        .catch((e) => setError(`${alt}: ${String(e)}`));
+      return;
+    }
     fetchGzipText("/game.jsonl.gz")
       .then(parseJsonl)
       .catch(() => fetch("/game.jsonl").then((r) => (r.ok ? r.text().then(parseJsonl) : Promise.reject(new Error("no jsonl")))))

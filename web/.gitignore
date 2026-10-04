@@ -2,3 +2,5 @@ node_modules/
 dist/
 *.local
 .vite/
+# Locally copied harness runs viewed with ?game=runs/<file>
+public/runs/
