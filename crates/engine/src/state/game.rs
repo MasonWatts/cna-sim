@@ -4441,12 +4441,9 @@ impl GameState {
         if feats.contains(&Feature::Oasis) {
             return Some(WaterKind::Unlimited);
         }
-        let is_major_city = self.reference.campaign_victory.as_ref().is_some_and(|cv| {
-            cv.cities
-                .iter()
-                .any(|c| HexId::parse(&c.hex).map(|h| h.to_hex_coord()) == Some(hex))
-        });
-        if is_major_city {
+        // §52.11/§52.13: a Major City well is unlimited (Cairo, Alexandria, Tobruk, Bardia,
+        // Benghazi…). Victory-point towns that are villages/oases use those features below.
+        if self.is_major_city(hex) {
             return Some(WaterKind::Unlimited);
         }
         // §52.23: a pipeline connected back to a major city is an unlimited source.
@@ -4929,13 +4926,11 @@ impl GameState {
         }
     }
 
-    /// Whether `hex` is a Major City with a well (the only valid origin for a pipeline, §52.21).
+    /// Whether `hex` is a Major City (map terrain) — it has an unlimited well (§52.11/§52.13) and is
+    /// the only valid origin for a pipeline (§52.21). (Previously this read the §64.73 victory-town
+    /// list, which omits Cairo/Alexandria and includes villages such as Sollum and Sidi Barrani.)
     pub(crate) fn is_major_city(&self, hex: HexCoord) -> bool {
-        self.reference.campaign_victory.as_ref().is_some_and(|cv| {
-            cv.cities
-                .iter()
-                .any(|c| HexId::parse(&c.hex).map(|h| h.to_hex_coord()) == Some(hex))
-        })
+        self.map.terrain(hex) == Some(crate::reference::terrain::HexTerrain::MajorCity)
     }
 
     /// §52.23/25: whether a pipeline hex is still connected — via contiguous pipeline hexes — back

@@ -7938,6 +7938,11 @@ mod tests {
         refs.load_campaign_victory(include_str!("../../../data/reference/campaign-victory.ron"))
             .unwrap();
         let mut g = GameState::new(refs, 1);
+        // Real terrain: Tobruk/Bardia/Benghazi are Major Cities (unlimited wells, §52.13); Derna is a village.
+        for h in ["C4807", "C4321", "A4827"] {
+            g.map.set_hex(HexId::parse(h).unwrap().to_hex_coord(), HexTerrain::MajorCity);
+        }
+        g.map.set_hex_labeled(HexId::parse("B5925").unwrap().to_hex_coord(), HexTerrain::Rough, vec![crate::state::map::Feature::Village], None);
 
         let place = |g: &mut GameState, nat, id: &str, hex: &str| {
             let u = g.spawn_unit(nat, id, "x", Composition::Organic { current_toe: 4 });
@@ -7991,6 +7996,7 @@ mod tests {
         refs.load_campaign_victory(include_str!("../../../data/reference/campaign-victory.ron"))
             .unwrap();
         let mut g = GameState::new(refs, 1);
+        g.map.set_hex(HexId::parse("C4807").unwrap().to_hex_coord(), HexTerrain::MajorCity); // Tobruk (§52.13 unlimited well)
         let tobruk = HexId::parse("C4807").unwrap().to_hex_coord();
         let u = g.spawn_unit(
             Nationality::Italian,
@@ -9505,6 +9511,7 @@ mod tests {
         for h in [city, p1, p2] {
             g.map.set_hex(h, HexTerrain::Clear);
         }
+        g.map.set_hex(city, HexTerrain::MajorCity); // Tobruk: a Major City well (§52.13)
         g.pipelines.insert(p1);
         g.pipelines.insert(p2);
 
@@ -9541,6 +9548,7 @@ mod tests {
         let adj = city.neighbors()[0]; // adjoins the city
         g.map.set_hex(city, HexTerrain::Clear);
         g.map.set_hex(adj, HexTerrain::Clear);
+        g.map.set_hex(city, HexTerrain::MajorCity); // Tobruk: a Major City well (§52.13)
 
         // A Commonwealth HQ ("a") in the hex with a 10-Stores dump can build (§52.24).
         let hq = g.spawn_unit(Nationality::Commonwealth, "a", "hq", Composition::Organic { current_toe: 0 });
@@ -9597,6 +9605,7 @@ mod tests {
         for h in [city, adj1, adj2] {
             g.map.set_hex(h, HexTerrain::Clear);
         }
+        g.map.set_hex(city, HexTerrain::MajorCity); // Tobruk: a Major City well (§52.13)
         let build_setup = |g: &mut GameState, hex, name: &str| {
             let hq = g.spawn_unit(Nationality::Commonwealth, "a", name, Composition::Organic { current_toe: 0 });
             g.unit_mut(hq).unwrap().location = Some(UnitLocation::OnMap(hex));
