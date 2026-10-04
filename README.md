@@ -93,6 +93,14 @@ cargo run -p cna-harness -- --scenario skirmish --turns 2 --commonwealth llm --a
     --budget-usd 0.50 --out /tmp/game.jsonl
 # Bring your own MCP client instead (prints endpoint + token; use wait_for_turn):
 cargo run -p cna-harness -- --commonwealth llm --external --out /tmp/game.jsonl
+# The campaign, limited to a few turns, with cost controls (one model for every phase; each side
+# first gets a pre-game planning window to study the rulebook and write its doctrine):
+cargo run --release -p cna-harness -- --scenario campaign --turns 2 --commonwealth llm --axis llm \
+    --budget-usd 1.50 --max-cost-usd 25 --out /tmp/camp.jsonl
+# View a run in the spectator viewer: copy it under web/public/runs/ and open ?game=runs/<file>
+gzip -9 -c /tmp/camp.jsonl > web/public/runs/camp.jsonl.gz   # then http://localhost:5173/?game=runs/camp.jsonl.gz
+# Continue a crashed or budget-stopped game from its command log:
+cargo run --release -p cna-harness -- --resume /tmp/camp.commands.jsonl --commonwealth llm --axis llm
 # Reproduce any recorded game exactly from its command log:
 cargo run -p cna-harness -- --replay /tmp/game.commands.jsonl
 ```

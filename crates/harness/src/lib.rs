@@ -10,6 +10,8 @@ pub mod launcher;
 pub mod log;
 pub mod memory;
 pub mod observe;
+pub mod result;
+pub mod rules;
 pub mod server;
 
 use std::collections::HashMap;
@@ -56,13 +58,32 @@ pub struct Options {
     pub out: PathBuf,
     /// `None` = launch headless Claude Code per window; `Some(t)` = custom command template.
     pub player_cmd: Option<String>,
+    /// Model for Movement & Combat (`None` = client default).
     pub model: Option<String>,
+    /// Model for routine phases (Organization, Air, Truck Convoy, Repair, Fleet, Naval).
+    pub routine_model: Option<String>,
+    /// Per-window spend cap (passed to the client).
     pub budget_usd: Option<String>,
+    /// Whole-game spend cap; once reached the model sides stop being consulted.
+    pub max_cost_usd: Option<f64>,
+    /// Resume from this command log (replays it, then continues live). Scenario/seed/turns come
+    /// from the log header unless `turns` is raised.
+    pub resume: Option<PathBuf>,
     /// Don't launch players; an external MCP client connects and uses `wait_for_turn`.
     pub external: bool,
     pub window_timeout: Duration,
     /// Skip windows with no enumerated legal actions (default true).
     pub auto_pass: bool,
+    /// Run a pre-game planning window per model side (default true).
+    pub pregame: bool,
+    /// Pre-game window time limit.
+    pub pregame_timeout: Duration,
+    /// Pre-game model (`None` = the Movement model).
+    pub pregame_model: Option<String>,
+    /// Pre-game per-session spend cap (USD).
+    pub pregame_budget_usd: Option<String>,
+    /// Append the harness's mechanics coaching to the system prompt (A/B comparison).
+    pub coaching: bool,
     pub port: u16,
     /// Fixed bearer tokens (tests); default random per run.
     pub tokens: Option<(String, String)>,
@@ -79,10 +100,18 @@ impl Default for Options {
             out: PathBuf::from("game.jsonl"),
             player_cmd: None,
             model: None,
+            routine_model: None,
             budget_usd: None,
+            max_cost_usd: None,
+            resume: None,
             external: false,
             window_timeout: Duration::from_secs(600),
             auto_pass: true,
+            pregame: true,
+            pregame_timeout: Duration::from_secs(1800),
+            pregame_model: None,
+            pregame_budget_usd: Some("5.00".into()),
+            coaching: false,
             port: 0,
             tokens: None,
         }
@@ -100,6 +129,10 @@ pub struct RunReport {
     pub steps: u32,
     pub fingerprint: String,
     pub commands_path: PathBuf,
+    /// End-of-game result (victory / VP / strength), also written to `<out>.result.json`.
+    pub result: serde_json::Value,
+    /// Model spend (USD) by side.
+    pub spend_usd: HashMap<Side, f64>,
 }
 
 /// The rulebook (for `get_rule`), embedded so the binary works from any directory.
@@ -131,6 +164,19 @@ fn scripted(kind: &PlayerKind, seed: u64) -> Box<dyn Agent> {
 /// Play one game. `on_ready` is called once the MCP server is listening (before play starts) —
 /// external clients/tests use it to learn the endpoints.
 pub fn run(opts: &Options, on_ready: impl FnOnce(&ServerInfo)) -> anyhow::Result<RunReport> {
+    // Resume: take scenario/seed/turns from the log header and queue its attempts for replay.
+    let mut opts = opts.clone();
+    let mut resume_attempts = None;
+    if let Some(path) = opts.resume.clone() {
+        let loaded = log::load(&path)?;
+        opts.scenario = loaded.header.scenario.clone();
+        opts.seed = loaded.header.seed;
+        opts.turns = opts.turns.max(loaded.header.turns);
+        eprintln!("[harness] resuming {} ({} logged attempts)", path.display(), loaded.attempts.len());
+        let _ = std::fs::copy(&path, path.with_extension("jsonl.bak"));
+        resume_attempts = Some(loaded.attempts);
+    }
+    let opts = &opts;
     let (game, label) = cna_replay::scenarios::build(&opts.scenario, opts.seed);
 
     // One request channel + endpoint per model-controlled side.
@@ -150,7 +196,8 @@ pub fn run(opts: &Options, on_ready: impl FnOnce(&ServerInfo)) -> anyhow::Result
         }
     }
     let rules = Arc::new(RulesIndex::parse(RULES_MD));
-    let server = server::start(endpoints, rules, opts.port)?;
+    let book = Arc::new(rules::Rulebook::parse(RULES_MD));
+    let server = server::start(endpoints, rules, book, opts.port)?;
 
     // MCP client configs for launched players.
     let transcript_dir = sibling(&opts.out, ".transcript");
@@ -167,19 +214,39 @@ pub fn run(opts: &Options, on_ready: impl FnOnce(&ServerInfo)) -> anyhow::Result
     let info = ServerInfo { endpoints: tokens.iter().map(|(&s, t)| (s, server.url(s), t.clone())).collect() };
     on_ready(&info);
 
+    let spend = Arc::new(std::sync::Mutex::new(launcher::Spend::default()));
     let make = |side: Side, kind: &PlayerKind, seed: u64, rx: Option<std::sync::mpsc::Receiver<_>>| -> Box<dyn Agent> {
         match rx {
             Some(rx) => {
                 let launcher = (!opts.external).then(|| Launcher {
                     template: opts.player_cmd.clone(),
                     model: opts.model.clone(),
+                    routine_model: opts.routine_model.clone(),
                     budget_usd: opts.budget_usd.clone(),
+                    max_cost_usd: opts.max_cost_usd,
+                    spend: spend.clone(),
                     mcp_configs: mcp_configs.clone(),
                     transcript_dir: transcript_dir.clone(),
                 });
                 let mut a = McpAgent::new(side, rx, launcher, opts.window_timeout)
                     .with_context(&opts.scenario, Some(transcript_dir.clone()));
                 a.auto_pass = opts.auto_pass;
+                a.coaching = opts.coaching;
+                if opts.pregame {
+                    a.pregame = Some(agent::PregameConfig {
+                        timeout: opts.pregame_timeout,
+                        model: opts.pregame_model.clone(),
+                        budget_usd: opts.pregame_budget_usd.clone(),
+                    });
+                }
+                // Resume: restore the side's notebook/journal checkpoint.
+                if opts.resume.is_some() {
+                    let p = transcript_dir.join(format!("memory-{}.json", format!("{side:?}").to_lowercase()));
+                    if let Some(m) = memory::Memory::load(&p) {
+                        eprintln!("[harness] restored {side:?} memory ({} windows)", m.windows);
+                        a = a.with_memory(m);
+                    }
+                }
                 Box::new(a)
             }
             None => scripted(kind, seed),
@@ -187,6 +254,11 @@ pub fn run(opts: &Options, on_ready: impl FnOnce(&ServerInfo)) -> anyhow::Result
     };
     let mut cw = make(Side::Commonwealth, &opts.commonwealth, 1, receivers.remove(&Side::Commonwealth));
     let mut ax = make(Side::Axis, &opts.axis, 2, receivers.remove(&Side::Axis));
+    if let Some(attempts) = resume_attempts {
+        let (rc, ra) = log::ResumeAgent::pair(attempts, cw, ax);
+        cw = Box::new(rc);
+        ax = Box::new(ra);
+    }
     let name = |k: &PlayerKind| match k {
         PlayerKind::Llm => match (&opts.external, &opts.model) {
             (true, _) => "LLM (external MCP client)".to_string(),
@@ -227,6 +299,9 @@ pub fn run(opts: &Options, on_ready: impl FnOnce(&ServerInfo)) -> anyhow::Result
     )?;
     w.flush()?;
     let fingerprint = cmdlog.finish(&final_game)?;
+    let result = result::game_result(&final_game, &opts.scenario);
+    std::fs::write(sibling(&opts.out, ".result.json"), serde_json::to_string_pretty(&result)?)?;
+    let spend_usd = spend.lock().map(|s| s.by_side.clone()).unwrap_or_default();
     // Dropping the agents drops their request channels, so any parked tool call (e.g. a final
     // wait_for_turn) resolves to "game over"; give the handlers a moment to send that before the
     // server stops.
@@ -234,7 +309,7 @@ pub fn run(opts: &Options, on_ready: impl FnOnce(&ServerInfo)) -> anyhow::Result
     drop(ax);
     std::thread::sleep(std::time::Duration::from_millis(500));
     drop(server);
-    Ok(RunReport { steps, fingerprint, commands_path })
+    Ok(RunReport { steps, fingerprint, commands_path, result, spend_usd })
 }
 
 /// Re-apply a command log from its scenario + seed; returns (fingerprint, expected, ok/rejected mismatches).

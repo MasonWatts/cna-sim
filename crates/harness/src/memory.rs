@@ -17,9 +17,11 @@ use cna_engine::state::game::GameState;
 use crate::observe::hex_label;
 
 pub const NOTES_MAX_CHARS: usize = 6000;
+/// The doctrine (pre-game strategy + mechanics assessment) may be longer and changes rarely.
+pub const DOCTRINE_MAX_CHARS: usize = 15000;
 const MAX_OBSERVED_LINES: usize = 40;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 struct OwnSeen {
     name: String,
     hex: Option<String>,
@@ -28,7 +30,7 @@ struct OwnSeen {
     out_of_water: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 struct EnemySeen {
     name: String,
     desc: String,
@@ -36,7 +38,7 @@ struct EnemySeen {
 }
 
 /// The side's view at a moment (only what it may know).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Snapshot {
     own: BTreeMap<u32, OwnSeen>,
     enemy: BTreeMap<u32, EnemySeen>,
@@ -77,11 +79,13 @@ impl Snapshot {
 
     /// Human-readable changes from `prev` to `self`.
     fn diff(&self, prev: &Snapshot) -> Vec<String> {
-        let mut out = Vec::new();
+        // (priority, line): 0 = losses & water, 1 = new contacts, 2 = strength/cohesion changes,
+        // 3 = contacts lost, 4 = position changes. Most important first when capped.
+        let mut out: Vec<(u8, String)> = Vec::new();
         let hex = |h: &Option<String>| h.clone().unwrap_or_else(|| "off-map".into());
         for (id, p) in &prev.own {
             match self.own.get(id) {
-                None => out.push(format!("LOST: your {} (last at {}, {} TOE) is no longer in play.", p.name, hex(&p.hex), p.toe)),
+                None => out.push((0, format!("LOST: your {} (last at {}, {} TOE) is no longer in play.", p.name, hex(&p.hex), p.toe))),
                 Some(n) => {
                     let mut parts = Vec::new();
                     if n.toe != p.toe {
@@ -99,34 +103,43 @@ impl Snapshot {
                         parts.push("water restored".into());
                     }
                     if !parts.is_empty() {
-                        out.push(format!("Your {}: {}.", n.name, parts.join(", ")));
+                        let pri = if n.out_of_water != p.out_of_water || n.toe < p.toe {
+                            0
+                        } else if n.toe != p.toe || n.cohesion != p.cohesion {
+                            2
+                        } else {
+                            4
+                        };
+                        out.push((pri, format!("Your {}: {}.", n.name, parts.join(", "))));
                     }
                 }
             }
         }
         for (id, n) in &self.own {
             if !prev.own.contains_key(id) {
-                out.push(format!("NEW: your {} has entered play at {} ({} TOE).", n.name, hex(&n.hex), n.toe));
+                out.push((2, format!("NEW: your {} has entered play at {} ({} TOE).", n.name, hex(&n.hex), n.toe)));
             }
         }
         for (id, n) in &self.enemy {
             match prev.enemy.get(id) {
-                None => out.push(format!("NEW CONTACT: {} ({}) at {}.", n.name, n.desc, hex(&n.hex))),
-                Some(p) if p.hex != n.hex => out.push(format!("Enemy {} moved {} → {}.", n.name, hex(&p.hex), hex(&n.hex))),
+                None => out.push((1, format!("NEW CONTACT: {} ({}) at {}.", n.name, n.desc, hex(&n.hex)))),
+                Some(p) if p.hex != n.hex => out.push((4, format!("Enemy {} moved {} → {}.", n.name, hex(&p.hex), hex(&n.hex)))),
                 _ => {}
             }
         }
         for (id, p) in &prev.enemy {
             if !self.enemy.contains_key(id) {
-                out.push(format!("CONTACT LOST: {} (last seen at {}).", p.name, hex(&p.hex)));
+                out.push((3, format!("CONTACT LOST: {} (last seen at {}).", p.name, hex(&p.hex))));
             }
         }
-        if out.len() > MAX_OBSERVED_LINES {
-            let extra = out.len() - MAX_OBSERVED_LINES;
-            out.truncate(MAX_OBSERVED_LINES);
-            out.push(format!("(+{extra} more changes — use get_observation)"));
+        out.sort_by_key(|(p, _)| *p); // stable: keeps unit order within a priority
+        let mut lines: Vec<String> = out.into_iter().map(|(_, l)| l).collect();
+        if lines.len() > MAX_OBSERVED_LINES {
+            let extra = lines.len() - MAX_OBSERVED_LINES;
+            lines.truncate(MAX_OBSERVED_LINES);
+            lines.push(format!("(+{extra} less important changes — use get_overview / get_observation)"));
         }
-        out
+        lines
     }
 
     pub fn enemy_count(&self) -> usize {
@@ -134,7 +147,7 @@ impl Snapshot {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct Block {
     header: String,
     observed: Vec<String>,
@@ -166,9 +179,16 @@ impl Block {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Memory {
     pub notes: String,
+    /// The side's own doctrine: mechanics assessment + campaign strategy, written in the pre-game
+    /// planning window (and refinable later). Shown in every window prompt.
+    #[serde(default)]
+    pub doctrine: String,
+    /// The pre-game planning window has run.
+    #[serde(default)]
+    pub pregame_done: bool,
     /// Windows completed.
     pub windows: u32,
     blocks: Vec<Block>,
@@ -224,6 +244,13 @@ impl Memory {
         self.last = Some(Snapshot::take(game, side));
     }
 
+    /// Replace the doctrine; returns whether it had to be truncated.
+    pub fn write_doctrine(&mut self, text: &str) -> bool {
+        let truncated = text.chars().count() > DOCTRINE_MAX_CHARS;
+        self.doctrine = text.chars().take(DOCTRINE_MAX_CHARS).collect();
+        truncated
+    }
+
     /// Replace the notebook; returns whether it had to be truncated.
     pub fn write_notes(&mut self, text: &str) -> bool {
         let truncated = text.chars().count() > NOTES_MAX_CHARS;
@@ -246,6 +273,14 @@ impl Memory {
             s.push_str(&b.render(self.open && split + i + 1 == n));
         }
         s
+    }
+
+    /// Persist to / restore from JSON (checkpointing across harness restarts).
+    pub fn save(&self, path: &std::path::Path) -> std::io::Result<()> {
+        std::fs::write(path, serde_json::to_string(self)?)
+    }
+    pub fn load(path: &std::path::Path) -> Option<Memory> {
+        serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
     }
 
     /// The whole journal (for `get_journal`), newest last.

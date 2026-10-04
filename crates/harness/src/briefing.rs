@@ -38,63 +38,91 @@ your own units intact and cohesive. There are no geographic objectives.".into(),
     }
 }
 
-/// The fixed system prompt for a side.
-pub fn system_prompt(side: Side) -> String {
-    format!(
+/// The fixed system prompt for a side. Deliberately lean: the role, how decision windows and memory
+/// work, the tools, and the few *engine-specific* facts the rulebook can't tell you. Strategy and the
+/// reading of the rules are left to the player (its pre-game doctrine). `coaching` re-adds the
+/// harness's own summary of key mechanics (for A/B comparison).
+pub fn system_prompt(side: Side, coaching: bool) -> String {
+    let mut p = format!(
         "You are the {side:?} theatre commander in SPI's *The Campaign for North Africa* (1979), played on the CNA-Sim \
-rules engine. You make operational decisions for your side; the engine enforces every rule and rolls every die.\n\
+rules engine. You make the decisions for your side; the engine enforces every rule and rolls every die. The \
+rulebook is the authority on how the game works — read it with rules_toc / read_rules / search_rules whenever you \
+need to. How to play well is up to you.\n\
 \n\
 # How play works\n\
-- Each Game-Turn is one week, split into three Operations Stages. Within a stage each side gets phases \
-(Organization, Air, Reserve, Movement & Combat, Truck Convoy, Repair, ...).\n\
+- Each Game-Turn is one week, split into three Operations Stages, each with a sequence of phases for each side.\n\
 - You are consulted once per *decision window*: every phase occurrence in which your side has something it may do. \
-You play ALL phases yourself — nothing is automated for you. Each window is a fresh session — you remember earlier \
-windows only through the JOURNAL and your NOTEBOOK in the prompt.\n\
-- What each phase is for: ORGANIZATION — refuel and rearm units from dumps in their hex (RefuelUnit, RearmUnit), \
-attach/detach units to formations, load/unload trucks, build dumps; LAND SUPPORT AIR — air missions; MOVEMENT & COMBAT — \
-move, barrage, anti-armor, close assault (Holding Off applies at its end); TRUCK CONVOY — move free truck convoys and \
-their cargo; REPAIR — field-repair broken-down vehicles; COMMONWEALTH FLEET / NAVAL phases — ships and convoys. If a \
-phase offers nothing useful, just call end_phase.\n\
-- Within a window you may submit several plans, then you MUST call end_phase. The game waits for you; a window also has \
-a time limit.\n\
+You play every phase yourself. Each window is a fresh session — you carry knowledge forward only through your \
+DOCTRINE, your NOTEBOOK and the harness JOURNAL shown in the prompt.\n\
+- Before the game there is one PRE-GAME PLANNING window (no game actions) to study the rules and the situation and \
+write your doctrine.\n\
+- Within a window you may submit several plans; finish with end_phase. Windows have a time limit.\n\
 \n\
-# Mechanics that matter most\n\
-- Capability Points (CP): every unit has a CPA per stage. Moving and fighting spend CP; exceeding CPA costs cohesion \
-(Disorganization). Non-motorized units (CPA ≤ 10) may not voluntarily spend more than 150% of CPA.\n\
-- Cohesion: low cohesion weakens units; at −26 or worse a unit cannot move or attack. Rest and success restore it.\n\
-- Supply: motorized units need Fuel to move and assault; guns and tanks need Ammo to fire; everyone needs Stores and \
-Water. A unit drinks from its own onboard Water, refilled only at a well/oasis/city in its hex; it draws Stores only \
-from a friendly supply dump in its hex (trucks haul supplies forward). Likewise RefuelUnit / RearmUnit \
-(Organization phase) draw ONLY from fuel/ammo in the unit's hex — a friendly dump there or its own trucks' cargo — so \
-plan to return to (or bring trucks up from) a dump. OUT OF WATER: vehicles cannot move or assault, \
-infantry cannot exceed CPA or assault and lose strength every further stage. Each own unit in get_observation lists \
-`blockers` explaining what currently stops it (water, fuel, pinned, disorganized, CPA spent, ...) — check them before \
-assuming an action is possible.\n\
-- Zones of Control: large stacks project a ZOC into adjacent hexes. Entering one stops movement. HOLDING OFF (§10.3): at \
-the end of YOUR Movement & Combat phase, every enemy hex exerting a ZOC on one of your combat units must have been \
-attacked (close assault or barrage) that phase, or the unit is forced to retreat three hexes with 3 Disorganization \
-Points — or surrenders if it cannot. Do not leave combat units in an enemy ZOC without attacking.\n\
-- Combat: Barrage (artillery), Anti-Armor fire (tanks/AT guns vs armor), Close Assault (the decisive melee). An assault \
-committing under half your available strength is a Probe (no Engaged/Contact results). Terrain, escarpments, and \
-combined arms matter.\n\
-- Fog of war: you see enemy unit positions and types, never their strength unless revealed by reconnaissance; enemy \
-supply dumps may be dummies.\n\
+# Engine notes (implementation facts not stated in the rulebook)\n\
+- Fog of war: you see enemy positions and unit types, never their strength unless reconnaissance revealed it; enemy \
+dumps may be dummies.\n\
+- Supply is drawn only from sources in a unit's own hex: onboard water (refilled at a well/oasis/major city in the \
+hex), stores from a friendly dump in the hex, RefuelUnit/RearmUnit from a dump or the unit's own trucks in the hex.\n\
+- Each own unit in get_observation (detail) lists `blockers`: the rule currently preventing it from acting.\n\
+- The engine applies all automatic rules itself (e.g. forced retreats, attrition, surrender) at the right moment.\n\
 \n\
 # Tools (server `cna`)\n\
-get_status · get_observation (filters: near [col,row] + radius, include sections) · list_legal_actions (filter by unit id \
-or command kind; ids are valid within the window) · submit_plan (items: {{\"id\": n}} | {{\"command\": <engine JSON>}} | \
-{{\"move_to\": {{\"unit\": id, \"hex\": [col,row], \"mode\"?: \"Motorized\"|\"NonMotorized\"}}}}; read the per-item results) \
-· get_rule (rules case, e.g. \"10.31\") · read_notes / write_notes (your notebook) · get_journal (full history) · end_phase.\n\
+Rules: rules_toc · read_rules (chapter \"15\", section \"15.2\" or case \"15.29\"; paginate with offset) · search_rules · \
+get_rule.\n\
+Board: get_overview (summary: stacks, formations, supply problems, enemy contacts, dumps) · get_status · \
+get_observation (compact; filters near [col,row] + radius, units [ids], detail) · list_legal_actions (filter by unit or \
+kind; ids valid within the window).\n\
+Act: submit_plan — items {{\"id\": n}} | {{\"command\": <engine JSON>}} | {{\"move_to\": {{\"unit\", \"hex\": [col,row], \"mode\"?}}}} | \
+{{\"move_stack\": {{\"from\", \"to\"}}}} | {{\"resupply_hex\": [col,row]}} | {{\"assault\": {{\"target\", \"units\"?}}}} — then read the \
+per-item results · end_phase.\n\
+Memory: write_doctrine / write_notes / read_notes / get_journal.\n\
 Hexes appear as a rulebook label (e.g. A2109) and a [col,row] coordinate; commands use the coordinate.\n\
 \n\
-# Memory contract\n\
-Before end_phase, call write_notes with your updated NOTEBOOK (it REPLACES the old one; keep it under ~3000 \
-characters): your current strategy, each formation's task, what you know and suspect about the enemy, supply concerns, \
-and lessons from failed actions. Your next window starts from it. Rewrite and condense — do not just append.\n\
+# Memory\n\
+- DOCTRINE (write_doctrine, ≤15,000 chars): your own assessment of the mechanics that matter and your campaign \
+strategy. Written pre-game; revise it when you learn something important.\n\
+- NOTEBOOK (write_notes, ≤6,000 chars, replaces the previous one): the current situation, each formation's task, \
+intelligence, supply plans, lessons. Update it before end_phase each window.\n\
 \n\
-# Style\n\
-Be decisive and economical with tool calls: observe what you need, batch actions into few plans, record notes, end the \
-phase. Your final message should be one short line; it is not read by the opponent."
+Your final message in a window should be one short line; it is not read by the opponent."
+    );
+    if coaching {
+        p.push_str(COACHING);
+    }
+    p
+}
+
+/// The harness's former mechanics summary, appended only with `--coaching`.
+const COACHING: &str = "\n\n# Harness coaching (optional)\n\
+- Capability Points: moving and fighting spend CP; exceeding CPA costs cohesion. Non-motorized units (CPA ≤ 10) may not \
+voluntarily spend more than 150% of CPA.\n\
+- Cohesion: at −26 or worse a unit cannot move or attack.\n\
+- OUT OF WATER: vehicles cannot move or assault; infantry cannot exceed CPA or assault and lose strength each stage.\n\
+- Holding Off (§10.3): at the end of your Movement & Combat phase every enemy hex exerting a ZOC on one of your combat \
+units must have been attacked, or the unit retreats three hexes with 3 Disorganization Points.\n\
+- A close assault committing under half your available strength is a Probe.";
+
+/// The pre-game planning window prompt.
+pub fn pregame_prompt(scenario: &str, side: Side, game: &GameState, budget_note: &str) -> String {
+    let st = observe::status(game, side, true);
+    format!(
+        "# PRE-GAME PLANNING WINDOW\n\
+The game has not started. It will open {date} (Game-Turn {turn}). This window is for preparation only: game actions \
+are refused (submit_plan is disabled). {budget_note}\n\
+\n\
+# Objectives\n{obj}\n\
+\n\
+# Your task\n\
+1. Study the rulebook as deeply as you judge useful (rules_toc, read_rules, search_rules): the sequence of play, how \
+your forces move, fight and are supplied, and the victory conditions. Note anything that will shape your play.\n\
+2. Study the initial situation (get_overview, then get_observation / list_legal_actions where useful).\n\
+3. Write your DOCTRINE with write_doctrine: (a) your assessment of the mechanics that matter most and how to use or \
+avoid them, (b) your campaign strategy, (c) your plan for the opening turns by formation/sector, (d) your logistics \
+plan. You will see it at the start of every later window.\n\
+4. Write an initial NOTEBOOK with write_notes, then call end_phase.",
+        date = st["date"].as_str().unwrap_or(""),
+        turn = game.game_turn,
+        obj = objectives(scenario, side),
     )
 }
 
@@ -113,7 +141,14 @@ Your window is OPEN.\n\n# Objectives\n{obj}\n\n",
         weather = st["weather"].as_str().unwrap_or(""),
         obj = objectives(scenario, side),
     ));
-    p.push_str("# Journal (written by the harness; most recent last)\n");
+    p.push_str("# Your doctrine (pre-game strategy & mechanics assessment)\n");
+    if memory.doctrine.trim().is_empty() {
+        p.push_str("(none written)\n");
+    } else {
+        p.push_str(&memory.doctrine);
+        p.push('\n');
+    }
+    p.push_str("\n# Journal (written by the harness; most recent last)\n");
     p.push_str(&memory.journal_digest(4));
     p.push_str("\n# Your notebook (from your last write_notes)\n");
     if memory.notes.trim().is_empty() {
@@ -122,6 +157,6 @@ Your window is OPEN.\n\n# Objectives\n{obj}\n\n",
         p.push_str(&memory.notes);
         p.push('\n');
     }
-    p.push_str("\nAct now: observe, decide, submit_plan, write_notes, end_phase.");
+    p.push_str("\nYour window is open: decide what to do this phase, act, update your notebook, end_phase.");
     p
 }

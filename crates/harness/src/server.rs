@@ -81,6 +81,31 @@ pub struct RuleParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ReadRulesParams {
+    /// Chapter ("15"), section ("15.2") or case ("15.29").
+    pub section: String,
+    /// Character offset for long chapters/sections (use the returned `next_offset`).
+    pub offset: Option<usize>,
+    /// Max characters to return (default 24000).
+    pub max_chars: Option<usize>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct SearchRulesParams {
+    /// Keywords; every word must appear (case-insensitive).
+    pub query: String,
+    /// Max matches (default 20).
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DoctrineParams {
+    /// Your complete doctrine (replaces the previous one; ≤15,000 characters): mechanics assessment,
+    /// campaign strategy, opening plan by formation/sector, logistics plan.
+    pub text: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct NotesParams {
     /// Your complete updated notebook (replaces the previous one; keep it under ~3000 characters).
     pub text: String,
@@ -98,7 +123,12 @@ pub struct PlanParams {
     /// {"id": n} — an action id from the latest list_legal_actions result;
     /// {"command": {...}} — a command in the engine's JSON form (as shown in listings);
     /// {"move_to": {"unit": <id>, "hex": [col, row], "mode": "Motorized"|"NonMotorized" (optional)}}
-    /// — step the unit toward the hex along legal moves until it arrives or cannot get closer.
+    /// — step the unit toward the hex along legal moves until it arrives or cannot get closer;
+    /// {"move_stack": {"from": [col,row], "to": [col,row], "mode"?}} — move_to for every own counter in a hex;
+    /// {"resupply_hex": [col,row]} — RefuelUnit + RearmUnit for every own unit there below capacity
+    /// (Organization phase; draws from dumps in that hex);
+    /// {"assault": {"target": [col,row], "units"?: [ids]}} — close assault with the listed units, or
+    /// with every own combat unit adjacent to the target.
     pub items: Vec<Value>,
 }
 
@@ -108,13 +138,14 @@ pub struct CnaServer {
     side: Side,
     tx: Sender<ToolRequest>,
     rules: Arc<RulesIndex>,
+    book: Arc<crate::rules::Rulebook>,
     #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
 
 impl CnaServer {
-    pub fn new(side: Side, tx: Sender<ToolRequest>, rules: Arc<RulesIndex>) -> Self {
-        CnaServer { side, tx, rules, tool_router: Self::tool_router() }
+    pub fn new(side: Side, tx: Sender<ToolRequest>, rules: Arc<RulesIndex>, book: Arc<crate::rules::Rulebook>) -> Self {
+        CnaServer { side, tx, rules, book, tool_router: Self::tool_router() }
     }
 
     async fn ask(&self, kind: RequestKind) -> String {
@@ -136,9 +167,14 @@ impl CnaServer {
         self.ask(RequestKind::Status).await
     }
 
-    #[tool(description = "Your side's view of the board under fog of war: your units in full detail; enemy units by position (TOE strength only if revealed by reconnaissance); supply dumps (enemy contents hidden), minefields, and raiders you can see. Optional filters: near [col,row] + radius, include sections.")]
+    #[tool(description = "Your side's view of the board under fog of war. Own units are compact one-liners by default (id, hex, toe, cohesion, cp, fuel, ammo, flags, legal-action count); pass `detail: true` or `units: [ids]` for full records incl. rule-cited blockers. Enemy units by position (strength only if revealed); dumps (enemy contents hidden), minefields, raiders. Filters: near [col,row] + radius, include sections, units.")]
     async fn get_observation(&self, Parameters(f): Parameters<ObserveFilter>) -> String {
         self.ask(RequestKind::Observe(f)).await
+    }
+
+    #[tool(description = "Theatre summary — start here in large scenarios: your stacks by hex (contact first), formations, supply problems (out of water/fuel/ammo, disorganized, pinned), enemy contacts by hex, and your largest dumps. A few KB instead of the full unit list.")]
+    async fn get_overview(&self) -> String {
+        self.ask(RequestKind::Overview).await
     }
 
     #[tool(description = "Legal actions for your side right now, with stable ids, a plain-English description, and the exact command JSON. Filter by unit id or command kind; paginate with offset/limit. Also returns counts by kind.")]
@@ -154,6 +190,26 @@ impl CnaServer {
     #[tool(description = "Execute a plan: a list of actions applied in order. Returns a result per item (ok + outcome, or the engine's rejection reason). Failed items don't stop the rest. You may submit several plans in one window; call end_phase when done.")]
     async fn submit_plan(&self, Parameters(p): Parameters<PlanParams>) -> String {
         self.ask(RequestKind::SubmitPlan(p.items)).await
+    }
+
+    #[tool(description = "Table of contents of The Campaign for North Africa rulebook: every chapter and section with its title. Available at any time.")]
+    async fn rules_toc(&self) -> String {
+        self.book.toc().to_string()
+    }
+
+    #[tool(description = "Read the rulebook: a whole chapter (\"15\"), a section (\"15.2\") or one case (\"15.29\"). Long text is paginated — pass the returned next_offset as offset. Available at any time.")]
+    async fn read_rules(&self, Parameters(p): Parameters<ReadRulesParams>) -> String {
+        self.book.read(&p.section, p.offset.unwrap_or(0), p.max_chars.unwrap_or(crate::rules::PAGE_CHARS).min(60_000)).to_string()
+    }
+
+    #[tool(description = "Search the rulebook for cases containing all the given keywords (e.g. \"water well\", \"retreat before assault\"). Returns ids, titles and snippets.")]
+    async fn search_rules(&self, Parameters(p): Parameters<SearchRulesParams>) -> String {
+        self.book.search(&p.query, p.limit.unwrap_or(20).min(60)).to_string()
+    }
+
+    #[tool(description = "Replace your DOCTRINE — your own assessment of the mechanics that matter and your campaign strategy (≤15,000 chars). Written in the pre-game planning window; revise when you learn something important. Shown at the start of every window.")]
+    async fn write_doctrine(&self, Parameters(p): Parameters<DoctrineParams>) -> String {
+        self.ask(RequestKind::WriteDoctrine(p.text)).await
     }
 
     #[tool(description = "Replace your commander's notebook — strategy, formation tasks, enemy intel, supply concerns, lessons. It is shown to you at the start of every later window (each window is a fresh session). Call it before end_phase.")]
@@ -191,8 +247,8 @@ impl CnaServer {
 impl ServerHandler for CnaServer {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(format!(
-            "You are playing the {:?} side of SPI's The Campaign for North Africa. Workflow per decision \
-             window: get_status → get_observation → list_legal_actions → submit_plan (one or more) → end_phase.",
+            "You are playing the {:?} side of SPI's The Campaign for North Africa. The rulebook is available through \
+             rules_toc / read_rules / search_rules. Each decision window ends with end_phase.",
             self.side
         ))
     }
@@ -248,7 +304,7 @@ impl Drop for RunningServer {
 }
 
 /// Start the HTTP server on `127.0.0.1:port` (0 = ephemeral) on its own thread + runtime.
-pub fn start(endpoints: Vec<Endpoint>, rules: Arc<RulesIndex>, port: u16) -> anyhow::Result<RunningServer> {
+pub fn start(endpoints: Vec<Endpoint>, rules: Arc<RulesIndex>, book: Arc<crate::rules::Rulebook>, port: u16) -> anyhow::Result<RunningServer> {
     let config = StreamableHttpServerConfig::default();
     let cancel = config.cancellation_token.clone();
     let (ready_tx, ready_rx) = std::sync::mpsc::channel::<anyhow::Result<u16>>();
@@ -263,9 +319,9 @@ pub fn start(endpoints: Vec<Endpoint>, rules: Arc<RulesIndex>, port: u16) -> any
         rt.block_on(async move {
             let mut router = axum::Router::new();
             for ep in endpoints {
-                let (side, tx, rules) = (ep.side, ep.tx.clone(), rules.clone());
+                let (side, tx, rules, book) = (ep.side, ep.tx.clone(), rules.clone(), book.clone());
                 let service: StreamableHttpService<CnaServer, LocalSessionManager> = StreamableHttpService::new(
-                    move || Ok(CnaServer::new(side, tx.clone(), rules.clone())),
+                    move || Ok(CnaServer::new(side, tx.clone(), rules.clone(), book.clone())),
                     Default::default(),
                     config.clone(),
                 );

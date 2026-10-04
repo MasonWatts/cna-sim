@@ -59,6 +59,10 @@ pub struct ObserveFilter {
     /// Sections to include: any of `own_units`, `enemy_units`, `supply_dumps`, `minefields`,
     /// `raiders`. Default: all.
     pub include: Option<Vec<String>>,
+    /// Only these own unit ids (implies full detail for them).
+    pub units: Option<Vec<u32>>,
+    /// Full per-unit detail (default false = compact one-line-per-unit form).
+    pub detail: Option<bool>,
 }
 
 impl ObserveFilter {
@@ -86,9 +90,15 @@ pub fn observation(game: &GameState, side: Side, f: &ObserveFilter) -> Value {
             .iter()
             .filter(|v| v.friendly)
             .filter(|v| f.in_range(game.effective_hex(v.id)))
+            .filter(|v| f.units.as_ref().map_or(true, |ids| ids.contains(&v.id.0)))
             .filter_map(|v| {
                 let n = legal.iter().filter(|c| command_mentions_unit(c, v.id.0)).count();
-                own_unit_json(game, v.id, (game.active_player == side).then_some(n))
+                let legal_now = (game.active_player == side).then_some(n);
+                if f.detail.unwrap_or(false) || f.units.is_some() {
+                    own_unit_json(game, v.id, legal_now)
+                } else {
+                    own_unit_compact(game, v.id, legal_now)
+                }
             })
             .collect();
         out.insert("own_units".into(), Value::Array(own));
@@ -199,6 +209,159 @@ pub fn unit_blockers(game: &GameState, id: UnitId, legal_now: Option<usize>) -> 
         b.push("No legal action right now (terrain, ZOC, stacking, or no target in range).".into());
     }
     b
+}
+
+/// One-line form of an own unit (the default): enough to plan with; ask for `detail` or `units`
+/// for the full record.
+fn own_unit_compact(game: &GameState, id: UnitId, legal_now: Option<usize>) -> Option<Value> {
+    let u = game.units.get(&id)?;
+    let hex = game.effective_hex(id)?;
+    let flags: Vec<&str> = [
+        (u.stages_without_water > 0, "NO_WATER"),
+        (game.unit_is_motorized(id) && u.fuel == 0, "NO_FUEL"),
+        (matches!(u.composition, cna_engine::state::unit::Composition::Weapons { .. }) && u.ammo == 0, "NO_AMMO"),
+        (u.status.pinned, "PINNED"),
+        (u.cohesion <= -26, "DISORGANIZED"),
+        (u.status.in_contact, "IN_CONTACT"),
+        (u.status.engaged, "ENGAGED"),
+        (u.attached_parent.is_some(), "ATTACHED"),
+    ]
+    .into_iter()
+    .filter_map(|(on, f)| on.then_some(f))
+    .collect();
+    Some(json!({
+        "id": id.0,
+        "name": u.name,
+        "hex": [hex.col, hex.row],
+        "toe": u.total_toe(),
+        "coh": u.cohesion,
+        "cp": format!("{}/{}", u.cp_expended.0 / 10, game.effective_cpa(id).unwrap_or(0)),
+        "fuel": u.fuel,
+        "ammo": u.ammo,
+        "flags": flags,
+        "legal": legal_now,
+    }))
+}
+
+/// Root of a unit's organizational chain (its top HQ), for formation grouping.
+fn formation_root(game: &GameState, id: UnitId) -> UnitId {
+    let mut cur = id;
+    for _ in 0..16 {
+        match game.units.get(&cur).and_then(|u| u.assigned_parent.or(u.attached_parent)) {
+            Some(p) => cur = p,
+            None => break,
+        }
+    }
+    cur
+}
+
+/// Theatre-level summary for large scenarios: own stacks, formations, supply problems, enemy
+/// contacts by hex, and own dumps — a few KB instead of the full unit list.
+pub fn overview(game: &GameState, side: Side) -> Value {
+    use std::collections::BTreeMap;
+    let views = game.observe_units(side);
+    let own: Vec<UnitId> = views
+        .iter()
+        .filter(|v| v.friendly)
+        .map(|v| v.id)
+        .filter(|id| game.effective_hex(*id).is_some())
+        .collect();
+    // Supply / status problems.
+    let mut problems: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for &id in &own {
+        let u = &game.units[&id];
+        let mut push = |k: &'static str| problems.entry(k).or_default().push(format!("{} ({})", u.name, id.0));
+        if u.stages_without_water > 0 { push("out_of_water"); }
+        if game.unit_is_motorized(id) && u.fuel == 0 { push("out_of_fuel"); }
+        if matches!(u.composition, cna_engine::state::unit::Composition::Weapons { .. }) && u.ammo == 0 { push("out_of_ammo"); }
+        if u.cohesion <= -26 { push("disorganized"); }
+        if u.status.pinned { push("pinned"); }
+        if u.turns_without_stores > 0 { push("short_of_stores"); }
+    }
+    let problems: BTreeMap<&str, Value> = problems
+        .into_iter()
+        .map(|(k, v)| (k, json!({"count": v.len(), "units": v.iter().take(12).collect::<Vec<_>>()})))
+        .collect();
+    // Own stacks by hex.
+    let mut stacks: BTreeMap<(i16, i16), Vec<UnitId>> = BTreeMap::new();
+    for &id in &own {
+        let h = game.effective_hex(id).unwrap();
+        stacks.entry((h.col, h.row)).or_default().push(id);
+    }
+    let mut stack_list: Vec<Value> = stacks
+        .iter()
+        .map(|(&(c, r), ids)| {
+            let toe: u32 = ids.iter().map(|i| game.units[i].total_toe()).sum();
+            let contact = ids.iter().any(|i| game.units[i].status.in_contact || game.units[i].status.engaged);
+            let names: Vec<&str> = ids.iter().take(4).map(|i| game.units[i].name.as_str()).collect();
+            json!({"hex": hex_label(HexCoord::new(c, r)), "coord": [c, r], "units": ids.len(), "toe": toe,
+                   "in_contact": contact, "names": names, "more": ids.len().saturating_sub(4)})
+        })
+        .collect();
+    stack_list.sort_by_key(|v| (!v["in_contact"].as_bool().unwrap_or(false), std::cmp::Reverse(v["toe"].as_u64().unwrap_or(0))));
+    let stacks_total = stack_list.len();
+    stack_list.truncate(60);
+    // Formations (top HQ → members).
+    let mut forms: BTreeMap<u32, Vec<UnitId>> = BTreeMap::new();
+    for &id in &own {
+        forms.entry(formation_root(game, id).0).or_default().push(id);
+    }
+    let mut form_list: Vec<Value> = forms
+        .iter()
+        .filter(|(_, m)| m.len() > 1)
+        .map(|(&root, m)| {
+            let toe: u32 = m.iter().map(|i| game.units[i].total_toe()).sum();
+            let mut hexes: Vec<String> = m.iter().filter_map(|i| game.effective_hex(*i)).map(hex_label).collect();
+            hexes.sort();
+            hexes.dedup();
+            json!({"hq_id": root, "hq": game.units.get(&UnitId(root)).map(|u| u.name.clone()), "units": m.len(),
+                   "toe": toe, "hexes": hexes.iter().take(6).collect::<Vec<_>>(), "hex_count": hexes.len()})
+        })
+        .collect();
+    form_list.sort_by_key(|v| std::cmp::Reverse(v["toe"].as_u64().unwrap_or(0)));
+    form_list.truncate(40);
+    // Enemy contacts by hex.
+    let mut enemy: BTreeMap<(i16, i16), Vec<&cna_engine::state::view::UnitView>> = BTreeMap::new();
+    for v in views.iter().filter(|v| !v.friendly) {
+        if let Some(h) = v.hex {
+            enemy.entry((h.col, h.row)).or_default().push(v);
+        }
+    }
+    let enemy_total: usize = enemy.values().map(|v| v.len()).sum();
+    let mut enemy_list: Vec<Value> = enemy
+        .iter()
+        .map(|(&(c, r), vs)| {
+            let names: Vec<&str> = vs.iter().take(3).map(|v| v.name.as_str()).collect();
+            let sizes: Vec<String> = vs.iter().map(|v| format!("{:?}", v.org_size)).collect();
+            json!({"hex": hex_label(HexCoord::new(c, r)), "coord": [c, r], "units": vs.len(), "names": names, "sizes": sizes})
+        })
+        .collect();
+    enemy_list.sort_by_key(|v| std::cmp::Reverse(v["units"].as_u64().unwrap_or(0)));
+    enemy_list.truncate(60);
+    // Own real dumps.
+    let mut dumps: Vec<Value> = game
+        .observe_supply_dumps(side)
+        .into_iter()
+        .filter(|d| d.friendly && d.dummy != Some(true))
+        .filter_map(|d| {
+            let c = d.contents?;
+            Some(json!({"at": location_json(&d.location), "fuel": c.fuel, "ammo": c.ammo, "stores": c.stores, "water": c.water}))
+        })
+        .collect();
+    dumps.sort_by_key(|v| std::cmp::Reverse(["fuel", "ammo", "stores", "water"].iter().map(|k| v[*k].as_u64().unwrap_or(0)).sum::<u64>()));
+    let dumps_total = dumps.len();
+    dumps.truncate(30);
+    let total_toe: u32 = own.iter().map(|i| game.units[i].total_toe()).sum();
+    json!({
+        "status": status(game, side, true),
+        "own": {"units_on_map": own.len(), "total_toe": total_toe, "stacks": stacks_total, "formations": forms.len()},
+        "problems": problems,
+        "stacks": stack_list,
+        "formations": form_list,
+        "enemy_contacts": {"units_visible": enemy_total, "by_hex": enemy_list},
+        "own_dumps": {"count": dumps_total, "largest": dumps},
+        "note": "Lists are capped (contact stacks and largest first). Drill down with get_observation (near / units / detail) and list_legal_actions (unit / kind).",
+    })
 }
 
 /// Full detail for one of the viewer's own units.
@@ -358,7 +521,7 @@ mod tests {
         // An unexplained empty legal list is still called out.
         g.units.get_mut(&tank).unwrap().stages_without_water = 0;
         assert!(unit_blockers(&g, tank, Some(0))[0].contains("No legal action"));
-        let obs = observation(&g, cna_engine::reference::units::Side::Commonwealth, &ObserveFilter::default());
+        let obs = observation(&g, cna_engine::reference::units::Side::Commonwealth, &ObserveFilter { detail: Some(true), ..Default::default() });
         let u0 = &obs["own_units"][0];
         assert!(u0.get("water").is_some() && u0.get("blockers").is_some() && u0.get("out_of_water").is_some());
     }

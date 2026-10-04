@@ -109,6 +109,32 @@ Each window is a **fresh** model session (bounded context and cost); continuity 
   window's exact prompts to `w####-<side>-<phase>.prompt.md`. External clients get the same context
   via `get_briefing`.
 
+### 3.3b Scale, robustness and cost (M1.2)
+
+- **Observation at scale:** `get_overview` (≈8 KB for the 210-unit Axis campaign vs 115 KB for the
+  full unit list): own stacks by hex (contact first), formations, supply problems, enemy contacts by
+  hex, largest dumps. `get_observation` is compact by default (one line per unit); `detail` or
+  `units` gives full records with rule-cited blockers. Journal diffs are ordered by importance.
+- **Macros:** `move_stack` (every counter in a hex), `resupply_hex` (refuel + rearm a hex from its
+  dumps), `assault` (every adjacent combat unit by default).
+- **Retry:** a session that crashes or never engages is relaunched once (`-tryN` transcript).
+- **Checkpoint/resume:** the command log is flushed per attempt; each side's notebook/journal is
+  saved as `memory-<side>.json` per window. `--resume <commands.jsonl>` replays the log exactly,
+  restores memory, and continues live.
+- **Pre-game planning (M1.3):** one read-only window per side before its first decision, with its
+  own allowance (`--pregame-model/-budget-usd/-timeout`, `--no-pregame`): it studies the rulebook
+  (`rules_toc` / `read_rules` / `search_rules`, available in every window) and the situation and
+  writes a **doctrine** (`write_doctrine`, ≤15k chars) shown in every later window. The system prompt
+  is lean (role, windows, tools, engine-only facts); `--coaching` restores the harness's mechanics
+  summary for A/B tests.
+- **Cost:** one model for every phase by default; `--routine-model` optionally overrides non-Movement phases, `--budget-usd` per window,
+  `--max-cost-usd` per game (further windows pass once reached); per-window and running spend is
+  logged. Sessions get a grace period after `end_phase`, then their whole process group is killed.
+- **Result:** `<out>.result.json` and a RESULT line — campaign §64.71/§64.72 automatic win and
+  §64.73–§64.76 VP/level, §60.81 level for Scenario 1, surviving strength for all.
+- Measured (campaign, 1 Game-Turn, Claude vs Claude, Opus for Movement + Sonnet routine):
+  18 windows, ≈ $0.9 total.
+
 ### 3.4 CLI
 
 ```

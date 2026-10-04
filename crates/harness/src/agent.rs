@@ -38,7 +38,9 @@ pub enum RequestKind {
     SubmitPlan(Vec<Value>),
     EndPhase,
     WaitForTurn,
+    Overview,
     WriteNotes(String),
+    WriteDoctrine(String),
     ReadNotes,
     GetJournal(Option<usize>),
     GetBriefing,
@@ -53,6 +55,29 @@ enum PlanItem {
     Command(Command),
     /// Macro: step `unit` toward `hex` along legal `MoveStep`s until it arrives or can't progress.
     MoveTo { unit: UnitId, hex: HexCoord, mode: Option<MoveMode>, steps: u32 },
+    /// Macro: `move_to` for every own independent counter in hex `from`.
+    MoveStack { from: HexCoord, to: HexCoord, mode: Option<MoveMode> },
+    /// Macro: RefuelUnit + RearmUnit for every own counter in `hex` that is below capacity.
+    ResupplyHex(HexCoord),
+    /// Macro: CloseAssault on `target` by `units`, or by every own combat counter adjacent to it.
+    Assault { target: HexCoord, units: Option<Vec<UnitId>> },
+}
+
+fn parse_hex(v: Option<&Value>, what: &str) -> Result<HexCoord, String> {
+    let a = v.and_then(|x| x.as_array()).ok_or(format!("{what} must be [col, row]"))?;
+    match (a.first().and_then(|x| x.as_i64()), a.get(1).and_then(|x| x.as_i64())) {
+        (Some(c), Some(r)) => Ok(HexCoord::new(c as i16, r as i16)),
+        _ => Err(format!("{what} must be [col, row]")),
+    }
+}
+
+fn parse_mode(v: Option<&Value>) -> Result<Option<MoveMode>, String> {
+    match v.and_then(|x| x.as_str()) {
+        Some("Motorized") => Ok(Some(MoveMode::Motorized)),
+        Some("NonMotorized") => Ok(Some(MoveMode::NonMotorized)),
+        None => Ok(None),
+        Some(other) => Err(format!("unknown mode `{other}` (Motorized | NonMotorized)")),
+    }
 }
 
 fn parse_item(v: &Value) -> Result<PlanItem, String> {
@@ -77,7 +102,30 @@ fn parse_item(v: &Value) -> Result<PlanItem, String> {
         };
         return Ok(PlanItem::MoveTo { unit: UnitId(unit), hex: HexCoord::new(c as i16, r as i16), mode, steps: 0 });
     }
-    Err("each plan item must be {\"id\": n}, {\"command\": {...}} or {\"move_to\": {\"unit\", \"hex\", \"mode\"?}}".into())
+    if let Some(m) = v.get("move_stack") {
+        return Ok(PlanItem::MoveStack {
+            from: parse_hex(m.get("from"), "move_stack.from")?,
+            to: parse_hex(m.get("to"), "move_stack.to")?,
+            mode: parse_mode(m.get("mode"))?,
+        });
+    }
+    if let Some(h) = v.get("resupply_hex") {
+        return Ok(PlanItem::ResupplyHex(parse_hex(Some(h), "resupply_hex")?));
+    }
+    if let Some(a) = v.get("assault") {
+        let units = match a.get("units") {
+            None => None,
+            Some(u) => Some(
+                u.as_array()
+                    .ok_or("assault.units must be a list of unit ids")?
+                    .iter()
+                    .map(|x| x.as_u64().map(|n| UnitId(n as u32)).ok_or("assault.units must be ids"))
+                    .collect::<Result<Vec<_>, _>>()?,
+            ),
+        };
+        return Ok(PlanItem::Assault { target: parse_hex(a.get("target"), "assault.target")?, units });
+    }
+    Err("each plan item must be one of {\"id\"}, {\"command\"}, {\"move_to\"}, {\"move_stack\"}, {\"resupply_hex\"}, {\"assault\"}".into())
 }
 
 /// Per-window bookkeeping.
@@ -93,6 +141,28 @@ struct Window {
     current: Option<(PlanItem, String)>,
     /// Every result reported this window (for the journal).
     all_results: Vec<Value>,
+    /// The prompts the session was launched with (for a retry).
+    prompts: (String, String),
+    /// Relaunches after an abnormal session end.
+    retries: u32,
+    /// Tool requests handled this window (0 = the session never engaged).
+    requests: u32,
+    /// Model spend already recorded for sessions retired mid-window (retries).
+    cost: f64,
+    /// The pre-game planning window (read-only: game actions refused).
+    pregame: bool,
+    /// This window's time limit.
+    timeout: Duration,
+}
+
+/// The pre-game planning window's separate allowance.
+#[derive(Debug, Clone)]
+pub struct PregameConfig {
+    pub timeout: Duration,
+    /// Model override (`None` = the launcher's Movement model).
+    pub model: Option<String>,
+    /// Per-session spend cap override (USD, as passed to the client).
+    pub budget_usd: Option<String>,
 }
 
 pub struct McpAgent {
@@ -110,6 +180,11 @@ pub struct McpAgent {
     scenario: String,
     /// Where notebook/journal snapshots are written for inspection.
     memory_dir: Option<std::path::PathBuf>,
+    budget_warned: bool,
+    /// Pre-game planning window settings (`None` = no pre-game window).
+    pub pregame: Option<PregameConfig>,
+    /// Append the harness's mechanics coaching to the system prompt.
+    pub coaching: bool,
 }
 
 impl McpAgent {
@@ -125,7 +200,22 @@ impl McpAgent {
             memory: Memory::default(),
             scenario: String::new(),
             memory_dir: None,
+            budget_warned: false,
+            pregame: None,
+            coaching: false,
         }
+    }
+
+    /// Resume from a checkpointed memory (notebook + journal + window count).
+    pub fn with_memory(mut self, memory: Memory) -> Self {
+        self.windows_opened = memory.windows;
+        self.memory = memory;
+        self
+    }
+
+    fn memory_path(&self) -> Option<std::path::PathBuf> {
+        let side = format!("{:?}", self.side).to_lowercase();
+        self.memory_dir.as_ref().map(|d| d.join(format!("memory-{side}.json")))
     }
 
     /// Set the scenario (for objectives) and a directory for notebook/journal snapshots.
@@ -136,19 +226,34 @@ impl McpAgent {
     }
 
     fn open_window(&mut self, game: &GameState) {
+        self.open_window_ex(game, false);
+    }
+
+    /// Open a decision window, or (`pregame`) the read-only pre-game planning window.
+    fn open_window_ex(&mut self, game: &GameState, pregame: bool) {
         self.windows_opened += 1;
-        let key = game.decision_window_key();
+        let key = if pregame { "pregame".to_string() } else { game.decision_window_key() };
         // With a launcher, anything still queued belongs to a previous (killed) session.
         if self.launcher.is_some() {
             while let Ok(req) = self.rx.try_recv() {
                 let _ = req.reply.send(json!({"error": "stale request from a closed decision window"}));
             }
         }
-        self.memory.begin_window(game, self.side);
+        let sys = briefing::system_prompt(self.side, self.coaching);
+        let (user, timeout, model, budget) = if pregame {
+            let cfg = self.pregame.clone().expect("pregame config");
+            let note = format!(
+                "You have up to {} minutes{} for this planning window.",
+                cfg.timeout.as_secs() / 60,
+                cfg.budget_usd.as_ref().map(|b| format!(" and ${b}")).unwrap_or_default()
+            );
+            (briefing::pregame_prompt(&self.scenario, self.side, game, &note), cfg.timeout, cfg.model, cfg.budget_usd)
+        } else {
+            self.memory.begin_window(game, self.side);
+            (briefing::window_prompt(&self.scenario, self.side, game, &self.memory), self.window_timeout, None, None)
+        };
         let session = self.launcher.as_ref().map(|l| {
-            let sys = briefing::system_prompt(self.side);
-            let user = briefing::window_prompt(&self.scenario, self.side, game, &self.memory);
-            l.start(self.side, game, self.windows_opened, &sys, &user)
+            l.start_with(self.side, game, self.windows_opened, &sys, &user, model.as_deref(), budget.as_deref(), pregame)
         });
         self.window = Some(Window {
             key,
@@ -160,7 +265,27 @@ impl McpAgent {
             listing: Vec::new(),
             current: None,
             all_results: Vec::new(),
+            prompts: (sys, user),
+            retries: 0,
+            requests: 0,
+            cost: 0.0,
+            pregame,
+            timeout,
         });
+    }
+
+    /// Run the pre-game planning window to completion (blocking): the player studies the rules and
+    /// the initial situation and writes its doctrine; game actions are refused.
+    fn run_pregame(&mut self, game: &GameState) {
+        self.open_window_ex(game, true);
+        eprintln!("[harness] {:?} pre-game planning window open", self.side);
+        loop {
+            match self.wait(game) {
+                Wake::Command(_) => continue, // unreachable: plans are refused in the pre-game window
+                Wake::Close => break,
+            }
+        }
+        self.close_window(game);
     }
 
     fn close_window(&mut self, game: &GameState) {
@@ -169,8 +294,29 @@ impl McpAgent {
         if let Some(reply) = w.pending_reply.take() {
             let _ = reply.send(json!({"results": w.results, "window_closed": true}));
         }
+        let mut cost = w.cost;
         if let Some(s) = w.session.take() {
-            s.finish();
+            cost += s.finish();
+        }
+        if let Some(l) = &self.launcher {
+            let (side_total, game_total) = l.record_cost(self.side, cost);
+            eprintln!(
+                "[harness] {:?} {} closed: ${cost:.3} (side ${side_total:.2}, game ${game_total:.2})",
+                self.side,
+                if w.pregame { "pre-game window".to_string() } else { format!("window {}", self.windows_opened) }
+            );
+        }
+        if w.pregame {
+            self.memory.pregame_done = true;
+            if let Some(dir) = &self.memory_dir {
+                let side = format!("{:?}", self.side).to_lowercase();
+                let _ = std::fs::write(dir.join(format!("doctrine-{side}.md")), &self.memory.doctrine);
+                let _ = std::fs::write(dir.join(format!("notes-{side}.md")), &self.memory.notes);
+            }
+            if let Some(path) = self.memory_path() {
+                let _ = self.memory.save(&path);
+            }
+            return;
         }
         for r in &w.all_results {
             let ok = r["ok"] == true;
@@ -188,6 +334,11 @@ impl McpAgent {
             let side = format!("{:?}", self.side).to_lowercase();
             let _ = std::fs::write(dir.join(format!("notes-{side}.md")), &self.memory.notes);
             let _ = std::fs::write(dir.join(format!("journal-{side}.md")), self.memory.journal_full(None));
+            let _ = std::fs::write(dir.join(format!("doctrine-{side}.md")), &self.memory.doctrine);
+        }
+        // Checkpoint: the memory needed to resume this side after a harness restart.
+        if let Some(path) = self.memory_path() {
+            let _ = self.memory.save(&path);
         }
     }
 
@@ -206,6 +357,70 @@ impl McpAgent {
                         "error": "no such id in the latest list_legal_actions listing"})),
                 },
                 PlanItem::Command(c) => {
+                    w.current = Some((PlanItem::Command(c.clone()), cna_replay::describe_action(game, &c)));
+                    return Some(c);
+                }
+                PlanItem::MoveStack { from, to, mode } => {
+                    let side = game.units.values().find(|u| u.hex() == Some(from)).map(|u| u.nationality.side());
+                    let mut ids: Vec<UnitId> = game
+                        .units
+                        .values()
+                        .filter(|u| u.hex() == Some(from) && Some(u.nationality.side()) == side)
+                        .map(|u| u.id)
+                        .collect();
+                    ids.sort();
+                    if ids.is_empty() {
+                        w.results.push(json!({"item": format!("move_stack {}", observe::hex_label(from)), "ok": false,
+                            "error": "no own counters in that hex"}));
+                    }
+                    for id in ids.into_iter().rev() {
+                        w.queue.push_front(PlanItem::MoveTo { unit: id, hex: to, mode, steps: 0 });
+                    }
+                }
+                PlanItem::ResupplyHex(hex) => {
+                    let mut ids: Vec<UnitId> = game.units.values().filter(|u| game.effective_hex(u.id) == Some(hex)).map(|u| u.id).collect();
+                    ids.sort();
+                    let mut cmds = Vec::new();
+                    for id in ids {
+                        let u = &game.units[&id];
+                        if u.fuel < game.unit_fuel_capacity(id) {
+                            cmds.push(PlanItem::Command(Command::RefuelUnit { unit: id }));
+                        }
+                        let cap = game.reference.ammo_rates.map_or(0, |r| r.barrage * u.total_toe());
+                        if u.ammo < cap {
+                            cmds.push(PlanItem::Command(Command::RearmUnit { unit: id }));
+                        }
+                    }
+                    if cmds.is_empty() {
+                        w.results.push(json!({"item": format!("resupply_hex {}", observe::hex_label(hex)), "ok": true,
+                            "note": "every unit there is already full"}));
+                    }
+                    for c in cmds.into_iter().rev() {
+                        w.queue.push_front(c);
+                    }
+                }
+                PlanItem::Assault { target, units } => {
+                    let attackers: Vec<UnitId> = match units {
+                        Some(u) => u,
+                        None => {
+                            let side = game.active_player;
+                            let mut v: Vec<UnitId> = game
+                                .units
+                                .values()
+                                .filter(|u| u.nationality.side() == side && u.hex().is_some_and(|h| h.is_adjacent(target)))
+                                .filter(|u| game.is_combat_unit(u.id) && !u.status.pinned && u.cohesion > -26)
+                                .map(|u| u.id)
+                                .collect();
+                            v.sort();
+                            v
+                        }
+                    };
+                    if attackers.is_empty() {
+                        w.results.push(json!({"item": format!("assault {}", observe::hex_label(target)), "ok": false,
+                            "error": "no own combat units adjacent to the target"}));
+                        continue;
+                    }
+                    let c = Command::CloseAssault { attackers, target };
                     w.current = Some((PlanItem::Command(c.clone()), cna_replay::describe_action(game, &c)));
                     return Some(c);
                 }
@@ -255,9 +470,18 @@ impl McpAgent {
 
     fn handle(&mut self, game: &GameState, req: ToolRequest) -> Option<Command> {
         let side = self.side;
+        if let Some(w) = self.window.as_mut() {
+            w.requests += 1;
+        }
         match req.kind {
             RequestKind::Status | RequestKind::WaitForTurn => {
-                let _ = req.reply.send(observe::status(game, side, true));
+                let mut st = observe::status(game, side, true);
+                if self.window.as_ref().is_some_and(|w| w.pregame) {
+                    st["window"] = json!("pregame");
+                    st["pregame_planning"] = json!(true);
+                    st["note"] = json!("Pre-game planning window: study the rules and situation, write_doctrine + write_notes, then end_phase. Game actions are refused.");
+                }
+                let _ = req.reply.send(st);
             }
             RequestKind::Observe(f) => {
                 let _ = req.reply.send(observe::observation(game, side, &f));
@@ -272,6 +496,11 @@ impl McpAgent {
             }
             RequestKind::SubmitPlan(items) => {
                 let w = self.window.as_mut().expect("window open");
+                if w.pregame {
+                    let _ = req.reply.send(json!({"error": "this is the pre-game planning window — game actions are not accepted; write your doctrine and notes, then end_phase",
+                        "items_refused": items.len()}));
+                    return None;
+                }
                 if w.pending_reply.is_some() {
                     let _ = req.reply.send(json!({"error": "a plan is already executing"}));
                     return None;
@@ -291,6 +520,14 @@ impl McpAgent {
                 self.close_window(game);
                 return None;
             }
+            RequestKind::Overview => {
+                let _ = req.reply.send(observe::overview(game, side));
+            }
+            RequestKind::WriteDoctrine(text) => {
+                let truncated = self.memory.write_doctrine(&text);
+                let _ = req.reply.send(json!({"ok": true, "chars": self.memory.doctrine.chars().count(),
+                    "truncated": truncated, "max_chars": crate::memory::DOCTRINE_MAX_CHARS}));
+            }
             RequestKind::WriteNotes(text) => {
                 let truncated = self.memory.write_notes(&text);
                 let _ = req.reply.send(json!({"ok": true, "chars": self.memory.notes.chars().count(),
@@ -303,9 +540,14 @@ impl McpAgent {
                 let _ = req.reply.send(json!({"journal": self.memory.journal_full(last)}));
             }
             RequestKind::GetBriefing => {
+                let pregame = self.window.as_ref().is_some_and(|w| w.pregame);
+                let window_prompt = match (pregame, self.window.as_ref()) {
+                    (true, Some(w)) => w.prompts.1.clone(),
+                    _ => briefing::window_prompt(&self.scenario, side, game, &self.memory),
+                };
                 let _ = req.reply.send(json!({
-                    "system_prompt": briefing::system_prompt(side),
-                    "window_prompt": briefing::window_prompt(&self.scenario, side, game, &self.memory),
+                    "system_prompt": briefing::system_prompt(side, self.coaching),
+                    "window_prompt": window_prompt,
                 }));
             }
         }
@@ -344,14 +586,41 @@ impl McpAgent {
             }
             let Some(w) = self.window.as_mut() else { return Wake::Close };
             let elapsed = w.opened.elapsed();
-            if elapsed >= self.window_timeout {
+            if elapsed >= w.timeout {
                 eprintln!("[harness] {:?} window {} timed out", self.side, w.key);
                 return Wake::Close;
             }
-            if w.session.as_mut().is_some_and(|s| s.exited()) {
-                return Wake::Close; // the player process ended without end_phase
+            if let Some(ok) = w.session.as_mut().and_then(|s| s.poll()) {
+                // The player process ended without end_phase. Retry once if it crashed or never
+                // engaged (an API/launch failure must not silently forfeit a phase); otherwise the
+                // player simply stopped — close the window.
+                if (!ok || w.requests == 0) && w.retries < 1 {
+                    w.retries += 1;
+                    if let Some(old) = w.session.take() {
+                        w.cost += old.finish();
+                    }
+                    eprintln!("[harness] {:?} window {} session ended abnormally — retrying once", self.side, self.windows_opened);
+                    let note = "\n\n(NOTE: a previous session for this window ended unexpectedly. Check get_status / get_observation —                                 some actions may already have been applied — then continue and call end_phase.)";
+                    let (sys, user) = (w.prompts.0.clone(), format!("{}{note}", w.prompts.1));
+                    let side = self.side;
+                    let n = self.windows_opened;
+                    let pregame = w.pregame;
+                    let (m, b) = if pregame {
+                        let c = self.pregame.clone().expect("pregame config");
+                        (c.model, c.budget_usd)
+                    } else {
+                        (None, None)
+                    };
+                    let new = self.launcher.as_ref().map(|l| l.start_with(side, game, n, &sys, &user, m.as_deref(), b.as_deref(), pregame));
+                    if let Some(w) = self.window.as_mut() {
+                        w.session = new;
+                        w.requests = 0;
+                    }
+                    continue;
+                }
+                return Wake::Close;
             }
-            let slice = (self.window_timeout - elapsed).min(Duration::from_millis(250));
+            let slice = (w.timeout - elapsed).min(Duration::from_millis(250));
             match self.rx.recv_timeout(slice) {
                 Ok(req) => {
                     if let Some(c) = self.handle(game, req) {
@@ -374,9 +643,25 @@ impl Agent for McpAgent {
     }
 
     fn choose(&mut self, game: &GameState, side: Side) -> Option<Command> {
+        // The pre-game planning window runs once, before this side's first decision.
+        if self.pregame.is_some() && !self.memory.pregame_done && self.window.is_none() {
+            if self.launcher.as_ref().is_some_and(|l| l.budget_exhausted()) {
+                self.memory.pregame_done = true;
+            } else {
+                self.run_pregame(game);
+            }
+        }
         let key = game.decision_window_key();
         if self.window.as_ref().map(|w| &w.key) != Some(&key) {
             self.close_window(game);
+            // Whole-game spend cap reached: stop launching (the side passes from here on).
+            if self.launcher.as_ref().is_some_and(|l| l.budget_exhausted()) {
+                if !self.budget_warned {
+                    self.budget_warned = true;
+                    eprintln!("[harness] {:?}: game spend cap reached — remaining windows pass without a model call", self.side);
+                }
+                return None;
+            }
             // Auto-pass windows with nothing enumerable to do — no model call (unless disabled).
             if self.auto_pass && game.legal_commands(side).is_empty() {
                 return None;
@@ -429,6 +714,11 @@ mod tests {
         assert!(parse_item(&json!({"command": {"NoSuchCommand": {}}})).is_err());
         assert!(parse_item(&json!({"move_to": {"unit": 1}})).is_err());
         assert!(parse_item(&json!({"bogus": 1})).is_err());
+        assert!(matches!(parse_item(&json!({"move_stack": {"from": [1, 2], "to": [5, 2]}})), Ok(PlanItem::MoveStack { .. })));
+        assert!(matches!(parse_item(&json!({"resupply_hex": [1, 2]})), Ok(PlanItem::ResupplyHex(h)) if h == HexCoord::new(1, 2)));
+        assert!(matches!(parse_item(&json!({"assault": {"target": [3, 3], "units": [1, 2]}})), Ok(PlanItem::Assault { units: Some(ref u), .. }) if u.len() == 2));
+        assert!(matches!(parse_item(&json!({"assault": {"target": [3, 3]}})), Ok(PlanItem::Assault { units: None, .. })));
+        assert!(parse_item(&json!({"move_stack": {"from": [1]}})).is_err());
     }
 
 

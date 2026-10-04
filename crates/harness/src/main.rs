@@ -4,8 +4,11 @@
 //! cna-harness [--scenario skirmish|scenario1|campaign] [--turns N] [--seed S]
 //!             [--commonwealth llm|greedy|random] [--axis llm|greedy|random]
 //!             [--out game.jsonl]
-//!             [--model M] [--budget-usd X] [--player-cmd '<template>']
+//!             [--model M] [--routine-model M] [--budget-usd X] [--max-cost-usd X] [--player-cmd '<template>']
 //!             [--external] [--no-auto-pass] [--window-timeout SECS] [--port P]
+//!             [--no-pregame] [--pregame-timeout SECS] [--pregame-model M] [--pregame-budget-usd X]
+//!             [--coaching]
+//! cna-harness --resume game.commands.jsonl [same player flags]   # continue a crashed/stopped game
 //! cna-harness --replay game.commands.jsonl
 //! ```
 
@@ -17,8 +20,11 @@ fn usage() -> ! {
     eprintln!(
         "usage: cna-harness [--scenario skirmish|scenario1|campaign] [--turns N] [--seed S]\n\
          \x20                 [--commonwealth llm|greedy|random] [--axis llm|greedy|random]\n\
-         \x20                 [--out game.jsonl] [--model M] [--budget-usd X] [--player-cmd '<tmpl>']\n\
+         \x20                 [--out game.jsonl] [--model M] [--routine-model M] [--budget-usd X]\n\
+         \x20                 [--max-cost-usd X] [--resume <commands.jsonl>] [--player-cmd '<tmpl>']\n\
          \x20                 [--external] [--no-auto-pass] [--window-timeout SECS] [--port P]\n\
+         \x20                 [--no-pregame] [--pregame-timeout SECS] [--pregame-model M]\n\
+         \x20                 [--pregame-budget-usd X] [--coaching]\n\
          \x20      cna-harness --replay <game.commands.jsonl>"
     );
     std::process::exit(2)
@@ -38,10 +44,18 @@ fn main() -> anyhow::Result<()> {
             "--axis" => o.axis = PlayerKind::parse(&val())?,
             "--out" => o.out = val().into(),
             "--model" => o.model = Some(val()),
+            "--routine-model" => o.routine_model = Some(val()),
+            "--max-cost-usd" => o.max_cost_usd = Some(val().parse()?),
+            "--resume" => o.resume = Some(val().into()),
             "--budget-usd" => o.budget_usd = Some(val()),
             "--player-cmd" => o.player_cmd = Some(val()),
             "--external" => o.external = true,
             "--no-auto-pass" => o.auto_pass = false,
+            "--no-pregame" => o.pregame = false,
+            "--pregame-timeout" => o.pregame_timeout = Duration::from_secs(val().parse()?),
+            "--pregame-model" => o.pregame_model = Some(val()),
+            "--pregame-budget-usd" => o.pregame_budget_usd = Some(val()),
+            "--coaching" => o.coaching = true,
             "--window-timeout" => o.window_timeout = Duration::from_secs(val().parse()?),
             "--port" => o.port = val().parse()?,
             "--replay" => replay = Some(val()),
@@ -83,5 +97,11 @@ fn main() -> anyhow::Result<()> {
         report.commands_path.display(),
         report.fingerprint
     );
+    eprintln!("[harness] RESULT {}", cna_harness::result::summary(&report.result));
+    let mut spend: Vec<_> = report.spend_usd.iter().map(|(s, c)| format!("{s:?} ${c:.2}")).collect();
+    spend.sort();
+    if !spend.is_empty() {
+        eprintln!("[harness] model spend: {}", spend.join(", "));
+    }
     Ok(())
 }
