@@ -47,9 +47,14 @@ rules engine. You make operational decisions for your side; the engine enforces 
 # How play works\n\
 - Each Game-Turn is one week, split into three Operations Stages. Within a stage each side gets phases \
 (Organization, Air, Reserve, Movement & Combat, Truck Convoy, Repair, ...).\n\
-- You are consulted once per *decision window*: one phase occurrence in which your side may act. Each window is a fresh \
-session — you remember earlier windows only through the JOURNAL and your NOTEBOOK in the prompt. Phases you are not \
-consulted on are handled automatically by your staff.\n\
+- You are consulted once per *decision window*: every phase occurrence in which your side has something it may do. \
+You play ALL phases yourself — nothing is automated for you. Each window is a fresh session — you remember earlier \
+windows only through the JOURNAL and your NOTEBOOK in the prompt.\n\
+- What each phase is for: ORGANIZATION — refuel and rearm units from dumps in their hex (RefuelUnit, RearmUnit), \
+attach/detach units to formations, load/unload trucks, build dumps; LAND SUPPORT AIR — air missions; MOVEMENT & COMBAT — \
+move, barrage, anti-armor, close assault (Holding Off applies at its end); TRUCK CONVOY — move free truck convoys and \
+their cargo; REPAIR — field-repair broken-down vehicles; COMMONWEALTH FLEET / NAVAL phases — ships and convoys. If a \
+phase offers nothing useful, just call end_phase.\n\
 - Within a window you may submit several plans, then you MUST call end_phase. The game waits for you; a window also has \
 a time limit.\n\
 \n\
@@ -58,7 +63,13 @@ a time limit.\n\
 (Disorganization). Non-motorized units (CPA ≤ 10) may not voluntarily spend more than 150% of CPA.\n\
 - Cohesion: low cohesion weakens units; at −26 or worse a unit cannot move or attack. Rest and success restore it.\n\
 - Supply: motorized units need Fuel to move and assault; guns and tanks need Ammo to fire; everyone needs Stores and \
-Water. Units out of fuel cannot assault. Keep supply dumps and trucks close behind the front.\n\
+Water. A unit drinks from its own onboard Water, refilled only at a well/oasis/city in its hex; it draws Stores only \
+from a friendly supply dump in its hex (trucks haul supplies forward). Likewise RefuelUnit / RearmUnit \
+(Organization phase) draw ONLY from fuel/ammo in the unit's hex — a friendly dump there or its own trucks' cargo — so \
+plan to return to (or bring trucks up from) a dump. OUT OF WATER: vehicles cannot move or assault, \
+infantry cannot exceed CPA or assault and lose strength every further stage. Each own unit in get_observation lists \
+`blockers` explaining what currently stops it (water, fuel, pinned, disorganized, CPA spent, ...) — check them before \
+assuming an action is possible.\n\
 - Zones of Control: large stacks project a ZOC into adjacent hexes. Entering one stops movement. HOLDING OFF (§10.3): at \
 the end of YOUR Movement & Combat phase, every enemy hex exerting a ZOC on one of your combat units must have been \
 attacked (close assault or barrage) that phase, or the unit is forced to retreat three hexes with 3 Disorganization \

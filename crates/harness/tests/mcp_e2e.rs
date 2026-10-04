@@ -18,6 +18,7 @@ struct Stats {
     ok_items: u32,
     failed_items: u32,
     enemy_seen: u32,
+    phases: std::collections::BTreeSet<String>,
 }
 
 async fn call(client: &rmcp::service::RunningService<rmcp::RoleClient, ()>, name: &str, args: Value) -> Value {
@@ -57,6 +58,7 @@ async fn play(url: String, token: String) -> Stats {
         assert_eq!(st["you_are"], "Commonwealth");
         assert_eq!(st["acting_side"], "Commonwealth");
         s.windows += 1;
+        s.phases.insert(st["phase"].as_str().unwrap().to_string());
 
         // Continuity across windows: the briefing carries the previous window's notes + journal.
         let b = call(&client, "get_briefing", json!({})).await;
@@ -113,7 +115,6 @@ fn mcp_player_plays_and_command_log_replays() {
         seed: 7,
         commonwealth: PlayerKind::Llm,
         axis: PlayerKind::Greedy,
-        llm_phases: "movement".into(),
         out: dir.join("game.jsonl"),
         external: true,
         window_timeout: Duration::from_secs(60),
@@ -135,6 +136,8 @@ fn mcp_player_plays_and_command_log_replays() {
     eprintln!("{stats:?} steps={}", report.steps);
 
     assert!(stats.windows >= 1, "the client got at least one decision window");
+    // No hybrid play: the model side is consulted in every phase with something to do, not just Movement.
+    assert!(stats.phases.contains("MovementAndCombat") && stats.phases.len() >= 2, "{:?}", stats.phases);
     assert_eq!(stats.plans, stats.windows);
     assert!(stats.ok_items >= 1, "some plan items applied: {stats:?}");
     assert!(stats.failed_items >= stats.windows, "the bogus id is reported each window");
@@ -146,21 +149,4 @@ fn mcp_player_plays_and_command_log_replays() {
     assert_eq!(mismatches, 0, "every attempt had the same accept/reject verdict on replay");
     assert_eq!(expected.as_deref(), Some(fp.as_str()));
     assert_eq!(fp, report.fingerprint);
-}
-
-/// With no phases routed to the model, an LLM-side `McpAgent` is pure delegate (`GreedyAgent`) and
-/// must reproduce *exactly* the game a plain `GreedyAgent` plays through the recorder.
-#[test]
-fn fully_delegated_mcp_agent_matches_plain_greedy() {
-    let dir = std::env::temp_dir().join(format!("cna-harness-deleg-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let base = Options { scenario: "skirmish".into(), turns: 2, seed: 11, external: true, ..Options::default() };
-    let delegated = run(
-        &Options { commonwealth: PlayerKind::Llm, llm_phases: String::new(), out: dir.join("a.jsonl"), ..base.clone() },
-        |_| {},
-    )
-    .unwrap();
-    let plain = run(&Options { commonwealth: PlayerKind::Greedy, out: dir.join("b.jsonl"), ..base }, |_| {}).unwrap();
-    assert_eq!(delegated.fingerprint, plain.fingerprint, "delegate diverged from the recorder's drain semantics");
-    assert_eq!(delegated.steps, plain.steps);
 }

@@ -21,7 +21,7 @@ use std::time::Duration;
 use cna_engine::agent::{Agent, GreedyAgent, RandomAgent};
 use cna_engine::reference::units::Side;
 
-use crate::agent::{McpAgent, PhaseSet};
+use crate::agent::McpAgent;
 use crate::launcher::Launcher;
 use crate::server::{Endpoint, RulesIndex};
 
@@ -52,8 +52,6 @@ pub struct Options {
     pub seed: u64,
     pub commonwealth: PlayerKind,
     pub axis: PlayerKind,
-    /// Phases the model decides; others go to a `GreedyAgent` for that side.
-    pub llm_phases: String,
     /// Viewer event log (`.jsonl`); the command log and transcripts sit beside it.
     pub out: PathBuf,
     /// `None` = launch headless Claude Code per window; `Some(t)` = custom command template.
@@ -63,6 +61,8 @@ pub struct Options {
     /// Don't launch players; an external MCP client connects and uses `wait_for_turn`.
     pub external: bool,
     pub window_timeout: Duration,
+    /// Skip windows with no enumerated legal actions (default true).
+    pub auto_pass: bool,
     pub port: u16,
     /// Fixed bearer tokens (tests); default random per run.
     pub tokens: Option<(String, String)>,
@@ -76,13 +76,13 @@ impl Default for Options {
             seed: 42,
             commonwealth: PlayerKind::Llm,
             axis: PlayerKind::Greedy,
-            llm_phases: "movement".into(),
             out: PathBuf::from("game.jsonl"),
             player_cmd: None,
             model: None,
             budget_usd: None,
             external: false,
             window_timeout: Duration::from_secs(600),
+            auto_pass: true,
             port: 0,
             tokens: None,
         }
@@ -131,7 +131,6 @@ fn scripted(kind: &PlayerKind, seed: u64) -> Box<dyn Agent> {
 /// Play one game. `on_ready` is called once the MCP server is listening (before play starts) —
 /// external clients/tests use it to learn the endpoints.
 pub fn run(opts: &Options, on_ready: impl FnOnce(&ServerInfo)) -> anyhow::Result<RunReport> {
-    let phases = PhaseSet::parse(&opts.llm_phases).map_err(|e| anyhow::anyhow!(e))?;
     let (game, label) = cna_replay::scenarios::build(&opts.scenario, opts.seed);
 
     // One request channel + endpoint per model-controlled side.
@@ -178,10 +177,10 @@ pub fn run(opts: &Options, on_ready: impl FnOnce(&ServerInfo)) -> anyhow::Result
                     mcp_configs: mcp_configs.clone(),
                     transcript_dir: transcript_dir.clone(),
                 });
-                Box::new(
-                    McpAgent::new(side, rx, phases.clone(), scripted(&PlayerKind::Greedy, seed), launcher, opts.window_timeout)
-                        .with_context(&opts.scenario, Some(transcript_dir.clone())),
-                )
+                let mut a = McpAgent::new(side, rx, launcher, opts.window_timeout)
+                    .with_context(&opts.scenario, Some(transcript_dir.clone()));
+                a.auto_pass = opts.auto_pass;
+                Box::new(a)
             }
             None => scripted(kind, seed),
         }

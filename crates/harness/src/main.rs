@@ -3,9 +3,9 @@
 //! ```text
 //! cna-harness [--scenario skirmish|scenario1|campaign] [--turns N] [--seed S]
 //!             [--commonwealth llm|greedy|random] [--axis llm|greedy|random]
-//!             [--llm-phases movement,organization,...|all] [--out game.jsonl]
+//!             [--out game.jsonl]
 //!             [--model M] [--budget-usd X] [--player-cmd '<template>']
-//!             [--external] [--window-timeout SECS] [--port P]
+//!             [--external] [--no-auto-pass] [--window-timeout SECS] [--port P]
 //! cna-harness --replay game.commands.jsonl
 //! ```
 
@@ -17,9 +17,8 @@ fn usage() -> ! {
     eprintln!(
         "usage: cna-harness [--scenario skirmish|scenario1|campaign] [--turns N] [--seed S]\n\
          \x20                 [--commonwealth llm|greedy|random] [--axis llm|greedy|random]\n\
-         \x20                 [--llm-phases movement,organization,air,convoy,repair,fleet,naval|all]\n\
          \x20                 [--out game.jsonl] [--model M] [--budget-usd X] [--player-cmd '<tmpl>']\n\
-         \x20                 [--external] [--window-timeout SECS] [--port P]\n\
+         \x20                 [--external] [--no-auto-pass] [--window-timeout SECS] [--port P]\n\
          \x20      cna-harness --replay <game.commands.jsonl>"
     );
     std::process::exit(2)
@@ -37,12 +36,12 @@ fn main() -> anyhow::Result<()> {
             "--seed" => o.seed = val().parse()?,
             "--commonwealth" | "--cw" => o.commonwealth = PlayerKind::parse(&val())?,
             "--axis" => o.axis = PlayerKind::parse(&val())?,
-            "--llm-phases" => o.llm_phases = val(),
             "--out" => o.out = val().into(),
             "--model" => o.model = Some(val()),
             "--budget-usd" => o.budget_usd = Some(val()),
             "--player-cmd" => o.player_cmd = Some(val()),
             "--external" => o.external = true,
+            "--no-auto-pass" => o.auto_pass = false,
             "--window-timeout" => o.window_timeout = Duration::from_secs(val().parse()?),
             "--port" => o.port = val().parse()?,
             "--replay" => replay = Some(val()),

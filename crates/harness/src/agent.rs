@@ -14,7 +14,7 @@ use cna_engine::agent::Agent;
 use cna_engine::reference::units::Side;
 use cna_engine::rules::movement::MoveMode;
 use cna_engine::state::command::{Command, CommandError, CommandOutcome};
-use cna_engine::state::game::{GameState, Phase};
+use cna_engine::state::game::GameState;
 use cna_engine::state::map::HexCoord;
 use cna_engine::state::unit::UnitId;
 use serde_json::{json, Value};
@@ -80,44 +80,6 @@ fn parse_item(v: &Value) -> Result<PlanItem, String> {
     Err("each plan item must be {\"id\": n}, {\"command\": {...}} or {\"move_to\": {\"unit\", \"hex\", \"mode\"?}}".into())
 }
 
-/// Which phases the model plays; others go to the delegate agent.
-#[derive(Debug, Clone)]
-pub struct PhaseSet(pub Vec<Phase>);
-
-impl PhaseSet {
-    /// Parse a comma list: `all`, or any of `movement`, `organization`, `air`, `convoy`, `repair`,
-    /// `fleet`, `naval`.
-    pub fn parse(s: &str) -> Result<Self, String> {
-        let mut v = Vec::new();
-        for tok in s.split(',').map(str::trim).filter(|t| !t.is_empty()) {
-            match tok {
-                "all" => v.extend([
-                    Phase::MovementAndCombat,
-                    Phase::Organization,
-                    Phase::LandSupportAir,
-                    Phase::TruckConvoy,
-                    Phase::Repair,
-                    Phase::CommonwealthFleet,
-                    Phase::NavalConvoyArrival,
-                    Phase::NavalConvoySchedule,
-                ]),
-                "movement" => v.push(Phase::MovementAndCombat),
-                "organization" => v.push(Phase::Organization),
-                "air" => v.push(Phase::LandSupportAir),
-                "convoy" => v.push(Phase::TruckConvoy),
-                "repair" => v.push(Phase::Repair),
-                "fleet" => v.push(Phase::CommonwealthFleet),
-                "naval" => v.extend([Phase::NavalConvoyArrival, Phase::NavalConvoySchedule]),
-                other => return Err(format!("unknown phase group `{other}`")),
-            }
-        }
-        Ok(PhaseSet(v))
-    }
-    pub fn contains(&self, p: Phase) -> bool {
-        self.0.contains(&p)
-    }
-}
-
 /// Per-window bookkeeping.
 struct Window {
     key: String,
@@ -133,24 +95,11 @@ struct Window {
     all_results: Vec<Value>,
 }
 
-/// Index-based delegate driven with exactly the recorder's snapshot-and-drain semantics: progress
-/// only on a *successful* apply (reported via `on_result`), and the same per-phase action cap.
-struct Delegate {
-    agent: Box<dyn Agent>,
-    key: String,
-    legal: Vec<Command>,
-    progress: bool,
-    acted: u32,
-    cap: u32,
-    /// The last command handed to the engine came from the delegate (route its result here).
-    pending: bool,
-}
-
 pub struct McpAgent {
     side: Side,
     rx: Receiver<ToolRequest>,
-    phases: PhaseSet,
-    delegate: Delegate,
+    /// Skip (auto-pass) windows whose enumerated legal-action list is empty — no model call.
+    pub auto_pass: bool,
     launcher: Option<Launcher>,
     window_timeout: Duration,
     window: Option<Window>,
@@ -164,27 +113,11 @@ pub struct McpAgent {
 }
 
 impl McpAgent {
-    pub fn new(
-        side: Side,
-        rx: Receiver<ToolRequest>,
-        phases: PhaseSet,
-        delegate: Box<dyn Agent>,
-        launcher: Option<Launcher>,
-        window_timeout: Duration,
-    ) -> Self {
+    pub fn new(side: Side, rx: Receiver<ToolRequest>, launcher: Option<Launcher>, window_timeout: Duration) -> Self {
         McpAgent {
             side,
             rx,
-            phases,
-            delegate: Delegate {
-                agent: delegate,
-                key: String::new(),
-                legal: Vec::new(),
-                progress: true,
-                acted: 0,
-                cap: 0,
-                pending: false,
-            },
+            auto_pass: true,
             launcher,
             window_timeout,
             window: None,
@@ -200,39 +133,6 @@ impl McpAgent {
         self.scenario = scenario.to_string();
         self.memory_dir = memory_dir;
         self
-    }
-
-    /// Delegated (non-model) phases: emulate the recorder's snapshot-and-drain for an index agent.
-    fn delegate_choose(&mut self, game: &GameState, side: Side) -> Option<Command> {
-        let key = game.decision_window_key();
-        let d = &mut self.delegate;
-        if d.key != key {
-            d.key = key;
-            d.legal = game.legal_commands(side);
-            d.progress = true;
-            d.acted = 0;
-            let on_map = game.units.values().filter(|u| u.nationality.side() == side && u.hex().is_some()).count();
-            d.cap = 3 * on_map as u32 + 8;
-        }
-        loop {
-            if d.acted >= d.cap {
-                return None;
-            }
-            match d.agent.choose_index(game, side, &d.legal) {
-                Some(i) if i < d.legal.len() => {
-                    d.acted += 1;
-                    d.pending = true;
-                    return Some(d.legal.swap_remove(i));
-                }
-                _ => {
-                    if !d.progress {
-                        return None;
-                    }
-                    d.legal = game.legal_commands(side);
-                    d.progress = false;
-                }
-            }
-        }
     }
 
     fn open_window(&mut self, game: &GameState) {
@@ -474,14 +374,11 @@ impl Agent for McpAgent {
     }
 
     fn choose(&mut self, game: &GameState, side: Side) -> Option<Command> {
-        if !self.phases.contains(game.phase) {
-            return self.delegate_choose(game, side);
-        }
         let key = game.decision_window_key();
         if self.window.as_ref().map(|w| &w.key) != Some(&key) {
             self.close_window(game);
-            // Auto-pass windows with nothing to do — no model call.
-            if game.legal_commands(side).is_empty() {
+            // Auto-pass windows with nothing enumerable to do — no model call (unless disabled).
+            if self.auto_pass && game.legal_commands(side).is_empty() {
                 return None;
             }
             self.open_window(game);
@@ -496,13 +393,6 @@ impl Agent for McpAgent {
     }
 
     fn on_result(&mut self, cmd: &Command, result: &Result<CommandOutcome, CommandError>) {
-        if self.delegate.pending {
-            self.delegate.pending = false;
-            if result.is_ok() {
-                self.delegate.progress = true;
-            }
-            return;
-        }
         let Some(w) = self.window.as_mut() else { return };
         let Some((item, label)) = w.current.take() else { return };
         match item {
@@ -541,12 +431,5 @@ mod tests {
         assert!(parse_item(&json!({"bogus": 1})).is_err());
     }
 
-    #[test]
-    fn phase_sets_parse() {
-        let p = PhaseSet::parse("movement,naval").unwrap();
-        assert!(p.contains(Phase::MovementAndCombat) && p.contains(Phase::NavalConvoySchedule));
-        assert!(!p.contains(Phase::Organization));
-        assert_eq!(PhaseSet::parse("all").unwrap().0.len(), 8);
-        assert!(PhaseSet::parse("nope").is_err());
-    }
+
 }

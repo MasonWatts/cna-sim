@@ -88,9 +88,9 @@ See [`docs/visualization-architecture.md`](docs/visualization-architecture.md) a
 remain available for fast engine testing.
 
 ```bash
-# Claude (headless Claude Code) plays the Commonwealth's Movement phases vs the Greedy agent:
-cargo run -p cna-harness -- --scenario skirmish --turns 1 --commonwealth llm --axis greedy \
-    --llm-phases movement --budget-usd 0.50 --out /tmp/game.jsonl
+# Claude (headless Claude Code) plays the Commonwealth — every phase — vs Claude as the Axis:
+cargo run -p cna-harness -- --scenario skirmish --turns 2 --commonwealth llm --axis llm \
+    --budget-usd 0.50 --out /tmp/game.jsonl
 # Bring your own MCP client instead (prints endpoint + token; use wait_for_turn):
 cargo run -p cna-harness -- --commonwealth llm --external --out /tmp/game.jsonl
 # Reproduce any recorded game exactly from its command log:

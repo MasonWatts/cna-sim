@@ -80,11 +80,16 @@ pub fn observation(game: &GameState, side: Side, f: &ObserveFilter) -> Value {
     out.insert("status".into(), status(game, side, true));
     let views = game.observe_units(side);
     if f.wants("own_units") {
+        // Legal actions per own unit right now (only meaningful inside this side's window).
+        let legal = if game.active_player == side { game.legal_commands(side) } else { Vec::new() };
         let own: Vec<Value> = views
             .iter()
             .filter(|v| v.friendly)
             .filter(|v| f.in_range(game.effective_hex(v.id)))
-            .filter_map(|v| own_unit_json(game, v.id))
+            .filter_map(|v| {
+                let n = legal.iter().filter(|c| command_mentions_unit(c, v.id.0)).count();
+                own_unit_json(game, v.id, (game.active_player == side).then_some(n))
+            })
             .collect();
         out.insert("own_units".into(), Value::Array(own));
     }
@@ -145,8 +150,59 @@ pub fn observation(game: &GameState, side: Side, f: &ObserveFilter) -> Value {
     Value::Object(out)
 }
 
+fn is_vehicle_unit(game: &GameState, id: UnitId) -> bool {
+    game.units.get(&id).is_some_and(|u| {
+        matches!(u.composition, cna_engine::state::unit::Composition::Weapons { .. })
+            || u.trucks.light + u.trucks.medium + u.trucks.heavy > 0
+    })
+}
+
+/// Why an own unit may be unable to act, citing the rule — the facts a player needs to explain an
+/// empty or short legal-action list. `legal_now` = its legal-action count (when in its window).
+pub fn unit_blockers(game: &GameState, id: UnitId, legal_now: Option<usize>) -> Vec<String> {
+    let Some(u) = game.units.get(&id) else { return Vec::new() };
+    let mut b = Vec::new();
+    if u.status.pinned {
+        b.push("Pinned — may not move, fire anti-armor or close-assault this stage (§12.44).".to_string());
+    }
+    if u.cohesion <= -26 {
+        b.push("Disorganized (cohesion ≤ −26) — may not move or attack (§6.26).".into());
+    }
+    if u.stages_without_water > 0 {
+        if is_vehicle_unit(game, id) {
+            b.push("OUT OF WATER — vehicles (tanks, trucks, motorized units) may not move or close-assault (§52.51).".into());
+        } else {
+            b.push("OUT OF WATER — may not exceed CPA or close-assault; loses 1 TOE each further stage without water (§52.5).".into());
+        }
+    }
+    if game.unit_is_motorized(id) && u.fuel == 0 {
+        b.push("Out of fuel — no motorized movement or offensive close assault (§49).".into());
+    }
+    if matches!(u.composition, cna_engine::state::unit::Composition::Weapons { .. }) && u.ammo == 0 {
+        b.push("Out of ammunition — cannot fire (§50).".into());
+    }
+    if let Some(cpa) = game.effective_cpa(id) {
+        if u.cp_expended.0 >= cpa * 10 {
+            b.push("CPA fully spent this stage — further action costs cohesion.".into());
+        }
+    }
+    if matches!(u.reserve, cna_engine::state::unit::ReserveStatus::ReserveII) {
+        b.push("In Reserve II — may not move (§18.22).".into());
+    }
+    if game.half_rations.contains(&id) {
+        b.push("On half rations — may not exceed CPA or enter an enemy ZOC (§51.23).".into());
+    }
+    if game.no_pasta.contains(&id) {
+        b.push("Missed its Pasta Point — may not exceed CPA (§52.6).".into());
+    }
+    if legal_now == Some(0) && b.is_empty() {
+        b.push("No legal action right now (terrain, ZOC, stacking, or no target in range).".into());
+    }
+    b
+}
+
 /// Full detail for one of the viewer's own units.
-fn own_unit_json(game: &GameState, id: UnitId) -> Option<Value> {
+fn own_unit_json(game: &GameState, id: UnitId, legal_now: Option<usize>) -> Option<Value> {
     let u = game.units.get(&id)?;
     let hex = game.effective_hex(id);
     Some(json!({
@@ -165,11 +221,17 @@ fn own_unit_json(game: &GameState, id: UnitId) -> Option<Value> {
         "cp_spent": u.cp_expended.0 as f64 / 10.0,
         "fuel": u.fuel,
         "ammo": u.ammo,
+        "water": u.water,
+        "out_of_water": u.stages_without_water > 0,
+        "stages_without_water": u.stages_without_water,
+        "turns_without_stores": u.turns_without_stores,
         "motorized": game.unit_is_motorized(id),
         "reserve": format!("{:?}", u.reserve),
         "pinned": u.status.pinned,
         "in_contact": u.status.in_contact,
         "engaged": u.status.engaged,
+        "legal_actions_now": legal_now,
+        "blockers": unit_blockers(game, id, legal_now),
     }))
 }
 
@@ -278,6 +340,27 @@ mod tests {
             let h = HexId::parse(id).unwrap().to_hex_coord();
             assert_eq!(hex_label(h), id);
         }
+    }
+
+    #[test]
+    fn blockers_explain_why_a_unit_cannot_act() {
+        let (mut g, _) = cna_replay::scenarios::build("skirmish", 1);
+        let tank = g.units.values().find(|u| u.name == "1st RTR").unwrap().id;
+        let inf = g.units.values().find(|u| u.name == "1st Rifle Bde").unwrap().id;
+        assert!(unit_blockers(&g, tank, None).is_empty(), "a supplied unit has no blockers");
+        g.units.get_mut(&tank).unwrap().stages_without_water = 1;
+        g.units.get_mut(&inf).unwrap().stages_without_water = 1;
+        g.units.get_mut(&inf).unwrap().status.pinned = true;
+        let t = unit_blockers(&g, tank, None).join(" ");
+        assert!(t.contains("OUT OF WATER") && t.contains("vehicles") && t.contains("§52.51"), "{t}");
+        let i = unit_blockers(&g, inf, None).join(" ");
+        assert!(i.contains("Pinned") && i.contains("loses 1 TOE"), "{i}");
+        // An unexplained empty legal list is still called out.
+        g.units.get_mut(&tank).unwrap().stages_without_water = 0;
+        assert!(unit_blockers(&g, tank, Some(0))[0].contains("No legal action"));
+        let obs = observation(&g, cna_engine::reference::units::Side::Commonwealth, &ObserveFilter::default());
+        let u0 = &obs["own_units"][0];
+        assert!(u0.get("water").is_some() && u0.get("blockers").is_some() && u0.get("out_of_water").is_some());
     }
 
     #[test]

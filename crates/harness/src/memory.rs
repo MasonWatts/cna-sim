@@ -25,6 +25,7 @@ struct OwnSeen {
     hex: Option<String>,
     toe: u32,
     cohesion: i32,
+    out_of_water: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,7 +53,13 @@ impl Snapshot {
                 }
                 s.own.insert(
                     v.id.0,
-                    OwnSeen { name: u.name.clone(), hex: game.effective_hex(v.id).map(hex_label), toe: u.total_toe(), cohesion: u.cohesion },
+                    OwnSeen {
+                        name: u.name.clone(),
+                        hex: game.effective_hex(v.id).map(hex_label),
+                        toe: u.total_toe(),
+                        cohesion: u.cohesion,
+                        out_of_water: u.stages_without_water > 0,
+                    },
                 );
             } else if let Some(h) = v.hex {
                 s.enemy.insert(
@@ -85,6 +92,11 @@ impl Snapshot {
                     }
                     if n.hex != p.hex {
                         parts.push(format!("now at {} (was {})", hex(&n.hex), hex(&p.hex)));
+                    }
+                    if n.out_of_water && !p.out_of_water {
+                        parts.push("OUT OF WATER (§52.5)".into());
+                    } else if p.out_of_water && !n.out_of_water {
+                        parts.push("water restored".into());
                     }
                     if !parts.is_empty() {
                         out.push(format!("Your {}: {}.", n.name, parts.join(", ")));

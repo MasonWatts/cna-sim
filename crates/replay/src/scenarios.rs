@@ -7,7 +7,8 @@ use cna_engine::state::game::GameState;
 use cna_engine::state::map::HexCoord;
 use cna_engine::state::unit::{Composition, UnitLocation, WeaponGroup};
 
-/// A compact skirmish: cruisers + infantry per side on a small clear board, stocked to move/fight.
+/// A compact skirmish: cruisers + infantry per side on a small clear board, stocked to move/fight
+/// (fuel, ammo and onboard water), with a real rear supply dump per side.
 pub fn build_skirmish(seed: u64) -> GameState {
     let mut g = GameState::new(ReferenceData::load_campaign(), seed);
     for col in 0..10 {
@@ -21,6 +22,8 @@ pub fn build_skirmish(seed: u64) -> GameState {
         unit.location = Some(UnitLocation::OnMap(HexCoord::new(col, row)));
         unit.fuel = 800;
         unit.ammo = 800;
+        // §52: open desert has no wells, so each unit carries its water (enough for a short engagement).
+        unit.water = 150;
     };
     let cruisers = || Composition::Weapons { groups: vec![WeaponGroup { system: "A13 Cruiser".into(), count: 6 }] };
     let m11 = || Composition::Weapons { groups: vec![WeaponGroup { system: "M 11/39".into(), count: 6 }] };
@@ -30,6 +33,17 @@ pub fn build_skirmish(seed: u64) -> GameState {
     place(&mut g, Nationality::Italian, "k", "Aresca Tank Bn", m11(), 8, 2);
     place(&mut g, Nationality::Italian, "p", "1 Libyan Bn", Composition::Organic { current_toe: 8 }, 8, 1);
     place(&mut g, Nationality::Italian, "p", "2 Libyan Bn", Composition::Organic { current_toe: 8 }, 8, 3);
+    // A real (constructed, non-dummy) rear supply dump for each side, behind its start line.
+    for (side, col) in [(cna_engine::reference::units::Side::Commonwealth, 0), (cna_engine::reference::units::Side::Axis, 9)] {
+        g.supply_dumps.push(cna_engine::state::game::SupplyDump {
+            location: UnitLocation::OnMap(HexCoord::new(col, 2)),
+            side,
+            supply: cna_engine::state::game::Commodities { fuel: 400, ammo: 400, stores: 200, water: 300 },
+            dummy: false,
+            constructed: true,
+            unlimited: false,
+        });
+    }
     g
 }
 

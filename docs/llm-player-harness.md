@@ -69,8 +69,10 @@ Plan items: `{"id": n}` (from the latest `legal_actions` listing), `{"command": 
 (expands step-by-step into legal `MoveStep`s that reduce distance to the target, stopping on arrival,
 no progress, or an illegal step).
 
-Windows with **no legal actions are auto-passed** (no model call). A window also closes on launcher
-exit or timeout (→ `EndPhase`).
+A model-controlled side plays **every** decision phase itself (no hybrid/scripted delegation).
+Windows with **no enumerated legal actions are auto-passed** (no model call; `--no-auto-pass`
+consults the model anyway, for free-form commands the enumerator doesn't list). A window also
+closes on launcher exit or timeout (→ `EndPhase`).
 
 ### 3.2 MCP server (tokio thread)
 
@@ -111,8 +113,8 @@ Each window is a **fresh** model session (bounded context and cost); continuity 
 
 ```
 cna-harness --scenario campaign --turns 1 --seed 7 \
-            --commonwealth llm --axis greedy \
-            --out /tmp/game.jsonl [--player-cmd '…'] [--window-timeout 300] [--port 0]
+            --commonwealth llm --axis llm \
+            --out /tmp/game.jsonl [--player-cmd '…'] [--window-timeout 300] [--port 0] [--no-auto-pass]
 cna-harness --replay /tmp/game.commands.jsonl   # re-applies the log, verifies it reproduces
 ```
 
