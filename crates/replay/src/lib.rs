@@ -9,6 +9,8 @@
 //! The raw command/outcome are still `Debug` strings; a round-trippable `Command` schema for the
 //! future WASM replay / MCP interface is a follow-on.
 
+
+pub mod scenarios;
 use cna_engine::agent::Agent;
 use cna_engine::reference::units::Side;
 use cna_engine::state::air::SquadronId;
@@ -1037,7 +1039,14 @@ fn last_hex(path: &[HexCoord]) -> Option<HexCoord> {
     path.last().copied()
 }
 
-fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) -> String {
+/// A friendly description of a command *before* it is applied (no outcome yet) — used to label
+/// legal actions offered to external players.
+pub fn describe_action(g: &GameState, cmd: &Command) -> String {
+    describe_command(g, cmd, &CommandOutcome::Moved)
+}
+
+/// The friendly one-line description of an applied command and its outcome (the Action-Log text).
+pub fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) -> String {
     use cna_engine::state::naval::ShipLocation;
     let mv = |m: &str| if m.contains("Motor") { "motorized" } else { "on foot" };
     match cmd {
@@ -1982,18 +1991,37 @@ pub fn record_game(
             let cap = 3 * on_map as u32 + 8;
             // Snapshot the legal set once and drain it (see agent::drain_phase); recompute only when
             // the agent yields after progress. Records a frame per successfully applied command.
-            let mut legal = game.legal_commands(side);
+            // Free-form agents (e.g. an LLM player via the harness) propose commands directly rather
+            // than indexing the legal snapshot; they get a larger action budget (plans/macros).
+            let free = {
+                let a: &dyn Agent = if side == Side::Commonwealth { &*commonwealth } else { &*axis };
+                a.free_form()
+            };
+            let cap = if free { cap.saturating_mul(10).max(200) } else { cap };
+            let mut legal = if free { Vec::new() } else { game.legal_commands(side) };
             let mut acted = 0u32;
             let mut progress = true;
             while acted < cap {
                 let agent: &mut dyn Agent = if side == Side::Commonwealth { commonwealth } else { axis };
-                match agent.choose_index(&game, side, &legal) {
-                    Some(i) if i < legal.len() => {
-                        let cmd = legal.swap_remove(i);
+                let pick = if free {
+                    agent.choose(&game, side).map(Ok)
+                } else {
+                    agent.choose_index(&game, side, &legal).filter(|&i| i < legal.len()).map(Err)
+                };
+                match pick {
+                    Some(p) => {
+                        let cmd = match p {
+                            Ok(c) => c,
+                            Err(i) => legal.swap_remove(i),
+                        };
                         let action = format!("{cmd:?}");
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         let cmd_desc = cmd.clone();
-                        if let Ok(outcome) = game.apply(cmd) {
+                        let result = game.apply(cmd);
+                        if free {
+                            agent.on_result(&cmd_desc, &result);
+                        }
+                        if let Ok(outcome) = result {
                             step += 1;
                             let summary = describe_command(&game, &cmd_desc, &outcome);
                             let act = activity_target(&game, &cmd_desc);
@@ -2005,8 +2033,8 @@ pub fn record_game(
                         }
                         acted += 1;
                     }
-                    _ => {
-                        if !progress {
+                    None => {
+                        if free || !progress {
                             break;
                         }
                         legal = game.legal_commands(side);
@@ -2048,7 +2076,7 @@ pub fn record_game(
 /// the header). The viewer reconstructs a `GameRecord` from `{...header, events: <rest of lines>}`.
 #[allow(clippy::too_many_arguments)]
 pub fn record_game_streaming(
-    mut game: GameState,
+    game: GameState,
     scenario: &str,
     seed: u64,
     commonwealth_name: &str,
@@ -2059,6 +2087,31 @@ pub fn record_game_streaming(
     out: &mut dyn std::io::Write,
     on_turn: &mut dyn FnMut(u32, u32),
 ) -> std::io::Result<u32> {
+    record_game_streaming_ext(game, scenario, seed, commonwealth_name, commonwealth, axis_name, axis, max_turns, out, on_turn, &mut |_, _, _, _| {})
+        .map(|(steps, _)| steps)
+}
+
+/// A command the driver attempted to apply, with the engine's verdict (see
+/// [`record_game_streaming_ext`]).
+pub type AttemptHook<'a> = dyn FnMut(&GameState, Side, &Command, &Result<CommandOutcome, cna_engine::state::command::CommandError>) + 'a;
+
+/// [`record_game_streaming`], additionally reporting **every attempted** command (accepted or
+/// rejected, in order) to `on_attempt` — enough to replay the game deterministically, since some
+/// commands roll dice before validating — and returning the final [`GameState`].
+#[allow(clippy::too_many_arguments)]
+pub fn record_game_streaming_ext(
+    mut game: GameState,
+    scenario: &str,
+    seed: u64,
+    commonwealth_name: &str,
+    commonwealth: &mut dyn Agent,
+    axis_name: &str,
+    axis: &mut dyn Agent,
+    max_turns: u32,
+    out: &mut dyn std::io::Write,
+    on_turn: &mut dyn FnMut(u32, u32),
+    on_attempt: &mut AttemptHook<'_>,
+) -> std::io::Result<(u32, GameState)> {
     let header = serde_json::json!({
         "scenario": scenario,
         "seed": seed,
@@ -2106,18 +2159,38 @@ pub fn record_game_streaming(
             let cap = 3 * on_map as u32 + 8;
             // Snapshot-and-drain (see agent::drain_phase): compute the legal set once per phase and
             // recompute only after the agent yields with progress, instead of per action.
-            let mut legal = game.legal_commands(side);
+            // Free-form agents (e.g. an LLM player via the harness) propose commands directly rather
+            // than indexing the legal snapshot; they get a larger action budget (plans/macros).
+            let free = {
+                let a: &dyn Agent = if side == Side::Commonwealth { &*commonwealth } else { &*axis };
+                a.free_form()
+            };
+            let cap = if free { cap.saturating_mul(10).max(200) } else { cap };
+            let mut legal = if free { Vec::new() } else { game.legal_commands(side) };
             let mut acted = 0u32;
             let mut progress = true;
             while acted < cap {
                 let agent: &mut dyn Agent = if side == Side::Commonwealth { commonwealth } else { axis };
-                match agent.choose_index(&game, side, &legal) {
-                    Some(i) if i < legal.len() => {
-                        let cmd = legal.swap_remove(i);
+                let pick = if free {
+                    agent.choose(&game, side).map(Ok)
+                } else {
+                    agent.choose_index(&game, side, &legal).filter(|&i| i < legal.len()).map(Err)
+                };
+                match pick {
+                    Some(p) => {
+                        let cmd = match p {
+                            Ok(c) => c,
+                            Err(i) => legal.swap_remove(i),
+                        };
                         let action = format!("{cmd:?}");
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         let cmd_desc = cmd.clone();
-                        if let Ok(outcome) = game.apply(cmd) {
+                        let result = game.apply(cmd);
+                        on_attempt(&game, side, &cmd_desc, &result);
+                        if free {
+                            agent.on_result(&cmd_desc, &result);
+                        }
+                        if let Ok(outcome) = result {
                             step += 1;
                             let summary = describe_command(&game, &cmd_desc, &outcome);
                             let act = activity_target(&game, &cmd_desc);
@@ -2129,8 +2202,8 @@ pub fn record_game_streaming(
                         }
                         acted += 1;
                     }
-                    _ => {
-                        if !progress {
+                    None => {
+                        if free || !progress {
                             break;
                         }
                         legal = game.legal_commands(side);
@@ -2159,7 +2232,7 @@ pub fn record_game_streaming(
         assert!(guard < 5_000_000, "record loop failed to progress");
     }
     out.flush()?;
-    Ok(step)
+    Ok((step, game))
 }
 
 /// A short **scripted** demo of the Replacement-Point lifecycle (§20) for the viewer — a maintained

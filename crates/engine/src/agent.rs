@@ -10,7 +10,7 @@
 //! game determinism. [`self_play`] wires two agents against each other through the Sequence of Play.
 
 use crate::reference::units::Side;
-use crate::state::command::Command;
+use crate::state::command::{Command, CommandError, CommandOutcome};
 use crate::state::game::{GameState, Phase};
 use crate::state::view::EvalWeights;
 
@@ -44,6 +44,17 @@ pub trait Agent {
         let cmd = self.choose(game, side)?;
         legal.iter().position(|c| *c == cmd)
     }
+
+    /// A **free-form** agent issues arbitrary commands via [`Agent::choose`] (not restricted to the
+    /// precomputed `legal_commands` snapshot) — e.g. an external/LLM player submitting parameterized
+    /// commands. The driver then calls `choose` → `apply` → [`Agent::on_result`] until `choose`
+    /// yields. Default `false`: index-based agents are unchanged.
+    fn free_form(&self) -> bool {
+        false
+    }
+
+    /// Told the engine's verdict on the command a free-form agent just issued.
+    fn on_result(&mut self, _cmd: &Command, _result: &Result<CommandOutcome, CommandError>) {}
 }
 
 /// A small deterministic PRNG so agents are reproducible from a seed, independent of the game RNG.
@@ -716,6 +727,19 @@ impl Agent for CrossPhaseMctsAgent {
 /// therefore costs O(waves × enumeration) rather than O(actions × enumeration) — the recompute-per-
 /// action cost that dominates post-DAK turns. Bounded by `cap` attempted actions.
 pub fn drain_phase(game: &mut GameState, agent: &mut dyn Agent, side: Side, cap: u32, applied: &mut u32) {
+    if agent.free_form() {
+        // Free-form agents propose commands directly; the engine validates each one. They get a larger
+        // action budget (multi-command plans and macro expansions).
+        for _ in 0..cap.saturating_mul(10).max(200) {
+            let Some(cmd) = agent.choose(game, side) else { break };
+            let result = game.apply(cmd.clone());
+            if result.is_ok() {
+                *applied += 1;
+            }
+            agent.on_result(&cmd, &result);
+        }
+        return;
+    }
     let mut legal = game.legal_commands(side);
     let mut acted = 0u32;
     let mut progress = true;

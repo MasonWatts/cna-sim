@@ -9884,6 +9884,16 @@ impl GameState {
         }
     }
 
+    /// A stable identifier for the current Sequence-of-Play step (one *decision window* per acting
+    /// side): Game-Turn, Operations Stage, the pre/stage/post step index and the phase. Used by
+    /// external players and command-log replay to tell windows apart.
+    pub fn decision_window_key(&self) -> String {
+        format!(
+            "{}:{}:{:?}:{}:{:?}:{:?}",
+            self.game_turn, self.operations_stage, self.pre_turn_step, self.stage_step, self.post_turn_step, self.phase
+        )
+    }
+
     pub fn advance_phase(&mut self) {
         // Stage VII — Strategic Air Recovery (after the three Operations Stages).
         if let Some(i) = self.post_turn_step {
