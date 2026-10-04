@@ -725,9 +725,22 @@ impl GameState {
             Side::Axis => crate::state::game::RaiderKind::Dsa,
         };
         for &(unit, _) in &own {
+            // Refuel/Rearm only when they would add something (below capacity) — otherwise no-ops.
+            let u = self.units.get(&unit);
+            if u.is_some_and(|u| u.fuel < self.unit_fuel_capacity(unit)) {
+                let cmd = Command::RefuelUnit { unit };
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            }
+            let ammo_cap = self.reference.ammo_rates.map_or(0, |r| r.barrage * u.map_or(0, |u| u.total_toe()));
+            if u.is_some_and(|u| u.ammo < ammo_cap) {
+                let cmd = Command::RearmUnit { unit };
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            }
             for cmd in [
-                Command::RefuelUnit { unit },
-                Command::RearmUnit { unit },
                 Command::DetachUnit { unit },
                 Command::FormRaider { kind: raider_kind, from_unit: unit },
                 Command::RefitDeacons { unit }, // §4.44a b: dry_run gates to the eligible 102nd
@@ -1278,7 +1291,22 @@ impl GameState {
             .map(|u| u.id)
             .collect();
         for unit in own {
+            // Offer a repair only if there is something to repair and the weather allows it
+            // (§22.13d) — otherwise the command is a guaranteed no-op ("Repaired 0").
+            let Some(u) = self.units.get(&unit) else { continue };
+            if self.field_repair_blocked_by_weather(unit) {
+                continue;
+            }
+            let has = |kind: RepairKind| match kind {
+                RepairKind::Trucks => u.trucks_broken.light + u.trucks_broken.medium + u.trucks_broken.heavy > 0,
+                RepairKind::Tanks => u.weapons_broken.iter().any(|g| g.count > 0),
+                RepairKind::Recce => u.toe_broken > 0 && self.is_recce_unit(unit),
+                RepairKind::Facility => false,
+            };
             for kind in [RepairKind::Trucks, RepairKind::Tanks, RepairKind::Recce] {
+                if !has(kind) {
+                    continue;
+                }
                 let cmd = Command::Repair { unit, kind };
                 if self.dry_run(&cmd).is_ok() {
                     out.push(cmd);

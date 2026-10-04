@@ -1117,6 +1117,13 @@ pub struct GameState {
     /// more than once per segment. Reset each stage.
     #[serde(default)]
     pub close_assaulted_hexes_this_stage: std::collections::HashSet<HexCoord>,
+    /// §22.23: (unit, damage kind) pairs that have rolled their field-repair die this Repair Phase
+    /// (one attempt per phase). Reset each stage.
+    #[serde(default)]
+    pub field_repairs_this_stage: std::collections::HashSet<(UnitId, crate::state::command::RepairKind)>,
+    /// §22.23: free truck convoys (by index) that have rolled their repair die this Repair Phase.
+    #[serde(default)]
+    pub convoy_repairs_this_stage: std::collections::HashSet<usize>,
     /// §14.22: hexes already targeted by Anti-Armor fire this Combat Segment (once-per-segment).
     /// Reset each stage.
     #[serde(default)]
@@ -1389,6 +1396,8 @@ impl GameState {
             land_combat_this_stage: std::collections::HashSet::new(),
             barraged_hexes_this_stage: std::collections::HashSet::new(),
             close_assaulted_hexes_this_stage: std::collections::HashSet::new(),
+            field_repairs_this_stage: std::collections::HashSet::new(),
+            convoy_repairs_this_stage: std::collections::HashSet::new(),
             anti_armor_hexes_this_stage: std::collections::HashSet::new(),
             ports_transferred_this_stage: std::collections::HashSet::new(),
             dummy_tanks: Vec::new(),
@@ -1630,6 +1639,64 @@ impl GameState {
         if let Some(u) = self.unit_mut(id) {
             u.fuel = cap;
         }
+    }
+
+    /// §49.15/§49.16: refuel a unit from fuel **present in its hex** — its own first-line trucks'
+    /// cargo first, then friendly (non-dummy) supply dumps there (an unlimited base covers any
+    /// shortfall). Cargo on free convoy trucks does not count until off-loaded. Fills up to the
+    /// unit's Fuel capacity (§49.14). Returns `(drawn, room)`: the Fuel Points taken and the room the
+    /// tanks had; `drawn < room` means the hex ran short.
+    pub fn refuel_from_hex(&mut self, id: UnitId) -> (u32, u32) {
+        self.resupply_from_hex(id, Commodity::Fuel)
+    }
+
+    /// §50.15/§50.17: rearm a unit to its one-fire Ammunition reserve from ammo **present in its
+    /// hex** (own first-line truck cargo, then friendly non-dummy dumps / an unlimited base). Returns
+    /// `(drawn, room)` as [`GameState::refuel_from_hex`].
+    pub fn rearm_from_hex(&mut self, id: UnitId) -> (u32, u32) {
+        self.resupply_from_hex(id, Commodity::Ammo)
+    }
+
+    /// Shared body of [`GameState::refuel_from_hex`] / [`GameState::rearm_from_hex`].
+    fn resupply_from_hex(&mut self, id: UnitId, c: Commodity) -> (u32, u32) {
+        let (cap, have, side) = match self.units.get(&id) {
+            Some(u) => {
+                let cap = match c {
+                    Commodity::Fuel => self.unit_fuel_capacity(id),
+                    _ => self.reference.ammo_rates.map_or(0, |r| r.barrage * u.total_toe()),
+                };
+                let have = if c == Commodity::Fuel { u.fuel } else { u.ammo };
+                (cap, have, u.nationality.side())
+            }
+            None => return (0, 0),
+        };
+        let room = cap.saturating_sub(have);
+        if room == 0 {
+            return (0, 0);
+        }
+        // 1. The unit's own first-line truck cargo (it is with the unit, so in the same hex).
+        let from_cargo = self.units.get(&id).map_or(0, |u| u.truck_cargo.get(c)).min(room);
+        // 2. Friendly dumps (and any unlimited base) in the unit's physical hex.
+        let from_dumps = match self.effective_hex(id) {
+            Some(h) => {
+                let want = room - from_cargo;
+                let avail = self.available_commodity_at(h, side, c).min(want);
+                if avail > 0 {
+                    self.consume_commodity_at(h, side, c, avail);
+                }
+                avail
+            }
+            None => 0,
+        };
+        let drawn = from_cargo + from_dumps;
+        if let Some(u) = self.unit_mut(id) {
+            *u.truck_cargo.get_mut(c) -= from_cargo;
+            match c {
+                Commodity::Fuel => u.fuel += drawn,
+                _ => u.ammo += drawn,
+            }
+        }
+        (drawn, room)
     }
 
     /// §49.17: "siphon gas" in an emergency — transfer up to `amount` Fuel Points from `donor` to
@@ -10049,6 +10116,8 @@ impl GameState {
         self.land_combat_this_stage.clear();
         self.barraged_hexes_this_stage.clear();
         self.close_assaulted_hexes_this_stage.clear();
+        self.field_repairs_this_stage.clear();
+        self.convoy_repairs_this_stage.clear();
         self.anti_armor_hexes_this_stage.clear();
         self.ports_transferred_this_stage.clear(); // §30.52 one naval troop transfer per port per stage
         self.recon_revealed.clear(); // §42.27 recon reveals are a per-stage snapshot

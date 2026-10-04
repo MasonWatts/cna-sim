@@ -2476,7 +2476,13 @@ mod tests {
                 folded.remove(r);
             }
         }
-        assert_eq!(folded.len(), 2, "folding the deltas reconstructs both units");
+        // Every starting unit is accounted for: reconstructed by folding, or explicitly removed
+        // (eliminated) by a later frame — whatever the agents' play did to it.
+        let removed: std::collections::HashSet<u32> = rec.events.iter().flat_map(|e| e.removed.iter().copied()).collect();
+        for uv in &rec.events[0].units {
+            assert!(folded.contains_key(&uv.id) || removed.contains(&uv.id), "unit {} vanished without a removal", uv.id);
+        }
+        assert_eq!(folded.len() + removed.len(), 2, "folding the deltas reconstructs every unit not removed");
         assert!(rec.events.last().unwrap().game_turn >= 1);
         // The whole record round-trips through serde_json.
         let json = serde_json::to_string(&rec).unwrap();

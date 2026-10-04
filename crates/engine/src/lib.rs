@@ -1638,6 +1638,69 @@ mod tests {
     }
 
     #[test]
+    fn legal_commands_omit_no_op_repair_refuel_rearm() {
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, RepairKind};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, TruckPoints, UnitLocation, WeaponGroup};
+
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        g.map.set_hex(HexCoord::new(3, 3), HexTerrain::Clear);
+        let tank = g.spawn_unit(Nationality::Commonwealth, "g", "tk", Composition::Weapons { groups: vec![WeaponGroup { system: "A13 Cruiser".into(), count: 6 }] });
+        g.unit_mut(tank).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(3, 3)));
+        g.active_player = Side::Commonwealth;
+        let repairs = |g: &GameState| g.legal_commands(Side::Commonwealth).into_iter().filter(|c| matches!(c, Command::Repair { .. })).collect::<Vec<_>>();
+        let has = |g: &GameState, f: &dyn Fn(&Command) -> bool| g.legal_commands(Side::Commonwealth).iter().any(f);
+
+        // Repair Phase: nothing broken → no repair offered (the window auto-passes).
+        g.phase = Phase::Repair;
+        assert!(repairs(&g).is_empty(), "no-op repairs offered: {:?}", repairs(&g));
+        // Broken-down trucks → exactly the truck repair is offered.
+        g.unit_mut(tank).unwrap().trucks_broken = TruckPoints { light: 0, medium: 1, heavy: 0 };
+        assert_eq!(repairs(&g), vec![Command::Repair { unit: tank, kind: RepairKind::Trucks }]);
+        // §22.23: one repair die per Repair Phase — after a (failed) attempt it is no longer offered
+        // and a retry is refused; the next stage allows a fresh attempt.
+        g.rng.force([6]); // a 6 repairs nothing
+        assert!(g.apply(Command::Repair { unit: tank, kind: RepairKind::Trucks }).is_ok());
+        assert!(repairs(&g).is_empty(), "spent attempt still offered");
+        assert_eq!(
+            g.apply(Command::Repair { unit: tank, kind: RepairKind::Trucks }),
+            Err(crate::state::command::CommandError::AlreadyRepairedThisPhase)
+        );
+        g.field_repairs_this_stage.clear(); // as at the start of the next Operations Stage
+        assert_eq!(repairs(&g).len(), 1);
+
+        // Organization: a unit spawned with full tanks/ammo is not offered Refuel/Rearm…
+        g.phase = Phase::Organization;
+        assert!(!has(&g, &|c| matches!(c, Command::RefuelUnit { .. } | Command::RearmUnit { .. })));
+        // …nor when it is empty but there is no fuel/ammo in its hex (§49.15/§50.15) —
+        g.unit_mut(tank).unwrap().fuel = 0;
+        g.unit_mut(tank).unwrap().ammo = 0;
+        assert!(!has(&g, &|c| matches!(c, Command::RefuelUnit { .. } | Command::RearmUnit { .. })));
+        assert_eq!(g.apply(Command::RefuelUnit { unit: tank }), Err(crate::state::command::CommandError::InsufficientFuel));
+        assert_eq!(g.apply(Command::RearmUnit { unit: tank }), Err(crate::state::command::CommandError::InsufficientAmmo));
+        // — but is once a friendly dump in its hex holds some, and the refill is drawn from it.
+        g.supply_dumps.push(crate::state::game::SupplyDump {
+            location: UnitLocation::OnMap(HexCoord::new(3, 3)),
+            side: Side::Commonwealth,
+            supply: crate::state::game::Commodities { fuel: 5, ammo: 1000, stores: 0, water: 0 },
+            dummy: false,
+            constructed: true,
+            unlimited: false,
+        });
+        assert!(has(&g, &|c| *c == Command::RefuelUnit { unit: tank }));
+        assert!(has(&g, &|c| *c == Command::RearmUnit { unit: tank }));
+        assert!(g.apply(Command::RefuelUnit { unit: tank }).is_ok());
+        assert_eq!(g.unit(tank).unwrap().fuel, 5, "only the 5 Fuel Points in the hex were available");
+        assert_eq!(g.supply_dumps[0].supply.fuel, 0, "drawn from the dump");
+        assert!(g.apply(Command::RearmUnit { unit: tank }).is_ok());
+        let ammo = g.unit(tank).unwrap().ammo;
+        assert!(ammo > 0 && g.supply_dumps[0].supply.ammo == 1000 - ammo, "ammo drawn from the dump");
+    }
+
+    #[test]
     fn decline_defense_15_29() {
         use crate::reference::terrain::HexTerrain;
         use crate::reference::units::Side;
@@ -6951,25 +7014,43 @@ mod tests {
         g.phase = Phase::TruckConvoy;
         assert_eq!(g.load_convoy(0, Commodity::Fuel, 5), 5, "a constructed dump is loadable");
 
-        // A dummy dump costs 3 CP only (no Stores needed).
-        let before = g.supply_dumps.len();
+        // §24.9: the hex is now *designated* a dump — neither a dummy nor a second real dump may be
+        // built there (the rebuild would only burn Stores).
         g.phase = Phase::Organization;
-        assert!(matches!(
-            g.apply(Command::ConstructSupplyDump { unit, hex, dummy: true }),
-            Ok(CommandOutcome::SupplyDumpConstructed { dummy: true, .. })
-        ));
-        assert_eq!(g.supply_dumps.len(), before + 1);
-        assert!(g.supply_dumps.last().unwrap().dummy);
+        assert_eq!(g.apply(Command::ConstructSupplyDump { unit, hex, dummy: true }), Err(CommandError::DumpConstructionIllegal));
+        assert_eq!(g.apply(Command::ConstructSupplyDump { unit, hex, dummy: false }), Err(CommandError::DumpConstructionIllegal));
 
-        // A real dump with no Stores present is refused.
+        // A dummy dump costs 3 CP only (no Stores needed) — once per hex.
         let hex2 = HexCoord::new(1, 1);
         g.map.set_hex(hex2, HexTerrain::Clear);
         let u2 = g.spawn_unit(Nationality::Commonwealth, "h", "2 RB", Composition::Organic { current_toe: 4 });
         g.unit_mut(u2).unwrap().location = Some(UnitLocation::OnMap(hex2));
+        let before = g.supply_dumps.len();
+        assert!(matches!(
+            g.apply(Command::ConstructSupplyDump { unit: u2, hex: hex2, dummy: true }),
+            Ok(CommandOutcome::SupplyDumpConstructed { dummy: true, .. })
+        ));
+        assert_eq!(g.supply_dumps.len(), before + 1);
+        assert!(g.supply_dumps.last().unwrap().dummy);
+        assert_eq!(
+            g.apply(Command::ConstructSupplyDump { unit: u2, hex: hex2, dummy: true }),
+            Err(CommandError::DumpConstructionIllegal),
+            "no dummy spam: one designation per hex"
+        );
+
+        // A real dump with no Stores present is refused.
         assert_eq!(
             g.apply(Command::ConstructSupplyDump { unit: u2, hex: hex2, dummy: false }),
             Err(CommandError::InsufficientStores)
         );
+        // With Stores, a real dump replaces the dummy marker (one designation per hex).
+        g.supply_dumps.push(SupplyDump {
+            location: UnitLocation::OnMap(hex2), side: Side::Commonwealth,
+            supply: Commodities { fuel: 0, ammo: 0, stores: 20, water: 0 }, dummy: false, constructed: false, unlimited: false,
+        });
+        assert!(g.apply(Command::ConstructSupplyDump { unit: u2, hex: hex2, dummy: false }).is_ok());
+        let at2: Vec<_> = g.supply_dumps.iter().filter(|d| d.location.hex() == Some(hex2)).collect();
+        assert!(at2.iter().all(|d| !d.dummy) && at2.iter().any(|d| d.constructed), "dummy replaced by the real dump");
     }
 
     #[test]

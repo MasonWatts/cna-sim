@@ -27,7 +27,7 @@ fn facility_serves(kind: crate::state::air::AirFacilityKind, class: crate::refer
 }
 
 /// Which broken-down component to repair (§22).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RepairKind {
     /// §22.23 field repair of broken-down first-line trucks.
     Trucks,
@@ -567,9 +567,11 @@ pub enum Command {
         interceptor_squadron: Option<crate::state::air::SquadronId>,
         flak_points: u32,
     },
-    /// §49.14: fill a land unit's fuel tanks to capacity (Organization Phase). Returns new Fuel.
+    /// §49.14–§49.16: fill a land unit's fuel tanks toward capacity from fuel present in its hex
+    /// (its own truck cargo or a friendly dump/base) (Organization Phase). Returns new Fuel.
     RefuelUnit { unit: UnitId },
-    /// §50.17: rearm a land unit's onboard ammunition to a one-fire reserve (Organization Phase).
+    /// §50.15/§50.17: rearm a land unit's onboard ammunition toward a one-fire reserve from ammo
+    /// present in its hex (its own truck cargo or a friendly dump/base) (Organization Phase).
     RearmUnit { unit: UnitId },
     /// §33.0 IV.A: the Initiative player declares whether they move first this Operations Stage
     /// (Weather Phase).
@@ -1371,6 +1373,9 @@ pub enum CommandError {
     /// capacity, the class rule (§35.21) or capacity cap (§35.23) is violated, or there are too few
     /// planes of the requested type in the source.
     PlaneTransferNotAllowed,
+    /// §22.23: this unit (or convoy) already rolled its field-repair die for this kind of damage in
+    /// the current Repair Phase; a failed roll may not be re-tried until the next one.
+    AlreadyRepairedThisPhase,
     /// §8.17: a non-motorized unit (base CPA ≤ 10) may not voluntarily expend more than 150% of its
     /// base Capability Point Allowance in its own portion of the Operations Stage.
     CpaCeilingExceeded,
@@ -1608,6 +1613,10 @@ impl GameState {
                 if self.active_player != side {
                     return Err(CommandError::WrongPhase);
                 }
+                // §22.23: one repair die per Repair Phase for the convoy's broken-down trucks.
+                if !self.convoy_repairs_this_stage.insert(convoy) {
+                    return Err(CommandError::AlreadyRepairedThisPhase);
+                }
                 let roll = self.rng.d6();
                 Ok(CommandOutcome::Repaired(self.repair_convoy_trucks(convoy, roll)))
             }
@@ -1790,6 +1799,10 @@ impl GameState {
             Command::Repair { unit, kind } => {
                 self.require_phase(Phase::Repair)?;
                 self.require_units_exist(&[unit])?;
+                // §22.23: one repair die per Repair Phase — a failed roll may not be re-tried.
+                if !self.field_repairs_this_stage.insert((unit, kind)) {
+                    return Err(CommandError::AlreadyRepairedThisPhase);
+                }
                 let roll = self.rng.d6(); // §22 field-repair die, rolled inside the boundary
                 let repaired = match kind {
                     RepairKind::Trucks => self.field_repair_trucks(unit, roll),
@@ -2058,13 +2071,22 @@ impl GameState {
             Command::RefuelUnit { unit } => {
                 self.require_phase(Phase::Organization)?;
                 self.require_units_exist(&[unit])?;
-                self.refuel_to_capacity(unit);
+                // §49.15/§49.16: fuel must be present in the unit's hex (own truck cargo or a
+                // friendly dump/base); a unit with room but nothing to draw cannot refuel.
+                let (drawn, room) = self.refuel_from_hex(unit);
+                if room > 0 && drawn == 0 {
+                    return Err(CommandError::InsufficientFuel);
+                }
                 Ok(CommandOutcome::UnitRefueled(self.unit(unit).map_or(0, |u| u.fuel)))
             }
             Command::RearmUnit { unit } => {
                 self.require_phase(Phase::Organization)?;
                 self.require_units_exist(&[unit])?;
-                self.rearm_fire_once(unit);
+                // §50.15: ammunition must be present in the unit's hex.
+                let (drawn, room) = self.rearm_from_hex(unit);
+                if room > 0 && drawn == 0 {
+                    return Err(CommandError::InsufficientAmmo);
+                }
                 Ok(CommandOutcome::UnitRearmed(self.unit(unit).map_or(0, |u| u.ammo)))
             }
             Command::DeclareInitiativeOrder { initiative_moves_first } => {
@@ -3632,6 +3654,19 @@ impl GameState {
         if u.hex() != Some(hex) || (!dummy && u.total_toe() == 0) {
             return Err(CommandError::DumpConstructionIllegal);
         }
+        // §24.9: the hex is *designated* a supply dump (dummy or not) — one designation per side.
+        // A dummy may not be added to a hex this side already designates; a real dump may not be
+        // re-built where one stands with no loose supplies left to promote (it would only burn Stores).
+        let here = |d: &&SupplyDump| d.side == side && d.location.hex() == Some(hex);
+        let has_dummy = self.supply_dumps.iter().filter(here).any(|d| d.dummy);
+        let has_real = self.supply_dumps.iter().filter(here).any(|d| !d.dummy && d.constructed);
+        let has_loose = self.supply_dumps.iter().filter(here).any(|d| !d.dummy && !d.constructed);
+        if dummy && (has_dummy || has_real || has_loose) {
+            return Err(CommandError::DumpConstructionIllegal);
+        }
+        if !dummy && has_real && !has_loose {
+            return Err(CommandError::DumpConstructionIllegal);
+        }
         if !dummy {
             // §24.9: expend 20 Store Points in the hex (Logistics Game).
             if self.available_commodity_at(hex, side, Commodity::Stores) < 20 {
@@ -3653,6 +3688,8 @@ impl GameState {
                 d.constructed = true;
                 promoted = true;
             }
+            // A real dump replaces this side's dummy marker in the hex (one designation per hex).
+            self.supply_dumps.retain(|d| !(d.side == side && d.dummy && d.location.hex() == Some(hex)));
             if !promoted {
                 self.supply_dumps.push(SupplyDump {
                     location: UnitLocation::OnMap(hex), side, supply: Commodities::default(), dummy: false, constructed: true, unlimited: false,
