@@ -1,0 +1,21 @@
+[package]
+name = "cna-harness"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic game harness that lets AI models play CNA-Sim through an MCP server."
+
+[dependencies]
+cna-engine = { path = "../engine" }
+cna-replay = { path = "../replay" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rmcp = { version = "3.5", features = ["server", "macros", "transport-streamable-http-server"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "process", "io-util"] }
+axum = "0.8"
+tokio-util = "0.7"
+schemars = "1"
+anyhow = "1"
+
+[dev-dependencies]
+# The integration test drives the harness through a real MCP client over HTTP.
+rmcp = { version = "3.5", features = ["client", "transport-streamable-http-client-reqwest"] }

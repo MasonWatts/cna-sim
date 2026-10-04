@@ -65,7 +65,7 @@ tools/                OCR → order-of-battle pipeline and map utilities
 
 ```bash
 cargo build              # build the workspace
-cargo test --workspace   # run the full test suite (492 tests)
+cargo test --workspace   # run the full test suite
 cargo run --bin demo     # narrate barrage, anti-armor, and close assault in sequence
 ```
 
@@ -80,3 +80,22 @@ cd web && npm install && npm run dev   # open the printed localhost URL
 
 See [`docs/visualization-architecture.md`](docs/visualization-architecture.md) and
 [`web/README.md`](web/README.md).
+
+## AI-model players (MCP harness)
+
+`cna-harness` runs a game in which either side is played by an AI model through an MCP server
+(fog-of-war-safe tools: observe, list legal actions, submit a plan, end phase). The scripted agents
+remain available for fast engine testing.
+
+```bash
+# Claude (headless Claude Code) plays the Commonwealth's Movement phases vs the Greedy agent:
+cargo run -p cna-harness -- --scenario skirmish --turns 1 --commonwealth llm --axis greedy \
+    --llm-phases movement --budget-usd 0.50 --out /tmp/game.jsonl
+# Bring your own MCP client instead (prints endpoint + token; use wait_for_turn):
+cargo run -p cna-harness -- --commonwealth llm --external --out /tmp/game.jsonl
+# Reproduce any recorded game exactly from its command log:
+cargo run -p cna-harness -- --replay /tmp/game.commands.jsonl
+```
+
+The `.jsonl` output is the normal viewer event log; per-window model transcripts land in
+`<out>.transcript/`. See [`docs/llm-player-harness.md`](docs/llm-player-harness.md).

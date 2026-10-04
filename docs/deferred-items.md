@@ -309,6 +309,9 @@ New shared helper `within_cp_budget` (cost-limited Dijkstra over `move_step_cost
 
 - [-] Hex-placed convoy / sea-movement model — violates §56.11 faithful lane model.
 - [-] Command-level enforcement of "act only on observed info" — Phase-2 agent concern (§8.10).
+  *Update 2026-10-03:* enforced for **AI-model players** at the MCP boundary — `cna-harness` serves
+  only `observe_*`-derived views (see `docs/llm-player-harness.md`). The in-process scripted agents
+  still read `&GameState` directly (acceptable for engine-test agents).
 - [-] Air recon "operational abstraction" ceiling already ruled acceptable (2026-08-29) beyond B6/B7.
 
 Note: the earlier "only §64.7 campaign victory is modeled" entry is retired — §60.81 Scenario-1
