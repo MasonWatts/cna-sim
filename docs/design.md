@@ -832,8 +832,9 @@ over the land-effect §41.3x missions) and **strafing** (`Strafe` over the §40.
 against each enemy hex, on top of recon/CAP; **Repair** adds the die-carrying `Repair` for a unit's
 broken-down trucks / destroyed tanks / recce points (a representative roll — legality is roll-
 independent) alongside captured-equipment repair; and two naval phases are enumerated — **Commonwealth
-Fleet** (`RepairShip`, `AssignShip` to Alexandria/Valetta per ship) and **Naval Convoy Arrival**
-(`DeliverConvoy` per pending convoy). Every candidate is still `dry_run`-validated, so only legal,
+Fleet** (`RepairShip`, `AssignShip` to Alexandria/Valetta per ship). (Naval Convoy Arrival has no
+player decision: due convoys land automatically at the start of the phase, `deliver_due_convoys`,
+§56.16.) Every candidate is still `dry_run`-validated, so only legal,
 in-range, capable actions survive. Agents act across all seven decision phases. What's left is mostly
 parameter breadth plus tuning the eval weights via self-play.
 

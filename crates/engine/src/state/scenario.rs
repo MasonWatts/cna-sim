@@ -216,7 +216,9 @@ impl GameState {
                 unit.org_size = u.org_size;
                 unit.basic_morale = arrival_morale;
                 unit.basic_morale_reference = form.basic_morale;
-                unit.is_hq = u.parent.is_empty() && u.name.contains("HQ");
+                // §9.12: "HQ units, whether Division, Brigade, or Regiment" — every HQ counter in the
+                // OB (all are named "… HQ"/"… HQE"), not only the top of a formation.
+                unit.is_hq = u.name.contains("HQ");
                 unit.airdroppable = u.airdroppable; // §42.41 (from the OA sheet)
                 unit.is_tds = u.is_tds; // §22.6 Tank Delivery Squadron / Mobile Tank Repair Squad
                 unit.unit_type = u.unit_type; // leaf type, if the OB sets it
@@ -243,6 +245,8 @@ impl GameState {
                 if let Some(unit) = self.unit_mut(id) {
                     unit.composition = Composition::Organic { current_toe: n };
                 }
+                // §49.14: full tanks for the real TOE (organic Recce/AC burn fuel per TOE point).
+                self.refuel_to_capacity(id);
             }
             by_name.insert(&u.name, id);
             ids.push(id);
@@ -333,6 +337,13 @@ struct ScenarioData {
     /// nationality's entry point (or an explicit `hex` override) on their OB arrival turn.
     #[serde(default)]
     reinforcements: Vec<Reinforcement>,
+    /// §53.11 First Line Trucks from the deployment chart's "Trucks:" entries, attached to the
+    /// named (on-map) unit — normally the parent combat unit of that chart line.
+    #[serde(default)]
+    first_line_trucks: Vec<FirstLineTrucksSpec>,
+    /// §53.12/§53.13 Second/Third Line Trucks (§60.33 / §60.43): free truck convoys at a hex.
+    #[serde(default)]
+    truck_convoys: Vec<TruckConvoySpec>,
     /// Initial Supply Units (§32.1) placed at setup, at a hex label or off-map node.
     #[serde(default)]
     supply_dumps: Vec<SupplyDumpSpec>,
@@ -500,6 +511,31 @@ struct Reinforcement {
 /// An initial Supply Unit (§32.1) placed at setup. `at` is a hex label (e.g. "C4807") or an
 /// off-map node name (e.g. "Tripoli"). `count` places several identical dumps at one location
 /// (§32.14 limits: ≤5 in a Major City, ≤3 elsewhere, unlimited in the Tripoli/Tunisia boxes).
+/// First-line trucks on one unit at setup (§53.11).
+#[derive(Deserialize)]
+struct FirstLineTrucksSpec {
+    unit: String,
+    #[serde(default)]
+    light: u32,
+    #[serde(default)]
+    medium: u32,
+    #[serde(default)]
+    heavy: u32,
+}
+
+/// A free (second/third-line) truck convoy at setup (§53.12/§53.13).
+#[derive(Deserialize)]
+struct TruckConvoySpec {
+    side: Side,
+    at: String,
+    #[serde(default)]
+    light: u32,
+    #[serde(default)]
+    medium: u32,
+    #[serde(default)]
+    heavy: u32,
+}
+
 #[derive(Deserialize)]
 struct SupplyDumpSpec {
     side: Side,
@@ -644,6 +680,10 @@ impl GameState {
                     .to_hex_coord();
                 self.unit_mut(id).expect("just spawned").location = Some(crate::state::unit::UnitLocation::OnMap(coord));
             }
+            // §49.14: full tanks, now that its first-line trucks are known.
+            if u.trucks.light + u.trucks.medium + u.trucks.heavy > 0 {
+                self.refuel_to_capacity(id);
+            }
             by_name.insert(&u.name, id);
         }
 
@@ -702,6 +742,34 @@ impl GameState {
             let area = self.resolve_entry_area(&entry_str);
             self.register_reinforcement_in_area(r.nationality, &r.formation, entry, area, &unit_hexes)
                 .map_err(ScenarioError::Deploy)?;
+        }
+        // §53.11 First Line Trucks on their chart units, and §53.12/13 free convoys.
+        for t in &data.first_line_trucks {
+            let id = self
+                .units
+                .values()
+                .find(|u| u.name == t.unit && u.location.is_some())
+                .map(|u| u.id)
+                .ok_or_else(|| ScenarioError::UnknownParent(t.unit.clone()))?;
+            let u = self.unit_mut(id).expect("found");
+            u.trucks.light += t.light;
+            u.trucks.medium += t.medium;
+            u.trucks.heavy += t.heavy;
+            // §49.14: a unit enters play with full tanks — including its trucks' consumption.
+            self.refuel_to_capacity(id);
+        }
+        for c in &data.truck_convoys {
+            let hex = HexId::parse(&c.at).ok_or_else(|| ScenarioError::BadHex(c.at.clone()))?.to_hex_coord();
+            self.truck_convoys.push(crate::state::game::TruckConvoy {
+                side: c.side,
+                hex,
+                trucks: crate::state::unit::TruckPoints { light: c.light, medium: c.medium, heavy: c.heavy },
+                trucks_broken: Default::default(),
+                cargo: Default::default(),
+                cpa_used: 0,
+                breakdown_points: 0,
+                breakdown_checked_col: 0,
+            });
         }
         // Initial Supply Units (§32.1).
         for d in &data.supply_dumps {

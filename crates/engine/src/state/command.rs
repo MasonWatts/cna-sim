@@ -1280,8 +1280,22 @@ pub enum CommandError {
     /// An off-map movement step failed (§8.8).
     OffMap(crate::state::game::OffMapError),
     /// §56.2: the convoy could not be planned (lane unavailable, over the allowable tonnage, or a
-    /// convoy already occupies that lane this Game-Turn).
+    /// convoy already occupies that lane this Game-Turn). Kept for callers of the boolean
+    /// `plan_convoy`; `PlanConvoy` reports one of the specific reasons below.
     ConvoyRejected,
+    /// §56.11/§56.12: each Shipping Lane runs to one fixed destination port.
+    ConvoyWrongDestination,
+    /// §56.21: convoys are planned for the next Game-Turn (two ahead when carrying §20.63
+    /// replacements) — not the current turn, the past, or further out.
+    ConvoyBadArrival,
+    /// §56.14: the lane is not open on that Game-Turn (Greece lanes 4/5 from May II 1941).
+    ConvoyLaneClosed,
+    /// §56.21/§20.62: the turn's booked lift plus this convoy exceeds the rolled allowable tonnage.
+    ConvoyOverTonnage,
+    /// §56.12: one convoy per Shipping Lane per Game-Turn.
+    ConvoyLaneTaken,
+    /// §56.15: the destination port is held by the Commonwealth.
+    ConvoyPortHostile,
     /// The Convoy Level Chart is not loaded, so allowable tonnage cannot be derived.
     NoConvoyTable,
     /// §20.62: the planned Axis Replacement-Point tonnage for its arrival Game-Turn would exceed
@@ -2445,6 +2459,49 @@ impl GameState {
     /// §56.15 PlanConvoy: gated to the Naval Convoy Schedule Phase; derives the allowable tonnage
     /// from the Convoy Level Chart for the arrival turn/die and plans the convoy.
     #[allow(clippy::too_many_arguments)]
+    /// The specific reason a `PlanConvoy` is illegal (see the `Convoy*` errors), or `Ok`.
+    fn check_convoy_plan(
+        &self,
+        lane: u8,
+        destination: &str,
+        arrival_gt: u32,
+        total_tons: u32,
+        replacement_tons: u32,
+        allowable: u32,
+    ) -> Result<(), CommandError> {
+        if let Some(chart) = self.reference.shipping_lanes.as_ref() {
+            match chart.lane(lane) {
+                Some(l) if l.destination == destination => {}
+                Some(_) => return Err(CommandError::ConvoyWrongDestination),
+                None => return Err(CommandError::ConvoyLaneClosed),
+            }
+        }
+        // §56.21 example: supplies are planned one Game-Turn ahead; §20.63/§32.43 allow two (the
+        // replacement-carrying horizon), so either of the next two turns is accepted.
+        let _ = replacement_tons;
+        if arrival_gt <= self.game_turn || arrival_gt > self.game_turn + 2 {
+            return Err(CommandError::ConvoyBadArrival);
+        }
+        if !crate::rules::naval::lane_available(lane, arrival_gt) {
+            return Err(CommandError::ConvoyLaneClosed);
+        }
+        if let Some(hex) = self.port_hex(destination) {
+            let hostile = self.units_in_hex(hex).into_iter().any(|id| {
+                self.unit(id).is_some_and(|u| u.nationality.side() == Side::Commonwealth && u.total_toe() > 0) && self.is_combat_unit(id)
+            });
+            if hostile {
+                return Err(CommandError::ConvoyPortHostile);
+            }
+        }
+        if self.convoys.iter().any(|c| c.lane == lane && c.arrival_gt == arrival_gt && !c.cancelled) {
+            return Err(CommandError::ConvoyLaneTaken);
+        }
+        if self.axis_shipping_committed(arrival_gt) + total_tons > allowable {
+            return Err(CommandError::ConvoyOverTonnage);
+        }
+        Ok(())
+    }
+
     fn cmd_plan_convoy(
         &mut self,
         lane: u8,
@@ -2463,6 +2520,7 @@ impl GameState {
         // §56.21: the tonnage allowance is rolled once per Game-Turn. Record the first roll so both
         // supply convoys and §20.62 production arrivals bind against the same figure.
         self.axis_shipping_rolled.entry(arrival_gt).or_insert(allowable);
+        self.check_convoy_plan(lane, &destination, arrival_gt, fuel_tons + ammo_tons + stores_tons + replacement_tons, replacement_tons, allowable)?;
         if self.plan_convoy(
             lane, destination, arrival_gt, fuel_tons, ammo_tons, stores_tons, replacement_tons, allowable,
         ) {

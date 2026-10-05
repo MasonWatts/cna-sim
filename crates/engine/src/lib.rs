@@ -6846,8 +6846,8 @@ mod tests {
 
     #[test]
     fn truck_system_additions() {
-        // §53.24 load cost + one-commodity packing; §53.14 free-convoy load/unload; §8.93 inherent
-        // motorization; §6.17 gun motorization; §52.42 Truck-Point water.
+        // §53.24 load cost + one-commodity packing; §53.14 free-convoy load/unload; §8.93 "+" units
+        // need trucks; §6.17 gun motorization; §52.42 Truck-Point water.
         use crate::reference::units::{Nationality, Side};
         use crate::state::command::{Command, CommandOutcome};
         use crate::state::game::{Commodities, Commodity, GameState, Phase, TruckConvoy};
@@ -6858,11 +6858,16 @@ mod tests {
         g.map.set_hex(HexCoord::new(1, 1), HexTerrain::Clear);
         let hex = HexCoord::new(1, 1);
 
-        // §8.93: an inherently-motorized ("+") infantry unit is motorized with no assigned trucks.
+        // §8.93/§4.6: a historically motorized ("+") infantry unit walks until it actually has
+        // trucks ("must actually have Trucks in order to use their Motorized CPA"); with enough
+        // first-line trucks it takes the truck CPA.
         let mot = g.spawn_unit(Nationality::Commonwealth, "l", "mot inf", Composition::Organic { current_toe: 4 });
         g.unit_mut(mot).unwrap().location = Some(UnitLocation::OnMap(hex));
-        assert!(g.unit_is_motorized(mot), "§8.93 motorized_capable unit is motorized without trucks");
-        assert!(g.unit_motorized_cpa(mot).is_some(), "§8.93 gives a motorized CPA");
+        assert!(!g.unit_is_motorized(mot), "§4.6: a '+' unit without trucks is foot infantry");
+        assert!(g.unit_motorized_cpa(mot).is_none());
+        g.unit_mut(mot).unwrap().trucks = TruckPoints { light: 0, medium: 4, heavy: 0 };
+        assert!(g.unit_motorized_cpa(mot).is_some(), "trucked, it uses the truck CPA");
+        g.unit_mut(mot).unwrap().trucks = TruckPoints::default();
 
         // §53.24: loading a unit's first-line trucks costs 2 CP and respects one-commodity packing.
         let u = g.spawn_unit(Nationality::Commonwealth, "h", "supply", Composition::Organic { current_toe: 5 });
@@ -13020,6 +13025,7 @@ mod tests {
         while g.phase != Phase::NavalConvoySchedule {
             g.advance_phase();
         }
+        g.game_turn = 54; // §56.21 example: at GT54 the Axis plans GT55's convoys
         g.rng.force([4]);
         assert_eq!(g.apply(plan), Ok(CommandOutcome::ConvoyPlanned));
         assert_eq!(g.convoys.len(), 1);
@@ -14162,6 +14168,117 @@ mod tests {
             if p.nationality.side() == crate::reference::units::Side::Axis {
                 assert!(matches!(&p.entry, UnitLocation::OffMap { node, .. } if node == "Tripoli"), "{} enters at {:?}", p.formation, p.entry);
             }
+        }
+    }
+
+    #[test]
+    fn convoy_planning_validates_lane_port_and_schedule_56() {
+        // §56.11/§56.12 fixed lane destinations, §56.21 plan-ahead window, §56.15 hostile port.
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::Phase;
+        let mut g = build_campaign_game();
+        g.phase = Phase::NavalConvoySchedule;
+        g.active_player = crate::reference::units::Side::Axis;
+        let gt = g.game_turn;
+        let plan = |lane: u8, dest: &str, arr: u32| Command::PlanConvoy {
+            lane, destination: dest.into(), arrival_gt: arr, fuel_tons: 100, ammo_tons: 0, stores_tons: 0, replacement_tons: 0,
+        };
+        assert_eq!(g.apply(plan(2, "Alexandria", gt + 1)), Err(CommandError::ConvoyWrongDestination));
+        assert_eq!(g.apply(plan(3, "Tobruk", gt + 1)), Err(CommandError::ConvoyWrongDestination));
+        assert_eq!(g.apply(plan(6, "Tobruk", gt)), Err(CommandError::ConvoyBadArrival), "not this turn");
+        assert_eq!(g.apply(plan(6, "Tobruk", gt + 5)), Err(CommandError::ConvoyBadArrival), "not far out");
+        assert_eq!(g.apply(plan(4, "Benghazi", gt + 1)).err().map(|e| matches!(e, CommandError::ConvoyLaneClosed | CommandError::ConvoyWrongDestination)), Some(true), "Greece lanes closed in 1940");
+        assert_eq!(g.apply(plan(6, "Tobruk", gt + 1)), Ok(CommandOutcome::ConvoyPlanned));
+        assert_eq!(g.apply(plan(6, "Tobruk", gt + 1)), Err(CommandError::ConvoyLaneTaken));
+        assert_eq!(
+            g.apply(Command::PlanConvoy { lane: 2, destination: "Tripoli".into(), arrival_gt: gt + 1, fuel_tons: 900_000, ammo_tons: 0, stores_tons: 0, replacement_tons: 0 }),
+            Err(CommandError::ConvoyOverTonnage)
+        );
+        // A Commonwealth combat unit in Benghazi makes it unusable.
+        let bz = g.port_hex("Benghazi").unwrap();
+        let cw = g.units.values().find(|u| u.nationality.side() == crate::reference::units::Side::Commonwealth && u.hex().is_some() && g.is_combat_unit(u.id) && u.total_toe() > 0).unwrap().id;
+        g.unit_mut(cw).unwrap().location = Some(crate::state::unit::UnitLocation::OnMap(bz));
+        assert_eq!(g.apply(plan(3, "Benghazi", gt + 1)), Err(CommandError::ConvoyPortHostile));
+    }
+
+    #[test]
+    fn convoys_land_automatically_at_arrival_phase_56_16() {
+        // Sequence of Play D: arriving supplies "appear in their designated ports" — no player
+        // delivers them, so the Commonwealth (acting here when it holds the Initiative) can neither
+        // deliver nor withhold the Axis's convoys, and there is no index to go stale mid-plan.
+        use crate::reference::units::Side;
+        use crate::state::command::Command;
+        use crate::state::game::Phase;
+        let mut g = build_campaign_game();
+        let tobruk = g.port_hex("Tobruk").unwrap();
+        let stock = |g: &crate::state::game::GameState| -> u32 {
+            g.supply_dumps.iter().filter(|d| d.side == Side::Axis && d.location == crate::state::unit::UnitLocation::OnMap(tobruk)).map(|d| d.supply.fuel).sum()
+        };
+        let before = stock(&g);
+        let gt = g.game_turn + 1;
+        assert!(g.plan_convoy(6, "Tobruk", gt, 100, 0, 0, 0, 25000));
+        assert!(g.plan_convoy(6, "Tobruk", gt + 5, 100, 0, 0, 0, 25000));
+        g.game_turn = gt;
+        g.deliver_due_convoys();
+        assert_eq!(g.convoys.len(), 1, "the due convoy landed; the later one is still at sea");
+        assert!(stock(&g) > before, "its fuel is now in the Tobruk dump");
+        assert!(g.system_log.iter().any(|e| e.summary.contains("Axis convoy landed at Tobruk")));
+        g.phase = Phase::NavalConvoyArrival;
+        for side in [Side::Commonwealth, Side::Axis] {
+            assert!(!g.legal_commands(side).iter().any(|c| matches!(c, Command::DeliverConvoy { .. })));
+        }
+    }
+
+    #[test]
+    fn campaign_starts_with_chart_trucks_53() {
+        // §60.31/§60.41 "Trucks:" entries become First Line Trucks on their units (§53.11) and the
+        // §60.33/§60.43 allotments free convoys (§53.12/13) — so both sides can actually haul supply.
+        use crate::reference::units::Side;
+        use crate::state::command::Command;
+        use crate::state::game::Phase;
+        let mut g = build_campaign_game();
+        let named = |g: &crate::state::game::GameState, n: &str| g.units.values().find(|u| u.name == n).map(|u| u.trucks).unwrap();
+        let t = named(&g, "4th Indian Div HQ");
+        assert_eq!((t.light, t.medium, t.heavy), (5, 20, 2));
+        let hq = g.units.values().find(|u| u.name == "4th Indian Div HQ").unwrap().id;
+        assert!(g.unit_fuel_capacity(hq) > 0 && g.units[&hq].fuel == g.unit_fuel_capacity(hq), "§49.14: trucks start fuelled");
+        // §9.12: brigade/regiment HQs inside a division are HQs too; a bare one stacks free and is
+        // not a combat unit (Aresca's tank battalions are all detached at start, §60.31).
+        for n in ["141st Infantry Regt HQ", "16th Infantry Bde HQ", "Aresca (1st) Regt HQ"] {
+            assert!(g.units.values().find(|u| u.name == n).unwrap().is_hq, "{n} is an HQ");
+        }
+        let aresca = g.units.values().find(|u| u.name == "Aresca (1st) Regt HQ").unwrap().id;
+        assert!(!g.has_attached_units(aresca));
+        assert_eq!(g.effective_stacking_points(aresca), 0);
+        assert!(!g.is_combat_unit(aresca));
+        // §49.1 erratum: organic Recce/AC units burn 1 Fuel per TOE point and start full (§49.14);
+        // motorcycle (§4.6) and camel (§32.24) units burn none.
+        let cih = g.units.values().find(|u| u.name == "Central India Horse").unwrap().id;
+        assert_eq!(g.unit_fuel_rate_total(cih), g.units[&cih].total_toe());
+        assert!(g.unit_fuel_capacity(cih) > 0 && g.units[&cih].fuel == g.unit_fuel_capacity(cih));
+        for n in ["201st Bersaglieri Mitrg Coy", "1 Sahariano Camel Bn"] {
+            if let Some(u) = g.units.values().find(|u| u.name == n) {
+                assert_eq!(g.unit_fuel_rate_total(u.id), 0, "{n} burns no fuel");
+            }
+        }
+        // "+" battalions walk without trucks; the C3922 chart trucks go to the "+" KRRC (§32.54).
+        let krrc = g.units.values().find(|u| u.name == "1st KRRC").unwrap().id;
+        assert!(g.units[&krrc].trucks.medium == 15 && g.unit_is_motorized(krrc));
+        let t = named(&g, "62nd Marmarica Div HQ");
+        assert_eq!((t.light, t.medium, t.heavy), (0, 40, 5));
+        let convoy_tp = |side: Side| -> u32 { g.truck_convoys.iter().filter(|c| c.side == side).map(|c| c.trucks.light + c.trucks.medium + c.trucks.heavy).sum() };
+        assert_eq!(convoy_tp(Side::Axis), 25 + 140 + 40 + 30 + 100 + 25 + 10 + 50);
+        assert_eq!(convoy_tp(Side::Commonwealth), 50 + 30 + 60 + 55);
+        // The Truck Convoy phase now offers hauling: load at a dump, move the convoy.
+        for side in [Side::Commonwealth, Side::Axis] {
+            g.phase = Phase::TruckConvoy;
+            g.active_player = side;
+            let legal = g.legal_commands(side);
+            assert!(legal.iter().any(|c| matches!(c, Command::LoadConvoy { .. })), "{side:?} can load a convoy");
+            assert!(legal.iter().any(|c| matches!(c, Command::MoveTruckConvoy { .. })), "{side:?} can move a convoy");
+            g.phase = Phase::Organization;
+            let legal = g.legal_commands(side);
+            assert!(legal.iter().any(|c| matches!(c, Command::FormTruckConvoy { .. } | Command::LoadTrucks { .. })), "{side:?} first-line trucks usable");
         }
     }
 

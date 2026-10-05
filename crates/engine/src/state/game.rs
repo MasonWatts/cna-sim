@@ -1622,7 +1622,16 @@ impl GameState {
                     grp.count * rate
                 })
                 .sum(),
-            Composition::Organic { .. } => 0,
+            // §49.1 erratum (Sep 1979): "The Fuel Consumption Rate for … Recce/AC units is 1" — per
+            // TOE Strength Point (§49.13). Every vehicle burns fuel (§49.12); the exemptions are
+            // motorcycle units (§4.6) and camel units (§32.24). Leg infantry has no vehicles.
+            Composition::Organic { .. } => {
+                if self.is_recce_unit(id) && !self.unit_is_motorcycle(id) && !self.unit_is_camel(id) {
+                    u.total_toe()
+                } else {
+                    0
+                }
+            }
         };
         // Attached first-line Truck Points also consume fuel when moving (§49.12/18).
         let truck_rate: u32 = match self.reference.truck_chart.as_ref() {
@@ -2031,17 +2040,13 @@ impl GameState {
         };
         match &u.composition {
             Composition::Organic { .. } => {
-                let uc = self
-                    .reference
-                    .unit_characteristics
-                    .get(&u.nationality)
-                    .and_then(|m| m.get(&u.id_code));
-                // §8.93: inherently-motorized ("+" on the chart) units carry their own transport — they
-                // are motorized regardless of assigned Truck Points, moving at the light-truck infantry pace.
-                let inherent = uc.map(|c| c.cpa.motorized_capable).unwrap_or(false);
                 // §6.17: leg infantry (basic CPA ≤ 10) whose full TOE its attached Truck Points can carry.
+                // This includes the "+" (historically motorized, §8.93) battalions: "Motorized Infantry
+                // units must actually have Trucks in order to use their Motorized CPA … Otherwise they
+                // are regular 'foot' Infantry" (§4.6; §4.46 key "+": "*If* motorized…"; §19.97). The
+                // "+" only gives them first call on trucks (§32.54) and a larger AT allowance (§19.94).
                 let trucked = self.unit_cpa(id)? <= 10 && has_trucks && self.unit_truck_inf_capacity(id) >= u.total_toe();
-                if !inherent && !trucked {
+                if !trucked {
                     return None;
                 }
                 min_cpa(|ch| ch.cpa_inf).or(Some(chart.light.cpa_inf.unwrap_or(25)))
@@ -6174,6 +6179,44 @@ impl GameState {
     /// pool, not returned here). Port receiving-capacity (§55.13) is enforced at planning time.
     /// Returns `None` if the Equivalent Weights chart is unloaded or the index is invalid; a
     /// cancelled convoy delivers nothing.
+    /// Sequence of Play D / §56.16: at the start of the Naval Convoy Arrival Phase every Axis convoy
+    /// that has reached its arrival Game-Turn lands at its port automatically ("all … Supplies
+    /// scheduled for arrival … appear in their designated ports") — no player decides it, and the
+    /// Commonwealth (who may hold the Initiative and so act in this phase) cannot withhold it. A
+    /// convoy the port can't fully absorb lands its share and stays in transit with the remainder
+    /// (§55.16). Each delivery is recorded in the system log.
+    pub fn deliver_due_convoys(&mut self) {
+        let mut i = 0;
+        while i < self.convoys.len() {
+            let due = self.convoys[i].cancelled || self.convoys[i].arrival_gt <= self.game_turn;
+            if !due {
+                i += 1;
+                continue;
+            }
+            let before = self.convoys.len();
+            let dest = self.convoys[i].destination.clone();
+            let cancelled = self.convoys[i].cancelled;
+            let Some(c) = self.deliver_convoy(i) else {
+                i += 1;
+                continue;
+            };
+            let msg = if cancelled {
+                format!("The convoy to {dest} never sailed — its port is in Commonwealth hands (§56.15).")
+            } else if self.convoys.len() < before {
+                format!("Axis convoy landed at {dest}: {} Fuel, {} Ammo, {} Stores (§56.16).", c.fuel, c.ammo, c.stores)
+            } else {
+                format!(
+                    "Axis convoy landed part of its cargo at {dest} ({} Fuel, {} Ammo, {} Stores); the rest waits for port capacity (§55.16).",
+                    c.fuel, c.ammo, c.stores
+                )
+            };
+            self.system_log.push(SystemLogEntry::new(None, "Convoy Arrival", msg, &["§56.16"]));
+            if self.convoys.len() == before {
+                i += 1; // partially landed — it stays in the list
+            }
+        }
+    }
+
     pub fn deliver_convoy(&mut self, convoy_index: usize) -> Option<Commodities> {
         let (fuel_rate, ammo_rate, stores_rate) = {
             let ew = self.reference.equivalent_weights.as_ref()?;
@@ -8366,7 +8409,11 @@ impl GameState {
 
     /// §8.44/§8.45: a motorcycle unit (the German Kradschützen battalion — the game's only one).
     pub(crate) fn unit_is_motorcycle(&self, id: UnitId) -> bool {
-        self.units.get(&id).is_some_and(|u| u.name.contains("Krad") || u.name.contains("Motorcycle"))
+        // §4.6: "mostly Italian Bersaglieri mitraglieri (motorcycle) units (plus two German battalions
+        // of Kradschutzen)".
+        self.units.get(&id).is_some_and(|u| {
+            u.name.contains("Krad") || u.name.contains("Motorcycle") || (u.name.contains("Bersaglieri") && u.name.contains("Mitrg"))
+        })
     }
 
     /// §8.44: a camel unit (the Italian Meharisti / Sahariano) — travels as infantry in Salt Marsh.
@@ -10419,6 +10466,7 @@ impl GameState {
         // §20.12: reinforcements enter at the start of the Naval Convoy Arrival Phase.
         if phase == Phase::NavalConvoyArrival {
             self.process_arrivals();
+            self.deliver_due_convoys(); // §56.16 / Sequence of Play D: arriving supplies appear
             self.process_ship_arrivals(); // §30.6 Commonwealth Fleet arrivals
             // §20.62/§20.64: defer any Axis Replacement production beyond the turn's actual roll
             // before the survivors enter the pool.

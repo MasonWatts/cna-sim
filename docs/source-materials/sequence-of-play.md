@@ -36,7 +36,7 @@ Notes:
 - PLAYER ACTIONS: actions across every stage are exposed as phase-gated `Command`s through
   `apply` (wrong-phase → `CommandError::WrongPhase`, tested end-to-end through the turn sequence).
   Naval/convoy: `PlanConvoy` (Naval Convoy Schedule), `BombConvoy`/`ReconConvoyLane` (Convoy
-  Resolution), `DeliverConvoy` (Naval Convoy Arrival), `BlockHarbor`/`UnblockHarbor` (§55.2).
+  Resolution), automatic convoy landing at the start of Naval Convoy Arrival (`deliver_due_convoys`; `DeliverConvoy` remains as a manual hook), `BlockHarbor`/`UnblockHarbor` (§55.2).
   Commonwealth Fleet Phase: `AssignShip`/`RepairShip` (§30) [+ `OffShoreBombard` fires in the
   Movement & Combat Barrage Step]. Malta: `DetermineMaltaAvailability` (Malta Availability),
   `BombMaltaBase` (Malta Raid, §44.24), `ConstructMaltaFacility` (Organization, §44.13). Reserve

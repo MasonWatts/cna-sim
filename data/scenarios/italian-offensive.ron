@@ -63,6 +63,36 @@
     // four commodities (Ammo/Fuel/Stores/Water Points). Fixed-location dumps below; the
     // player-choice dumps (Dump 1/2/I + dummies) are in `supply_dump_choices`, placed later
     // against their constraints. Benghazi is A4827 (map A; user-confirmed).
+    // ---- Trucks (§53, §60.31/§60.41 chart "Trucks:" entries; §60.33/§60.43 second/third line) ----
+    // First Line Trucks (§53.11) ride the parent combat unit of each chart line (the formation's top
+    // counter; on a hex line listing several independent units, its historically motorized "+"
+    // battalion — which §32.54 motorizes first — else the first one listed). The player
+    // may release / reassign them in the Organization Phase (§53.11, AssignTrucks/ReleaseTrucks).
+    // (This scenario deploys a subset of the §60 chart; only its units' entries are listed.)
+    first_line_trucks: [
+        // §60.31 Italian
+        (unit: "63rd Cirene Div HQ",                     medium: 45, heavy: 5),  // C4120
+        (unit: "62nd Marmarica Div HQ",                 medium: 40, heavy: 5),   // C3918
+        (unit: "64th Catanzaro Div HQ",                 medium: 30, heavy: 5),   // C4707
+        // §60.41 Commonwealth
+        (unit: "1st Royal Tank Regt",                   medium: 5),              // C3520
+        (unit: "2nd Rifle Brigade",                     medium: 10),             // C3320
+        (unit: "11th Hussars",                          medium: 3),              // C3020
+        (unit: "7th Armored Div HQE",        light: 5,  medium: 5,  heavy: 5),   // D3612
+        (unit: "4th Indian Div HQ",          light: 5,  medium: 20, heavy: 2),   // D3615
+    ],
+    // Second/Third Line Trucks (§53.12/§53.13) as free convoys. "Anywhere" allotments are placed at
+    // the side's main forward dump; Tripoli's (off-map) at the Tripoli road's on-map entry (A2802).
+    truck_convoys: [
+        (side: Axis, at: "A2802", light: 25, medium: 140, heavy: 40), // §60.33 Tripoli
+        (side: Axis, at: "C4807", light: 30, medium: 100, heavy: 25), // §60.33 anywhere in Libya -> Tobruk
+        (side: Axis, at: "C4807", light: 10, medium: 50),             // §60.33 any air facility -> Tobruk airfield
+        (side: Commonwealth, at: "E1830", medium: 40, heavy: 10),             // §60.43 any hex in Cairo
+        (side: Commonwealth, at: "E3613", light: 10, medium: 20),             // §60.43 Alexandria
+        (side: Commonwealth, at: "D3714", light: 15, medium: 40, heavy: 5),   // §60.43 anywhere -> Mersa Matruh
+        (side: Commonwealth, at: "D3714", light: 5,  medium: 30, heavy: 20),  // §60.43 any air facility -> Matruh airfield
+    ],
+
     supply_dumps: [
         // --- Axis (§60.34) ---
         (side: Axis, at: "C4807", ammo: 200, fuel: 2000, stores: 500),   // Tobruk

@@ -1370,7 +1370,7 @@ impl GameState {
 
     /// Naval-Convoy-Schedule-phase actions (§56.18): a **policy** rather than a brute grid — for
     /// each Axis shipping lane, one modest balanced supply convoy to that lane's destination
-    /// arriving after the §20.21 delay. Full tonnage/destination optimisation is left to a
+    /// arriving next Game-Turn (§56.21: convoys are planned one Game-Turn ahead). Full tonnage/destination optimisation is left to a
     /// purpose-built logistics planner; this just gives an agent a sensible convoy option per lane.
     /// (Convoys are Axis; empty for the Commonwealth, whose supply comes via the strategic line.)
     fn legal_convoy_planning_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
@@ -1387,7 +1387,7 @@ impl GameState {
             let cmd = Command::PlanConvoy {
                 lane: lane.nr,
                 destination: lane.destination.clone(),
-                arrival_gt: self.game_turn + 2,
+                arrival_gt: self.game_turn + 1,
                 fuel_tons: 30,
                 ammo_tons: 10,
                 stores_tons: 20,
@@ -1400,18 +1400,11 @@ impl GameState {
         out
     }
 
-    /// Naval-Convoy-Arrival-phase actions (§56): deliver each pending convoy's tonnage to port.
+    /// Naval-Convoy-Arrival-phase actions. Convoys land automatically at the start of the phase
+    /// (`deliver_due_convoys`, §56.16), so there is no delivery decision to offer.
     fn legal_naval_convoy_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
-        use crate::state::command::Command;
-        let _ = side; // convoy ownership is validated by `dry_run`
-        let mut out = Vec::new();
-        for convoy_index in 0..self.convoys.len() {
-            let cmd = Command::DeliverConvoy { convoy_index };
-            if self.dry_run(&cmd).is_ok() {
-                out.push(cmd);
-            }
-        }
-        out
+        let _ = side;
+        Vec::new()
     }
 
     /// The distinct on-map hexes occupied by a side's live units (helper for the air enumerator).

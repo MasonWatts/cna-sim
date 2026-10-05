@@ -49,8 +49,8 @@
     // 2026-09-18). A formation places only its `arrival: Deployed` members at GT1; `Turn` members
     // auto-register as reinforcements at this entry. `unit_hexes` disperses named members (on-map
     // hexes only); the base `hex` may be an off-map node ("Tripoli"/"Tripolitania", §8.8). Chart
-    // trucks/motorization and cross-formation attachments (§60.31 "Att:") are positional-only here
-    // (co-located via unit_hexes), not modeled as truck pools or organic attachment.
+    // "Trucks:" entries are the `first_line_trucks` list below; cross-formation attachments (§60.31
+    // "Att:") are positional-only here (co-located via unit_hexes), not organic attachment.
     placements: [
         // ===== §60.31 Italian Initial Deployment =====
         (nationality: Italian, formation: "64 Catanzaro Division", hex: "C4707"),
@@ -242,6 +242,52 @@
     ],
 
     // ---- Initial supply, dumps, and facilities (§60.34 Axis / §60.44 Commonwealth) ----
+    // ---- Trucks (§53, §60.31/§60.41 chart "Trucks:" entries; §60.33/§60.43 second/third line) ----
+    // First Line Trucks (§53.11) ride the parent combat unit of each chart line (the formation's top
+    // counter; on a hex line listing several independent units, its historically motorized "+"
+    // battalion — which §32.54 motorizes first — else the first one listed). The player
+    // may release / reassign them in the Organization Phase (§53.11, AssignTrucks/ReleaseTrucks).
+    first_line_trucks: [
+        // §60.31 Italian
+        (unit: "1st CCNN Div HQ",            light: 10, medium: 25, heavy: 10), // C4218
+        (unit: "63rd Cirene Div HQ",                     medium: 45, heavy: 5),  // C4120
+        (unit: "1st Libyan Infantry HQ",     light: 10, medium: 15),             // C4020
+        (unit: "2nd Libyan Infantry HQ",     light: 15, medium: 15),             // C3920
+        (unit: "Aresca (1st) Regt HQ",                  medium: 5,  heavy: 5),   // C3919
+        (unit: "62nd Marmarica Div HQ",                 medium: 40, heavy: 5),   // C3918
+        (unit: "Maletti Div HQ",             light: 5,  medium: 30, heavy: 5),   // C3617
+        (unit: "64th Catanzaro Div HQ",                 medium: 30, heavy: 5),   // C4707
+        (unit: "4th CCNN Div HQ",            light: 10, medium: 25, heavy: 10),  // C4507
+        (unit: "Trivioli (2nd) Regt HQ",                medium: 20),             // Bardia C4321
+        (unit: "Libyan Tank Command HQ",                medium: 5),              // Tobruk C4807
+        (unit: "Libyan Parachute Regt HQ",              medium: 5),              // Barce B5504
+        // (Saharan Det, "within 3 hexes of C0716", 5 light: not in the OB — omitted.)
+        // §60.41 Commonwealth
+        (unit: "2nd Scots Guards",                      medium: 10),             // C4131
+        (unit: "1st Company, Fr Mtr Marine",            medium: 2),              // C3926
+        (unit: "1st KRRC",                              medium: 15, heavy: 5),   // C3922 (historically motorized "+" first, §32.54)
+        (unit: "1st RNF MG Bn",              light: 5,  medium: 5),              // C3721
+        (unit: "1st Royal Tank Regt",                   medium: 5),              // C3520
+        (unit: "2nd Rifle Brigade",                     medium: 10),             // C3320
+        (unit: "11th Hussars",                          medium: 3),              // C3020
+        (unit: "Selby Force HQ",             light: 5,  medium: 15, heavy: 5),   // Matruh D3714
+        (unit: "7th Armored Div HQE",        light: 5,  medium: 5,  heavy: 5),   // D3612
+        (unit: "4th Indian Div HQ",          light: 5,  medium: 20, heavy: 2),   // D3615
+        (unit: "16th Infantry Bde HQ",                  medium: 20),             // E1829
+        (unit: "2nd New Zealand Div HQ",     light: 10, medium: 15, heavy: 5),   // Alexandria
+    ],
+    // Second/Third Line Trucks (§53.12/§53.13) as free convoys. "Anywhere" allotments are placed at
+    // the side's main forward dump; Tripoli's (off-map) at the Tripoli road's on-map entry (A2802).
+    truck_convoys: [
+        (side: Axis, at: "A2802", light: 25, medium: 140, heavy: 40), // §60.33 Tripoli
+        (side: Axis, at: "C4807", light: 30, medium: 100, heavy: 25), // §60.33 anywhere in Libya -> Tobruk
+        (side: Axis, at: "C4807", light: 10, medium: 50),             // §60.33 any air facility -> Tobruk airfield
+        (side: Commonwealth, at: "E1830", medium: 40, heavy: 10),             // §60.43 any hex in Cairo
+        (side: Commonwealth, at: "E3613", light: 10, medium: 20),             // §60.43 Alexandria
+        (side: Commonwealth, at: "D3714", light: 15, medium: 40, heavy: 5),   // §60.43 anywhere -> Mersa Matruh
+        (side: Commonwealth, at: "D3714", light: 5,  medium: 30, heavy: 20),  // §60.43 any air facility -> Matruh airfield
+    ],
+
     supply_dumps: [
         (side: Axis, at: "C4807", ammo: 200, fuel: 2000, stores: 500),   // Tobruk
         (side: Axis, at: "C4321", ammo: 100, fuel: 1000, stores: 200),   // Bardia

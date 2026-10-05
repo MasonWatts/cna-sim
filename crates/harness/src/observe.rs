@@ -185,7 +185,7 @@ pub fn unit_blockers(game: &GameState, id: UnitId, legal_now: Option<usize>) -> 
             b.push("OUT OF WATER — may not exceed CPA or close-assault; loses 1 TOE each further stage without water (§52.5).".into());
         }
     }
-    if game.unit_is_motorized(id) && u.fuel == 0 {
+    if game.unit_is_motorized(id) && u.fuel == 0 && game.unit_fuel_capacity(id) > 0 {
         b.push("Out of fuel — no motorized movement or offensive close assault (§49).".into());
     }
     if matches!(u.composition, cna_engine::state::unit::Composition::Weapons { .. }) && u.ammo == 0 {
@@ -214,12 +214,73 @@ pub fn unit_blockers(game: &GameState, id: UnitId, legal_now: Option<usize>) -> 
 /// A player-facing explanation of an engine rejection — what blocked it, the rule, and the way
 /// out — for the commands where the error name alone isn't actionable.
 pub fn explain_rejection(game: &GameState, cmd: &Command, err: &CommandError) -> Option<String> {
+    if let (Command::NavalTransferTroops { unit, to_port }, CommandError::PortTransferUnavailable) = (cmd, err) {
+        return Some(explain_port_transfer(game, *unit, to_port));
+    }
+    if let Command::PlanConvoy { lane, arrival_gt, .. } = cmd {
+        if let Some(why) = explain_convoy(game, *lane, *arrival_gt, err) {
+            return Some(why);
+        }
+    }
     let (unit, dest) = match cmd {
         Command::MoveStep { unit, to, .. } => (Some(*unit), Some(*to)),
         Command::NavalTransferTroops { unit, to_port } => (Some(*unit), game.port_hex(to_port)),
         _ => (None, None),
     };
     explain_error(game, unit, dest, err)
+}
+
+/// §30.52/§30.54/§55.11: which port limit stopped a sea transfer.
+fn explain_port_transfer(game: &GameState, unit: UnitId, to_port: &str) -> String {
+    let origin = game.effective_hex(unit).and_then(|h| game.ports.keys().find(|n| game.port_hex(n) == Some(h)).cloned());
+    let used: Vec<&str> = [origin.as_deref(), Some(to_port)]
+        .into_iter()
+        .flatten()
+        .filter(|p| game.ports_transferred_this_stage.contains(*p))
+        .collect();
+    if !used.is_empty() {
+        return format!(
+            "{} already made its one troop transfer this Operations Stage (§30.52: one transfer per port per stage, at either \
+             end). Ship one unit per port per stage — try another pair of ports, or wait for the next stage.",
+            used.join(" and ")
+        );
+    }
+    let sp = game.effective_stacking_points(unit);
+    let dest_in = game.ports.get(to_port).and_then(|p| p.stacking_in).unwrap_or(0);
+    if dest_in == 0 {
+        return format!("{to_port} is a minor port and cannot land troops (§55.11). Pick a major port.");
+    }
+    let out = origin.as_ref().and_then(|o| game.ports.get(o)).and_then(|p| p.stacking_out).unwrap_or(0);
+    format!(
+        "Port Personnel Capacity (§30.54): the unit is {sp} Stacking Points; {to_port} can take in {dest_in} and {} can send out {out} \
+         per stage. Ship a smaller unit (e.g. detach battalions) instead.",
+        origin.as_deref().unwrap_or("the origin port")
+    )
+}
+
+/// The §56 reason behind a convoy-planning rejection.
+fn explain_convoy(game: &GameState, lane: u8, arrival_gt: u32, err: &CommandError) -> Option<String> {
+    use CommandError as E;
+    let dest = game.reference.shipping_lanes.as_ref().and_then(|c| c.lane(lane)).map(|l| l.destination.clone());
+    Some(match err {
+        E::ConvoyWrongDestination => format!(
+            "Lane {lane} runs only to {} (§56.11/§56.12 — the lane fixes the destination). Use that port, or the lane that serves yours.",
+            dest.unwrap_or_else(|| "its own port".into())
+        ),
+        E::ConvoyBadArrival => format!(
+            "Convoys are planned for the next Game-Turn (GT{}), or the one after (§56.21); GT{arrival_gt} is not plannable now.",
+            game.game_turn + 1
+        ),
+        E::ConvoyLaneClosed => format!("Lane {lane} is not open on GT{arrival_gt} (§56.14: the Greece lanes 4/5 open from May II 1941)."),
+        E::ConvoyOverTonnage => format!(
+            "GT{arrival_gt}'s rolled allowance is {} tons and {} are already booked (convoys + replacement lift, §56.21/§20.62). Ship less.",
+            game.axis_shipping_rolled.get(&arrival_gt).copied().unwrap_or(0),
+            game.axis_shipping_committed(arrival_gt)
+        ),
+        E::ConvoyLaneTaken => format!("Lane {lane} already carries a convoy on GT{arrival_gt} (§56.12: one convoy per lane per turn). Add the cargo to another lane."),
+        E::ConvoyPortHostile => format!("{} is held by the Commonwealth (§56.15) — no convoy can be planned there.", dest.unwrap_or_else(|| "The port".into())),
+        _ => return None,
+    })
 }
 
 /// See [`explain_rejection`]; `unit`/`dest` are the mover and the hex it would end in.
@@ -273,7 +334,7 @@ fn own_unit_compact(game: &GameState, id: UnitId, legal_now: Option<usize>) -> O
     let hex = game.effective_hex(id)?;
     let flags: Vec<&str> = [
         (u.stages_without_water > 0, "NO_WATER"),
-        (game.unit_is_motorized(id) && u.fuel == 0, "NO_FUEL"),
+        (game.unit_is_motorized(id) && u.fuel == 0 && game.unit_fuel_capacity(id) > 0, "NO_FUEL"),
         (matches!(u.composition, cna_engine::state::unit::Composition::Weapons { .. }) && u.ammo == 0, "NO_AMMO"),
         (u.status.pinned, "PINNED"),
         (u.cohesion <= -26, "DISORGANIZED"),
@@ -327,7 +388,7 @@ pub fn overview(game: &GameState, side: Side) -> Value {
         let u = &game.units[&id];
         let mut push = |k: &'static str| problems.entry(k).or_default().push(format!("{} ({})", u.name, id.0));
         if u.stages_without_water > 0 { push("out_of_water"); }
-        if game.unit_is_motorized(id) && u.fuel == 0 { push("out_of_fuel"); }
+        if game.unit_is_motorized(id) && u.fuel == 0 && game.unit_fuel_capacity(id) > 0 { push("out_of_fuel"); }
         if matches!(u.composition, cna_engine::state::unit::Composition::Weapons { .. }) && u.ammo == 0 { push("out_of_ammo"); }
         if u.cohesion <= -26 { push("disorganized"); }
         if u.status.pinned { push("pinned"); }
@@ -608,6 +669,37 @@ mod tests {
         let why = explain_rejection(&g, &cmd, &err).unwrap();
         assert!(why.contains("of its 3 Stacking Points") && why.contains("§9.31") && why.contains("detach"), "{why}");
         assert!(explain_rejection(&g, &cmd, &CommandError::InsufficientFuel).unwrap().contains("§49"));
+    }
+
+    #[test]
+    fn port_and_convoy_rejections_are_explained() {
+        use cna_engine::state::game::Phase;
+        let (mut g, _) = cna_replay::scenarios::build("campaign", 1);
+        g.phase = Phase::NavalConvoySchedule;
+        g.active_player = Side::Axis;
+        let bad = Command::PlanConvoy { lane: 2, destination: "Alexandria".into(), arrival_gt: g.game_turn + 1, fuel_tons: 100, ammo_tons: 0, stores_tons: 0, replacement_tons: 0 };
+        let err = g.clone().apply(bad.clone()).unwrap_err();
+        assert_eq!(err, CommandError::ConvoyWrongDestination);
+        let why = explain_rejection(&g, &bad, &err).unwrap();
+        assert!(why.contains("runs only to Tripoli") && why.contains("§56.11"), "{why}");
+        // A port that already made its §30.52 transfer this stage is named in the explanation.
+        g.ports_transferred_this_stage.insert("Alexandria".into());
+        let nz = g.units.values().find(|u| u.name == "2nd New Zealand Div HQ").unwrap().id;
+        let cmd = Command::NavalTransferTroops { unit: nz, to_port: "Tobruk".into() };
+        let why = explain_rejection(&g, &cmd, &CommandError::PortTransferUnavailable).unwrap();
+        assert!(why.contains("Alexandria already made its one troop transfer") && why.contains("§30.52"), "{why}");
+    }
+
+    #[test]
+    fn no_fuel_flag_only_for_units_that_burn_fuel() {
+        let (g, _) = cna_replay::scenarios::build("campaign", 1);
+        // A Bersaglieri motorcycle company: motorized, but motorcycles burn no fuel (§4.6) — so it is
+        // never "out of fuel".
+        let hus = g.units.values().find(|u| u.name.contains("Bersaglieri Mitrg") && g.effective_hex(u.id).is_some()).unwrap().id;
+        assert!(g.unit_is_motorized(hus) && g.unit_fuel_capacity(hus) == 0);
+        let v = own_unit_compact(&g, hus, None).unwrap();
+        assert!(!v["flags"].as_array().unwrap().iter().any(|f| f == "NO_FUEL"), "{v}");
+        assert!(!unit_blockers(&g, hus, None).iter().any(|b| b.contains("Out of fuel")));
     }
 
     #[test]
