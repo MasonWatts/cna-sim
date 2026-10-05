@@ -337,6 +337,11 @@ struct ScenarioData {
     /// nationality's entry point (or an explicit `hex` override) on their OB arrival turn.
     #[serde(default)]
     reinforcements: Vec<Reinforcement>,
+    /// Game-Turns of Water and Stores every unit starts with on hand (project ruling 2026-10-05: the
+    /// rules give no starting level, but say players "rarely run out of water", §52.0) — so the
+    /// opening logistics have a turn to start working. `None`/0 = start empty.
+    #[serde(default)]
+    starting_supply_turns: Option<u32>,
     /// §53.11 First Line Trucks from the deployment chart's "Trucks:" entries, attached to the
     /// named (on-map) unit — normally the parent combat unit of that chart line.
     #[serde(default)]
@@ -770,6 +775,9 @@ impl GameState {
                 breakdown_points: 0,
                 breakdown_checked_col: 0,
             });
+        }
+        if let Some(turns) = data.starting_supply_turns.filter(|&t| t > 0) {
+            self.issue_starting_supplies(turns);
         }
         // Initial Supply Units (§32.1).
         for d in &data.supply_dumps {

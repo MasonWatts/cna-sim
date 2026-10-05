@@ -63,6 +63,10 @@
     // four commodities (Ammo/Fuel/Stores/Water Points). Fixed-location dumps below; the
     // player-choice dumps (Dump 1/2/I + dummies) are in `supply_dump_choices`, placed later
     // against their constraints. Benghazi is A4827 (map A; user-confirmed).
+    // Every unit starts with one Game-Turn of Water (3 stages, at the hot-weather rate) and Stores on hand (project ruling
+    // 2026-10-05 — the rules set no starting level; §52.0 "players … rarely run out of water").
+    starting_supply_turns: Some(1),
+
     // ---- Trucks (§53, §60.31/§60.41 chart "Trucks:" entries; §60.33/§60.43 second/third line) ----
     // First Line Trucks (§53.11) ride the parent combat unit of each chart line (the formation's top
     // counter; on a hex line listing several independent units, its historically motorized "+"
@@ -82,9 +86,10 @@
         (unit: "4th Indian Div HQ",          light: 5,  medium: 20, heavy: 2),   // D3615
     ],
     // Second/Third Line Trucks (§53.12/§53.13) as free convoys. "Anywhere" allotments are placed at
-    // the side's main forward dump; Tripoli's (off-map) at the Tripoli road's on-map entry (A2802).
+    // the side's main forward dump; Tripoli's (off-map) at Nofilia (A2703), the first port village
+    // with a well on the Tripoli road.
     truck_convoys: [
-        (side: Axis, at: "A2802", light: 25, medium: 140, heavy: 40), // §60.33 Tripoli
+        (side: Axis, at: "A2703", light: 25, medium: 140, heavy: 40), // §60.33 Tripoli -> Nofilia (port village on the Tripoli road; trucks need water, §52.42)
         (side: Axis, at: "C4807", light: 30, medium: 100, heavy: 25), // §60.33 anywhere in Libya -> Tobruk
         (side: Axis, at: "C4807", light: 10, medium: 50),             // §60.33 any air facility -> Tobruk airfield
         (side: Commonwealth, at: "E1830", medium: 40, heavy: 10),             // §60.43 any hex in Cairo

@@ -5346,7 +5346,8 @@ mod tests {
             side: Side::Commonwealth,
             hex: HexCoord::new(2, 1),
             trucks: TruckPoints { light: 5, medium: 0, heavy: 0 },
-            cargo: Default::default(),
+            // §49.18/§52.42: a moving convoy burns the fuel and water it carries.
+            cargo: crate::state::game::Commodities { fuel: 50, ammo: 0, stores: 0, water: 50 },
             cpa_used: 0,
             trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
@@ -6826,10 +6827,15 @@ mod tests {
         assert_eq!(g.truck_convoys[convoy].trucks.medium, 6);
         assert_eq!(g.truck_convoys[convoy].hex, base);
 
-        // Move it one hex in the Truck Convoy Phase; it spends supply CPA.
+        // Move it one hex in the Truck Convoy Phase; it spends supply CPA. With no fuel aboard or in
+        // the hex it can't move (§49.18); loaded with fuel and water it burns 1 Fuel per Truck Point
+        // per 5 CP (§49.13) and 1 Water per Truck Point for the stage (§52.42).
         g.phase = Phase::TruckConvoy;
         g.active_player = Side::Commonwealth;
-        let target = g.map.neighbors(base).find(|&h| g.map.terrain(h).is_some()).unwrap();
+        let target = g.map.neighbors(base).find(|&h| g.map.terrain(h).is_some() && g.map.terrain(h) != Some(HexTerrain::SaltMarsh)).unwrap();
+        assert_eq!(g.apply(Command::MoveTruckConvoy { convoy, to: target }), Err(CommandError::InsufficientFuel));
+        g.truck_convoys[convoy].cargo = crate::state::game::Commodities { fuel: 20, ammo: 0, stores: 0, water: 20 };
+        g.weather_by_section.clear(); // normal weather for exact water arithmetic
         match g.apply(Command::MoveTruckConvoy { convoy, to: target }) {
             Ok(CommandOutcome::TruckConvoyMoved { hex, cpa_used }) => {
                 assert_eq!(hex, target);
@@ -6837,6 +6843,9 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+        assert_eq!(g.truck_convoys[convoy].cargo.fuel, 14, "6 Truck Points x 1 group of 5 CP");
+        let water_left = g.truck_convoys[convoy].cargo.water;
+        assert!(water_left == 14 || water_left == 20, "6 Water for the stage (none if it started at a well): {water_left}");
         // A non-adjacent target is rejected.
         assert_eq!(
             g.apply(Command::MoveTruckConvoy { convoy, to: HexId::parse("E3613").unwrap().to_hex_coord() }),
@@ -8556,6 +8565,89 @@ mod tests {
         );
         assert_eq!(g.unit_water_requirement(tank, false), 0);
         assert_eq!(g.unit_water_requirement(tank, true), 3);
+    }
+
+    #[test]
+    fn ship_repair_only_when_damaged_once_per_stage_30_37() {
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::Phase;
+        use crate::state::naval::ShipLocation;
+        let mut g = build_campaign_game();
+        g.phase = Phase::CommonwealthFleet;
+        g.active_player = crate::reference::units::Side::Commonwealth;
+        let i = g.fleet.iter().position(|s| s.location == ShipLocation::Alexandria && !s.is_sunk()).expect("a ship in Alexandria");
+        // Undamaged: nothing to repair, and not offered.
+        assert_eq!(g.apply(Command::RepairShip { ship_index: i }), Err(CommandError::ShipNotDamaged));
+        assert!(!g.legal_commands(crate::reference::units::Side::Commonwealth).contains(&Command::RepairShip { ship_index: i }));
+        // Damaged: one repair tick per Operations Stage.
+        g.fleet[i].gun_rating = g.fleet[i].max_gun - 1;
+        assert!(matches!(g.apply(Command::RepairShip { ship_index: i }), Ok(CommandOutcome::ShipRepaired(_))));
+        assert_eq!(g.apply(Command::RepairShip { ship_index: i }), Err(CommandError::AlreadyRepairedThisPhase));
+    }
+
+    #[test]
+    fn water_and_stores_reach_attached_units_and_dumps_52_54() {
+        // Attached battalions consume where their formation counter is (not "off-map"); water and
+        // stores in a friendly dump in the hex (§54.11) or on the unit's own trucks (§52.45/§53.11)
+        // are drawn; hot weather doubles the requirement once (§29.35).
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::state::game::{Commodities, GameState, SupplyDump, Weather};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+        use std::collections::HashSet;
+        let none: HashSet<crate::state::unit::UnitId> = HashSet::new();
+        let mut g = GameState::new(ReferenceData::load_campaign(), 3);
+        let (dry, depot) = (HexCoord::new(0, 0), HexCoord::new(2, 0));
+        g.map.set_hex(dry, HexTerrain::Clear);
+        g.map.set_hex(depot, HexTerrain::Clear);
+        let bde = g.spawn_unit(Nationality::Commonwealth, "c", "Bde HQ", Composition::Organic { current_toe: 0 });
+        g.unit_mut(bde).unwrap().location = Some(UnitLocation::OnMap(dry));
+        g.unit_mut(bde).unwrap().is_hq = true;
+        let bn = g.spawn_unit(Nationality::Commonwealth, "m", "attached bn", Composition::Organic { current_toe: 6 });
+        g.unit_mut(bn).unwrap().attached_parent = Some(bde);
+        // Waterless hex, no dump: the attached battalion goes without (it is not "off-map").
+        g.expend_water(&none);
+        assert_eq!(g.unit(bn).unwrap().stages_without_water, 1, "attached units drink where their counter is");
+        g.expend_stores();
+        assert!(g.unit(bn).unwrap().turns_without_stores > 0, "and eat there too");
+        // Its own trucks' water serves first.
+        g.unit_mut(bn).unwrap().truck_cargo.water = 1;
+        g.expend_water(&none);
+        assert_eq!(g.unit(bn).unwrap().stages_without_water, 0);
+        assert_eq!(g.unit(bn).unwrap().truck_cargo.water, 0);
+        // Move the formation onto a dump holding water and stores: both are drawn from it.
+        g.unit_mut(bde).unwrap().location = Some(UnitLocation::OnMap(depot));
+        g.supply_dumps.push(SupplyDump {
+            location: UnitLocation::OnMap(depot), side: Side::Commonwealth,
+            supply: Commodities { fuel: 0, ammo: 0, stores: 100, water: 10 },
+            dummy: false, constructed: true, unlimited: false,
+        });
+        let d = g.supply_dumps.len() - 1;
+        g.expend_water(&none);
+        assert_eq!(g.unit(bn).unwrap().stages_without_water, 0);
+        assert_eq!(g.supply_dumps[d].supply.water, 9, "1 Water Point for an infantry battalion (§52.41)");
+        g.expend_stores();
+        assert_eq!(g.unit(bn).unwrap().turns_without_stores, 0);
+        assert!(g.supply_dumps[d].supply.stores < 100);
+        // A §57 unlimited base (Cairo/Alexandria) feeds any number of units — its Stores never run out.
+        let base = HexCoord::new(4, 0);
+        g.map.set_hex(base, HexTerrain::Clear);
+        g.supply_dumps.push(SupplyDump {
+            location: UnitLocation::OnMap(base), side: Side::Commonwealth, supply: Commodities::default(),
+            dummy: false, constructed: true, unlimited: true,
+        });
+        g.unit_mut(bde).unwrap().location = Some(UnitLocation::OnMap(base));
+        g.unit_mut(bn).unwrap().turns_without_stores = 1;
+        g.expend_stores();
+        assert_eq!(g.unit(bn).unwrap().turns_without_stores, 0, "unlimited base supplies stores");
+        g.unit_mut(bde).unwrap().location = Some(UnitLocation::OnMap(depot));
+        // Hot weather: 2 Water Points, not 4.
+        g.unit_mut(bn).unwrap().water = 0;
+        g.weather_by_section.insert('A', Weather::Hot);
+        let before = g.supply_dumps[d].supply.water;
+        g.expend_water(&none);
+        assert_eq!(before - g.supply_dumps[d].supply.water, 2, "§29.35 doubles once");
     }
 
     #[test]
@@ -14264,6 +14356,10 @@ mod tests {
         // "+" battalions walk without trucks; the C3922 chart trucks go to the "+" KRRC (§32.54).
         let krrc = g.units.values().find(|u| u.name == "1st KRRC").unwrap().id;
         assert!(g.units[&krrc].trucks.medium == 15 && g.unit_is_motorized(krrc));
+        // Starting issue (project ruling): one Game-Turn of Water (3 hot-weather stages) and Stores on hand.
+        let bn = g.units.values().find(|u| u.name == "I/141 Infantry Bn").unwrap().id;
+        assert_eq!(g.units[&bn].water, 6, "an infantry battalion: 1 Water per stage x 3, doubled for hot weather");
+        assert_eq!(g.units[&bn].stores, g.unit_stores_requirement(bn));
         let t = named(&g, "62nd Marmarica Div HQ");
         assert_eq!((t.light, t.medium, t.heavy), (0, 40, 5));
         let convoy_tp = |side: Side| -> u32 { g.truck_convoys.iter().filter(|c| c.side == side).map(|c| c.trucks.light + c.trucks.medium + c.trucks.heavy).sum() };

@@ -384,20 +384,41 @@ impl McpAgent {
                 PlanItem::ResupplyHex(hex) => {
                     let mut ids: Vec<UnitId> = game.units.values().filter(|u| game.effective_hex(u.id) == Some(hex)).map(|u| u.id).collect();
                     ids.sort();
+                    // Only queue what can succeed: a commodity the hex's friendly dumps (or the unit's
+                    // own truck cargo) actually hold. Report what was skipped and why.
+                    use cna_engine::state::game::Commodity;
+                    let side = game.active_player;
+                    let here = |c: Commodity| game.available_commodity_at(hex, side, c);
+                    let (dump_fuel, dump_ammo) = (here(Commodity::Fuel), here(Commodity::Ammo));
                     let mut cmds = Vec::new();
+                    let (mut no_fuel, mut no_ammo) = (0, 0);
                     for id in ids {
                         let u = &game.units[&id];
                         if u.fuel < game.unit_fuel_capacity(id) {
-                            cmds.push(PlanItem::Command(Command::RefuelUnit { unit: id }));
+                            if dump_fuel > 0 || u.truck_cargo.fuel > 0 {
+                                cmds.push(PlanItem::Command(Command::RefuelUnit { unit: id }));
+                            } else {
+                                no_fuel += 1;
+                            }
                         }
                         let cap = game.reference.ammo_rates.map_or(0, |r| r.barrage * u.total_toe());
                         if u.ammo < cap {
-                            cmds.push(PlanItem::Command(Command::RearmUnit { unit: id }));
+                            if dump_ammo > 0 || u.truck_cargo.ammo > 0 {
+                                cmds.push(PlanItem::Command(Command::RearmUnit { unit: id }));
+                            } else {
+                                no_ammo += 1;
+                            }
                         }
                     }
-                    if cmds.is_empty() {
-                        w.results.push(json!({"item": format!("resupply_hex {}", observe::hex_label(hex)), "ok": true,
-                            "note": "every unit there is already full"}));
+                    let label = format!("resupply_hex {}", observe::hex_label(hex));
+                    if no_fuel + no_ammo > 0 {
+                        w.results.push(json!({"item": label, "ok": false, "skipped": {
+                            "refuel": no_fuel, "rearm": no_ammo },
+                            "note": format!("{} has no friendly Fuel{} or Ammo{} to draw (§49.16/§50: supplies must be in the hex) — \
+                                truck some in first (LoadConvoy / MoveTruckConvoy / UnloadConvoy).",
+                                observe::hex_label(hex), if dump_fuel > 0 { " shortage" } else { "" }, if dump_ammo > 0 { " shortage" } else { "" })}));
+                    } else if cmds.is_empty() {
+                        w.results.push(json!({"item": label, "ok": true, "note": "every unit there is already full"}));
                     }
                     for c in cmds.into_iter().rev() {
                         w.queue.push_front(c);
@@ -431,8 +452,23 @@ impl McpAgent {
                 PlanItem::MoveTo { unit, hex, mode, steps } => {
                     let name = game.units.get(&unit).map(|u| u.name.clone()).unwrap_or_else(|| format!("unit {}", unit.0));
                     let label = format!("move {name} toward {}", observe::hex_label(hex));
+                    if game.phase != cna_engine::state::game::Phase::MovementAndCombat {
+                        w.results.push(json!({"item": label, "ok": false, "error": format!(
+                            "move_to works only in the Movement & Combat phase (now: {:?}). Free truck convoys move with \
+                             MoveTruckConvoy in the Truck Convoy phase.", game.phase)}));
+                        continue;
+                    }
                     let Some(at) = game.units.get(&unit).and_then(|u| u.hex()) else {
-                        w.results.push(json!({"item": label, "ok": false, "error": "unit is not an on-map counter"}));
+                        let parent = game.units.get(&unit).and_then(|u| u.attached_parent).and_then(|p| game.units.get(&p));
+                        let error = match parent {
+                            Some(p) => format!(
+                                "{name} rides on {}'s counter (attached). Move the formation (move_to / move_stack its HQ, or a \
+                                 FormationMove), or DetachUnit it in the Organization phase to move it alone (§19.43).",
+                                p.name
+                            ),
+                            None => "unit is not on the map (off-map box, withdrawn, or not yet arrived)".into(),
+                        };
+                        w.results.push(json!({"item": label, "ok": false, "error": error}));
                         continue;
                     };
                     if at == hex {

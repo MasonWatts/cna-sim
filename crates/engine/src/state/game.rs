@@ -1121,6 +1121,9 @@ pub struct GameState {
     /// (one attempt per phase). Reset each stage.
     #[serde(default)]
     pub field_repairs_this_stage: std::collections::HashSet<(UnitId, crate::state::command::RepairKind)>,
+    /// §30.37: ships that already spent this Operations Stage repairing (one repair tick per stage).
+    #[serde(default)]
+    pub ships_repaired_this_stage: std::collections::HashSet<usize>,
     /// §22.23: free truck convoys (by index) that have rolled their repair die this Repair Phase.
     #[serde(default)]
     pub convoy_repairs_this_stage: std::collections::HashSet<usize>,
@@ -1411,6 +1414,7 @@ impl GameState {
             barraged_hexes_this_stage: std::collections::HashSet::new(),
             close_assaulted_hexes_this_stage: std::collections::HashSet::new(),
             field_repairs_this_stage: std::collections::HashSet::new(),
+            ships_repaired_this_stage: std::collections::HashSet::new(),
             convoy_repairs_this_stage: std::collections::HashSet::new(),
             anti_armor_hexes_this_stage: std::collections::HashSet::new(),
             ports_transferred_this_stage: std::collections::HashSet::new(),
@@ -1978,7 +1982,7 @@ impl GameState {
         // unit used any of its CPA (`acted`).
         let truck_water = if acted { u.trucks.light + u.trucks.medium + u.trucks.heavy } else { 0 };
         // §29.35: hot weather at the unit's hex doubles the whole requirement.
-        let hot = u.hex().is_some_and(|h| self.weather_at(h) == Weather::Hot);
+        let hot = self.effective_hex(id).is_some_and(|h| self.weather_at(h) == Weather::Hot);
         let mult = if hot { 2 } else { 1 };
         mult * match &u.composition {
             // §52.41: the flat 1 Water Point applies to an *infantry battalion or company* (regardless
@@ -6441,6 +6445,24 @@ impl GameState {
         }
     }
 
+    /// Give every unit in play `turns` Game-Turns of Water (3 Operations Stages each, at the moving
+    /// rate in hot weather — §29.35 doubles it, and the desert summer is hot) and Stores on hand —
+    /// the scenario's starting issue (`starting_supply_turns`).
+    pub fn issue_starting_supplies(&mut self, turns: u32) {
+        let ids: Vec<UnitId> = self.units.keys().copied().collect();
+        for id in ids {
+            if self.effective_hex(id).is_none() {
+                continue; // off-map boxes are unlimited; unplaced units get nothing
+            }
+            let water = 2 * 3 * turns * self.unit_water_requirement(id, true);
+            let stores = turns * self.unit_stores_requirement(id);
+            if let Some(u) = self.unit_mut(id) {
+                u.water = u.water.max(water);
+                u.stores = u.stores.max(stores);
+            }
+        }
+    }
+
     /// Consume Water for an Operations Stage (§52.4/5/53). Each unit first tops up its onboard
     /// Water from a well in its hex — a Major City/Oasis is unlimited; a Village/Bir gives a
     /// §52.7 die-roll draw and may deplete on a marked result — then spends its requirement.
@@ -6453,15 +6475,19 @@ impl GameState {
         }
         let ids: Vec<UnitId> = self.units.keys().copied().collect();
         for id in ids {
-            let mut req = self.unit_water_requirement(id, acted.contains(&id));
+            let req = self.unit_water_requirement(id, acted.contains(&id));
             if req == 0 {
                 continue;
             }
-            let hex = self.units.get(&id).and_then(|u| u.hex());
-            // §29.35: hot weather doubles a unit's water requirement.
-            if hex.is_some_and(|h| self.weather_at(h) == Weather::Hot) {
-                req *= 2;
+            // Where the unit physically is: its own counter or the formation counter it rides
+            // (attached units have no location of their own). Off-map only in the §8.8 boxes;
+            // units not in play at all (withdrawn, not yet arrived) are skipped.
+            let hex = self.effective_hex(id);
+            let off_map = matches!(self.root_location(id), Some(UnitLocation::OffMap { .. }));
+            if hex.is_none() && !off_map {
+                continue;
             }
+            // (§29.35 hot weather is already in `unit_water_requirement`.)
             match hex {
                 None => {
                     // Off-map (Tripoli/Tunisia boxes): unlimited wells (§52.11).
@@ -6517,6 +6543,28 @@ impl GameState {
                             }
                         }
                         _ => {}
+                    }
+                }
+            }
+            // §52.45/§54.11: water carried by the unit's own trucks, then water in a friendly Supply
+            // Dump in its hex, also serves (dumps "hold … water … used by combat units").
+            let onboard = self.units.get(&id).map_or(0, |u| u.water);
+            if onboard < req {
+                let mut owed = req - onboard;
+                if let Some(u) = self.unit_mut(id) {
+                    let take = owed.min(u.truck_cargo.water);
+                    u.truck_cargo.water -= take;
+                    u.water += take;
+                    owed -= take;
+                }
+                if owed > 0 {
+                    if let (Some(h), Some(side)) = (hex, self.units.get(&id).map(|u| u.nationality.side())) {
+                        let got = owed.min(self.available_commodity_at(h, side, Commodity::Water));
+                        if got > 0 && self.consume_commodity_at(h, side, Commodity::Water, got) {
+                            if let Some(u) = self.unit_mut(id) {
+                                u.water += got;
+                            }
+                        }
                     }
                 }
             }
@@ -6628,13 +6676,14 @@ impl GameState {
                 return true;
             }
         }
-        let hex = self.units.get(&id).and_then(|u| u.hex());
+        let hex = self.effective_hex(id);
+        let side = self.units.get(&id).map(|u| u.nationality.side());
         if let Some(h) = hex {
             let target = crate::state::unit::UnitLocation::OnMap(h);
             for d in self
                 .supply_dumps
                 .iter_mut()
-                .filter(|d| !d.dummy && d.location == target)
+                .filter(|d| !d.dummy && d.location == target && Some(d.side) == side)
             {
                 if d.supply.water >= 1 {
                     d.supply.water -= 1;
@@ -6665,10 +6714,15 @@ impl GameState {
         self.distribute_pasta();
         let ids: Vec<UnitId> = self.units.keys().copied().collect();
         for id in ids {
+            // Where the unit physically is (attached units ride their formation's counter). Off-map
+            // only in the §8.8 boxes; units not in play (withdrawn, not yet arrived) are skipped.
             let (hex, side, toe) = match self.units.get(&id) {
-                Some(u) => (u.hex(), u.nationality.side(), u.total_toe()),
+                Some(u) => (self.effective_hex(id), u.nationality.side(), u.total_toe()),
                 None => continue,
             };
+            if hex.is_none() && !matches!(self.root_location(id), Some(UnitLocation::OffMap { .. })) {
+                continue;
+            }
             if toe == 0 {
                 continue;
             }
@@ -6676,33 +6730,24 @@ impl GameState {
             if required == 0 {
                 continue;
             }
-            // Off-map units draw from the unlimited Tripoli/Tunisia boxes (§8.88 / §52.11).
+            // Stores carried with the unit, then on its own first-line trucks (§53.11), are used
+            // before any dump's.
+            let (carried, on_trucks) = self.units.get(&id).map_or((0, 0), |u| (u.stores, u.truck_cargo.stores));
+            let from_self = carried.min(required);
+            let from_trucks = on_trucks.min(required - from_self);
+            if let Some(u) = self.unit_mut(id) {
+                u.stores -= from_self;
+                u.truck_cargo.stores -= from_trucks;
+            }
+            let required = required - from_self - from_trucks;
+            // Off-map units draw from the unlimited Tripoli/Tunisia boxes (§8.88 / §52.11); an oasis
+            // is a nondiminishing Stores dump (§8.48/§52.3); a §57 unlimited base (Cairo/Alexandria)
+            // supplies any amount; otherwise friendly dumps in the hex, all-or-nothing.
             let supplied = match hex {
                 None => true,
-                Some(h) => {
-                    let avail: u32 = self
-                        .supply_dumps
-                        .iter()
-                        .filter(|d| d.side == side && !d.dummy && d.location.hex() == Some(h))
-                        .map(|d| d.supply.stores)
-                        .sum();
-                    if avail >= required {
-                        let mut rem = required;
-                        for d in self.supply_dumps.iter_mut().filter(|d| {
-                            d.side == side && !d.dummy && d.location.hex() == Some(h)
-                        }) {
-                            if rem == 0 {
-                                break;
-                            }
-                            let take = rem.min(d.supply.stores);
-                            d.supply.stores -= take;
-                            rem -= take;
-                        }
-                        true
-                    } else {
-                        false
-                    }
-                }
+                Some(_) if required == 0 => true,
+                Some(h) if self.map.hex(h).is_some_and(|x| x.features.contains(&crate::state::map::Feature::Oasis)) => true,
+                Some(h) => self.consume_commodity_at(h, side, Commodity::Stores, required),
             };
             if supplied {
                 if let Some(u) = self.unit_mut(id) {
@@ -10218,6 +10263,7 @@ impl GameState {
         self.barraged_hexes_this_stage.clear();
         self.close_assaulted_hexes_this_stage.clear();
         self.field_repairs_this_stage.clear();
+        self.ships_repaired_this_stage.clear();
         self.convoy_repairs_this_stage.clear();
         self.anti_armor_hexes_this_stage.clear();
         self.ports_transferred_this_stage.clear(); // §30.52 one naval troop transfer per port per stage

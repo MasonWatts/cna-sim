@@ -1283,6 +1283,12 @@ pub enum CommandError {
     /// convoy already occupies that lane this Game-Turn). Kept for callers of the boolean
     /// `plan_convoy`; `PlanConvoy` reports one of the specific reasons below.
     ConvoyRejected,
+    /// §10.29: a truck convoy may not enter an enemy ZOC hex unless a friendly unit already holds it.
+    TruckConvoyEnemyZoc,
+    /// §8.37: the hex/hexside is prohibited to motorized movement.
+    TruckConvoyTerrainProhibited,
+    /// §8.98: the convoy has no Capability Points left for that step this Truck Convoy Phase.
+    TruckConvoyCpaExhausted,
     /// §56.11/§56.12: each Shipping Lane runs to one fixed destination port.
     ConvoyWrongDestination,
     /// §56.21: convoys are planned for the next Game-Turn (two ahead when carrying §20.63
@@ -1390,6 +1396,8 @@ pub enum CommandError {
     /// §22.23: this unit (or convoy) already rolled its field-repair die for this kind of damage in
     /// the current Repair Phase; a failed roll may not be re-tried until the next one.
     AlreadyRepairedThisPhase,
+    /// §30.37: the ship is at its face-value Gun Rating (or sunk) — there is nothing to repair.
+    ShipNotDamaged,
     /// §8.17: a non-motorized unit (base CPA ≤ 10) may not voluntarily expend more than 150% of its
     /// base Capability Point Allowance in its own portion of the Operations Stage.
     CpaCeilingExceeded,
@@ -1897,10 +1905,19 @@ impl GameState {
             Command::NavalTransferTroops { unit, to_port } => self.cmd_naval_transfer_troops(unit, &to_port),
             Command::RepairShip { ship_index } => {
                 self.require_phase(Phase::CommonwealthFleet)?;
-                let ship = self.fleet.get_mut(ship_index).ok_or(CommandError::NoSuchShip)?;
+                let ship = self.fleet.get(ship_index).ok_or(CommandError::NoSuchShip)?;
                 if ship.location != crate::state::naval::ShipLocation::Alexandria {
                     return Err(CommandError::ShipNotInPort);
                 }
+                // §30.37: only a damaged (not sunk) ship repairs, one Operations Stage at a time.
+                if ship.is_sunk() || ship.gun_rating >= ship.max_gun {
+                    return Err(CommandError::ShipNotDamaged);
+                }
+                if self.ships_repaired_this_stage.contains(&ship_index) {
+                    return Err(CommandError::AlreadyRepairedThisPhase);
+                }
+                self.ships_repaired_this_stage.insert(ship_index);
+                let ship = &mut self.fleet[ship_index];
                 ship.repair_tick();
                 Ok(CommandOutcome::ShipRepaired(ship.gun_rating))
             }
@@ -3534,17 +3551,57 @@ impl GameState {
             .into_iter()
             .any(|x| self.unit(x).is_some_and(|u| u.nationality.side() == side));
         if self.hex_in_zoc_of(to, enemy) && !friendly {
-            return Err(CommandError::TruckConvoyCannotMove);
+            return Err(CommandError::TruckConvoyEnemyZoc);
         }
         let cost = match step_cost(&self.reference, &self.map, from, to, MoveMode::Motorized) {
             Some(MoveCost::Cost(f)) => f.0.max(0) as u32,
-            _ => return Err(CommandError::TruckConvoyCannotMove),
+            _ => return Err(CommandError::TruckConvoyTerrainProhibited),
         };
         let cpa = self.truck_convoy_cpa(&self.truck_convoys[convoy]);
-        let c = self.truck_convoys.get_mut(convoy).unwrap();
-        if c.cpa_used + cost > cpa {
-            return Err(CommandError::TruckConvoyCannotMove); // §8.98: may not exceed CPA
+        let (used, trucks) = {
+            let c = &self.truck_convoys[convoy];
+            (c.cpa_used, c.trucks.light + c.trucks.medium + c.trucks.heavy)
+        };
+        if used + cost > cpa {
+            return Err(CommandError::TruckConvoyCpaExhausted); // §8.98: may not exceed CPA
         }
+        // §49.13/§49.18: each Truck Point burns Fuel at rate 1 per 5 CP (or fraction) of the
+        // phase's movement — charged as the move crosses each 5-CP mark — from the fuel it carries
+        // first, then a friendly dump in the hex it moves from (§49.16).
+        let groups = |tenths: u32| tenths.div_ceil(50);
+        let fuel = trucks * (groups(used + cost) - groups(used));
+        // §52.42: each Truck Point needs 1 Water Point (2 in hot weather, §29.35) in a stage it moves:
+        // charged with its first move, from a well in the hex, its cargo, or a dump there.
+        let hot = self.weather_at(from) == crate::state::game::Weather::Hot;
+        let water = if used == 0 { trucks * if hot { 2 } else { 1 } } else { 0 };
+        let well = matches!(
+            self.hex_water_source_for(from, side),
+            Some(crate::state::game::WaterKind::Unlimited | crate::state::game::WaterKind::Village | crate::state::game::WaterKind::Bir)
+        ) && !self.depleted_wells.contains(&from)
+            && !self.poisoned_wells.contains(&from);
+        let (cargo_fuel, cargo_water) = {
+            let c = &self.truck_convoys[convoy];
+            (c.cargo.fuel, c.cargo.water)
+        };
+        let fuel_from_cargo = cargo_fuel.min(fuel);
+        let fuel_from_dump = fuel - fuel_from_cargo;
+        if self.available_commodity_at(from, side, crate::state::game::Commodity::Fuel) < fuel_from_dump {
+            return Err(CommandError::InsufficientFuel);
+        }
+        let (water_from_cargo, water_from_dump) = if well {
+            (0, 0)
+        } else {
+            let wc = cargo_water.min(water);
+            (wc, water - wc)
+        };
+        if self.available_commodity_at(from, side, crate::state::game::Commodity::Water) < water_from_dump {
+            return Err(CommandError::NoWater); // §52.51: vehicles without water may not move
+        }
+        self.consume_commodity_at(from, side, crate::state::game::Commodity::Fuel, fuel_from_dump);
+        self.consume_commodity_at(from, side, crate::state::game::Commodity::Water, water_from_dump);
+        let c = self.truck_convoys.get_mut(convoy).unwrap();
+        c.cargo.fuel -= fuel_from_cargo;
+        c.cargo.water -= water_from_cargo;
         c.cpa_used += cost;
         c.hex = to;
         let cpa_used = c.cpa_used;

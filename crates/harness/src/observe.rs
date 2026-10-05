@@ -217,6 +217,11 @@ pub fn explain_rejection(game: &GameState, cmd: &Command, err: &CommandError) ->
     if let (Command::NavalTransferTroops { unit, to_port }, CommandError::PortTransferUnavailable) = (cmd, err) {
         return Some(explain_port_transfer(game, *unit, to_port));
     }
+    if let Command::MoveTruckConvoy { convoy, .. } = cmd {
+        if let Some(why) = explain_convoy_move(game, *convoy, err) {
+            return Some(why);
+        }
+    }
     if let Command::PlanConvoy { lane, arrival_gt, .. } = cmd {
         if let Some(why) = explain_convoy(game, *lane, *arrival_gt, err) {
             return Some(why);
@@ -256,6 +261,34 @@ fn explain_port_transfer(game: &GameState, unit: UnitId, to_port: &str) -> Strin
          per stage. Ship a smaller unit (e.g. detach battalions) instead.",
         origin.as_deref().unwrap_or("the origin port")
     )
+}
+
+/// Why a free truck convoy can't make a step (§8.98, §10.29, §49.18, §52.42).
+fn explain_convoy_move(game: &GameState, convoy: usize, err: &CommandError) -> Option<String> {
+    use CommandError as E;
+    let c = game.truck_convoys.get(convoy)?;
+    let tp = c.trucks.light + c.trucks.medium + c.trucks.heavy;
+    let at = hex_label(c.hex);
+    Some(match err {
+        E::TruckConvoyCannotMove => "A convoy moves one adjacent hex per command; chain several MoveTruckConvoy steps.".into(),
+        E::TruckConvoyEnemyZoc => "Convoys may not enter an enemy Zone of Control unless a friendly unit already holds the hex (§10.29).".into(),
+        E::TruckConvoyTerrainProhibited => "That hex/hexside is closed to motor vehicles (§8.37; salt marsh only along a track, §8.44). Go around, or along a road/track.".into(),
+        E::TruckConvoyCpaExhausted => format!(
+            "The convoy has used {} of its {} CP this Truck Convoy Phase (§8.98); it moves again next stage.",
+            c.cpa_used / 10, game.truck_convoy_cpa(c) / 10
+        ),
+        E::InsufficientFuel => format!(
+            "Its {tp} Truck Points burn {tp} Fuel per 5 CP moved (§49.13/§49.18); it carries {} Fuel and the dumps at {at} hold {}. \
+             LoadConvoy fuel first (Truck Convoy phase), or move it where fuel is.",
+            c.cargo.fuel, game.available_commodity_at(c.hex, c.side, cna_engine::state::game::Commodity::Fuel)
+        ),
+        E::NoWater => format!(
+            "Its {tp} Truck Points need {tp} Water (double when hot) for a stage they move (§52.42) and vehicles without water may not move \
+             (§52.51). It carries {} Water; {at} has no well and its dumps hold {}. Load water at a dump or start from a well.",
+            c.cargo.water, game.available_commodity_at(c.hex, c.side, cna_engine::state::game::Commodity::Water)
+        ),
+        _ => return None,
+    })
 }
 
 /// The §56 reason behind a convoy-planning rejection.
@@ -501,6 +534,7 @@ fn own_unit_json(game: &GameState, id: UnitId, legal_now: Option<usize>) -> Opti
         "fuel": u.fuel,
         "ammo": u.ammo,
         "water": u.water,
+        "stores_on_hand": u.stores,
         "out_of_water": u.stages_without_water > 0,
         "stages_without_water": u.stages_without_water,
         "turns_without_stores": u.turns_without_stores,
@@ -688,6 +722,29 @@ mod tests {
         let cmd = Command::NavalTransferTroops { unit: nz, to_port: "Tobruk".into() };
         let why = explain_rejection(&g, &cmd, &CommandError::PortTransferUnavailable).unwrap();
         assert!(why.contains("Alexandria already made its one troop transfer") && why.contains("§30.52"), "{why}");
+    }
+
+    #[test]
+    fn convoy_move_rejections_are_explained() {
+        use cna_engine::state::game::Phase;
+        let (mut g, _) = cna_replay::scenarios::build("campaign", 1);
+        g.phase = Phase::TruckConvoy;
+        g.active_player = Side::Commonwealth;
+        // The Mersa Matruh convoy, emptied of cargo, moving off its dump after the dump is emptied.
+        let i = g.truck_convoys.iter().position(|c| c.side == Side::Commonwealth && hex_label(c.hex) == "D3714").unwrap();
+        g.truck_convoys[i].cargo = Default::default();
+        let at = g.truck_convoys[i].hex;
+        for d in g.supply_dumps.iter_mut().filter(|d| d.location == UnitLocation::OnMap(at)) {
+            d.supply.fuel = 0;
+        }
+        let to = g.map.neighbors(at).find(|n| g.map.terrain(*n).is_some()).unwrap();
+        let cmd = Command::MoveTruckConvoy { convoy: i, to };
+        let err = g.clone().apply(cmd.clone()).unwrap_err();
+        assert_eq!(err, CommandError::InsufficientFuel);
+        let why = explain_rejection(&g, &cmd, &err).unwrap();
+        assert!(why.contains("burn") && why.contains("§49.18") && why.contains("LoadConvoy"), "{why}");
+        let why = explain_rejection(&g, &cmd, &CommandError::TruckConvoyCpaExhausted).unwrap();
+        assert!(why.contains("§8.98"), "{why}");
     }
 
     #[test]

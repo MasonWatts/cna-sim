@@ -360,6 +360,10 @@ pub struct Unit {
     /// Current onboard Water Points (§52), drawn from wells; consumed each Operations Stage.
     #[serde(default)]
     pub water: u32,
+    /// Stores carried with the unit (the scenario's starting issue, `starting_supply_turns`);
+    /// consumed before its trucks' or a dump's Stores in the Stores Expenditure Stage (§51).
+    #[serde(default)]
+    pub stores: u32,
     /// Consecutive Operations Stages this unit has gone without its required Water (§52.53
     /// attrition after the first); reset to 0 when supplied.
     #[serde(default)]
@@ -473,6 +477,7 @@ impl Unit {
             fuel: 0,
             ammo: 0,
             turns_without_stores: 0,
+            stores: 0,
             water: 0,
             stages_without_water: 0,
             trucks: TruckPoints::default(),
