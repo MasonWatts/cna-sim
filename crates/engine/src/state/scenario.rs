@@ -84,9 +84,19 @@ impl GameState {
         let ids = self.deploy_ob_units(nationality, formation_name, entry.clone(), unit_hexes, |a| {
             matches!(a, Arrival::Deployed)
         })?;
-        // Register the formation's later-arriving units as pending reinforcements, reusing
-        // this placement's entry + dispersion so they rejoin the formation on arrival.
-        self.register_pending_arrivals(nationality, formation_name, entry, unit_hexes);
+        // Register the formation's later-arriving units as pending reinforcements. They enter at
+        // their nationality's debarkation point (§20.14 Cairo / §20.15 Tripoli), not where the
+        // formation set up; only a scenario without one falls back to this placement's entry.
+        let (late_entry, area) = match self
+            .reference
+            .reinforcement_entry_hex(nationality)
+            .map(str::to_string)
+            .and_then(|s| self.resolve_entry(&s).map(|e| (e, self.resolve_entry_area(&s))))
+        {
+            Some(found) => found,
+            None => (entry, Vec::new()),
+        };
+        self.register_pending_arrivals(nationality, formation_name, late_entry, area, unit_hexes);
         Ok(ids)
     }
 
@@ -97,6 +107,7 @@ impl GameState {
         nationality: Nationality,
         formation_name: &str,
         entry: UnitLocation,
+        area: Vec<HexCoord>,
         unit_hexes: &std::collections::HashMap<String, HexCoord>,
     ) {
         let mut times = std::collections::BTreeSet::new();
@@ -120,6 +131,7 @@ impl GameState {
                 unit_hexes: unit_hexes.iter().map(|(k, v)| (k.clone(), *v)).collect(),
                 game_turn,
                 stage,
+                area: area.clone(),
             });
         }
     }
@@ -134,13 +146,25 @@ impl GameState {
         entry: UnitLocation,
         unit_hexes: &std::collections::HashMap<String, HexCoord>,
     ) -> Result<(), DeployError> {
+        self.register_reinforcement_in_area(nationality, formation_name, entry, Vec::new(), unit_hexes)
+    }
+
+    /// As [`Self::register_reinforcement`], spreading the arrivals over `area` (§20.14).
+    pub fn register_reinforcement_in_area(
+        &mut self,
+        nationality: Nationality,
+        formation_name: &str,
+        entry: UnitLocation,
+        area: Vec<HexCoord>,
+        unit_hexes: &std::collections::HashMap<String, HexCoord>,
+    ) -> Result<(), DeployError> {
         self.reference
             .orders_of_battle
             .get(&nationality)
             .ok_or(DeployError::NoOrderOfBattle(nationality))?
             .formation(formation_name)
             .ok_or_else(|| DeployError::NoFormation(formation_name.to_string()))?;
-        self.register_pending_arrivals(nationality, formation_name, entry, unit_hexes);
+        self.register_pending_arrivals(nationality, formation_name, entry, area, unit_hexes);
         Ok(())
     }
 
@@ -250,11 +274,20 @@ impl GameState {
                 if !u.attached {
                     unit.assigned_parent = parent;
                 }
-            } else if let Some(p) = parent {
+            } else if let Some(p) = parent.filter(|&p| by_name.values().any(|&x| x == p) || self.root_location(p) == Some(entry.clone())) {
                 let unit = self.unit_mut(id).expect("spawned");
                 unit.attached_parent = Some(p); // co-located; effective_hex follows up
                 if !u.attached {
                     unit.assigned_parent = Some(p); // organically assigned (§19.1)
+                }
+            } else if let Some(p) = parent {
+                // §20.14/§20.15: a reinforcement whose parent is already elsewhere arrives at the
+                // debarkation point on its own counter (still organically assigned) and must travel
+                // to rejoin — it does not appear on its parent's counter.
+                let unit = self.unit_mut(id).expect("spawned");
+                unit.location = Some(entry.clone());
+                if !u.attached {
+                    unit.assigned_parent = Some(p);
                 }
             } else {
                 // Parent not on the map (unexpected for internal arrivals): stand at `entry`.
@@ -666,7 +699,8 @@ impl GameState {
                     .to_hex_coord();
                 unit_hexes.insert(name.clone(), c);
             }
-            self.register_reinforcement(r.nationality, &r.formation, entry, &unit_hexes)
+            let area = self.resolve_entry_area(&entry_str);
+            self.register_reinforcement_in_area(r.nationality, &r.formation, entry, area, &unit_hexes)
                 .map_err(ScenarioError::Deploy)?;
         }
         // Initial Supply Units (§32.1).
@@ -842,9 +876,19 @@ impl GameState {
         }
     }
 
+    /// The hexes of a multi-hex entry area ("E1830/E1730/E1829") — empty for a single hex or node.
+    pub(crate) fn resolve_entry_area(&self, s: &str) -> Vec<HexCoord> {
+        if !s.contains('/') {
+            return Vec::new();
+        }
+        s.split('/').filter_map(|p| HexId::parse(p.trim())).map(|h| h.to_hex_coord()).collect()
+    }
+
     /// Resolve a reinforcement entry string to a `UnitLocation`: an on-map hex-id (e.g.
-    /// "E1430"), or the name of an off-map node in the §8.8 complex (e.g. "Tripoli").
+    /// "E1830"), or the name of an off-map node in the §8.8 complex (e.g. "Tripoli").
+    /// An area of hexes ("E1830/E1730/…", §20.14 "any hex(es) of Cairo") resolves to its first hex.
     pub(crate) fn resolve_entry(&self, s: &str) -> Option<UnitLocation> {
+        let s = s.split('/').next().unwrap_or(s).trim();
         if let Some(h) = HexId::parse(s) {
             return Some(UnitLocation::OnMap(h.to_hex_coord()));
         }

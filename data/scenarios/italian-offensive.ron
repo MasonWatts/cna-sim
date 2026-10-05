@@ -75,8 +75,13 @@
         (side: Commonwealth, at: "D3714", ammo: 1000, fuel: 3000, stores: 4000), // Mersa Matruh
         (side: Commonwealth, at: "C4131", ammo: 250,  fuel: 500,  stores: 100),  // Sidi Barrani
         // Unlimited supplies in Cairo & Alexandria (§60.44) — modeled as very large dumps.
-        (side: Commonwealth, at: "E1430", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Cairo
+        (side: Commonwealth, at: "E1830", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Cairo
+        (side: Commonwealth, at: "E1730", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Cairo
+        (side: Commonwealth, at: "E1829", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Cairo
+        (side: Commonwealth, at: "E1930", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Cairo
+        (side: Commonwealth, at: "E1931", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Cairo
         (side: Commonwealth, at: "E3613", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Alexandria
+        (side: Commonwealth, at: "E3714", ammo: 999999, fuel: 999999, stores: 999999, water: 999999), // Alexandria
     ],
     // Player-choice dumps (§60.34/§60.44 asterisked). Axis Dump 1/2 + 2 dummies: section C in
     // Libya, ≥5 hexes from any Commonwealth unit. CW Dump I + 1 dummy: in Egypt on map C or D

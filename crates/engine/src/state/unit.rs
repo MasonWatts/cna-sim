@@ -310,7 +310,7 @@ pub struct Unit {
     /// enables the repeatable `Command::RefitDeacons` once the dwell/stock preconditions are met.
     #[serde(default)]
     pub can_refit_deacons: bool,
-    /// §4.44a footnote b: consecutive Game-Turns this unit has sat at Cairo (E1430). Bumped once per
+    /// §4.44a footnote b: consecutive Game-Turns this unit has sat in Cairo (any of its city hexes; not Helwan). Bumped once per
     /// Game-Turn in `begin_operations_stage`; reset to 0 when the unit is elsewhere. The Deacon refit
     /// requires two continuous Game-Turns in Cairo, i.e. `cairo_dwell >= 2`.
     #[serde(default)]

@@ -2292,7 +2292,7 @@ mod tests {
         // enforcement only bites once it has elapsed — here at GT14/1.
         g.game_turn = 14;
         g.operations_stage = 1;
-        let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
+        let cairo = HexId::parse("E1830").unwrap().to_hex_coord();
         let elsewhere = HexId::parse("D3714").unwrap().to_hex_coord(); // Mersa Matruh (not a depot)
 
         // "k" has a max TOE of 7. Three units flagged for withdrawal at this deadline:
@@ -2646,7 +2646,7 @@ mod tests {
         use crate::state::unit::{Composition, UnitLocation, WeaponGroup};
 
         let mut g = GameState::new(ReferenceData::new(), 1);
-        let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
+        let cairo = HexId::parse("E1830").unwrap().to_hex_coord();
         let u = g.spawn_unit(
             Nationality::Commonwealth,
             "aa",
@@ -4169,9 +4169,10 @@ mod tests {
         let fld31 = g.units.values().find(|u| u.name == "31st Field Artillery Regt").unwrap();
         assert_eq!(fld31.hex(), Some(HexId::parse("C4131").unwrap().to_hex_coord()));
 
-        // Fixed initial Supply (§60.34/§60.44): 6 Axis + 4 CW = 10 dumps at named locations;
+        // Fixed initial Supply (§60.34/§60.44): 6 Axis + 9 CW = 15 dumps at named locations (the
+        // CW's unlimited Cairo/Alexandria supply sits in every city hex: 5 Cairo + 2 Alexandria);
         // the 5 player-choice groups (Dump 1/2, Axis dummies, Dump I, CW dummy) are pending.
-        assert_eq!(g.supply_dumps.len(), 10);
+        assert_eq!(g.supply_dumps.len(), 15);
         assert_eq!(g.pending_dump_choices.len(), 5);
         // Tobruk (C4807) is one Axis dump with 200 Ammo / 2000 Fuel / 500 Stores (§60.34).
         let tobruk = HexId::parse("C4807").unwrap().to_hex_coord();
@@ -4191,11 +4192,11 @@ mod tests {
             .count();
         assert_eq!(tripoli, 1);
 
-        // Auto-placing the 5 player-choice groups (3 real + 3 dummy units) → 16 total. CW
+        // Auto-placing the 5 player-choice groups (3 real + 3 dummy units) → 21 total. CW
         // Dump I (§60.44) must be in Egypt on map C or D (east of Sollum C4021, west of E).
         let sollum_col = HexId::parse("C4021").unwrap().to_hex_coord().col;
         g.auto_place_dump_choices();
-        assert_eq!(g.supply_dumps.len(), 16);
+        assert_eq!(g.supply_dumps.len(), 21);
         assert!(g.pending_dump_choices.is_empty());
         let cw_dump_i: Vec<_> = g
             .supply_dumps
@@ -4468,6 +4469,7 @@ mod tests {
 
         let mut refs = ReferenceData::new();
         refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_terrain(TERRAIN_RON).unwrap();
         let mut g = GameState::new(refs, 1);
         let (alex, tobruk, bardia) = (HexCoord::new(1, 1), HexCoord::new(5, 1), HexCoord::new(9, 1));
         for (c, name) in [(alex, "Alex"), (tobruk, "Tobruk"), (bardia, "Bardia")] {
@@ -4507,9 +4509,28 @@ mod tests {
             g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::NavalTransferTroops { to_port, .. } if to_port == "Tobruk")),
             "naval transfer enumerated"
         );
+        // The unit rides an HQ's counter at Alexandria (attached).
+        let hq = g.spawn_unit(Nationality::Commonwealth, "hq", "Bde HQ", Composition::Organic { current_toe: 0 });
+        g.unit_mut(hq).unwrap().location = Some(UnitLocation::OnMap(alex));
+        g.unit_mut(hq).unwrap().is_hq = true;
+        g.unit_mut(unit).unwrap().location = None;
+        g.unit_mut(unit).unwrap().attached_parent = Some(hq);
+        // §9.31: a destination port hex already at its Stacking Limit (Clear: 6) can't take the unit.
+        let garrison: Vec<_> = (0..6)
+            .map(|i| {
+                let id = g.spawn_unit(Nationality::Commonwealth, format!("g{i}"), "bn", Composition::Organic { current_toe: 6 });
+                g.unit_mut(id).unwrap().location = Some(UnitLocation::OnMap(tobruk));
+                id
+            })
+            .collect();
+        assert_eq!(g.hex_stacking_points(tobruk), 6);
+        assert_eq!(g.apply(to("Tobruk")), Err(CommandError::StackingLimitExceeded));
+        g.unit_mut(garrison[0]).unwrap().location = None; // room for one battalion
         // The transfer succeeds and moves the unit; both ports are now used for the stage.
         assert_eq!(g.apply(to("Tobruk")), Ok(CommandOutcome::TroopsTransferred));
         assert_eq!(g.effective_hex(unit), Some(tobruk));
+        assert_eq!(g.unit(unit).unwrap().attached_parent, None, "shipped alone, it leaves its HQ's counter (§19.43)");
+        assert_eq!(g.effective_hex(hq), Some(alex));
         assert!(g.unit(unit).unwrap().cp_expended.0 > 0, "§30.55: lands having spent its full CPA — no further move this stage");
         // §30.52: a second transfer touching either used port this stage is rejected.
         assert_eq!(g.apply(Command::NavalTransferTroops { unit, to_port: "Alex".into() }), Err(CommandError::PortTransferUnavailable));
@@ -4522,6 +4543,40 @@ mod tests {
         let axis = g.spawn_unit(Nationality::Italian, "p", "garrison", Composition::Organic { current_toe: 6 });
         g.unit_mut(axis).unwrap().location = Some(UnitLocation::OnMap(bardia));
         assert_eq!(g.apply(Command::NavalTransferTroops { unit, to_port: "Bardia".into() }), Err(CommandError::PortCannotTransfer));
+    }
+
+    #[test]
+    fn forced_retreat_respects_stacking_9_35() {
+        // §9.35: an involuntary retreat may not pass through a hex in violation of the Stacking Limit;
+        // with no legal path the unit surrenders (§10.36).
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Nationality;
+        use crate::state::game::GameState;
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let setup = |block: bool| {
+            let mut refs = ReferenceData::new();
+            refs.load_terrain(TERRAIN_RON).unwrap();
+            let mut g = GameState::new(refs, 1);
+            for c in 0..7 {
+                g.map.set_hex(HexCoord::new(c, 0), HexTerrain::Clear); // a one-row corridor
+            }
+            let u = g.spawn_unit(Nationality::Commonwealth, "r", "bn", Composition::Organic { current_toe: 6 });
+            g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(1, 0)));
+            if block {
+                for i in 0..6 {
+                    let o = g.spawn_unit(Nationality::Commonwealth, format!("b{i}"), "bn", Composition::Organic { current_toe: 6 });
+                    g.unit_mut(o).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(3, 0)));
+                }
+            }
+            (g, u)
+        };
+        let (mut g, u) = setup(false);
+        assert!(g.forced_retreat_three(u, HexCoord::new(0, 0)));
+        assert_eq!(g.unit(u).unwrap().hex(), Some(HexCoord::new(4, 0)));
+        let (mut g, u) = setup(true);
+        assert!(!g.forced_retreat_three(u, HexCoord::new(0, 0)), "the full hex on the only path blocks the retreat");
     }
 
     #[test]
@@ -7612,7 +7667,7 @@ mod tests {
         let mut g = GameState::new(refs, 1);
         g.phase = Phase::Organization;
         g.active_player = Side::Commonwealth;
-        let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
+        let cairo = HexId::parse("E1830").unwrap().to_hex_coord();
         let field = HexId::parse("D3714").unwrap().to_hex_coord();
 
         // §20.81: "1st Armored Bde [2]" is a by-type choice (no OB unit) — withdraw 1 armor brigade.
@@ -7688,7 +7743,7 @@ mod tests {
         let ru = g.unit(u).unwrap();
         assert!(!ru.status.withdrawn);
         assert_eq!(ru.total_toe(), 3);
-        assert_eq!(ru.location.as_ref().and_then(|l| l.hex()), Some(HexId::parse("E1430").unwrap().to_hex_coord()));
+        assert_eq!(ru.location.as_ref().and_then(|l| l.hex()), Some(HexId::parse("E1830").unwrap().to_hex_coord()));
         assert_eq!(ru.mandatory_withdrawal, Some((75, 1)));
         assert_eq!(ru.return_at, None);
 
@@ -12658,7 +12713,7 @@ mod tests {
         refs.load_campaign_victory(include_str!("../../../data/reference/campaign-victory.ron"))
             .unwrap();
         let mut g = GameState::new(refs, 1);
-        let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
+        let cairo = HexId::parse("E1830").unwrap().to_hex_coord();
         let bn = g.spawn_unit(Nationality::Commonwealth, "h", "bn", Composition::Organic { current_toe: 5 });
         g.unit_mut(bn).unwrap().org_size = OrgSize::Battalion;
         g.unit_mut(bn).unwrap().location = Some(UnitLocation::OnMap(cairo));
@@ -13009,7 +13064,7 @@ mod tests {
         refs.load_campaign_victory(include_str!("../../../data/reference/campaign-victory.ron"))
             .unwrap();
         let mut g = GameState::new(refs, 1);
-        let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
+        let cairo = HexId::parse("E1830").unwrap().to_hex_coord();
         // "h" infantry battalion, max TOE 5, at full strength in Cairo.
         let bn = g.spawn_unit(Nationality::Commonwealth, "h", "bn", Composition::Organic { current_toe: 5 });
         g.unit_mut(bn).unwrap().org_size = OrgSize::Battalion;
@@ -14008,8 +14063,8 @@ mod tests {
             "../../../data/reference/reinforcement-entry.ron"
         ))
         .unwrap();
-        // §20.14: Commonwealth reinforcements enter at Cairo (E1430).
-        assert_eq!(refs.reinforcement_entry_hex(Nationality::Commonwealth), Some("E1430"));
+        // §20.14: Commonwealth reinforcements enter in "any hex(es) of Cairo" (the five city hexes).
+        assert_eq!(refs.reinforcement_entry_hex(Nationality::Commonwealth), Some("E1830/E1730/E1829/E1930/E1931"));
         // §20.15: Axis reinforcements enter at the Tripoli off-map node.
         assert_eq!(refs.reinforcement_entry_hex(Nationality::German), Some("Tripoli"));
         assert_eq!(refs.reinforcement_entry_hex(Nationality::Italian), Some("Tripoli"));
@@ -14082,9 +14137,70 @@ mod tests {
             r#"(name: "T", reinforcements: [(nationality: Commonwealth, formation: "4th Indian Division")])"#,
         )
         .unwrap();
-        let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
+        let cairo = HexId::parse("E1830").unwrap().to_hex_coord();
         assert!(!g.pending_arrivals.is_empty());
         assert!(g.pending_arrivals.iter().all(|p| p.entry == crate::state::unit::UnitLocation::OnMap(cairo)));
+        assert!(g.pending_arrivals.iter().all(|p| p.area.len() == 5), "arrivals spread over the five Cairo hexes");
+    }
+
+    #[test]
+    fn campaign_setup_and_arrivals_respect_stacking_9_14() {
+        // §9.14: the campaign start deploys no hex over its Stacking Limit, and every scheduled
+        // arrival debarks at its nationality's point (§20.14 Cairo area / §20.15 Tripoli) — never at
+        // the hex its formation happened to set up in (e.g. Benghazi).
+        use crate::state::unit::UnitLocation;
+        let g = build_campaign_game();
+        let mut hexes: Vec<_> = g.units.values().filter_map(|u| u.hex()).collect();
+        hexes.sort_by_key(|h| (h.col, h.row));
+        hexes.dedup();
+        for h in hexes {
+            if let Some(limit) = g.hex_stacking_limit(h) {
+                assert!(g.hex_stacking_points(h) <= limit, "{h:?} starts at {} > {limit}", g.hex_stacking_points(h));
+            }
+        }
+        for p in &g.pending_arrivals {
+            if p.nationality.side() == crate::reference::units::Side::Axis {
+                assert!(matches!(&p.entry, UnitLocation::OffMap { node, .. } if node == "Tripoli"), "{} enters at {:?}", p.formation, p.entry);
+            }
+        }
+    }
+
+    #[test]
+    fn arrivals_spread_over_city_within_stacking_20_14() {
+        // §20.14 legend: arrivals use "any hex(es) of Cairo … subject to the stacking limitations".
+        use crate::state::map::HexId;
+        use crate::state::unit::{Composition, OrgSize, UnitLocation};
+        let mut g = build_campaign_game();
+        let area: Vec<_> = ["E1730", "E1829"].iter().map(|h| HexId::parse(h).unwrap().to_hex_coord()).collect();
+        for &h in &area {
+            for id in g.units_in_hex(h) {
+                g.unit_mut(id).unwrap().location = None; // start from empty city hexes
+            }
+        }
+        let spawn = |g: &mut crate::state::game::GameState, n: usize, size: OrgSize| -> Vec<_> {
+            (0..n)
+                .map(|i| {
+                    let id = g.spawn_unit(Nationality::Commonwealth, format!("t{i}"), "inf", Composition::Organic { current_toe: 6 });
+                    let u = g.unit_mut(id).unwrap();
+                    u.org_size = size;
+                    u.location = Some(UnitLocation::OnMap(area[0]));
+                    id
+                })
+                .collect()
+        };
+        // A batch that fits arrives together.
+        let small = spawn(&mut g, 3, OrgSize::Battalion);
+        g.spread_arrivals(&small, &area);
+        let h0 = g.unit(small[0]).unwrap().hex().unwrap();
+        assert!(small.iter().all(|&id| g.unit(id).unwrap().hex() == Some(h0)));
+        // A second formation goes to the other (roomier) hex; a batch too big for one hex is split
+        // without exceeding either limit (8 in a Major City).
+        let big = spawn(&mut g, 9, OrgSize::Battalion);
+        g.spread_arrivals(&big, &area);
+        for &h in &area {
+            assert!(g.hex_stacking_points(h) <= 8, "{h:?} over the limit: {}", g.hex_stacking_points(h));
+        }
+        assert_eq!(area.iter().map(|&h| g.hex_stacking_points(h)).sum::<u32>(), 12);
     }
 
     #[test]
@@ -15026,7 +15142,7 @@ mod tests {
         let mut g = GameState::new(ReferenceData::new(), 1);
         let plain = HexCoord::new(0, 0);
         let city = HexCoord::new(1, 0);
-        let cairo = HexId::parse("E1430").unwrap().to_hex_coord();
+        let cairo = HexId::parse("E1830").unwrap().to_hex_coord();
         g.map.set_hex(plain, HexTerrain::Clear);
         g.map.set_hex(city, HexTerrain::MajorCity);
         g.map.set_hex(cairo, HexTerrain::MajorCity);
@@ -15034,6 +15150,10 @@ mod tests {
         assert_eq!(g.fort_level(plain), 0);
         assert_eq!(g.fort_level(city), 2);
         assert_eq!(g.fort_level(cairo), 3);
+        // Helwan (E1430) is a Major City but not part of Cairo: Level 2.
+        let helwan = HexId::parse("E1430").unwrap().to_hex_coord();
+        g.map.set_hex(helwan, HexTerrain::MajorCity);
+        assert_eq!(g.fort_level(helwan), 2);
         // A placed fort on open ground; fort_shift = −level.
         g.fortifications.insert(plain, 1);
         assert_eq!(g.fort_level(plain), 1);

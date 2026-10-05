@@ -33,7 +33,7 @@
 // FORTIFICATIONS VERIFICATION (2026-09-10, closed): the full §60.31–60.44 deployment charts (text
 // rules) place NO field-fortification counters, minefields, or explicit Fortification Levels — the
 // only start-of-game forts are the §25.12 inherent Major-City levels (Level 2 each city; Level 3
-// Cairo E1430 / Alexandria E3613), which the engine supplies automatically via
+// Cairo E1730/1829/1830/1930/1931 / Alexandria E3613/3714), which the engine supplies automatically via
 // `city_static_fort_base`. Hence there is deliberately no `fortifications:` field here; field forts
 // are built in-play with `BuildFortification` (§24.4). Adding any at start would be fabrication.
 (
@@ -102,15 +102,15 @@
         // player-repositionable.
         (nationality: Italian, formation: "Unassigned Gun Units", hex: "Tripoli", unit_hexes: [
             ("X Corps Artillery Regt",     "A4130"),  // Soluch (chart)
-            ("6th Gaf S di C Arty Regt",   "A4827"),  // Map A/B -> Benghazi (auto)
+            ("6th Gaf S di C Arty Regt",   "A4827"),  // Map A/B -> Benghazi (auto; with the Libyan bns 7 of its 8 SP)
             ("16th Gaf S di C Arty Regt",  "A4827"),
             ("22nd Gaf S di C Arty Regt",  "A4827"),
             ("42nd Gaf S di C Arty Regt",  "A4827"),
             ("350th Gaf S di C Arty Regt", "A4827"),
-            ("131st Artiglieri Bn",        "A4827"),
-            ("147th Artiglieri Bn",        "A4827"),
-            ("5th Bn, 1st Artiglieri",     "A4827"),
-            ("2nd Bn, 24th Artiglieri",    "A4827"),
+            ("131st Artiglieri Bn",        "B5925"),  // Map A/B -> Derna (auto; Benghazi is full, §9.14)
+            ("147th Artiglieri Bn",        "B5925"),
+            ("5th Bn, 1st Artiglieri",     "B5925"),
+            ("2nd Bn, 24th Artiglieri",    "B5925"),
             ("1st Bn, 1 Arty Rgppmnto",    "C4807"),  // "anywhere in Libya" -> Tobruk rear (auto)
             ("2nd Bn, 1 Arty Rgppmnto",    "C4807"),
             ("3rd Bn, 1 Arty Rgppmnto",    "C4807"),
@@ -148,9 +148,11 @@
         ]),
         // Rear-area formations (Alexandria / Cairo).
         (nationality: Commonwealth, formation: "2nd New Zealand Division", hex: "E3613"),  // Alexandria
-        (nationality: Commonwealth, formation: "6th Australian Division",  hex: "E1430"),  // Cairo / Helwan (in training)
+        // "Cairo and/or Helwan (E1430)": set up in Cairo (E1730), where the home-base supplies are.
+        (nationality: Commonwealth, formation: "6th Australian Division",  hex: "E1730"),
         // Unassigned British infantry: border battalions forward, the rest at Cairo (= base).
-        (nationality: Commonwealth, formation: "Unassigned British Infantry-type Units", hex: "E1430", unit_hexes: [
+        // Cairo = E1830 (7 of its 8 SP with the artillery/AT/Welch below, §9.14).
+        (nationality: Commonwealth, formation: "Unassigned British Infantry-type Units", hex: "E1830", unit_hexes: [
             ("2nd Scots Guards",        "C4131"),
             ("3rd Coldstream Guards",   "C3922"),
             ("1st RNF MG Bn",           "C3721"),
@@ -158,14 +160,14 @@
         ]),
         // Unassigned artillery: 7th Medium fwd (C3922), 8th Field at Cairo, 8th Medium ("anywhere
         // Map D/E") auto at Cairo (= base, player-repositionable).
-        (nationality: Commonwealth, formation: "Unassigned Artillery Units", hex: "E1430", unit_hexes: [
+        (nationality: Commonwealth, formation: "Unassigned Artillery Units", hex: "E1830", unit_hexes: [
             ("7th Medium Artillery Regt", "C3922"),
         ]),
         // AT / AA regiments ("anywhere Map D/E") -> Cairo (auto, player-repositionable).
-        (nationality: Commonwealth, formation: "Unassigned Anti-tank Regiments", hex: "E1430"),
-        (nationality: Commonwealth, formation: "Unassigned Anti-aircraft Units", hex: "E1430"),
+        (nationality: Commonwealth, formation: "Unassigned Anti-tank Regiments", hex: "E1830"),
+        (nationality: Commonwealth, formation: "Unassigned Anti-aircraft Units", hex: "E1830"),
         // 1st Welch Regt (Cairo).
-        (nationality: Commonwealth, formation: "Unassigned Indian Units", hex: "E1430"),
+        (nationality: Commonwealth, formation: "Unassigned Indian Units", hex: "E1830"),
         // 1st Company, Fr Mtr Marine (C3926). (Removed from `reinforcements` — placement registers
         // this pool's later arrivals.)
         (nationality: Commonwealth, formation: "Unassigned Allied Units", hex: "C3926"),
@@ -249,8 +251,16 @@
         (side: Axis, at: "C0716", ammo: 100, fuel: 50, stores: 50),
         (side: Commonwealth, at: "D3714", ammo: 1000, fuel: 3000, stores: 4000), // Mersa Matruh
         (side: Commonwealth, at: "C4131", ammo: 250,  fuel: 500,  stores: 100),  // Sidi Barrani
-        (side: Commonwealth, at: "E1430", unlimited: true), // Cairo — §57 home base (bottomless)
-        (side: Commonwealth, at: "E3613", unlimited: true), // Alexandria — §57 home base (bottomless)
+        // §57 / §59 "unlimited supplies in Cairo and Alexandria": a bottomless dump in every city
+        // hex (Cairo E1730/1829/1830/1930/1931, Alexandria E3613/3714). Helwan (E1430) is not
+        // Cairo and has none.
+        (side: Commonwealth, at: "E1730", unlimited: true), // Cairo
+        (side: Commonwealth, at: "E1829", unlimited: true), // Cairo
+        (side: Commonwealth, at: "E1830", unlimited: true), // Cairo
+        (side: Commonwealth, at: "E1930", unlimited: true), // Cairo
+        (side: Commonwealth, at: "E1931", unlimited: true), // Cairo
+        (side: Commonwealth, at: "E3613", unlimited: true), // Alexandria
+        (side: Commonwealth, at: "E3714", unlimited: true), // Alexandria
     ],
     // Auto-placed at fixed, sensible hexes (`at`); `constraint` still governs a manual/agent placement.
     supply_dump_choices: [
@@ -285,7 +295,7 @@
         (at: "A4827", kind: Airfield), // Benghazi (Axis)
         (at: "E3613", kind: Airfield), // Alexandria (Commonwealth)
         (at: "D3714", kind: Airfield), // Mersa Matruh (Commonwealth)
-        (at: "E1430", kind: Airfield), // Cairo (Commonwealth)
+        (at: "E1830", kind: Airfield), // Cairo (Commonwealth)
     ],
 
     // §30.17/§55.25: the Italian cruiser San Giorgio, scuttled to block Tobruk harbour (already

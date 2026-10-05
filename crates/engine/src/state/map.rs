@@ -782,7 +782,7 @@ mod tests {
         let alex = hc("E3613");
         assert_eq!(m.terrain(alex), Some(HexTerrain::MajorCity));
         assert!(m.hex(alex).unwrap().is_port());
-        // E1430 (Cairo/Helwan): Major City (matches §60.41).
+        // E1430 (Helwan — not part of Cairo, §17.32): Major City.
         assert_eq!(m.terrain(hc("E1430")), Some(HexTerrain::MajorCity));
         // An Invalid cell is dropped on load.
         assert_eq!(m.terrain(hc("E0135")), None);

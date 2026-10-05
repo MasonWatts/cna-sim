@@ -139,6 +139,9 @@ struct Window {
     listing: Vec<Command>,
     /// The item currently being executed (for result reporting).
     current: Option<(PlanItem, String)>,
+    /// A rejection to annotate with an explanation on the next `choose` (which, unlike
+    /// `on_result`, sees the — unchanged — game state): (index into `results`, command, error).
+    explain: Option<(usize, Command, CommandError)>,
     /// Every result reported this window (for the journal).
     all_results: Vec<Value>,
     /// The prompts the session was launched with (for a retry).
@@ -264,6 +267,7 @@ impl McpAgent {
             pending_reply: None,
             listing: Vec::new(),
             current: None,
+            explain: None,
             all_results: Vec::new(),
             prompts: (sys, user),
             retries: 0,
@@ -458,9 +462,31 @@ impl McpAgent {
                             w.current = Some((next, label));
                             return Some(Command::MoveStep { unit, to: n, mode: m });
                         }
-                        None => w.results.push(json!({"item": label, "ok": steps > 0, "steps": steps,
-                            "arrived": false, "stopped_at": observe::hex_json(at),
-                            "reason": "no legal step that gets closer (terrain, ZOC, stacking, CP or fuel)"})),
+                        None => {
+                            // Report the engine's actual reason for each closer neighbour.
+                            let mut blocked: Vec<Value> = Vec::new();
+                            for n in at.neighbors().into_iter().filter(|n| n.distance(hex) < here && game.map.hex(*n).is_some()) {
+                                let errs: Vec<_> = modes.iter().filter_map(|&m| game.move_step_error(unit, n, m)).collect();
+                                if let Some(e) = errs.first() {
+                                    let mut b = json!({"hex": observe::hex_json(n), "error": format!("{e:?}")});
+                                    if let Some(why) = observe::explain_error(game, Some(unit), Some(n), e) {
+                                        b["why"] = json!(why);
+                                    }
+                                    blocked.push(b);
+                                }
+                            }
+                            let reason = match blocked.first() {
+                                Some(b) => format!(
+                                    "no legal step that gets closer — {} {}: {}",
+                                    b["hex"]["label"].as_str().unwrap_or("?"),
+                                    b["error"].as_str().unwrap_or("?"),
+                                    b["why"].as_str().unwrap_or("")
+                                ),
+                                None => "no legal step that gets closer".to_string(),
+                            };
+                            w.results.push(json!({"item": label, "ok": steps > 0, "steps": steps,
+                                "arrived": false, "stopped_at": observe::hex_json(at), "reason": reason, "blocked_steps": blocked}));
+                        }
                     }
                 }
             }
@@ -643,6 +669,13 @@ impl Agent for McpAgent {
     }
 
     fn choose(&mut self, game: &GameState, side: Side) -> Option<Command> {
+        if let Some(w) = self.window.as_mut() {
+            if let Some((i, c, e)) = w.explain.take() {
+                if let (Some(why), Some(r)) = (observe::explain_rejection(game, &c, &e), w.results.get_mut(i)) {
+                    r["why"] = json!(why);
+                }
+            }
+        }
         // The pre-game planning window runs once, before this side's first decision.
         if self.pregame.is_some() && !self.memory.pregame_done && self.window.is_none() {
             if self.launcher.as_ref().is_some_and(|l| l.budget_exhausted()) {
@@ -683,13 +716,22 @@ impl Agent for McpAgent {
         match item {
             // A move_to keeps going while its steps succeed; a failed step ends it.
             PlanItem::MoveTo { .. } if result.is_ok() => w.queue.push_front(item),
-            PlanItem::MoveTo { unit, hex, steps, .. } => w.results.push(json!({
-                "item": label, "ok": steps > 1, "steps": steps.saturating_sub(1), "arrived": false,
-                "error": format!("{:?}", result.as_ref().err()), "unit": unit.0, "target": observe::hex_json(hex),
-            })),
+            PlanItem::MoveTo { unit, hex, steps, .. } => {
+                let r = json!({
+                    "item": label, "ok": steps > 1, "steps": steps.saturating_sub(1), "arrived": false,
+                    "error": format!("{:?}", result.as_ref().err()), "unit": unit.0, "target": observe::hex_json(hex),
+                });
+                w.results.push(r);
+                if let Err(e) = result {
+                    w.explain = Some((w.results.len() - 1, cmd.clone(), e.clone()));
+                }
+            }
             _ => w.results.push(match result {
                 Ok(o) => json!({"item": label, "ok": true, "kind": observe::command_kind(cmd), "outcome": o}),
-                Err(e) => json!({"item": label, "ok": false, "kind": observe::command_kind(cmd), "error": format!("{e:?}")}),
+                Err(e) => {
+                    w.explain = Some((w.results.len(), cmd.clone(), e.clone()));
+                    json!({"item": label, "ok": false, "kind": observe::command_kind(cmd), "error": format!("{e:?}")})
+                }
             }),
         }
     }

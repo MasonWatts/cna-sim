@@ -2306,12 +2306,19 @@ impl GameState {
         if dest_in == 0 || dest_in < sp || origin_out < sp {
             return Err(CommandError::PortTransferUnavailable);
         }
+        // §9.31: the landed unit may not leave the port hex over its §8.37 Stacking Limit.
+        if !self.stacking_room_for(unit, dest_hex) {
+            return Err(CommandError::StackingLimitExceeded);
+        }
         // §30.55: it is landed at the port of embarkation at a cost equal to its full Capability Point
         // Allowance — so it may make no further move this Operations Stage.
         let cpa = self.unit_cpa(unit).unwrap_or(0).max(0);
         if let Some(u) = self.unit_mut(unit) {
             u.location = Some(crate::state::unit::UnitLocation::OnMap(dest_hex));
             u.cp_expended = crate::reference::terrain::Fixed(cpa * 10);
+            // A unit shipped away from the formation it was attached to leaves that counter
+            // (§19.43); it stays organically assigned, so it may re-attach later.
+            u.attached_parent = None;
         }
         // §30.57: bringing troops in reduces the receiving port's supply tonnage for the turn by 10%
         // per Stacking Point (SPs shipped *out* — at `origin` — have no effect).
@@ -3733,6 +3740,9 @@ impl GameState {
         if ship_cp + terrain > cap {
             return Err(CommandError::LayforceCannotLand); // §6: may not exceed its CPA
         }
+        if !self.stacking_room_for(unit, to) {
+            return Err(CommandError::StackingLimitExceeded); // §9.31
+        }
         // Land it, and open the §27.74 free-supply window (this stage plus the next two).
         if let Some(u) = self.unit_mut(unit) {
             u.location = Some(UnitLocation::OnMap(to));
@@ -3755,6 +3765,9 @@ impl GameState {
         let on_coast = self.unit(unit).and_then(|u| u.hex()).is_some_and(|h| self.map.is_coastal(h));
         if !on_coast {
             return Err(CommandError::LayforceCannotLand);
+        }
+        if !self.stacking_room_for(unit, alex) {
+            return Err(CommandError::StackingLimitExceeded); // §9.31
         }
         if let Some(u) = self.unit_mut(unit) {
             u.location = Some(UnitLocation::OnMap(alex)); // the ship carries it back to Alexandria
@@ -3782,6 +3795,9 @@ impl GameState {
         let cap = self.effective_cpa(unit).unwrap_or(0).max(0) as u32 * 10;
         if ship_cp + terrain > cap {
             return Err(CommandError::SasCannotAct);
+        }
+        if !self.stacking_room_for(unit, to) {
+            return Err(CommandError::StackingLimitExceeded); // §9.31
         }
         if let Some(u) = self.unit_mut(unit) {
             u.location = Some(UnitLocation::OnMap(to));
@@ -4209,6 +4225,9 @@ impl GameState {
         }
         if !crate::rules::air::can_fly(min_range, base.distance(target), false) {
             return Err(CommandError::TargetOutOfRange);
+        }
+        if !self.stacking_room_for(unit, target) {
+            return Err(CommandError::StackingLimitExceeded); // §9.31
         }
         // Execute: fly the transports, land the unit, and exhaust its CPA (§42.34).
         self.sgsus.get_mut(&squadron).ok_or(CommandError::NoSuchSquadron)?.fly(toe);
@@ -7081,6 +7100,13 @@ impl GameState {
     pub fn can_move_step(&self, unit: UnitId, to: HexCoord, mode: MoveMode) -> bool {
         let cpa = self.effective_cpa(unit).unwrap_or(0);
         self.plan_move_step(unit, to, mode, cpa).is_ok()
+    }
+
+    /// Why `unit` may not step to adjacent `to` in `mode` right now (`None` = it may) — the same
+    /// validation as `can_move_step`, for explaining rejections to players.
+    pub fn move_step_error(&self, unit: UnitId, to: HexCoord, mode: MoveMode) -> Option<CommandError> {
+        let cpa = self.effective_cpa(unit).unwrap_or(0);
+        self.plan_move_step(unit, to, mode, cpa).err()
     }
 
     /// Move a single counter one hex (§8): validate via `plan_move_step`, then pay Fuel/CP and apply

@@ -1314,6 +1314,16 @@ pub struct PendingShip {
     pub stage: u8,
 }
 
+/// Cairo's city hexes (rulebook "Summary of Important Locations": E1730/1829/1830/1930/1931), main
+/// hex first. Helwan (E1430) is a separate place (§17.32) and is never part of Cairo.
+pub const CAIRO_HEXES: [&str; 5] = ["E1830", "E1730", "E1829", "E1930", "E1931"];
+/// Alexandria's city hexes (§60.41 "E3613 &/or 3714").
+pub const ALEXANDRIA_HEXES: [&str; 2] = ["E3613", "E3714"];
+
+fn parse_hexes(ids: &[&str]) -> Vec<HexCoord> {
+    ids.iter().filter_map(|s| crate::state::map::HexId::parse(s).map(|h| h.to_hex_coord())).collect()
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PendingArrival {
     pub nationality: Nationality,
@@ -1323,6 +1333,10 @@ pub struct PendingArrival {
     pub unit_hexes: Vec<(String, HexCoord)>,
     pub game_turn: u32,
     pub stage: u8,
+    /// The arrival area when the entry is a multi-hex city (e.g. the five Cairo hexes, §20.14):
+    /// the arriving counters are spread over it within Stacking Limits. Empty = all at `entry`.
+    #[serde(default)]
+    pub area: Vec<HexCoord>,
 }
 
 fn default_side() -> Side {
@@ -1532,6 +1546,21 @@ impl GameState {
         aa_sps.sort_unstable_by(|a, b| b.cmp(a));
         let free: u32 = aa_sps.into_iter().take(allowance).sum();
         base.saturating_sub(free)
+    }
+
+    /// The §8.37 terrain Stacking Limit of `hex` (`None` = unlimited / off-map).
+    pub fn hex_stacking_limit(&self, hex: HexCoord) -> Option<u32> {
+        self.map.terrain(hex).and_then(|t| self.reference.terrain.get(&t)).and_then(|p| p.stacking_limit)
+    }
+
+    /// §9.14/§9.31: whether `unit` (not currently in `hex`) may end its movement there without
+    /// exceeding the hex's Stacking Limit. Used by every non-step relocation (sea, air, rail,
+    /// landings, forced retreats) so they obey the same limit as `MoveStep`.
+    pub fn stacking_room_for(&self, unit: UnitId, hex: HexCoord) -> bool {
+        match self.hex_stacking_limit(hex) {
+            Some(limit) => self.hex_stacking_points(hex) + self.effective_stacking_points(unit) <= limit,
+            None => true,
+        }
     }
 
     pub fn unit_mut(&mut self, id: UnitId) -> Option<&mut Unit> {
@@ -2501,7 +2530,7 @@ impl GameState {
     /// has elapsed. Called at the start of a Game-Turn. Returns the number returned.
     pub fn process_tds_returns(&mut self) -> u32 {
         use crate::state::map::HexId;
-        let cairo = HexId::parse("E1430").map(|h| h.to_hex_coord());
+        let cairo = HexId::parse(CAIRO_HEXES[0]).map(|h| h.to_hex_coord());
         let gt = self.game_turn;
         let mut returned = 0;
         for u in self.units.values_mut() {
@@ -2827,14 +2856,10 @@ impl GameState {
     /// eliminated (§20.83) and may not return. Returns `(withdrawn, eliminated)` counts. Units are
     /// flagged via `Unit.mandatory_withdrawal` (bound to the [4.43a] schedule at scenario setup).
     pub fn enforce_mandatory_withdrawals(&mut self) -> (u32, u32) {
-        use crate::state::map::HexId;
         // §20.83: a unit may reach the depot on or before its deadline *stage*, so only enforce once
         // that stage has fully elapsed (its global stage index is strictly behind "now").
         let now_global = self.global_ops_stage();
-        let depots: Vec<HexCoord> = ["E1430", "E3613"] // Cairo, Alexandria (§20.83)
-            .iter()
-            .filter_map(|s| HexId::parse(s).map(|h| h.to_hex_coord()))
-            .collect();
+        let depots: Vec<HexCoord> = parse_hexes(&CAIRO_HEXES).into_iter().chain(parse_hexes(&ALEXANDRIA_HEXES)).collect(); // §20.83
         let due: Vec<UnitId> = self
             .units
             .iter()
@@ -3177,6 +3202,8 @@ impl GameState {
                         && !self.units_in_hex(n).into_iter().any(|o| {
                             self.units.get(&o).map(|u| u.nationality.side()) == Some(enemy)
                         })
+                        // §9.35: may not retreat through a hex in violation of Stacking Limits.
+                        && self.stacking_room_for(unit, n)
                 })
                 .max_by_key(|n| n.distance(away_from));
             match next {
@@ -3350,7 +3377,7 @@ impl GameState {
     pub fn process_returns(&mut self) -> u32 {
         use crate::state::map::HexId;
         let now = self.global_ops_stage();
-        let cairo = HexId::parse("E1430").map(|h| h.to_hex_coord());
+        let cairo = HexId::parse(CAIRO_HEXES[0]).map(|h| h.to_hex_coord());
         let due: Vec<UnitId> = self
             .units
             .iter()
@@ -3378,6 +3405,9 @@ impl GameState {
                 // §20.8: arm a second return for the double-cycle units (else clear).
                 u.return_at = u.return_at_2.take();
             }
+            // §20.14: returning units land in Cairo "subject to stacking restrictions".
+            let area = self.cairo_hexes();
+            self.spread_arrivals(&[id], &area);
             returned += 1;
         }
         returned
@@ -3426,9 +3456,25 @@ impl GameState {
         }
     }
 
-    /// The Cairo hex (E1430), the Commonwealth home base where the Deacon refit is performed.
-    fn cairo_hex(&self) -> Option<HexCoord> {
-        crate::state::map::HexId::parse("E1430").map(|h| h.to_hex_coord())
+    /// Cairo's city hexes (see [`CAIRO_HEXES`]).
+    pub fn cairo_hexes(&self) -> Vec<HexCoord> {
+        parse_hexes(&CAIRO_HEXES)
+    }
+
+    /// Alexandria's city hexes (see [`ALEXANDRIA_HEXES`]).
+    pub fn alexandria_hexes(&self) -> Vec<HexCoord> {
+        parse_hexes(&ALEXANDRIA_HEXES)
+    }
+
+    /// Whether `hex` is one of Cairo's city hexes (never Helwan).
+    pub fn is_cairo(&self, hex: HexCoord) -> bool {
+        self.cairo_hexes().contains(&hex)
+    }
+
+    /// Whether `hex` is a Cairo or Alexandria city hex — the Commonwealth home bases (§20.82 depots,
+    /// §25.12 Level 3 cities, §64.71 objective).
+    pub fn is_cairo_or_alexandria(&self, hex: HexCoord) -> bool {
+        self.is_cairo(hex) || self.alexandria_hexes().contains(&hex)
     }
 
     /// §8.19: whether `to` is west of Marble Arch (A2109), where no Commonwealth land unit may move.
@@ -3446,7 +3492,6 @@ impl GameState {
     /// counter (reset to 0 when it is anywhere else). Called from `begin_operations_stage` at the
     /// Game-Turn's first Operations Stage.
     pub(crate) fn update_deacon_dwell(&mut self) {
-        let cairo = self.cairo_hex();
         let ids: Vec<UnitId> = self
             .units
             .iter()
@@ -3454,7 +3499,8 @@ impl GameState {
             .map(|(&id, _)| id)
             .collect();
         for id in ids {
-            let at_cairo = self.effective_hex(id) == cairo && cairo.is_some();
+            // Any Cairo city hex counts; moving between them keeps the dwell (Helwan does not).
+            let at_cairo = self.effective_hex(id).is_some_and(|h| self.is_cairo(h));
             if let Some(u) = self.units.get_mut(&id) {
                 u.cairo_dwell = if at_cairo { u.cairo_dwell.saturating_add(1) } else { 0 };
             }
@@ -3472,9 +3518,9 @@ impl GameState {
     /// unit's own `cairo_dwell >= 2`. The pool having finished Training already encodes its own
     /// stage-counted wait (§20.43), so a separate 2-turn dwell for the pool is not tracked.
     pub(crate) fn refit_deacons(&mut self, unit: UnitId) -> Option<u32> {
-        let cairo = self.cairo_hex()?;
+        let cairo = self.effective_hex(unit).filter(|&h| self.is_cairo(h))?; // the unit's Cairo hex
         let u = self.units.get(&unit)?;
-        if !u.can_refit_deacons || u.cairo_dwell < 2 || self.effective_hex(unit) != Some(cairo) {
+        if !u.can_refit_deacons || u.cairo_dwell < 2 {
             return None;
         }
         // Current AT-gun TOE the unit can trade in (anything not already a Deacon).
@@ -3544,16 +3590,12 @@ impl GameState {
     ) -> Result<u32, crate::state::command::CommandError> {
         use crate::reference::units::Side;
         use crate::state::command::CommandError;
-        use crate::state::map::HexId;
         let c = self.withdrawal_choices.get(choice).ok_or(CommandError::WithdrawalChoiceIllegal)?;
         if c.satisfied || units.len() as u32 != c.count {
             return Err(CommandError::WithdrawalChoiceIllegal);
         }
         let kind = c.kind;
-        let depots: Vec<HexCoord> = ["E1430", "E3613"]
-            .iter()
-            .filter_map(|s| HexId::parse(s).map(|h| h.to_hex_coord()))
-            .collect();
+        let depots: Vec<HexCoord> = parse_hexes(&CAIRO_HEXES).into_iter().chain(parse_hexes(&ALEXANDRIA_HEXES)).collect();
         // Validate every chosen unit: Commonwealth, at a depot, ≥75% max TOE, and matching the type.
         for &id in units {
             let ok_place = self
@@ -4540,6 +4582,9 @@ impl GameState {
         if sp > 2 {
             return false;
         }
+        if !self.stacking_room_for(unit, to) {
+            return false; // §9.31
+        }
         if !self.rail_reachable(from, to, side) {
             return false;
         }
@@ -4861,9 +4906,7 @@ impl GameState {
     pub fn fort_level(&self, hex: HexCoord) -> u8 {
         let placed = self.fortifications.get(&hex).copied().unwrap_or(0);
         let static_lvl = if self.map.terrain(hex) == Some(crate::reference::terrain::HexTerrain::MajorCity) {
-            let is_capital = ["E1430", "E3613"] // Cairo, Alexandria (§25.12)
-                .iter()
-                .any(|s| HexId::parse(s).map(|h| h.to_hex_coord()) == Some(hex));
+            let is_capital = self.is_cairo_or_alexandria(hex); // §25.12 / §8.37 note 4
             let base: u8 = if is_capital { 3 } else { 2 };
             // §41.37: bombing can knock the static city level down (tracked in `city_fort_damage`).
             base.saturating_sub(self.city_fort_damage.get(&hex).copied().unwrap_or(0))
@@ -4879,9 +4922,7 @@ impl GameState {
         if self.map.terrain(hex) != Some(crate::reference::terrain::HexTerrain::MajorCity) {
             return 0;
         }
-        let is_capital = ["E1430", "E3613"]
-            .iter()
-            .any(|s| HexId::parse(s).map(|h| h.to_hex_coord()) == Some(hex));
+        let is_capital = self.is_cairo_or_alexandria(hex);
         if is_capital { 3 } else { 2 }
     }
 
@@ -7489,6 +7530,10 @@ impl GameState {
     /// Return a withdrawn battalion to play at `hex` (§64.75 B): banks its earned points (1/week
     /// gone, max 3) minus the 2-point return penalty, and locks re-withdrawal for six months.
     pub fn return_unit(&mut self, id: UnitId, hex: HexCoord) -> bool {
+        // §20.14: returning units arrive "subject to stacking restrictions".
+        if !self.withdrawn.contains_key(&id) || !self.stacking_room_for(id, hex) {
+            return false;
+        }
         let Some(withdrawn_gt) = self.withdrawn.remove(&id) else {
             return false;
         };
@@ -9357,6 +9402,20 @@ impl GameState {
         None // attachment cycle guard
     }
 
+    /// The location of the counter `id` rides on (itself, or the top of its attachment chain) —
+    /// like [`Self::effective_hex`] but also for off-map nodes.
+    pub fn root_location(&self, id: UnitId) -> Option<UnitLocation> {
+        let mut current = id;
+        for _ in 0..1024 {
+            let unit = self.units.get(&current)?;
+            match unit.attached_parent {
+                Some(parent) => current = parent,
+                None => return unit.location.clone(),
+            }
+        }
+        None
+    }
+
     /// All units physically comprising a formation: `parent` plus every unit attached to
     /// it (transitively, §19.1). Attachment means co-located on the parent's counter, so
     /// this is the set used for formation CPA, combat aggregation, and stacking.
@@ -10257,10 +10316,64 @@ impl GameState {
         for p in due {
             let uh: HashMap<String, HexCoord> = p.unit_hexes.iter().cloned().collect();
             let (gt, st) = (p.game_turn, p.stage);
-            let _ = self.deploy_ob_units(p.nationality, &p.formation, p.entry.clone(), &uh, move |a| {
-                matches!(a, Arrival::Turn { game_turn, stage }
-                    if *game_turn as u32 == gt && *stage == st)
-            });
+            let ids = self
+                .deploy_ob_units(p.nationality, &p.formation, p.entry.clone(), &uh, move |a| {
+                    matches!(a, Arrival::Turn { game_turn, stage }
+                        if *game_turn as u32 == gt && *stage == st)
+                })
+                .unwrap_or_default();
+            if !p.area.is_empty() {
+                let entered: Vec<UnitId> = ids
+                    .into_iter()
+                    .filter(|id| self.units.get(id).and_then(|u| u.location.as_ref()) == Some(&p.entry))
+                    .collect();
+                self.spread_arrivals(&entered, &p.area);
+            }
+        }
+    }
+
+    /// §20.14 (Reinforcement Schedule legend): arrivals enter "any hex(es)" of their city "subject
+    /// to the stacking limitations"; one formation's units may share a hex, different formations
+    /// should use separate hexes where possible. Place the batch together in the area hex with the
+    /// most room if it fits; otherwise counter by counter (largest first) into the roomiest hex.
+    /// If nothing fits, the emptiest hex takes it (the rules give no alternative).
+    pub(crate) fn spread_arrivals(&mut self, ids: &[UnitId], area: &[HexCoord]) {
+        if ids.is_empty() || area.is_empty() {
+            return;
+        }
+        let room = |g: &Self, h: HexCoord| -> i64 {
+            g.hex_stacking_limit(h).map_or(i64::MAX / 2, |l| l as i64 - g.hex_stacking_points(h) as i64)
+        };
+        // Lift the batch off the map so its own points don't count while choosing.
+        for &id in ids {
+            if let Some(u) = self.units.get_mut(&id) {
+                u.location = None;
+            }
+        }
+        // §9.16b: pure AA stacks free in a Major City — the areas here are city hexes.
+        let sp = |g: &Self, id: UnitId, h: HexCoord| -> i64 {
+            let city = g.map.terrain(h) == Some(crate::reference::terrain::HexTerrain::MajorCity);
+            if city && g.unit_is_pure_anti_air(id) { 0 } else { g.effective_stacking_points(id) as i64 }
+        };
+        let total: i64 = ids.iter().map(|&id| sp(self, id, area[0])).sum();
+        // Roomiest hex first; ties keep the area's listed order.
+        let best = |g: &Self| *area.iter().max_by_key(|&&h| (room(g, h), std::cmp::Reverse(area.iter().position(|&x| x == h)))).expect("non-empty");
+        let together = best(self);
+        if room(self, together) >= total {
+            for &id in ids {
+                if let Some(u) = self.units.get_mut(&id) {
+                    u.location = Some(UnitLocation::OnMap(together));
+                }
+            }
+            return;
+        }
+        let mut order: Vec<UnitId> = ids.to_vec();
+        order.sort_by_key(|&id| (std::cmp::Reverse(sp(self, id, area[0])), id));
+        for id in order {
+            let h = best(self);
+            if let Some(u) = self.units.get_mut(&id) {
+                u.location = Some(UnitLocation::OnMap(h));
+            }
         }
     }
 

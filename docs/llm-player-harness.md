@@ -117,6 +117,10 @@ Each window is a **fresh** model session (bounded context and cost); continuity 
   `units` gives full records with rule-cited blockers. Journal diffs are ordered by importance.
 - **Macros:** `move_stack` (every counter in a hex), `resupply_hex` (refuel + rearm a hex from its
   dumps), `assault` (every adjacent combat unit by default).
+- **Explained rejections:** a failed plan item carries the engine error plus a `why` (blocking rule,
+  numbers, way out — e.g. "D3714 already holds 5 of its 6 Stacking Points … §9.31 … detach brigades");
+  a `move_to` that can't get closer lists each closer neighbour's actual blocker in `blocked_steps`.
+  `examples/probe_move.rs` and `examples/stacking_audit.rs` diagnose a recorded game offline.
 - **Retry:** a session that crashes or never engages is relaunched once (`-tryN` transcript).
 - **Checkpoint/resume:** the command log is flushed per attempt; each side's notebook/journal is
   saved as `memory-<side>.json` per window. `--resume <commands.jsonl>` replays the log exactly,

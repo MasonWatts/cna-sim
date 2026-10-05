@@ -6,7 +6,7 @@
 //! are absent, and dummy flags appear only for the viewer's own minefields.
 
 use cna_engine::reference::units::Side;
-use cna_engine::state::command::Command;
+use cna_engine::state::command::{Command, CommandError};
 use cna_engine::state::game::{date_of, GameState};
 use cna_engine::state::map::{section_char_of_col, HexCoord};
 use cna_engine::state::unit::{UnitId, UnitLocation};
@@ -209,6 +209,61 @@ pub fn unit_blockers(game: &GameState, id: UnitId, legal_now: Option<usize>) -> 
         b.push("No legal action right now (terrain, ZOC, stacking, or no target in range).".into());
     }
     b
+}
+
+/// A player-facing explanation of an engine rejection — what blocked it, the rule, and the way
+/// out — for the commands where the error name alone isn't actionable.
+pub fn explain_rejection(game: &GameState, cmd: &Command, err: &CommandError) -> Option<String> {
+    let (unit, dest) = match cmd {
+        Command::MoveStep { unit, to, .. } => (Some(*unit), Some(*to)),
+        Command::NavalTransferTroops { unit, to_port } => (Some(*unit), game.port_hex(to_port)),
+        _ => (None, None),
+    };
+    explain_error(game, unit, dest, err)
+}
+
+/// See [`explain_rejection`]; `unit`/`dest` are the mover and the hex it would end in.
+pub fn explain_error(game: &GameState, unit: Option<UnitId>, dest: Option<HexCoord>, err: &CommandError) -> Option<String> {
+    use CommandError as E;
+    Some(match err {
+        E::StackingLimitExceeded => {
+            let (u, h) = (unit?, dest?);
+            let name = game.units.get(&u).map(|x| x.name.as_str()).unwrap_or("this unit");
+            let sp = game.effective_stacking_points(u);
+            let here = game.hex_stacking_points(h);
+            match game.hex_stacking_limit(h) {
+                Some(limit) if here + sp > limit => format!(
+                    "{} already holds {here} of its {limit} Stacking Points ({:?} terrain, §8.37) and {name} counts {sp} \
+                     (§9.4 — a division with its brigades attached counts 5, §9.13). Units may not end movement over the \
+                     limit (§9.31). Options: detach brigades/battalions in the Organization phase and move them separately, \
+                     move units out of that hex first, or stop in a neighbouring hex.",
+                    hex_label(h),
+                    game.map.terrain(h).unwrap_or(cna_engine::reference::terrain::HexTerrain::Clear),
+                ),
+                _ => "At most five independent 0-Stacking-Point companies/batteries may share a hex outside a Major City \
+                      (§9.25). Attach it to a parent or use another hex."
+                    .into(),
+            }
+        }
+        E::InsufficientFuel => "Not enough Fuel in the unit's tanks (or a dump in its hex) to pay for this move (§49.13). \
+                                Refuel from a dump in its hex in the Organization phase, or move NonMotorized."
+            .into(),
+        E::NoWater => "Out of water: vehicles may not move (§52.51); infantry may not exceed their CPA (§52.52). Get water \
+                       from a well, oasis, major city or water pipeline/railroad hex, or by truck."
+            .into(),
+        E::ZocToZoc => "May not move directly from one enemy Zone of Control hex into another (§10).".into(),
+        E::MustStopInZoc => "The unit entered an enemy Zone of Control this stage and must stop (§8.14).".into(),
+        E::Pinned => "Pinned — may not move this stage (§12.44).".into(),
+        E::Disorganized => "Disorganized (cohesion ≤ −26) — may not move voluntarily (§6.26).".into(),
+        E::InReserve => "In Reserve — release it first (§18.2).".into(),
+        E::HalfRation => "On half rations — may not exceed its CPA or enter an enemy ZOC (§51.23).".into(),
+        E::NoPasta => "Missed its Pasta Point — may not exceed its CPA (§52.6).".into(),
+        E::CpaCeilingExceeded => "Non-motorized units may never spend more than 150% of their CPA in a stage (§8.17).".into(),
+        E::ProhibitedTerrain => "The hex or hexside is prohibited for this unit — enemy-occupied (§8.13), prohibited terrain \
+                                 for its movement type (§8.37), or a salt marsh off a track for vehicles (§8.44)."
+            .into(),
+        _ => return None,
+    })
 }
 
 /// One-line form of an own unit (the default): enough to plan with; ask for `detail` or `units`
@@ -524,6 +579,35 @@ mod tests {
         let obs = observation(&g, cna_engine::reference::units::Side::Commonwealth, &ObserveFilter { detail: Some(true), ..Default::default() });
         let u0 = &obs["own_units"][0];
         assert!(u0.get("water").is_some() && u0.get("blockers").is_some() && u0.get("out_of_water").is_some());
+    }
+
+    #[test]
+    fn rejections_are_explained_with_the_rule() {
+        use cna_engine::reference::terrain::HexTerrain;
+        use cna_engine::rules::movement::MoveMode;
+        let (mut g, _) = cna_replay::scenarios::build("skirmish", 1);
+        g.phase = cna_engine::state::game::Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let tank = g.units.values().find(|u| u.name == "1st RTR").unwrap().id;
+        let at = g.units[&tank].hex().unwrap();
+        let n = at.neighbors().into_iter().find(|n| g.map.hex(*n).is_some() && g.units_in_hex(*n).is_empty()).unwrap();
+        g.map.set_hex(n, HexTerrain::Mountain); // Stacking Limit 3
+        // Fill it: one other own counter, counted as a full division (5 SP > 3).
+        let filler = g
+            .units
+            .values()
+            .find(|u| u.id != tank && u.nationality.side() == Side::Commonwealth && u.hex().is_some())
+            .unwrap()
+            .id;
+        let fu = g.units.get_mut(&filler).unwrap();
+        fu.location = Some(UnitLocation::OnMap(n));
+        fu.org_size = cna_engine::state::unit::OrgSize::Division;
+        let err = g.move_step_error(tank, n, MoveMode::Motorized).expect("full hex rejects the step");
+        assert_eq!(err, CommandError::StackingLimitExceeded);
+        let cmd = Command::MoveStep { unit: tank, to: n, mode: MoveMode::Motorized };
+        let why = explain_rejection(&g, &cmd, &err).unwrap();
+        assert!(why.contains("of its 3 Stacking Points") && why.contains("§9.31") && why.contains("detach"), "{why}");
+        assert!(explain_rejection(&g, &cmd, &CommandError::InsufficientFuel).unwrap().contains("§49"));
     }
 
     #[test]

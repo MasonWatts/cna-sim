@@ -334,7 +334,8 @@ impl GameState {
         };
         match side {
             Side::Axis => {
-                if holds_any(&["E3613", "E3714", "E1430"]) {
+                let homes: Vec<&str> = crate::state::game::ALEXANDRIA_HEXES.iter().chain(crate::state::game::CAIRO_HEXES.iter()).copied().collect();
+                if holds_any(&homes) {
                     ScenarioVictory::Strategic // hold Alexandria or Cairo (any hex)
                 } else if holds(&["D3714", "C0127"]) {
                     ScenarioVictory::Decisive // Mersa Matruh + Siwa

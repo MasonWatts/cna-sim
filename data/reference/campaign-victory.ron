@@ -27,9 +27,10 @@
     // §64.71/§64.72 automatic-victory supply-line parameters.
     // sources: hexes counting as "Tobruk or Tripoli" — Tobruk (C4807) and the Tripoli off-map
     //   road's on-map entry (A2802, the western coast-road junction from the §8.8 complex).
-    // axis_objective: all hexes of Alexandria (E3613, E3714) and Cairo (E1430) (§60.41).
+    // axis_objective: all hexes of Alexandria (E3613, E3714; §60.41) and Cairo (E1730/1829/1830/
+    //   1930/1931; rulebook "Summary of Important Locations"). Helwan (E1430) is not Cairo (§17.32).
     sources: ["C4807", "A2802"],
-    axis_objective: ["E3613", "E3714", "E1430"],
+    axis_objective: ["E3613", "E3714", "E1830", "E1730", "E1829", "E1930", "E1931"],
     axis_supply_mp: 90,
     cw_check_mp: 60,
     cw_check_from_turn: 35,
