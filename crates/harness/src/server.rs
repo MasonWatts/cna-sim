@@ -128,7 +128,9 @@ pub struct PlanParams {
     /// {"resupply_hex": [col,row]} — RefuelUnit + RearmUnit for every own unit there below capacity
     /// (Organization phase; draws from dumps in that hex);
     /// {"assault": {"target": [col,row], "units"?: [ids]}} — close assault with the listed units, or
-    /// with every own combat unit adjacent to the target.
+    /// with every own combat unit adjacent to the target;
+    /// {"move_convoy_to": {"convoy": <index>, "hex": [col,row]}} — step a free truck convoy toward
+    /// the hex (Truck Convoy phase) until it arrives or can't get closer (CP, fuel, water, ZOC).
     pub items: Vec<Value>,
     /// REQUIRED: one to three sentences on what this plan is meant to achieve and why — your
     /// reading of the situation and the intent behind these actions. Recorded for the game's

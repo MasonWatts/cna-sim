@@ -732,7 +732,7 @@ pub fn drain_phase(game: &mut GameState, agent: &mut dyn Agent, side: Side, cap:
         // action budget (multi-command plans and macro expansions).
         for _ in 0..cap.saturating_mul(10).max(200) {
             let Some(cmd) = agent.choose(game, side) else { break };
-            let result = game.apply(cmd.clone());
+            let result = game.apply_as(side, cmd.clone());
             if result.is_ok() {
                 *applied += 1;
             }
@@ -747,7 +747,7 @@ pub fn drain_phase(game: &mut GameState, agent: &mut dyn Agent, side: Side, cap:
         match agent.choose_index(game, side, &legal) {
             Some(i) if i < legal.len() => {
                 let cmd = legal.swap_remove(i);
-                if game.apply(cmd).is_ok() {
+                if game.apply_as(side, cmd).is_ok() {
                     *applied += 1;
                     progress = true;
                 }

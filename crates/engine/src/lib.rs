@@ -4949,6 +4949,37 @@ mod tests {
     }
 
     #[test]
+    fn players_may_only_command_their_own_forces() {
+        // A Commonwealth player once moved the Axis 64th Catanzaro HQ with a free-form MoveStep.
+        // `apply_as` (what agents and the recorder use) rejects commands that act with another
+        // side's units, squadrons, convoys, raiders or pools; targets are not owner-checked.
+        use crate::reference::units::Side;
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::Phase;
+        let mut g = build_campaign_game();
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let axis = g.units.values().find(|u| u.name == "64th Catanzaro Div HQ").unwrap().id;
+        let at = g.units[&axis].hex().unwrap();
+        let to = g.map.neighbors(at).find(|&n| g.can_move_step(axis, n, MoveMode::Motorized) || g.can_move_step(axis, n, MoveMode::NonMotorized)).expect("a legal step for the HQ");
+        let mode = if g.can_move_step(axis, to, MoveMode::Motorized) { MoveMode::Motorized } else { MoveMode::NonMotorized };
+        let mv = Command::MoveStep { unit: axis, to, mode };
+        assert!(!g.issuer_owns(&mv, Side::Commonwealth));
+        assert_eq!(g.apply_as(Side::Commonwealth, mv.clone()), Err(CommandError::NotYourUnit));
+        assert_eq!(g.units[&axis].hex(), Some(at), "the Axis HQ did not move");
+        assert!(g.issuer_owns(&mv, Side::Axis), "its owner may");
+        // A Commonwealth truck convoy can't be moved by the Axis.
+        let cw_convoy = g.truck_convoys.iter().position(|c| c.side == Side::Commonwealth).unwrap();
+        let hex = g.truck_convoys[cw_convoy].hex;
+        assert!(!g.issuer_owns(&Command::MoveTruckConvoy { convoy: cw_convoy, to: hex }, Side::Axis));
+        // Attacking an enemy-held hex names only one's own attackers — allowed.
+        let cw = g.units.values().find(|u| u.nationality.side() == Side::Commonwealth && u.hex().is_some()).unwrap().id;
+        assert!(g.issuer_owns(&Command::CloseAssault { attackers: vec![cw], target: at }, Side::Commonwealth));
+        assert!(!g.issuer_owns(&Command::CloseAssault { attackers: vec![cw, axis], target: at }, Side::Commonwealth));
+    }
+
+    #[test]
     fn sgsu_moves_by_cpa_in_truck_convoy_phase_35_12() {
         use crate::reference::squadron::SquadronClass;
         use crate::state::air::{Sgsu, SquadronId};

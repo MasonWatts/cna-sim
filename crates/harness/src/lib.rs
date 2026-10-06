@@ -282,7 +282,12 @@ pub fn run(opts: &Options, on_ready: impl FnOnce(&ServerInfo)) -> anyhow::Result
     let start = std::time::Instant::now();
     let turns = opts.turns;
     let mut on_turn = |turn: u32, events: u32| {
-        eprintln!("[{:>6.1}s] turn {turn}/{turns}: {events} events", start.elapsed().as_secs_f64());
+        // Called as each Game-Turn begins, and once more after the last one ends.
+        if turn > turns {
+            eprintln!("[{:>6.1}s] finished: {turns} Game-Turn(s), {events} events", start.elapsed().as_secs_f64());
+        } else {
+            eprintln!("[{:>6.1}s] turn {turn}/{turns} starting ({events} events so far)", start.elapsed().as_secs_f64());
+        }
     };
     let (steps, final_game) = cna_replay::record_game_streaming_ext(
         game,

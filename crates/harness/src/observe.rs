@@ -355,6 +355,7 @@ pub fn explain_error(game: &GameState, unit: Option<UnitId>, dest: Option<HexCoo
         E::SgsuCpaExhausted => "The SGSU lacks the Capability Points left this stage (CPA 25 for Commonwealth SGSUs; off-map legs cost the \
                                 §36.53 distance as CP). Continue next stage."
             .into(),
+        E::NotYourUnit => "That unit / squadron / convoy / raider / pool belongs to the other side — you may only command your own forces.".into(),
         E::SgsuAlreadyRebased => "A squadron changes base (enters, leaves or switches an off-map field) at most once per Operations Stage.".into(),
         E::SgsuNotAtEntryHex => "Off-map air facilities are entered and left through their §36.53 entry hex (E1833 Fayid/Deversoir/Kabrit, \
                                  E3433 Abu Seier/Ismailia, E4033 Port Said, E0127 Ethiopia): drive the SGSU there first (MoveSgsu)."

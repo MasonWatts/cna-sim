@@ -73,7 +73,8 @@ Board: get_overview (summary: stacks, formations, supply problems, enemy contact
 get_observation (compact; filters near [col,row] + radius, units [ids], detail) · list_legal_actions (filter by unit or \
 kind; ids valid within the window).\n\
 Act: submit_plan — items {{\"id\": n}} | {{\"command\": <engine JSON>}} | {{\"move_to\": {{\"unit\", \"hex\": [col,row], \"mode\"?}}}} | \
-{{\"move_stack\": {{\"from\", \"to\"}}}} | {{\"resupply_hex\": [col,row]}} | {{\"assault\": {{\"target\", \"units\"?}}}}, plus a required \
+{{\"move_stack\": {{\"from\", \"to\"}}}} | {{\"resupply_hex\": [col,row]}} | {{\"assault\": {{\"target\", \"units\"?}}}} | \
+{{\"move_convoy_to\": {{\"convoy\", \"hex\": [col,row]}}}}, plus a required \
 \"rationale\" (1–3 sentences: your reading of the situation and the intent behind the plan) — then read the per-item results · \
 end_phase (optional \"rationale\": what you decided this window, including doing nothing, and why). Rationales are recorded \
 for the game's commentary and shown back to you in your journal.\n\

@@ -61,6 +61,9 @@ enum PlanItem {
     ResupplyHex(HexCoord),
     /// Macro: CloseAssault on `target` by `units`, or by every own combat counter adjacent to it.
     Assault { target: HexCoord, units: Option<Vec<UnitId>> },
+    /// Macro: step free truck convoy `convoy` toward `hex` along legal `MoveTruckConvoy`s until it
+    /// arrives or can't progress (out of CP/fuel/water, ZOC, prohibited terrain).
+    MoveConvoyTo { convoy: usize, hex: HexCoord, steps: u32 },
 }
 
 fn parse_hex(v: Option<&Value>, what: &str) -> Result<HexCoord, String> {
@@ -108,6 +111,10 @@ fn parse_item(v: &Value) -> Result<PlanItem, String> {
             to: parse_hex(m.get("to"), "move_stack.to")?,
             mode: parse_mode(m.get("mode"))?,
         });
+    }
+    if let Some(m) = v.get("move_convoy_to") {
+        let convoy = m.get("convoy").and_then(|x| x.as_u64()).ok_or("move_convoy_to needs `convoy` (index)")? as usize;
+        return Ok(PlanItem::MoveConvoyTo { convoy, hex: parse_hex(m.get("hex"), "move_convoy_to.hex")?, steps: 0 });
     }
     if let Some(h) = v.get("resupply_hex") {
         return Ok(PlanItem::ResupplyHex(parse_hex(Some(h), "resupply_hex")?));
@@ -337,7 +344,7 @@ impl McpAgent {
                 let o = r.get("outcome").map(|o| o.to_string()).or_else(|| r.get("steps").map(|s| format!("{s} steps"))).unwrap_or_default();
                 if o.is_empty() { String::new() } else { format!(" → {}", truncate(&o, 140)) }
             } else {
-                format!(" — {}", truncate(r["error"].as_str().or(r["reason"].as_str()).unwrap_or("rejected"), 140))
+                format!(" — {}", truncate(r["error"].as_str().or(r["reason"].as_str()).or(r["note"].as_str()).unwrap_or("rejected"), 140))
             };
             self.memory.record_action(ok, format!("{item}{detail}"));
         }
@@ -411,11 +418,11 @@ impl McpAgent {
                     return Some(c);
                 }
                 PlanItem::MoveStack { from, to, mode } => {
-                    let side = game.units.values().find(|u| u.hex() == Some(from)).map(|u| u.nationality.side());
+                    let own = self.side;
                     let mut ids: Vec<UnitId> = game
                         .units
                         .values()
-                        .filter(|u| u.hex() == Some(from) && Some(u.nationality.side()) == side)
+                        .filter(|u| u.hex() == Some(from) && u.nationality.side() == own)
                         .map(|u| u.id)
                         .collect();
                     ids.sort();
@@ -495,9 +502,70 @@ impl McpAgent {
                     w.current = Some((PlanItem::Command(c.clone()), cna_replay::describe_action(game, &c)));
                     return Some(c);
                 }
+                PlanItem::MoveConvoyTo { convoy, hex, steps } => {
+                    let label = format!("move convoy {convoy} toward {}", observe::hex_label(hex));
+                    let Some(c) = game.truck_convoys.get(convoy) else {
+                        w.results.push(json!({"item": label, "ok": false, "error": "no such truck convoy"}));
+                        continue;
+                    };
+                    if c.side != self.side {
+                        w.results.push(json!({"item": label, "ok": false, "error": "not your convoy"}));
+                        continue;
+                    }
+                    let at = c.hex;
+                    if at == hex {
+                        w.results.push(json!({"item": label, "ok": true, "steps": steps, "arrived": true}));
+                        continue;
+                    }
+                    if steps >= 60 {
+                        w.results.push(json!({"item": label, "ok": steps > 0, "steps": steps, "arrived": false,
+                            "stopped_at": observe::hex_json(at), "reason": "step limit"}));
+                        continue;
+                    }
+                    // The closer neighbour the engine accepts (dry run), else every closer one's reason.
+                    let here = at.distance(hex);
+                    let closer: Vec<HexCoord> = game.map.neighbors(at).filter(|n| n.distance(hex) < here).collect();
+                    let mut blocked: Vec<Value> = Vec::new();
+                    let mut next = None;
+                    for n in closer {
+                        let cmd = Command::MoveTruckConvoy { convoy, to: n };
+                        match game.dry_run(&cmd) {
+                            Ok(_) => {
+                                next = Some(cmd);
+                                break;
+                            }
+                            Err(e) => {
+                                let mut b = json!({"hex": observe::hex_json(n), "error": format!("{e:?}")});
+                                if let Some(why) = observe::explain_rejection(game, &cmd, &e) {
+                                    b["why"] = json!(why);
+                                }
+                                blocked.push(b);
+                            }
+                        }
+                    }
+                    match next {
+                        Some(cmd) => {
+                            w.current = Some((PlanItem::MoveConvoyTo { convoy, hex, steps: steps + 1 }, label));
+                            return Some(cmd);
+                        }
+                        None => {
+                            let reason = match blocked.first() {
+                                Some(b) => format!("no legal step that gets closer — {} {}: {}",
+                                    b["hex"]["label"].as_str().unwrap_or("?"), b["error"].as_str().unwrap_or("?"), b["why"].as_str().unwrap_or("")),
+                                None => "no legal step that gets closer".into(),
+                            };
+                            w.results.push(json!({"item": label, "ok": steps > 0, "steps": steps, "arrived": false,
+                                "stopped_at": observe::hex_json(at), "reason": reason, "blocked_steps": blocked}));
+                        }
+                    }
+                }
                 PlanItem::MoveTo { unit, hex, mode, steps } => {
                     let name = game.units.get(&unit).map(|u| u.name.clone()).unwrap_or_else(|| format!("unit {}", unit.0));
                     let label = format!("move {name} toward {}", observe::hex_label(hex));
+                    if game.units.get(&unit).is_some_and(|u| u.nationality.side() != self.side) {
+                        w.results.push(json!({"item": label, "ok": false, "error": "not your unit — you may only move your own forces"}));
+                        continue;
+                    }
                     if game.phase != cna_engine::state::game::Phase::MovementAndCombat {
                         w.results.push(json!({"item": label, "ok": false, "error": format!(
                             "move_to works only in the Movement & Combat phase (now: {:?}). Free truck convoys move with \
@@ -807,7 +875,16 @@ impl Agent for McpAgent {
         let Some((item, label)) = w.current.take() else { return };
         match item {
             // A move_to keeps going while its steps succeed; a failed step ends it.
-            PlanItem::MoveTo { .. } if result.is_ok() => w.queue.push_front(item),
+            PlanItem::MoveTo { .. } | PlanItem::MoveConvoyTo { .. } if result.is_ok() => w.queue.push_front(item),
+            PlanItem::MoveConvoyTo { convoy, hex, steps } => {
+                w.results.push(json!({
+                    "item": label, "ok": steps > 1, "steps": steps.saturating_sub(1), "arrived": false,
+                    "error": format!("{:?}", result.as_ref().err()), "convoy": convoy, "target": observe::hex_json(hex),
+                }));
+                if let Err(e) = result {
+                    w.explain = Some((w.results.len() - 1, cmd.clone(), e.clone()));
+                }
+            }
             PlanItem::MoveTo { unit, hex, steps, .. } => {
                 let r = json!({
                     "item": label, "ok": steps > 1, "steps": steps.saturating_sub(1), "arrived": false,
@@ -852,6 +929,9 @@ mod tests {
         assert!(matches!(parse_item(&json!({"resupply_hex": [1, 2]})), Ok(PlanItem::ResupplyHex(h)) if h == HexCoord::new(1, 2)));
         assert!(matches!(parse_item(&json!({"assault": {"target": [3, 3], "units": [1, 2]}})), Ok(PlanItem::Assault { units: Some(ref u), .. }) if u.len() == 2));
         assert!(matches!(parse_item(&json!({"assault": {"target": [3, 3]}})), Ok(PlanItem::Assault { units: None, .. })));
+        assert!(matches!(parse_item(&json!({"move_convoy_to": {"convoy": 2, "hex": [5, 6]}})),
+            Ok(PlanItem::MoveConvoyTo { convoy: 2, steps: 0, .. })));
+        assert!(parse_item(&json!({"move_convoy_to": {"hex": [5, 6]}})).is_err());
         assert!(parse_item(&json!({"move_stack": {"from": [1]}})).is_err());
     }
 

@@ -2019,7 +2019,7 @@ pub fn record_game(
                         let action = format!("{cmd:?}");
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         let cmd_desc = cmd.clone();
-                        let result = game.apply(cmd);
+                        let result = game.apply_as(side, cmd);
                         if free {
                             agent.on_result(&cmd_desc, &result);
                         }
@@ -2187,7 +2187,7 @@ pub fn record_game_streaming_ext(
                         let action = format!("{cmd:?}");
                         let rules: Vec<String> = cmd.rule_refs().iter().map(|s| s.to_string()).collect();
                         let cmd_desc = cmd.clone();
-                        let result = game.apply(cmd);
+                        let result = game.apply_as(side, cmd);
                         on_attempt(&game, side, &cmd_desc, &result);
                         if free {
                             agent.on_result(&cmd_desc, &result);

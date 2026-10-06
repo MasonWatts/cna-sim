@@ -64,7 +64,12 @@ fn main() {
         let mut w = std::io::BufWriter::new(file);
         let start = std::time::Instant::now();
         let mut on_turn = |turn: u32, events: u32| {
-            eprintln!("[{:>6.1}s] turn {turn}/{turns}: {events} events", start.elapsed().as_secs_f64());
+            // Called as each Game-Turn begins, and once more after the last one ends.
+            if turn > turns {
+                eprintln!("[{:>6.1}s] finished: {turns} Game-Turn(s), {events} events", start.elapsed().as_secs_f64());
+            } else {
+                eprintln!("[{:>6.1}s] turn {turn}/{turns} starting ({events} events so far)", start.elapsed().as_secs_f64());
+            }
         };
         let count = record_game_streaming(game, label, seed, "Greedy", &mut cw, "Random", &mut axis, turns, &mut w, &mut on_turn)
             .unwrap_or_else(|e| panic!("stream {out}: {e}"));

@@ -1305,6 +1305,9 @@ pub enum CommandError {
     SgsuAlreadyThere,
     /// The squadron already changed base this Operations Stage (one rebase per stage).
     SgsuAlreadyRebased,
+    /// The command acts with a unit, squadron, convoy, raider or pool that isn't the issuing
+    /// player's (see `GameState::apply_as`).
+    NotYourUnit,
     /// §8.37: the hex/hexside is prohibited to motorized movement.
     TruckConvoyTerrainProhibited,
     /// §8.98: the convoy has no Capability Points left for that step this Truck Convoy Phase.
@@ -1479,6 +1482,121 @@ pub enum CommandError {
 
 impl GameState {
     /// Validate and apply a command. On `Err`, the game state is unchanged.
+    /// Apply a command issued by `side`'s player: first check that every unit, squadron, truck
+    /// convoy, raider and replacement pool it *acts with* belongs to `side` (`NotYourUnit`), then
+    /// `apply`. Agents and the recorder go through here — a player may only command its own forces
+    /// (targets such as an assaulted hex, a raided convoy or a siphon donor are not checked).
+    pub fn apply_as(&mut self, side: Side, command: Command) -> Result<CommandOutcome, CommandError> {
+        if !self.issuer_owns(&command, side) {
+            return Err(CommandError::NotYourUnit);
+        }
+        self.apply(command)
+    }
+
+    /// Whether every force `command` acts with belongs to `side` (see `apply_as`). Unknown ids pass
+    /// here and are rejected by `apply` itself.
+    pub fn issuer_owns(&self, command: &Command, side: Side) -> bool {
+        let unit_ok = |id: &UnitId| self.units.get(id).is_none_or(|u| u.nationality.side() == side);
+        let sq_ok = |id: &crate::state::air::SquadronId| self.sgsus.get(id).is_none_or(|s| s.nationality.side() == side);
+        let convoy_ok = |i: &usize| self.truck_convoys.get(*i).is_none_or(|c| c.side == side);
+        let raider_ok = |i: &usize| self.raiders.get(*i).is_none_or(|r| r.side == side);
+        let pool_ok = |i: &usize| self.replacement_points.get(*i).is_none_or(|p| p.side == side);
+        use Command as C;
+        match command {
+            C::MoveStep { unit, .. }
+            | C::DesignateRommelUnit { unit }
+            | C::ConstructSupplyDump { unit, .. }
+            | C::LandLayforce { unit, .. }
+            | C::EmbarkLayforce { unit }
+            | C::LandSas { unit, .. }
+            | C::RaidAirfieldSas { unit }
+            | C::Retreat { unit, .. }
+            | C::React { unit, .. }
+            | C::RetreatBeforeAssault { unit, .. }
+            | C::DetachUnit { unit }
+            | C::SetGunPosition { unit, .. }
+            | C::TrainUnit { unit }
+            | C::MoveOffMap { unit, .. }
+            | C::LoadTrucks { unit, .. }
+            | C::UnloadTrucks { unit, .. }
+            | C::AssignTrucks { unit, .. }
+            | C::ReleaseTrucks { unit, .. }
+            | C::RailMove { unit, .. }
+            | C::WithdrawUnit { unit }
+            | C::ReturnUnit { unit, .. }
+            | C::RefitDeacons { unit }
+            | C::Repair { unit, .. }
+            | C::DesignateReserve { unit, .. }
+            | C::UpgradeRecce { unit }
+            | C::NavalTransferTroops { unit, .. }
+            | C::RefuelUnit { unit }
+            | C::RearmUnit { unit }
+            | C::FormTruckConvoy { from_unit: unit, .. }
+            | C::FormRaider { from_unit: unit, .. }
+            | C::FormationMove { formation: unit, .. }
+            | C::LayMinefield { builder: unit, .. }
+            | C::ClearMinefield { builder: unit, .. }
+            | C::BuildPipeline { builder: unit, .. }
+            | C::DemolishRailroad { builder: unit, .. }
+            | C::BuildRoad { builder: unit, .. }
+            | C::AugmentAntiTank { hq: unit, .. }
+            | C::AugmentBattalionAntiTank { battalion: unit, .. }
+            | C::SiphonFuel { receiver: unit, .. } => unit_ok(unit),
+            C::AttachUnit { unit, parent } | C::ReassignUnit { unit, parent } => unit_ok(unit) && unit_ok(parent),
+            C::AbsorbReplacement { index, unit } => unit_ok(unit) && pool_ok(index),
+            C::Barrage { attackers, .. } | C::CloseAssault { attackers, .. } | C::ArtilleryBombardShip { attackers, .. } => {
+                attackers.iter().all(unit_ok)
+            }
+            C::AntiArmor { attackers, withheld, .. } => attackers.iter().chain(withheld).all(unit_ok),
+            C::BarrageFacility { barragers: v, .. }
+            | C::BuildFortification { builders: v, .. }
+            | C::BuildRailroad { builders: v, .. }
+            | C::SatisfyWithdrawalChoice { units: v, .. } => v.iter().all(unit_ok),
+            C::Patrol { patrol_points, .. } => patrol_points.iter().all(|(u, _)| unit_ok(u)),
+            C::TransportUnit { squadron, unit, .. } | C::AirdropUnit { squadron, unit, .. } => sq_ok(squadron) && unit_ok(unit),
+            C::TransferPlanes { from, to, .. } => sq_ok(from) && sq_ok(to),
+            C::WithdrawSquadron { squadron }
+            | C::BaseSquadronOffMap { squadron, .. }
+            | C::MoveSgsu { squadron, .. }
+            | C::AssignSquadronPlanes { squadron, .. }
+            | C::RefitSquadron { squadron, .. }
+            | C::BombMaltaBase { squadron, .. }
+            | C::BombShip { squadron, .. }
+            | C::ReadySquadron { squadron, .. }
+            | C::ArmSquadron { squadron, .. }
+            | C::FlySquadronMission { squadron, .. }
+            | C::FlyBombingMission { squadron, .. }
+            | C::DesignateCap { squadron, .. }
+            | C::ReconHex { squadron, .. }
+            | C::Strafe { squadron, .. }
+            | C::AssignPilot { squadron, .. }
+            | C::TransferSquadron { squadron, .. }
+            | C::AirdropSupplies { squadron, .. }
+            | C::FlyBombingMissionAt { squadron, .. }
+            | C::FlyBombingMissionAtBox { squadron, .. } => sq_ok(squadron),
+            C::BombConvoy { squadron: Some(sq), .. } => sq_ok(sq),
+            C::MoveTruckConvoy { convoy, .. }
+            | C::LoadConvoy { convoy, .. }
+            | C::UnloadConvoy { convoy, .. }
+            | C::RepairConvoyTrucks { convoy } => convoy_ok(convoy),
+            C::LoadReplacement { convoy, pool } => convoy_ok(convoy) && pool_ok(pool),
+            C::MoveReplacement { index: pool, .. } | C::UnloadReplacement { pool } => pool_ok(pool),
+            // A raider acts; the convoy it raids/intercepts is the enemy's.
+            C::MoveRaider { raider, .. }
+            | C::SpotRaider { raider }
+            | C::ResupplyRaider { raider }
+            | C::RaidRommel { raider }
+            | C::RaidPipeline { raider }
+            | C::RaidAirfield { raider }
+            | C::RaidPlanes { raider }
+            | C::RaidSupplyDump { raider }
+            | C::RaidTruckConvoy { raider, .. }
+            | C::InterceptTruckConvoy { raider, .. } => raider_ok(raider),
+            // Everything else names no forces of its own (or is gated by side/phase in `apply`).
+            _ => true,
+        }
+    }
+
     pub fn apply(&mut self, command: Command) -> Result<CommandOutcome, CommandError> {
         match command {
             Command::MoveStep { unit, to, mode } => self.move_step(unit, to, mode),
