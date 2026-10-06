@@ -117,6 +117,12 @@ Each window is a **fresh** model session (bounded context and cost); continuity 
   `units` gives full records with rule-cited blockers. Journal diffs are ordered by importance.
 - **Macros:** `move_stack` (every counter in a hex), `resupply_hex` (refuel + rearm a hex from its
   dumps), `assault` (every adjacent combat unit by default).
+- **Rationale (for analysis/commentary):** `submit_plan` takes a required `rationale` (1–3 sentences of
+  intent) and `end_phase` an optional closing one. Each window appends one line to
+  `<out>.transcript/rationale.jsonl` — `{window, key, side, pregame, at {game_turn, stage, phase, date},
+  cost_usd, actions_ok/failed, rationales: [{kind: plan|end, text, results?}]}` (each plan's item results
+  attached; join with `commands.jsonl` on `key`) — and the journal shows it back to the player.
+  (Model "thinking" isn't recoverable: the client writes thinking blocks empty.)
 - **Explained rejections:** a failed plan item carries the engine error plus a `why` (blocking rule,
   numbers, way out — e.g. "D3714 already holds 5 of its 6 Stacking Points … §9.31 … detach brigades");
   a `move_to` that can't get closer lists each closer neighbour's actual blocker in `blocked_steps`.

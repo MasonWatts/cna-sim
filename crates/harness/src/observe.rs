@@ -33,13 +33,18 @@ fn location_json(loc: &UnitLocation) -> Value {
     }
 }
 
+/// The game date, e.g. "Week 3 of Sep 1940".
+pub fn date_label(game: &GameState) -> String {
+    let d = date_of(game.game_turn);
+    format!("Week {} of {} {}", d.week, MONTHS[(d.month.clamp(1, 12) - 1) as usize], d.year)
+}
+
 /// Where the game is and whose turn it is.
 pub fn status(game: &GameState, side: Side, in_window: bool) -> Value {
-    let d = date_of(game.game_turn);
     json!({
         "you_are": format!("{side:?}"),
         "game_turn": game.game_turn,
-        "date": format!("Week {} of {} {}", d.week, MONTHS[(d.month.clamp(1, 12) - 1) as usize], d.year),
+        "date": date_label(game),
         "operations_stage": game.operations_stage,
         "phase": format!("{:?}", game.phase),
         "acting_side": format!("{:?}", game.active_player),
@@ -346,6 +351,14 @@ pub fn explain_error(game: &GameState, unit: Option<UnitId>, dest: Option<HexCoo
                        from a well, oasis, major city or water pipeline/railroad hex, or by truck."
             .into(),
         E::ZocToZoc => "May not move directly from one enemy Zone of Control hex into another (§10).".into(),
+        E::SgsuCannotMove => "An SGSU moves one adjacent hex per MoveSgsu, in the Truck Convoy phase, never into an enemy-occupied hex (§35.12).".into(),
+        E::SgsuCpaExhausted => "The SGSU lacks the Capability Points left this stage (CPA 25 for Commonwealth SGSUs; off-map legs cost the \
+                                §36.53 distance as CP). Continue next stage."
+            .into(),
+        E::SgsuAlreadyRebased => "A squadron changes base (enters, leaves or switches an off-map field) at most once per Operations Stage.".into(),
+        E::SgsuNotAtEntryHex => "Off-map air facilities are entered and left through their §36.53 entry hex (E1833 Fayid/Deversoir/Kabrit, \
+                                 E3433 Abu Seier/Ismailia, E4033 Port Said, E0127 Ethiopia): drive the SGSU there first (MoveSgsu)."
+            .into(),
         E::MustStopInZoc => "The unit entered an enemy Zone of Control this stage and must stop (§8.14).".into(),
         E::Pinned => "Pinned — may not move this stage (§12.44).".into(),
         E::Disorganized => "Disorganized (cohesion ≤ −26) — may not move voluntarily (§6.26).".into(),

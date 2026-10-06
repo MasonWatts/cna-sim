@@ -130,6 +130,17 @@ pub struct PlanParams {
     /// {"assault": {"target": [col,row], "units"?: [ids]}} — close assault with the listed units, or
     /// with every own combat unit adjacent to the target.
     pub items: Vec<Value>,
+    /// REQUIRED: one to three sentences on what this plan is meant to achieve and why — your
+    /// reading of the situation and the intent behind these actions. Recorded for the game's
+    /// commentary and shown back to you in later windows.
+    pub rationale: String,
+}
+
+#[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
+pub struct EndPhaseParams {
+    /// A one- or two-sentence summary of this window: what you decided (including deciding to do
+    /// nothing) and why. Recorded for the game's commentary.
+    pub rationale: Option<String>,
 }
 
 /// One side's MCP tool surface.
@@ -187,9 +198,9 @@ impl CnaServer {
         self.rules.lookup(&p.section).to_string()
     }
 
-    #[tool(description = "Execute a plan: a list of actions applied in order. Returns a result per item (ok + outcome, or the engine's rejection reason). Failed items don't stop the rest. You may submit several plans in one window; call end_phase when done.")]
+    #[tool(description = "Execute a plan: a list of actions applied in order, with a short rationale (required) explaining the intent. Returns a result per item (ok + outcome, or the engine's rejection reason and why). Failed items don't stop the rest. You may submit several plans in one window; call end_phase when done.")]
     async fn submit_plan(&self, Parameters(p): Parameters<PlanParams>) -> String {
-        self.ask(RequestKind::SubmitPlan(p.items)).await
+        self.ask(RequestKind::SubmitPlan { items: p.items, rationale: p.rationale }).await
     }
 
     #[tool(description = "Table of contents of The Campaign for North Africa rulebook: every chapter and section with its title. Available at any time.")]
@@ -232,9 +243,9 @@ impl CnaServer {
         self.ask(RequestKind::GetBriefing).await
     }
 
-    #[tool(description = "Finish acting in the current phase. The game advances; you will be asked again at your next decision window.")]
-    async fn end_phase(&self) -> String {
-        self.ask(RequestKind::EndPhase).await
+    #[tool(description = "Finish acting in the current phase, with an optional one- or two-sentence rationale summarizing what you decided and why. The game advances; you will be asked again at your next decision window.")]
+    async fn end_phase(&self, Parameters(p): Parameters<EndPhaseParams>) -> String {
+        self.ask(RequestKind::EndPhase { rationale: p.rationale }).await
     }
 
     #[tool(description = "Block until your side's next decision window opens, then return the status. For long-running clients that are not launched per window.")]

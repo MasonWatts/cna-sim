@@ -1243,6 +1243,7 @@ pub fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) 
         }
         Command::WithdrawSquadron { squadron } => format!("Withdrew squadron {} to meet a withdrawal requirement.", sq_name(g, *squadron)),
         Command::BaseSquadronOffMap { squadron, facility } => format!("Based squadron {} at the off-map field {facility}.", sq_name(g, *squadron)),
+        Command::MoveSgsu { squadron, to } => format!("Moved squadron {}'s ground echelon (SGSU) to {}.", sq_name(g, *squadron), hx_str(*to)),
         Command::AssignSquadronPlanes { squadron, aircraft_type, class, count } => format!("Assigned {count} × {aircraft_type} ({class:?}) to squadron {}.", sq_name(g, *squadron)),
         Command::TransferPlanes { from, to, aircraft_type, count } => format!("Transferred {count} × {aircraft_type} from squadron {} to under-strength squadron {} (§35.22).", sq_name(g, *from), sq_name(g, *to)),
         Command::RefitSquadron { squadron, .. } => match outcome {
@@ -1372,6 +1373,7 @@ fn activity_hex(g: &GameState, cmd: &Command) -> Option<HexCoord> {
     });
     let sqh = |id: SquadronId| g.sgsus.get(&id).and_then(|s| s.location);
     match cmd {
+        Command::MoveSgsu { to, .. } => Some(*to),
         // Destination-hex actions.
         Command::MoveStep { to, .. }
         | Command::FormationMove { to, .. }

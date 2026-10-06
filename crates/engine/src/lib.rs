@@ -4853,26 +4853,31 @@ mod tests {
         let mut g = GameState::new(refs, 1);
 
         // A CW fighter squadron with a full 20-plane complement (15 ready + 5 reserve, §35.23).
-        let mut fighter = Sgsu::new(SquadronId(1), Nationality::Commonwealth, SquadronClass::Fighter, "33 Sqn", 25, Some(HexCoord::new(2, 2)));
+        // SGSUs drive to an off-map field from its §36.53 entry hex (Truck Convoy Phase, §35.12).
+        let gate = |s: &str| crate::state::map::HexId::parse(s).unwrap().to_hex_coord();
+        let mut fighter = Sgsu::new(SquadronId(1), Nationality::Commonwealth, SquadronClass::Fighter, "33 Sqn", 25, Some(gate("E1833")));
         fighter.add_planes("Gladiator Mk.II", AircraftClass::Fighter, 20, 1);
         g.sgsus.insert(SquadronId(1), fighter);
         // A flying-boat squadron and a second fighter.
-        let mut boats = Sgsu::new(SquadronId(2), Nationality::Commonwealth, SquadronClass::Bomber, "230 Sqn", 25, Some(HexCoord::new(2, 2)));
+        let mut boats = Sgsu::new(SquadronId(2), Nationality::Commonwealth, SquadronClass::Bomber, "230 Sqn", 25, Some(gate("E4033")));
         boats.add_planes("Sunderland", AircraftClass::FlyingBoat, 3, 1);
         g.sgsus.insert(SquadronId(2), boats);
-        g.sgsus.insert(SquadronId(3), Sgsu::new(SquadronId(3), Nationality::Commonwealth, SquadronClass::Fighter, "112 Sqn", 25, Some(HexCoord::new(2, 2))));
-        while g.phase != Phase::Organization {
-            g.advance_phase();
-        }
+        g.sgsus.insert(SquadronId(3), Sgsu::new(SquadronId(3), Nationality::Commonwealth, SquadronClass::Fighter, "112 Sqn", 25, Some(gate("E1833"))));
+        let _ = HexCoord::new(0, 0);
+        g.phase = Phase::TruckConvoy;
+        g.active_player = crate::reference::units::Side::Commonwealth;
 
         // Threshold: 1 N. African squadron slot × 20 (CW ready+reserve) = 20 planes.
         assert_eq!(g.max_off_map_north_african_planes(), Some(20));
         assert!(!g.may_create_extra_sgsu(Nationality::Commonwealth));
 
-        // Base the 20-plane fighter squadron at Deversoir.
+        // Base the 20-plane fighter squadron at Deversoir: 12 of its 25 CP (§36.53 distance as CP).
         assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(1), facility: "Deversoir".into() }), Ok(CommandOutcome::SquadronBasedOffMap));
         assert_eq!(g.sgsus[&SquadronId(1)].off_map_box.as_deref(), Some("Deversoir"));
         assert_eq!(g.sgsus[&SquadronId(1)].location, None);
+        assert_eq!(g.sgsus[&SquadronId(1)].cp_used, 120);
+        // Only from the entry hex: SGSU 2 stands at Port Said's gate (E4033), not Deversoir's.
+        assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(2), facility: "Deversoir".into() }), Err(CommandError::SgsuNotAtEntryHex));
         // §36.5a: the off-map facility has unlimited maintenance supply — even if the squadron were
         // marked unsupplied, the upkeep pass restores it (as with the §43.21 Med boxes).
         g.sgsus.get_mut(&SquadronId(1)).unwrap().supplied = false;
@@ -4898,10 +4903,12 @@ mod tests {
         // Deversoir is full (capacity 1) — a second squadron there is refused.
         assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(3), facility: "Deversoir".into() }), Err(CommandError::OffMapBasingFailed));
         // A fighter squadron cannot use the Port Said flying-boat basin; a flying-boat squadron can.
+        g.sgsus.get_mut(&SquadronId(3)).unwrap().location = Some(gate("E4033"));
         assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(3), facility: "Port Said".into() }), Err(CommandError::OffMapBasingFailed));
         assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(2), facility: "Port Said".into() }), Ok(CommandOutcome::SquadronBasedOffMap));
         // §36.3: SGSU 2 sits at the Port Said flying-boat basin — it may take flying boats but not
         // land bombers, even though it is off-map (the gate now covers §36.53 facilities too).
+        g.phase = Phase::Organization; // plane assignment is an Organization-phase action
         *g.plane_pool.entry(Nationality::Commonwealth).or_default().entry("Sunderland".into()).or_insert(0) += 3;
         *g.plane_pool.entry(Nationality::Commonwealth).or_default().entry("Blenheim Mk.IV".into()).or_insert(0) += 3;
         assert_eq!(
@@ -4912,10 +4919,58 @@ mod tests {
             g.apply(Command::AssignSquadronPlanes { squadron: SquadronId(2), aircraft_type: "Sunderland".into(), class: AircraftClass::FlyingBoat, count: 1 }),
             Ok(CommandOutcome::SquadronPlanesAssigned)
         );
-        // Ethiopia is gated until Game-Turn 35.
+        g.phase = Phase::TruckConvoy;
+        // Ethiopia is gated until Game-Turn 35, and 60 > the SGSU's CPA of 25: a three-stage drive
+        // (25 + 25 + 10) from its entry hex E0127, grounded meanwhile.
+        g.sgsus.get_mut(&SquadronId(3)).unwrap().location = Some(gate("E0127"));
         assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(3), facility: "Ethiopia".into() }), Err(CommandError::OffMapBasingFailed));
         g.game_turn = 35;
         assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(3), facility: "Ethiopia".into() }), Ok(CommandOutcome::SquadronBasedOffMap));
+        assert!(g.sgsus[&SquadronId(3)].in_transit() && g.sgsus[&SquadronId(3)].location.is_none());
+        g.advance_off_map_transits();
+        assert!(g.sgsus[&SquadronId(3)].in_transit(), "stage 2: still driving");
+        g.advance_off_map_transits();
+        assert_eq!(g.sgsus[&SquadronId(3)].off_map_box.as_deref(), Some("Ethiopia"), "stage 3: arrived");
+        assert!(!g.sgsus[&SquadronId(3)].in_transit());
+        // Leaving Deversoir in the same stage it arrived is a second rebase: refused.
+        assert_eq!(g.apply(Command::MoveSgsu { squadron: SquadronId(1), to: gate("E1833") }), Err(CommandError::SgsuAlreadyRebased));
+        // Next stage: back to its entry hex for 12 CP.
+        g.sgsus.get_mut(&SquadronId(1)).unwrap().cp_used = 0;
+        g.sgsus.get_mut(&SquadronId(1)).unwrap().rebased_this_stage = false;
+        assert_eq!(g.apply(Command::MoveSgsu { squadron: SquadronId(1), to: gate("E1833") }), Ok(CommandOutcome::SgsuMoved { hex: gate("E1833") }));
+        assert_eq!(g.sgsus[&SquadronId(1)].location, Some(gate("E1833")));
+        assert_eq!(g.sgsus[&SquadronId(1)].off_map_box, None);
+        // …and it may not re-enter this stage: one base change per stage.
+        assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(1), facility: "Deversoir".into() }), Err(CommandError::SgsuAlreadyRebased));
+        // Next stage it may (fresh CPA, fresh rebase).
+        g.sgsus.get_mut(&SquadronId(1)).unwrap().cp_used = 0;
+        g.sgsus.get_mut(&SquadronId(1)).unwrap().rebased_this_stage = false;
+        assert_eq!(g.apply(Command::BaseSquadronOffMap { squadron: SquadronId(1), facility: "Deversoir".into() }), Ok(CommandOutcome::SquadronBasedOffMap));
+    }
+
+    #[test]
+    fn sgsu_moves_by_cpa_in_truck_convoy_phase_35_12() {
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::Phase;
+        let mut g = build_campaign_game();
+        let cairo = crate::state::map::HexId::parse("E1830").unwrap().to_hex_coord();
+        g.sgsus.insert(SquadronId(900), Sgsu::new(SquadronId(900), Nationality::Commonwealth, SquadronClass::Fighter, "test", 25, Some(cairo)));
+        let to = g.map.neighbors(cairo).find(|&n| g.map.terrain(n).is_some()).unwrap();
+        // Only in the Truck Convoy Phase.
+        g.phase = Phase::Organization;
+        g.active_player = crate::reference::units::Side::Commonwealth;
+        assert_eq!(g.apply(Command::MoveSgsu { squadron: SquadronId(900), to }), Err(CommandError::WrongPhase));
+        g.phase = Phase::TruckConvoy;
+        assert!(g.legal_commands(crate::reference::units::Side::Commonwealth).contains(&Command::MoveSgsu { squadron: SquadronId(900), to }));
+        assert_eq!(g.apply(Command::MoveSgsu { squadron: SquadronId(900), to }), Ok(CommandOutcome::SgsuMoved { hex: to }));
+        assert!(g.sgsus[&SquadronId(900)].cp_used > 0);
+        // Not two hexes at once; and the CPA caps a stage's driving.
+        let far = crate::state::map::HexId::parse("E3613").unwrap().to_hex_coord();
+        assert_eq!(g.apply(Command::MoveSgsu { squadron: SquadronId(900), to: far }), Err(CommandError::SgsuCannotMove));
+        g.sgsus.get_mut(&SquadronId(900)).unwrap().cp_used = 250;
+        assert_eq!(g.apply(Command::MoveSgsu { squadron: SquadronId(900), to: cairo }), Err(CommandError::SgsuCpaExhausted));
     }
 
     #[test]
@@ -8583,6 +8638,22 @@ mod tests {
         g.fleet[i].gun_rating = g.fleet[i].max_gun - 1;
         assert!(matches!(g.apply(Command::RepairShip { ship_index: i }), Ok(CommandOutcome::ShipRepaired(_))));
         assert_eq!(g.apply(Command::RepairShip { ship_index: i }), Err(CommandError::AlreadyRepairedThisPhase));
+        // Assigning a ship to the station it already holds is a no-op: refused, and not offered.
+        assert_eq!(g.apply(Command::AssignShip { ship_index: i, location: ShipLocation::Alexandria }), Err(CommandError::ShipAlreadyThere));
+        assert!(!g.legal_commands(crate::reference::units::Side::Commonwealth).contains(&Command::AssignShip { ship_index: i, location: ShipLocation::Alexandria }));
+        // §30.15: one station per ship per stage — no Alexandria↔Valetta ping-pong.
+        assert_eq!(g.apply(Command::AssignShip { ship_index: i, location: ShipLocation::Valetta }), Ok(CommandOutcome::ShipAssigned));
+        assert_eq!(g.apply(Command::AssignShip { ship_index: i, location: ShipLocation::Alexandria }), Err(CommandError::ShipAlreadyAssigned));
+
+        // §20.49: absorbing replacements into a full-strength unit is refused (the pool is kept).
+        g.phase = Phase::Organization;
+        g.active_player = crate::reference::units::Side::Axis;
+        let full = g.units.values().find(|u| u.nationality.side() == crate::reference::units::Side::Axis && u.hex().is_some() && g.unit_toe_headroom(u.id) == 0 && u.total_toe() > 0).unwrap().id;
+        let at = g.units[&full].hex().unwrap();
+        let pi = g.add_replacement_points(crate::state::game::ReplacementClass::Infantry, 3, crate::reference::units::Side::Axis, Some(crate::state::unit::UnitLocation::OnMap(at)), None);
+        g.replacement_points[pi].training_remaining = 0;
+        assert_eq!(g.apply(Command::AbsorbReplacement { index: pi, unit: full }), Err(CommandError::UnitAtFullStrength));
+        assert_eq!(g.replacement_points[pi].count, 3);
     }
 
     #[test]

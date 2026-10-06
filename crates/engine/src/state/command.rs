@@ -328,9 +328,15 @@ pub enum Command {
     },
     /// §34.84: withdraw a deployed squadron to satisfy a due `WD` requirement (Organization Phase).
     WithdrawSquadron { squadron: crate::state::air::SquadronId },
-    /// §36.53: base a Commonwealth squadron in an off-map air facility by chart name (Organization
-    /// Phase).
+    /// §36.53: base a Commonwealth squadron in an off-map air facility by chart name (Truck Convoy
+    /// Phase). Its SGSU must stand on the facility's entry hex (or in another facility on the same
+    /// entry hex) and pays the chart distance in CP (§35.12); a distance over its whole CPA
+    /// (Ethiopia) becomes a multi-stage drive.
     BaseSquadronOffMap { squadron: crate::state::air::SquadronId, facility: String },
+    /// §35.12: move an SGSU one hex (Truck Convoy Phase), at motorized terrain cost within its CPA.
+    /// From an off-map facility, `to` = the facility's entry hex drives back onto the map, paying
+    /// the §36.53 distance.
+    MoveSgsu { squadron: crate::state::air::SquadronId, to: HexCoord },
     /// §35.2: assign `count` planes of a type/class to a squadron (Organization Phase).
     AssignSquadronPlanes {
         squadron: crate::state::air::SquadronId,
@@ -827,7 +833,8 @@ impl Command {
             // ── Air: squadrons ──
             Command::DeploySgsu { .. } => &["§34.82"],
             Command::WithdrawSquadron { .. } => &["§34.84"],
-            Command::BaseSquadronOffMap { .. } => &["§36.53"],
+            Command::BaseSquadronOffMap { .. } => &["§36.53", "§35.12"],
+            Command::MoveSgsu { .. } => &["§35.12", "§36.53"],
             Command::AssignSquadronPlanes { .. } => &["§35.2", "§35.28"],
             Command::TransferPlanes { .. } => &["§35.22"],
             Command::RefitSquadron { .. } => &["§38.34"],
@@ -948,6 +955,8 @@ pub enum CommandOutcome {
     SquadronWithdrawn,
     /// A Commonwealth squadron was based in an off-map air facility (§36.53).
     SquadronBasedOffMap,
+    /// §35.12: the SGSU moved to `hex` (or set off for it, on a multi-stage §36.53 drive).
+    SgsuMoved { hex: HexCoord },
     /// Planes were assigned to a squadron (§35.2).
     SquadronPlanesAssigned,
     /// An air facility was bombed (§41.36).
@@ -1285,6 +1294,17 @@ pub enum CommandError {
     ConvoyRejected,
     /// §10.29: a truck convoy may not enter an enemy ZOC hex unless a friendly unit already holds it.
     TruckConvoyEnemyZoc,
+    /// §35.12: the SGSU can't make that move (not on the map, not an adjacent hex, or an
+    /// enemy-occupied hex).
+    SgsuCannotMove,
+    /// §35.12: the SGSU lacks the Capability Points left this stage for that move.
+    SgsuCpaExhausted,
+    /// §36.53: off-map basing/leaving happens from/to the facility's entry hex only.
+    SgsuNotAtEntryHex,
+    /// The squadron is already based at that off-map facility.
+    SgsuAlreadyThere,
+    /// The squadron already changed base this Operations Stage (one rebase per stage).
+    SgsuAlreadyRebased,
     /// §8.37: the hex/hexside is prohibited to motorized movement.
     TruckConvoyTerrainProhibited,
     /// §8.98: the convoy has no Capability Points left for that step this Truck Convoy Phase.
@@ -1398,6 +1418,12 @@ pub enum CommandError {
     AlreadyRepairedThisPhase,
     /// §30.37: the ship is at its face-value Gun Rating (or sunk) — there is nothing to repair.
     ShipNotDamaged,
+    /// AssignShip to the station the ship already holds (a no-op).
+    ShipAlreadyThere,
+    /// §30.15: the ship already received its station this Operations Stage.
+    ShipAlreadyAssigned,
+    /// §20.49: AbsorbReplacement into a unit already at full TOE (nothing to rebuild).
+    UnitAtFullStrength,
     /// §8.17: a non-motorized unit (base CPA ≤ 10) may not voluntarily expend more than 150% of its
     /// base Capability Point Allowance in its own portion of the Operations Stage.
     CpaCeilingExceeded,
@@ -1573,14 +1599,8 @@ impl GameState {
                     Err(CommandError::WithdrawalNotDue)
                 }
             }
-            Command::BaseSquadronOffMap { squadron, facility } => {
-                self.require_phase(Phase::Organization)?;
-                if self.base_squadron_off_map(squadron, &facility) {
-                    Ok(CommandOutcome::SquadronBasedOffMap)
-                } else {
-                    Err(CommandError::OffMapBasingFailed)
-                }
-            }
+            Command::BaseSquadronOffMap { squadron, facility } => self.cmd_base_squadron_off_map(squadron, &facility),
+            Command::MoveSgsu { squadron, to } => self.cmd_move_sgsu(squadron, to),
             Command::TransferPlanes { from, to, aircraft_type, count } => self.cmd_transfer_planes(from, to, &aircraft_type, count),
             Command::AssignSquadronPlanes { squadron, aircraft_type, class, count } => {
                 self.cmd_assign_squadron_planes(squadron, &aircraft_type, class, count)
@@ -1797,9 +1817,13 @@ impl GameState {
             Command::AbsorbReplacement { index, unit } => {
                 self.require_phase(Phase::Organization)?;
                 self.require_units_exist(&[unit])?;
+                // §20.49: absorption rebuilds missing TOE; a full-strength unit has none to rebuild.
+                if self.unit_toe_headroom(unit) == 0 {
+                    return Err(CommandError::UnitAtFullStrength);
+                }
                 match self.absorb_replacement(index, unit) {
-                    Some(points) => Ok(CommandOutcome::ReplacementAbsorbed(points)),
-                    None => Err(CommandError::ReplacementFailed),
+                    Some(points) if points > 0 => Ok(CommandOutcome::ReplacementAbsorbed(points)),
+                    _ => Err(CommandError::ReplacementFailed),
                 }
             }
             Command::RefitDeacons { unit } => {
@@ -2240,6 +2264,14 @@ impl GameState {
     ) -> Result<CommandOutcome, CommandError> {
         use crate::state::naval::ShipLocation;
         let current = self.fleet.get(ship_index).ok_or(CommandError::NoSuchShip)?.location.clone();
+        if current == location {
+            return Err(CommandError::ShipAlreadyThere); // no-op: the ship is already stationed there
+        }
+        // §30.15: ships are "placed in their hex of assignment at the beginning of a given OpStage" —
+        // one assignment per ship per stage (§30.18: Alexandria↔Valetta takes the whole stage).
+        if self.ships_assigned_this_stage.contains(&ship_index) {
+            return Err(CommandError::ShipAlreadyAssigned);
+        }
         if matches!(location, ShipLocation::Valetta) && !matches!(current, ShipLocation::Valetta) {
             let in_valetta = self.fleet.iter().filter(|s| s.location == ShipLocation::Valetta).count();
             if in_valetta >= 5 {
@@ -2273,6 +2305,7 @@ impl GameState {
             }
         }
         ship.location = location;
+        self.ships_assigned_this_stage.insert(ship_index);
         Ok(CommandOutcome::ShipAssigned)
     }
 
@@ -3531,6 +3564,133 @@ impl GameState {
 
     /// §8.98/§10.29 MoveTruckConvoy: move a free truck convoy one hex (Truck Convoy Phase, on its
     /// owner's turn), spending its supply CPA and observing the §10.29 ZOC restriction.
+    /// §36.53 BaseSquadronOffMap (see the command doc).
+    fn cmd_base_squadron_off_map(&mut self, squadron: crate::state::air::SquadronId, facility: &str) -> Result<CommandOutcome, CommandError> {
+        self.require_phase(Phase::TruckConvoy)?;
+        let s = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+        if s.nationality.side() != self.active_player {
+            return Err(CommandError::WrongPhase);
+        }
+        if s.in_transit() {
+            return Err(CommandError::SquadronInTransit);
+        }
+        if s.rebased_this_stage {
+            return Err(CommandError::SgsuAlreadyRebased); // one base change per stage
+        }
+        let chart = self.reference.off_map_air_facilities.as_ref().ok_or(CommandError::OffMapBasingFailed)?;
+        let fac = chart.facilities.iter().find(|f| f.name == facility).ok_or(CommandError::OffMapBasingFailed)?;
+        let entry = crate::state::map::HexId::parse(&fac.entry_hex).map(|h| h.to_hex_coord()).ok_or(CommandError::OffMapBasingFailed)?;
+        // Where it drives from: the entry hex, or a sibling facility on the same entry hex (back out
+        // to the entry hex, then in again).
+        let from_leg = match (&s.off_map_box, s.location) {
+            (None, Some(h)) if h == entry => 0,
+            (Some(cur), _) if cur == facility => return Err(CommandError::SgsuAlreadyThere),
+            (Some(cur), _) => match chart.facilities.iter().find(|f| &f.name == cur) {
+                Some(f) if f.entry_hex == fac.entry_hex => f.distance * 10,
+                _ => return Err(CommandError::SgsuNotAtEntryHex),
+            },
+            _ => return Err(CommandError::SgsuNotAtEntryHex),
+        };
+        let cost = from_leg + fac.distance * 10;
+        let (cpa, used) = (s.cpa * 10, s.cp_used);
+        // Eligibility (class, capacity, date) without moving it yet.
+        if !self.off_map_basing_ok(squadron, facility) {
+            return Err(CommandError::OffMapBasingFailed);
+        }
+        if used + cost <= cpa {
+            self.base_squadron_off_map(squadron, facility);
+            if let Some(s) = self.sgsus.get_mut(&squadron) {
+                s.cp_used = used + cost;
+                s.rebased_this_stage = true;
+            }
+            return Ok(CommandOutcome::SquadronBasedOffMap);
+        }
+        // §36.53: a facility further than a whole stage's CPA (Ethiopia, 60) is a multi-stage drive,
+        // begun at the start of a stage's movement: the SGSU leaves the board and arrives once the
+        // whole distance has been driven (it spends its full CPA each stage meanwhile).
+        if used == 0 && cost > cpa {
+            if let Some(s) = self.sgsus.get_mut(&squadron) {
+                s.location = None;
+                s.off_map_box = None;
+                s.cp_used = cpa;
+                s.rebased_this_stage = true;
+                s.off_map_transit = Some(crate::state::air::OffMapTransit { facility: facility.to_string(), to_map: false, remaining: cost - cpa });
+            }
+            return Ok(CommandOutcome::SquadronBasedOffMap);
+        }
+        Err(CommandError::SgsuCpaExhausted)
+    }
+
+    /// §35.12 MoveSgsu (see the command doc).
+    fn cmd_move_sgsu(&mut self, squadron: crate::state::air::SquadronId, to: HexCoord) -> Result<CommandOutcome, CommandError> {
+        use crate::reference::terrain::MoveCost;
+        use crate::rules::movement::{step_cost, MoveMode};
+        self.require_phase(Phase::TruckConvoy)?;
+        let s = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+        let side = s.nationality.side();
+        if side != self.active_player {
+            return Err(CommandError::WrongPhase);
+        }
+        if s.in_transit() {
+            return Err(CommandError::SquadronInTransit);
+        }
+        let (cpa, used) = (s.cpa * 10, s.cp_used);
+        // Leaving an off-map facility for its entry hex.
+        if let Some(cur) = s.off_map_box.clone() {
+            let chart = self.reference.off_map_air_facilities.as_ref().ok_or(CommandError::SgsuCannotMove)?;
+            let fac = chart.facilities.iter().find(|f| f.name == cur).ok_or(CommandError::SgsuCannotMove)?;
+            let entry = crate::state::map::HexId::parse(&fac.entry_hex).map(|h| h.to_hex_coord()).ok_or(CommandError::SgsuCannotMove)?;
+            if to != entry {
+                return Err(CommandError::SgsuNotAtEntryHex);
+            }
+            if self.sgsus[&squadron].rebased_this_stage {
+                return Err(CommandError::SgsuAlreadyRebased); // one base change per stage
+            }
+            let cost = fac.distance * 10;
+            let s = self.sgsus.get_mut(&squadron).expect("checked");
+            if used + cost <= cpa {
+                s.off_map_box = None;
+                s.location = Some(entry);
+                s.cp_used = used + cost;
+                s.rebased_this_stage = true;
+                return Ok(CommandOutcome::SgsuMoved { hex: entry });
+            }
+            if used == 0 && cost > cpa {
+                s.off_map_box = None;
+                s.cp_used = cpa;
+                s.rebased_this_stage = true;
+                s.off_map_transit = Some(crate::state::air::OffMapTransit { facility: cur, to_map: true, remaining: cost - cpa });
+                return Ok(CommandOutcome::SgsuMoved { hex: entry });
+            }
+            return Err(CommandError::SgsuCpaExhausted);
+        }
+        let from = s.location.ok_or(CommandError::SgsuCannotMove)?;
+        if !self.map.neighbors(from).any(|n| n == to) {
+            return Err(CommandError::SgsuCannotMove);
+        }
+        // §8.13: not into an enemy-occupied hex; §10.29 (as for trucks): not into an enemy ZOC unless
+        // a friendly unit already holds it.
+        let enemy = side.opponent();
+        if self.enemy_units_in_hex(to, side).iter().any(|&e| self.is_combat_unit(e)) {
+            return Err(CommandError::SgsuCannotMove);
+        }
+        let friendly = self.units_in_hex(to).into_iter().any(|x| self.unit(x).is_some_and(|u| u.nationality.side() == side));
+        if self.hex_in_zoc_of(to, enemy) && !friendly {
+            return Err(CommandError::TruckConvoyEnemyZoc);
+        }
+        let cost = match step_cost(&self.reference, &self.map, from, to, MoveMode::Motorized) {
+            Some(MoveCost::Cost(f)) => f.0.max(0) as u32,
+            _ => return Err(CommandError::TruckConvoyTerrainProhibited),
+        };
+        if used + cost > cpa {
+            return Err(CommandError::SgsuCpaExhausted);
+        }
+        let s = self.sgsus.get_mut(&squadron).expect("checked");
+        s.location = Some(to);
+        s.cp_used = used + cost;
+        Ok(CommandOutcome::SgsuMoved { hex: to })
+    }
+
     fn cmd_move_truck_convoy(&mut self, convoy: usize, to: HexCoord) -> Result<CommandOutcome, CommandError> {
         use crate::reference::terrain::MoveCost;
         use crate::rules::movement::{step_cost, MoveMode};

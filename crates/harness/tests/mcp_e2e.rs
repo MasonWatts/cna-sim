@@ -58,13 +58,13 @@ async fn play(url: String, token: String) -> Stats {
     // The first window is the pre-game planning window: read-only, doctrine + notes, end_phase.
     let pre = call(&client, "wait_for_turn", json!({})).await;
     assert_eq!(pre["pregame_planning"], true, "first window is pre-game: {pre}");
-    let refused = call(&client, "submit_plan", json!({"items": [{"id": 0}]})).await;
+    let refused = call(&client, "submit_plan", json!({"items": [{"id": 0}], "rationale": "test"})).await;
     assert!(refused["error"].as_str().unwrap_or("").contains("pre-game"), "plans refused pre-game: {refused}");
     let brief = call(&client, "get_briefing", json!({})).await;
     assert!(brief["window_prompt"].as_str().unwrap().contains("PRE-GAME PLANNING"));
     assert!(brief["system_prompt"].as_str().unwrap().contains("rulebook is the authority"));
     assert_eq!(call(&client, "write_doctrine", json!({"text": "DOCTRINE-XYZ: concentrate, then strike."})).await["ok"], true);
-    assert_eq!(call(&client, "end_phase", json!({})).await["ok"], true);
+    assert_eq!(call(&client, "end_phase", json!({"rationale": "PREGAME-RATIONALE"})).await["ok"], true);
 
     let mut s = Stats::default();
     loop {
@@ -87,6 +87,7 @@ async fn play(url: String, token: String) -> Stats {
         } else {
             assert!(wp.contains(&format!("plan-from-window-{}", s.windows - 1)), "previous notes carried over");
             assert!(wp.contains("Actions ("), "previous window's actions are journaled");
+            assert!(wp.contains(&format!("PLAN-RATIONALE-{}", s.windows - 1)), "previous rationale is journaled");
             let j = call(&client, "get_journal", json!({})).await;
             assert!(j["journal"].as_str().unwrap().contains(&format!("Window {}", s.windows - 1)));
         }
@@ -116,7 +117,7 @@ async fn play(url: String, token: String) -> Stats {
             items.push(json!({"assault": {"target": e["hex"]["coord"]}}));
         }
         items.push(json!({"id": 999_999})); // a bad id is reported, not fatal
-        let res = call(&client, "submit_plan", json!({"items": items})).await;
+        let res = call(&client, "submit_plan", json!({"items": items, "rationale": format!("PLAN-RATIONALE-{}", s.windows)})).await;
         s.plans += 1;
         for r in res["results"].as_array().unwrap() {
             if r["ok"] == true { s.ok_items += 1 } else { s.failed_items += 1 }
@@ -124,7 +125,7 @@ async fn play(url: String, token: String) -> Stats {
         let wn = call(&client, "write_notes", json!({"text": format!("plan-from-window-{}: hold the line", s.windows)})).await;
         assert_eq!(wn["ok"], true);
         assert_eq!(call(&client, "read_notes", json!({})).await["notes"].as_str().unwrap(), format!("plan-from-window-{}: hold the line", s.windows));
-        let end = call(&client, "end_phase", json!({})).await;
+        let end = call(&client, "end_phase", json!({"rationale": format!("END-RATIONALE-{}", s.windows)})).await;
         assert_eq!(end["ok"], true);
     }
     let _ = client.cancel().await;
@@ -172,6 +173,15 @@ fn mcp_player_plays_and_command_log_replays() {
     assert!(report.result["strength_on_map"]["Commonwealth"]["toe"].is_number(), "{}", report.result);
     assert!(dir.join("game.result.json").exists());
     assert!(dir.join("game.transcript").join("memory-commonwealth.json").exists(), "memory checkpointed");
+    // Every window's stated rationale (plans with their results, closing summary) is recorded.
+    let rat = std::fs::read_to_string(dir.join("game.transcript").join("rationale.jsonl")).expect("rationale.jsonl");
+    let lines: Vec<Value> = rat.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert!(lines.iter().any(|l| l["pregame"] == true && l["rationales"][0]["text"] == "PREGAME-RATIONALE"), "{rat}");
+    let w1 = lines.iter().find(|l| l["pregame"] == false).expect("a game window");
+    assert_eq!(w1["rationales"][0]["kind"], "plan");
+    assert!(w1["rationales"][0]["text"].as_str().unwrap().starts_with("PLAN-RATIONALE-"));
+    assert!(w1["rationales"][0]["results"].as_array().is_some_and(|r| !r.is_empty()), "plan results attached: {w1}");
+    assert!(w1["key"].is_string() && w1["at"]["phase"].is_string());
 
     // The command log reproduces the game exactly.
     let (fp, expected, mismatches) = replay(&report.commands_path).expect("replay");

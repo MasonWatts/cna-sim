@@ -1025,19 +1025,8 @@ impl GameState {
             if self.dry_run(&wcmd).is_ok() {
                 out.push(wcmd);
             }
-            // Commonwealth: base a squadron at an off-map §36.53 facility.
-            if nat == Nationality::Commonwealth {
-                if let Some(chart) = self.reference.off_map_air_facilities.as_ref() {
-                    let mut names: Vec<String> = chart.facilities.iter().map(|f| f.name.clone()).collect();
-                    names.sort();
-                    for facility in names {
-                        let cmd = Command::BaseSquadronOffMap { squadron, facility };
-                        if self.dry_run(&cmd).is_ok() {
-                            out.push(cmd);
-                        }
-                    }
-                }
-            }
+            // (Off-map basing, §36.53, is an SGSU drive in the Truck Convoy Phase — see
+            // `legal_sgsu_moves`.)
         }
         out
     }
@@ -1164,6 +1153,51 @@ impl GameState {
     /// Truck-Convoy-phase actions: move each of `side`'s free truck convoys one hex (§8.98), and
     /// escort each of its Prisoner stacks one hex toward a Departure Point (§28.13). Legality
     /// (CPA/escort/terrain) is enforced by `dry_run`.
+    /// §35.12/§36.53 Truck-Convoy-phase SGSU movement: a one-hex step to each neighbour, and at a
+    /// Commonwealth off-map facility's entry hex, basing there (or, from a facility, driving back
+    /// out or to a sibling facility on the same entry hex). All `dry_run`-gated.
+    fn legal_sgsu_moves(&self, side: Side) -> Vec<crate::state::command::Command> {
+        use crate::state::command::Command;
+        let mut out = Vec::new();
+        let chart = self.reference.off_map_air_facilities.as_ref();
+        let mut ids: Vec<_> = self.sgsus.iter().filter(|(_, s)| s.nationality.side() == side && !s.in_transit()).map(|(&id, _)| id).collect();
+        ids.sort();
+        for squadron in ids {
+            let s = &self.sgsus[&squadron];
+            if s.cp_used >= s.cpa * 10 {
+                continue; // no CP left this stage
+            }
+            let mut cands = Vec::new();
+            if let Some(h) = s.location {
+                for to in self.map.neighbors(h) {
+                    cands.push(Command::MoveSgsu { squadron, to });
+                }
+            }
+            if let Some(chart) = chart {
+                // The entry hex the SGSU is at (on the map) or behind (in a facility).
+                let gate = match (&s.off_map_box, s.location) {
+                    (Some(cur), _) => chart.facilities.iter().find(|f| &f.name == cur).map(|f| f.entry_hex.clone()),
+                    (None, Some(h)) => chart
+                        .facilities
+                        .iter()
+                        .find(|f| crate::state::map::HexId::parse(&f.entry_hex).map(|e| e.to_hex_coord()) == Some(h))
+                        .map(|f| f.entry_hex.clone()),
+                    _ => None,
+                };
+                for f in chart.facilities.iter().filter(|f| Some(&f.entry_hex) == gate.as_ref()) {
+                    cands.push(Command::BaseSquadronOffMap { squadron, facility: f.name.clone() });
+                    if s.off_map_box.as_deref() == Some(f.name.as_str()) {
+                        if let Some(entry) = crate::state::map::HexId::parse(&f.entry_hex) {
+                            cands.push(Command::MoveSgsu { squadron, to: entry.to_hex_coord() });
+                        }
+                    }
+                }
+            }
+            out.extend(cands.into_iter().filter(|c| self.dry_run(c).is_ok()));
+        }
+        out
+    }
+
     fn legal_convoy_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
         use crate::state::command::Command;
 
@@ -1262,6 +1296,7 @@ impl GameState {
                 }
             }
         }
+        out.extend(self.legal_sgsu_moves(side));
         out
     }
 

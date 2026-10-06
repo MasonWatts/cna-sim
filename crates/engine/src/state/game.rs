@@ -1124,6 +1124,9 @@ pub struct GameState {
     /// §30.37: ships that already spent this Operations Stage repairing (one repair tick per stage).
     #[serde(default)]
     pub ships_repaired_this_stage: std::collections::HashSet<usize>,
+    /// §30.15/§30.18: ships already given their station this Operations Stage (one assignment each).
+    #[serde(default)]
+    pub ships_assigned_this_stage: std::collections::HashSet<usize>,
     /// §22.23: free truck convoys (by index) that have rolled their repair die this Repair Phase.
     #[serde(default)]
     pub convoy_repairs_this_stage: std::collections::HashSet<usize>,
@@ -1415,6 +1418,7 @@ impl GameState {
             close_assaulted_hexes_this_stage: std::collections::HashSet::new(),
             field_repairs_this_stage: std::collections::HashSet::new(),
             ships_repaired_this_stage: std::collections::HashSet::new(),
+            ships_assigned_this_stage: std::collections::HashSet::new(),
             convoy_repairs_this_stage: std::collections::HashSet::new(),
             anti_armor_hexes_this_stage: std::collections::HashSet::new(),
             ports_transferred_this_stage: std::collections::HashSet::new(),
@@ -3831,6 +3835,10 @@ impl GameState {
         if rp.location.and_then(|l| l.hex()) != Some(unit_hex) {
             return None;
         }
+        // A unit already at full TOE has nothing to rebuild — don't consume (or "absorb") the pool.
+        if self.unit_toe_headroom(unit) == 0 {
+            return None;
+        }
         let side = self.units.get(&unit)?.nationality.side();
 
         // Legacy 1:1 absorption when no §20.3 Conversion Chart is loaded (one pool point = one TOE).
@@ -4164,7 +4172,7 @@ impl GameState {
 
     /// TOE Strength Points a unit may still gain before hitting its §4.44 Max-TOE (`u32::MAX` if the
     /// unit has no listed maximum).
-    fn unit_toe_headroom(&self, id: UnitId) -> u32 {
+    pub(crate) fn unit_toe_headroom(&self, id: UnitId) -> u32 {
         let Some(u) = self.units.get(&id) else { return 0 };
         let cur = u.total_toe();
         match self
@@ -5914,7 +5922,9 @@ impl GameState {
     /// by chart name. Enforces the facility's printed squadron capacity (§36.5b), the Ethiopia
     /// Game-Turn gate (§36.53 note), and the Port Said flying-boat-only restriction (§36.3). Sets
     /// `off_map_box` and clears the map location. Returns whether it was based.
-    pub fn base_squadron_off_map(&mut self, id: crate::state::air::SquadronId, facility: &str) -> bool {
+    /// Whether squadron `id` may be based at off-map `facility` (§36.53 chart, class, capacity,
+    /// date) — the eligibility half of `base_squadron_off_map`, without moving anything.
+    pub fn off_map_basing_ok(&self, id: crate::state::air::SquadronId, facility: &str) -> bool {
         let Some(chart) = self.reference.off_map_air_facilities.as_ref() else {
             return false;
         };
@@ -5948,6 +5958,48 @@ impl GameState {
             if here >= cap {
                 return false;
             }
+        }
+        true
+    }
+
+    /// §36.53: advance every multi-stage off-map drive by the SGSU's whole CPA (it spends the
+    /// stage driving). On arrival it is based at the facility (or back on its entry hex); a
+    /// facility that filled up meanwhile turns it back to the entry hex.
+    pub(crate) fn advance_off_map_transits(&mut self) {
+        let ids: Vec<crate::state::air::SquadronId> =
+            self.sgsus.iter().filter(|(_, s)| s.off_map_transit.is_some()).map(|(&id, _)| id).collect();
+        for id in ids {
+            let (t, cpa) = {
+                let s = &self.sgsus[&id];
+                (s.off_map_transit.clone().expect("filtered"), s.cpa * 10)
+            };
+            let spend = t.remaining.min(cpa);
+            let entry = self
+                .reference
+                .off_map_air_facilities
+                .as_ref()
+                .and_then(|c| c.facilities.iter().find(|f| f.name == t.facility))
+                .and_then(|f| HexId::parse(&f.entry_hex))
+                .map(|h| h.to_hex_coord());
+            let s = self.sgsus.get_mut(&id).expect("listed");
+            s.cp_used = spend;
+            if t.remaining > spend {
+                s.off_map_transit = Some(crate::state::air::OffMapTransit { remaining: t.remaining - spend, ..t });
+                continue;
+            }
+            s.off_map_transit = None;
+            // Arrived: back on its entry hex, or based at the facility — if that filled up (or it is
+            // no longer eligible) meanwhile, it waits on the entry hex instead.
+            s.location = entry;
+            if !t.to_map {
+                self.base_squadron_off_map(id, &t.facility);
+            }
+        }
+    }
+
+    pub fn base_squadron_off_map(&mut self, id: crate::state::air::SquadronId, facility: &str) -> bool {
+        if !self.off_map_basing_ok(id, facility) {
+            return false;
         }
         let sgsu = self.sgsus.get_mut(&id).expect("checked above");
         sgsu.off_map_box = Some(facility.to_string());
@@ -10264,6 +10316,7 @@ impl GameState {
         self.close_assaulted_hexes_this_stage.clear();
         self.field_repairs_this_stage.clear();
         self.ships_repaired_this_stage.clear();
+        self.ships_assigned_this_stage.clear();
         self.convoy_repairs_this_stage.clear();
         self.anti_armor_hexes_this_stage.clear();
         self.ports_transferred_this_stage.clear(); // §30.52 one naval troop transfer per port per stage
@@ -10294,10 +10347,14 @@ impl GameState {
         for p in self.pilots.iter_mut() {
             p.advance_stage();
         }
-        // §43.14: advance each squadron's transfer transit countdown.
+        // §43.14: advance each squadron's transfer transit countdown; §35.12: a fresh CPA for the
+        // stage's SGSU movement.
         for s in self.sgsus.values_mut() {
             s.transfer_remaining = s.transfer_remaining.saturating_sub(1);
+            s.cp_used = 0;
+            s.rebased_this_stage = false;
         }
+        self.advance_off_map_transits();
         // §35.14: each SGSU consumes its own upkeep (Fuel + Water per stage, Stores per turn).
         self.consume_sgsu_upkeep();
         // §30.16/§30.24/§30.25: per-stage ship upkeep — clear the once-per-stage fire flag and

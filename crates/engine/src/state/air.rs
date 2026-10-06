@@ -134,6 +134,29 @@ pub struct Sgsu {
     /// Axis `med_base`.
     #[serde(default)]
     pub off_map_box: Option<String>,
+    /// §35.12: Capability Points (tenths) the SGSU has spent moving this Operations Stage (it moves
+    /// in the Truck Convoy Phase, up to its CPA). Reset each stage.
+    #[serde(default)]
+    pub cp_used: u32,
+    /// Whether the squadron has already changed base this Operations Stage — entering, leaving or
+    /// switching an off-map facility (one rebase per stage, project ruling). Reset each stage.
+    #[serde(default)]
+    pub rebased_this_stage: bool,
+    /// §36.53: a multi-stage drive to or from an off-map facility whose distance exceeds the SGSU's
+    /// whole CPA (Ethiopia, 60). The squadron is off the board and grounded while in transit.
+    #[serde(default)]
+    pub off_map_transit: Option<OffMapTransit>,
+}
+
+/// A §36.53 off-map drive spanning several Operations Stages (see `Sgsu::off_map_transit`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OffMapTransit {
+    /// The off-map facility (chart name) being driven to or from.
+    pub facility: String,
+    /// `true` = leaving the facility for its on-map entry hex; `false` = driving to the facility.
+    pub to_map: bool,
+    /// Capability Points (tenths) still to spend before arriving.
+    pub remaining: u32,
 }
 
 fn default_true() -> bool {
@@ -172,12 +195,15 @@ impl Sgsu {
             med_base: None,
             transfer_remaining: 0,
             off_map_box: None,
+            cp_used: 0,
+            rebased_this_stage: false,
+            off_map_transit: None,
         }
     }
 
     /// §43.14: whether the squadron is grounded in transfer transit and may not fly this stage.
     pub fn in_transit(&self) -> bool {
-        self.transfer_remaining > 0
+        self.transfer_remaining > 0 || self.off_map_transit.is_some()
     }
 
     /// Ready/reserve capacity for this squadron at `game_turn` (§35.23).

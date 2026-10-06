@@ -35,8 +35,8 @@ pub enum RequestKind {
     Status,
     Observe(ObserveFilter),
     Legal(LegalFilter),
-    SubmitPlan(Vec<Value>),
-    EndPhase,
+    SubmitPlan { items: Vec<Value>, rationale: String },
+    EndPhase { rationale: Option<String> },
     WaitForTurn,
     Overview,
     WriteNotes(String),
@@ -144,6 +144,10 @@ struct Window {
     explain: Option<(usize, Command, CommandError)>,
     /// Every result reported this window (for the journal).
     all_results: Vec<Value>,
+    /// The player's stated rationales this window (plans + closing summary), for `rationale.jsonl`.
+    rationales: Vec<Value>,
+    /// When the window opened (turn, stage, phase, date) — the game has moved on by close.
+    at: Value,
     /// The prompts the session was launched with (for a retry).
     prompts: (String, String),
     /// Relaunches after an abnormal session end.
@@ -269,6 +273,9 @@ impl McpAgent {
             current: None,
             explain: None,
             all_results: Vec::new(),
+            rationales: Vec::new(),
+            at: json!({"game_turn": game.game_turn, "stage": game.operations_stage, "phase": format!("{:?}", game.phase),
+                "date": observe::date_label(game)}),
             prompts: (sys, user),
             retries: 0,
             requests: 0,
@@ -310,6 +317,7 @@ impl McpAgent {
                 if w.pregame { "pre-game window".to_string() } else { format!("window {}", self.windows_opened) }
             );
         }
+        self.write_rationale(&w, cost);
         if w.pregame {
             self.memory.pregame_done = true;
             if let Some(dir) = &self.memory_dir {
@@ -343,6 +351,44 @@ impl McpAgent {
         // Checkpoint: the memory needed to resume this side after a harness restart.
         if let Some(path) = self.memory_path() {
             let _ = self.memory.save(&path);
+        }
+    }
+
+    /// Append this window's stated rationales — each plan's with the results of its items — to
+    /// `<transcript>/rationale.jsonl`: one line per window, for later analysis and commentary
+    /// (join with `commands.jsonl` on `key`).
+    fn write_rationale(&self, w: &Window, cost: f64) {
+        let Some(dir) = &self.memory_dir else { return };
+        if w.rationales.is_empty() && w.all_results.is_empty() {
+            return; // nothing said and nothing done
+        }
+        let plan_starts: Vec<usize> = w.rationales.iter().filter_map(|r| r["first_result"].as_u64().map(|n| n as usize)).collect();
+        let entries: Vec<Value> = w
+            .rationales
+            .iter()
+            .map(|r| {
+                let mut e = json!({"kind": r["kind"], "text": r["text"]});
+                if let Some(start) = r["first_result"].as_u64().map(|n| n as usize) {
+                    let end = plan_starts.iter().copied().find(|&x| x > start).unwrap_or(w.all_results.len());
+                    let results: Vec<Value> = w.all_results[start.min(w.all_results.len())..end.min(w.all_results.len())]
+                        .iter()
+                        .map(|x| json!({"item": x["item"], "ok": x["ok"], "error": x.get("error"), "why": x.get("why")}))
+                        .collect();
+                    e["results"] = json!(results);
+                }
+                e
+            })
+            .collect();
+        let line = json!({
+            "window": self.windows_opened, "key": w.key, "side": format!("{:?}", self.side), "pregame": w.pregame,
+            "at": w.at, "cost_usd": (cost * 1000.0).round() / 1000.0,
+            "actions_ok": w.all_results.iter().filter(|r| r["ok"] == true).count(),
+            "actions_failed": w.all_results.iter().filter(|r| r["ok"] != true).count(),
+            "rationales": entries,
+        });
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("rationale.jsonl")) {
+            let _ = writeln!(f, "{line}");
         }
     }
 
@@ -556,7 +602,7 @@ impl McpAgent {
                 }
                 let _ = req.reply.send(page);
             }
-            RequestKind::SubmitPlan(items) => {
+            RequestKind::SubmitPlan { items, rationale } => {
                 let w = self.window.as_mut().expect("window open");
                 if w.pregame {
                     let _ = req.reply.send(json!({"error": "this is the pre-game planning window — game actions are not accepted; write your doctrine and notes, then end_phase",
@@ -568,6 +614,10 @@ impl McpAgent {
                     return None;
                 }
                 w.results.clear();
+                w.rationales.push(json!({"kind": "plan", "text": rationale, "items": items.len(),
+                    "first_result": w.all_results.len()}));
+                self.memory.record_intent(&rationale);
+                let w = self.window.as_mut().expect("window open");
                 for (i, v) in items.iter().enumerate() {
                     match parse_item(v) {
                         Ok(item) => w.queue.push_back(item),
@@ -577,7 +627,13 @@ impl McpAgent {
                 w.pending_reply = Some(req.reply);
                 return self.next_command(game);
             }
-            RequestKind::EndPhase => {
+            RequestKind::EndPhase { rationale } => {
+                if let (Some(t), Some(w)) = (rationale.as_ref(), self.window.as_mut()) {
+                    w.rationales.push(json!({"kind": "end", "text": t}));
+                    if !w.pregame {
+                        self.memory.record_intent(t);
+                    }
+                }
                 let _ = req.reply.send(json!({"ok": true, "message": "phase ended; your window is closed"}));
                 self.close_window(game);
                 return None;

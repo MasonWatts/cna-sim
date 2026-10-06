@@ -151,6 +151,9 @@ impl Snapshot {
 struct Block {
     header: String,
     observed: Vec<String>,
+    /// The player's own stated rationale for this window's plans (and its end-of-window summary).
+    #[serde(default)]
+    intent: Vec<String>,
     actions: Vec<String>,
     ok: u32,
     failed: u32,
@@ -162,6 +165,12 @@ impl Block {
         if !self.observed.is_empty() {
             s.push_str("Observed since your previous window:\n");
             for l in &self.observed {
+                s.push_str(&format!("- {l}\n"));
+            }
+        }
+        if !current && !self.intent.is_empty() {
+            s.push_str("Your rationale:\n");
+            for l in &self.intent {
                 s.push_str(&format!("- {l}\n"));
             }
         }
@@ -219,10 +228,22 @@ impl Memory {
                 game.phase
             ),
             observed,
+            intent: Vec::new(),
             actions: Vec::new(),
             ok: 0,
             failed: 0,
         });
+    }
+
+    /// Record the player's stated rationale (a plan's, or the window's closing summary).
+    pub fn record_intent(&mut self, text: &str) {
+        let t = text.trim();
+        if t.is_empty() {
+            return;
+        }
+        if let Some(b) = self.blocks.last_mut() {
+            b.intent.push(t.chars().take(600).collect());
+        }
     }
 
     /// Record one action result in the current window.
