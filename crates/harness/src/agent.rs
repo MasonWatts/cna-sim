@@ -465,11 +465,17 @@ impl McpAgent {
                     }
                     let label = format!("resupply_hex {}", observe::hex_label(hex));
                     if no_fuel + no_ammo > 0 {
-                        w.results.push(json!({"item": label, "ok": false, "skipped": {
-                            "refuel": no_fuel, "rearm": no_ammo },
-                            "note": format!("{} has no friendly Fuel{} or Ammo{} to draw (§49.16/§50: supplies must be in the hex) — \
-                                truck some in first (LoadConvoy / MoveTruckConvoy / UnloadConvoy).",
-                                observe::hex_label(hex), if dump_fuel > 0 { " shortage" } else { "" }, if dump_ammo > 0 { " shortage" } else { "" })}));
+                        let mut missing = Vec::new();
+                        if no_fuel > 0 {
+                            missing.push(format!("no Fuel for {no_fuel} unit(s) that need it"));
+                        }
+                        if no_ammo > 0 {
+                            missing.push(format!("no Ammo for {no_ammo} unit(s) that need it"));
+                        }
+                        w.results.push(json!({"item": label, "ok": false, "skipped": {"refuel": no_fuel, "rearm": no_ammo},
+                            "note": format!("{}: {} — supplies must be in the hex (a friendly dump, or the unit's own trucks; \
+                                §49.16/§50). Truck some in first (LoadConvoy / move_convoy_to / UnloadConvoy).",
+                                observe::hex_label(hex), missing.join(", "))}));
                     } else if cmds.is_empty() {
                         w.results.push(json!({"item": label, "ok": true, "note": "every unit there is already full"}));
                     }
@@ -522,9 +528,13 @@ impl McpAgent {
                             "stopped_at": observe::hex_json(at), "reason": "step limit"}));
                         continue;
                     }
-                    // The closer neighbour the engine accepts (dry run), else every closer one's reason.
-                    let here = at.distance(hex);
-                    let closer: Vec<HexCoord> = game.map.neighbors(at).filter(|n| n.distance(hex) < here).collect();
+                    // Route along the cheapest motorized path; take the first step the engine accepts
+                    // (dry run), else report every route's first-step reason.
+                    let mut closer: Vec<HexCoord> = crate::route::first_steps(game, at, hex, MoveMode::Motorized).into_iter().map(|(n, _)| n).collect();
+                    if closer.is_empty() {
+                        let here = at.distance(hex);
+                        closer = game.map.neighbors(at).filter(|n| n.distance(hex) < here).collect();
+                    }
                     let mut blocked: Vec<Value> = Vec::new();
                     let mut next = None;
                     for n in closer {
@@ -550,9 +560,9 @@ impl McpAgent {
                         }
                         None => {
                             let reason = match blocked.first() {
-                                Some(b) => format!("no legal step that gets closer — {} {}: {}",
+                                Some(b) => format!("no legal step along any route — {} {}: {}",
                                     b["hex"]["label"].as_str().unwrap_or("?"), b["error"].as_str().unwrap_or("?"), b["why"].as_str().unwrap_or("")),
-                                None => "no legal step that gets closer".into(),
+                                None => "no route to that hex for a convoy (prohibited terrain all round)".into(),
                             };
                             w.results.push(json!({"item": label, "ok": steps > 0, "steps": steps, "arrived": false,
                                 "stopped_at": observe::hex_json(at), "reason": reason, "blocked_steps": blocked}));
@@ -599,13 +609,13 @@ impl McpAgent {
                         None if game.unit_is_motorized(unit) => vec![MoveMode::Motorized, MoveMode::NonMotorized],
                         None => vec![MoveMode::NonMotorized],
                     };
-                    let here = at.distance(hex);
-                    let best = at
-                        .neighbors()
-                        .into_iter()
-                        .filter(|n| n.distance(hex) < here)
-                        .flat_map(|n| modes.iter().map(move |&m| (n, m)))
-                        .find(|&(n, m)| game.can_move_step(unit, n, m));
+                    // Route along the cheapest path (roads/tracks around marsh and escarpments); take the
+                    // first step the engine accepts, falling back to the next-best route.
+                    let candidates: Vec<(HexCoord, MoveMode)> = modes
+                        .iter()
+                        .flat_map(|&m| crate::route::first_steps(game, at, hex, m).into_iter().map(move |(n, _)| (n, m)))
+                        .collect();
+                    let best = candidates.iter().copied().find(|&(n, m)| game.can_move_step(unit, n, m));
                     match best {
                         Some((n, m)) => {
                             let next = PlanItem::MoveTo { unit, hex, mode, steps: steps + 1 };
@@ -613,9 +623,15 @@ impl McpAgent {
                             return Some(Command::MoveStep { unit, to: n, mode: m });
                         }
                         None => {
-                            // Report the engine's actual reason for each closer neighbour.
+                            // Report the engine's actual reason for each route's first step.
                             let mut blocked: Vec<Value> = Vec::new();
-                            for n in at.neighbors().into_iter().filter(|n| n.distance(hex) < here && game.map.hex(*n).is_some()) {
+                            let mut firsts: Vec<HexCoord> = candidates.iter().map(|&(n, _)| n).collect();
+                            firsts.dedup();
+                            if firsts.is_empty() {
+                                let here = at.distance(hex);
+                                firsts = at.neighbors().into_iter().filter(|n| n.distance(hex) < here && game.map.hex(*n).is_some()).collect();
+                            }
+                            for n in firsts {
                                 let errs: Vec<_> = modes.iter().filter_map(|&m| game.move_step_error(unit, n, m)).collect();
                                 if let Some(e) = errs.first() {
                                     let mut b = json!({"hex": observe::hex_json(n), "error": format!("{e:?}")});
@@ -627,12 +643,12 @@ impl McpAgent {
                             }
                             let reason = match blocked.first() {
                                 Some(b) => format!(
-                                    "no legal step that gets closer — {} {}: {}",
+                                    "no legal step along any route — {} {}: {}",
                                     b["hex"]["label"].as_str().unwrap_or("?"),
                                     b["error"].as_str().unwrap_or("?"),
                                     b["why"].as_str().unwrap_or("")
                                 ),
-                                None => "no legal step that gets closer".to_string(),
+                                None => "no route to that hex for this unit (prohibited terrain all round)".to_string(),
                             };
                             w.results.push(json!({"item": label, "ok": steps > 0, "steps": steps,
                                 "arrived": false, "stopped_at": observe::hex_json(at), "reason": reason, "blocked_steps": blocked}));

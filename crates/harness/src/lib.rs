@@ -11,6 +11,7 @@ pub mod log;
 pub mod memory;
 pub mod observe;
 pub mod result;
+pub mod route;
 pub mod rules;
 pub mod server;
 
