@@ -407,6 +407,15 @@ pub enum Command {
     /// §22.13: field-repair the broken-down Truck Points of the free truck convoy at `convoy` (Repair
     /// Phase); `roll` (1-6) drives how many are recovered.
     RepairConvoyTrucks { convoy: usize },
+    /// §49.14/§49.16/§49.18: fill the free truck convoy's own tanks (Organization or Truck Convoy
+    /// Phase) from any friendly fuel source in its hex, then from the Fuel it carries as cargo.
+    RefuelConvoy { convoy: usize },
+    /// §52.13: a free convoy in a hex with a well draws Water into its trucks (1 CP in the Truck
+    /// Convoy Phase; also Organization). Once per stage.
+    ConvoyDrawWater { convoy: usize },
+    /// §52.13: a unit's first-line trucks draw Water at a well in its hex (Organization, or Movement
+    /// & Combat for 1 CP). Once per stage.
+    TrucksDrawWater { unit: UnitId },
     /// §52.16: poison a well (Movement & Combat Phase); `die` decides success.
     PoisonWell { hex: HexCoord },
     /// §52.17: sweeten (un-poison) a well (Movement & Combat Phase); `die` decides success.
@@ -619,6 +628,11 @@ pub enum Command {
         cap_type: crate::reference::aircraft::CapType,
         planes: u32,
     },
+    /// §40.31: assign `planes` scramble-capable fighters of `squadron` a Scramble mission for this
+    /// Land Support Air Phase (no target hex). Only squadrons with a scramble order may scramble
+    /// against an enemy mission as it resolves (§40.32); scrambling is optional and the engine
+    /// resolves it per mission via the §40.4 Scramble Table.
+    DesignateScramble { squadron: crate::state::air::SquadronId, planes: u32 },
     /// §42.27: fly `planes` on an air-reconnaissance mission from the squadron's base to `target`,
     /// validating Recon capability (§42.21), flight range (§37.12) and weather (§37.22). Rolls a d6
     /// `die`; the §42.27 table (with +1 per 4 planes) gives how many enemy battalion-equivalents in
@@ -769,6 +783,8 @@ impl Command {
             Command::MoveTruckConvoy { .. } => &["§8.98"],
             Command::LoadConvoy { .. } | Command::UnloadConvoy { .. } => &["§53.14", "§53.24"],
             Command::RepairConvoyTrucks { .. } => &["§22.13"],
+            Command::RefuelConvoy { .. } => &["§49.14", "§49.16", "§49.18"],
+            Command::ConvoyDrawWater { .. } | Command::TrucksDrawWater { .. } => &["§52.13", "§52.7"],
             Command::MoveReplacement { .. } => &["§20.46", "§20.42"],
             Command::LoadReplacement { .. } | Command::UnloadReplacement { .. } => &["§20.44"],
             Command::AbsorbReplacement { .. } => &["§20"],
@@ -847,6 +863,7 @@ impl Command {
             Command::DetermineMaltaAvailability { .. } => &["§44.42"],
             // ── Air: missions ──
             Command::DesignateCap { .. } => &["§40.2"],
+            Command::DesignateScramble { .. } => &["§40.3", "§40.31"],
             Command::ReconHex { .. } => &["§42.27"],
             Command::Strafe { .. } => &["§40.5"],
             Command::FlyBombingMission { .. } | Command::FlyBombingMissionAt { .. } => &["§39", "§41.3"],
@@ -955,6 +972,11 @@ pub enum CommandOutcome {
     SquadronWithdrawn,
     /// A Commonwealth squadron was based in an off-map air facility (§36.53).
     SquadronBasedOffMap,
+    /// §40.31: the squadron is standing by to scramble (`planes` fighters).
+    ScrambleAssigned(u32),
+    /// §33.0 IV.F: the mission is assigned and will resolve when both players have finished
+    /// assigning (simultaneous phase, §40.33).
+    AirMissionAssigned,
     /// §35.12: the SGSU moved to `hex` (or set off for it, on a multi-stage §36.53 drive).
     SgsuMoved { hex: HexCoord },
     /// Planes were assigned to a squadron (§35.2).
@@ -1062,6 +1084,10 @@ pub enum CommandOutcome {
     FuelSiphoned(u32),
     /// §49.14: a land unit refuelled to capacity (new Fuel level).
     UnitRefueled(u32),
+    /// RefuelConvoy: Fuel Points put into the convoy's tanks.
+    ConvoyRefueled(u32),
+    /// ConvoyDrawWater / TrucksDrawWater: Water Points drawn into the trucks.
+    WaterDrawn(u32),
     /// §50.17: a land unit rearmed to a one-fire reserve (new Ammo level).
     UnitRearmed(u32),
     /// §33.0 IV.A: the Initiative order was declared for the Operations Stage.
@@ -1421,12 +1447,32 @@ pub enum CommandError {
     AlreadyRepairedThisPhase,
     /// §30.37: the ship is at its face-value Gun Rating (or sunk) — there is nothing to repair.
     ShipNotDamaged,
+    /// §35.23: the squadron already has as many planes ready as it can keep ready.
+    SquadronAtReadyCapacity,
+    /// §38.3: no plane is refitted-but-unready — refit (RefitSquadron) before readying.
+    PlanesNeedRefit,
     /// AssignShip to the station the ship already holds (a no-op).
     ShipAlreadyThere,
     /// §30.15: the ship already received its station this Operations Stage.
     ShipAlreadyAssigned,
     /// §20.49: AbsorbReplacement into a unit already at full TOE (nothing to rebuild).
     UnitAtFullStrength,
+    /// §22: a field repair with nothing broken down (or destroyed) of that kind to repair.
+    NothingToRepair,
+    /// RefuelConvoy on a convoy whose tanks are already full (§49.14 capacity).
+    ConvoyTankFull,
+    /// §52.11: no well (major city, village, bir, oasis, pipeline) in the hex.
+    NoWellHere,
+    /// §52.14: the well is depleted (until a rainstorm, §52.15).
+    WellDepleted,
+    /// §52.16: the well is poisoned.
+    WellPoisoned,
+    /// The trucks have no room for more Water (§54.2 capacity), or there are no trucks.
+    NoCargoRoom,
+    /// One well draw per convoy / unit per Operations Stage.
+    AlreadyDrewWater,
+    /// §22.13d: no field repairs in a Rainstorm or Sandstorm hex.
+    RepairBlockedByWeather,
     /// §8.17: a non-motorized unit (base CPA ≤ 10) may not voluntarily expend more than 150% of its
     /// base Capability Point Allowance in its own portion of the Operations Stage.
     CpaCeilingExceeded,
@@ -1490,7 +1536,92 @@ impl GameState {
         if !self.issuer_owns(&command, side) {
             return Err(CommandError::NotYourUnit);
         }
-        self.apply(command)
+        // §33.0 IV.F / §40.33: while the Land Support Air Phase is open, both players assign their
+        // missions in secret; they resolve together when the phase closes. Validate against a
+        // scratch copy that already holds this side's earlier assignments (so the same planes
+        // can't be committed twice), then queue.
+        if self.air_assignment_open && !self.resolving_air && Self::is_air_mission(&command) {
+            // The scratch copy is this side's: the current state plus its own queued missions. It is
+            // rebuilt whenever it belongs to the other side or the real state has changed since.
+            let mut shadow = match self.air_shadow.0.take() {
+                Some(g) if g.active_player == side => g,
+                _ => {
+                    let mut g = Box::new(self.clone());
+                    g.air_assignment_open = false;
+                    g.scratch = true;
+                    g.active_player = side;
+                    let own: Vec<Command> = self.pending_air_missions.iter().filter(|(s, _)| *s == side).map(|(_, c)| c.clone()).collect();
+                    for c in own {
+                        let _ = g.apply(c);
+                    }
+                    g
+                }
+            };
+            let probe = shadow.apply(command.clone());
+            self.air_shadow.0 = Some(shadow);
+            probe?; // an illegal mission is reported now, as before
+            self.pending_air_missions.push((side, command));
+            return Ok(CommandOutcome::AirMissionAssigned);
+        }
+        let result = self.apply(command);
+        // Any other change during the assignment (ready, arm, refit, …) invalidates the scratch copy.
+        if self.air_assignment_open && result.is_ok() {
+            self.air_shadow.0 = None;
+        }
+        result
+    }
+
+    /// §39.14: the Land Support Air Phase missions — assigned simultaneously, resolved together.
+    /// (Maintenance — ready/arm/refit — and the §40.31 scramble *order* are not missions.)
+    fn is_air_mission(command: &Command) -> bool {
+        use Command as C;
+        matches!(
+            command,
+            C::DesignateCap { .. }
+                | C::ReconHex { .. }
+                | C::Strafe { .. }
+                | C::FlySquadronMission { .. }
+                | C::FlyBombingMission { .. }
+                | C::FlyBombingMissionAt { .. }
+                | C::FlyBombingMissionAtBox { .. }
+                | C::AirdropSupplies { .. }
+                | C::AirdropUnit { .. }
+                | C::TransportUnit { .. }
+                | C::BombShip { .. }
+                | C::BombMaltaBase { .. }
+        )
+    }
+
+    /// §33.0 IV.F: close the Land Support Air Phase — apply every queued mission in assignment
+    /// order (so each side's plan meets the other's as flown), recording each result for its owner.
+    pub fn resolve_air_missions(&mut self) {
+        self.air_shadow.0 = None;
+        if self.pending_air_missions.is_empty() {
+            self.air_assignment_open = false;
+            return;
+        }
+        let queued = std::mem::take(&mut self.pending_air_missions);
+        let (turn, stage) = (self.game_turn, self.operations_stage);
+        self.resolving_air = true;
+        let prev_actor = self.active_player;
+        for (side, cmd) in queued {
+            // The mission's owner is the acting side while it resolves (flak, interception and CAP
+            // all read `active_player`).
+            self.active_player = side;
+            let text = match self.apply(cmd.clone()) {
+                Ok(outcome) => format!("{} → {outcome:?}", crate::state::air::mission_label(&cmd)),
+                Err(e) => format!("{} → not flown ({e:?})", crate::state::air::mission_label(&cmd)),
+            };
+            self.air_results.push(crate::state::game::AirResult { side, game_turn: turn, stage, text });
+        }
+        const MAX_AIR_RESULTS: usize = 400;
+        if self.air_results.len() > MAX_AIR_RESULTS {
+            let cut = self.air_results.len() - MAX_AIR_RESULTS;
+            self.air_results.drain(..cut);
+        }
+        self.active_player = prev_actor;
+        self.resolving_air = false;
+        self.air_assignment_open = false;
     }
 
     /// Whether every force `command` acts with belongs to `side` (see `apply_as`). Unknown ids pass
@@ -1578,7 +1709,10 @@ impl GameState {
             C::MoveTruckConvoy { convoy, .. }
             | C::LoadConvoy { convoy, .. }
             | C::UnloadConvoy { convoy, .. }
-            | C::RepairConvoyTrucks { convoy } => convoy_ok(convoy),
+            | C::RepairConvoyTrucks { convoy }
+            | C::RefuelConvoy { convoy }
+            | C::ConvoyDrawWater { convoy } => convoy_ok(convoy),
+            C::TrucksDrawWater { unit } => unit_ok(unit),
             C::LoadReplacement { convoy, pool } => convoy_ok(convoy) && pool_ok(pool),
             C::MoveReplacement { index: pool, .. } | C::UnloadReplacement { pool } => pool_ok(pool),
             // A raider acts; the convoy it raids/intercepts is the enemy's.
@@ -1767,11 +1901,106 @@ impl GameState {
                 }
                 Ok(CommandOutcome::TrucksUnloaded(self.unload_convoy(convoy, commodity, amount)))
             }
+            Command::RefuelConvoy { convoy } => {
+                if !matches!(self.phase, Phase::Organization | Phase::TruckConvoy) {
+                    return Err(CommandError::WrongPhase);
+                }
+                let c = self.truck_convoys.get(convoy).ok_or(CommandError::TruckConvoyCannotMove)?;
+                let (side, hex) = (c.side, c.hex);
+                if self.active_player != side {
+                    return Err(CommandError::WrongPhase);
+                }
+                let room = self.convoy_tank_capacity(c).saturating_sub(c.tank_fuel);
+                if room == 0 {
+                    return Err(CommandError::ConvoyTankFull);
+                }
+                let from_dump = room.min(self.available_commodity_at(hex, side, crate::state::game::Commodity::Fuel));
+                let from_cargo = (room - from_dump).min(c.cargo.fuel);
+                if from_dump + from_cargo == 0 {
+                    return Err(CommandError::InsufficientFuel);
+                }
+                self.consume_commodity_at(hex, side, crate::state::game::Commodity::Fuel, from_dump);
+                let c = &mut self.truck_convoys[convoy];
+                c.cargo.fuel -= from_cargo;
+                c.tank_fuel += from_dump + from_cargo;
+                Ok(CommandOutcome::ConvoyRefueled(from_dump + from_cargo))
+            }
+            Command::ConvoyDrawWater { convoy } => {
+                if !matches!(self.phase, Phase::Organization | Phase::TruckConvoy) {
+                    return Err(CommandError::WrongPhase);
+                }
+                let c = self.truck_convoys.get(convoy).ok_or(CommandError::TruckConvoyCannotMove)?;
+                let (side, hex) = (c.side, c.hex);
+                if self.active_player != side {
+                    return Err(CommandError::WrongPhase);
+                }
+                if self.hex_water_source_for(hex, side).is_none() {
+                    return Err(CommandError::NoWellHere);
+                }
+                let room = crate::state::game::GameState::cargo_room(&self.convoy_cargo_capacity(c), &c.cargo, crate::state::game::Commodity::Water);
+                if room == 0 {
+                    return Err(CommandError::NoCargoRoom);
+                }
+                // §52.13: drawing costs 1 CP of the convoy's Truck Convoy Phase allowance.
+                let in_convoy_phase = self.phase == Phase::TruckConvoy;
+                if in_convoy_phase && c.cpa_used + 10 > self.truck_convoy_cpa(c) {
+                    return Err(CommandError::TruckConvoyCpaExhausted);
+                }
+                if self.convoy_water_draws_this_stage.contains(&convoy) {
+                    return Err(CommandError::AlreadyDrewWater);
+                }
+                let got = self.draw_well_water(hex, side, room)?;
+                self.convoy_water_draws_this_stage.insert(convoy);
+                let c = &mut self.truck_convoys[convoy];
+                c.cargo.water += got;
+                if in_convoy_phase {
+                    c.cpa_used += 10;
+                }
+                Ok(CommandOutcome::WaterDrawn(got))
+            }
+            Command::TrucksDrawWater { unit } => {
+                if !matches!(self.phase, Phase::Organization | Phase::MovementAndCombat) {
+                    return Err(CommandError::WrongPhase);
+                }
+                let u = self.unit(unit).ok_or(CommandError::UnitNotFound)?;
+                let hex = u.hex().ok_or(CommandError::UnitNotOnMap)?;
+                let side = u.nationality.side();
+                if self.active_player != side {
+                    return Err(CommandError::WrongPhase);
+                }
+                if self.hex_water_source_for(hex, side).is_none() {
+                    return Err(CommandError::NoWellHere);
+                }
+                let room = crate::state::game::GameState::cargo_room(&self.unit_truck_cargo_capacity(unit), &u.truck_cargo, crate::state::game::Commodity::Water);
+                if room == 0 {
+                    return Err(CommandError::NoCargoRoom);
+                }
+                if self.unit_water_draws_this_stage.contains(&unit) {
+                    return Err(CommandError::AlreadyDrewWater);
+                }
+                let got = self.draw_well_water(hex, side, room)?;
+                self.unit_water_draws_this_stage.insert(unit);
+                let in_move_phase = self.phase == Phase::MovementAndCombat;
+                let u = self.unit_mut(unit).expect("checked");
+                u.truck_cargo.water += got;
+                if in_move_phase {
+                    u.cp_expended = crate::reference::terrain::Fixed(u.cp_expended.0 + 10); // §52.13: 1 CP
+                }
+                Ok(CommandOutcome::WaterDrawn(got))
+            }
             Command::RepairConvoyTrucks { convoy } => {
                 self.require_phase(Phase::Repair)?;
                 let side = self.truck_convoys.get(convoy).map(|c| c.side).ok_or(CommandError::TruckConvoyCannotMove)?;
                 if self.active_player != side {
                     return Err(CommandError::WrongPhase);
+                }
+                // Refuse guaranteed no-ops before the die is rolled.
+                let cv = &self.truck_convoys[convoy];
+                if cv.trucks_broken.light + cv.trucks_broken.medium + cv.trucks_broken.heavy == 0 {
+                    return Err(CommandError::NothingToRepair);
+                }
+                if self.sandstorm_at(cv.hex) || self.weather_at(cv.hex) == crate::state::game::Weather::Rainstorm {
+                    return Err(CommandError::RepairBlockedByWeather);
                 }
                 // §22.23: one repair die per Repair Phase for the convoy's broken-down trucks.
                 if !self.convoy_repairs_this_stage.insert(convoy) {
@@ -1963,6 +2192,22 @@ impl GameState {
             Command::Repair { unit, kind } => {
                 self.require_phase(Phase::Repair)?;
                 self.require_units_exist(&[unit])?;
+                // Refuse guaranteed no-ops before the die is rolled (Facility repair has its own rules).
+                if kind != RepairKind::Facility {
+                    let u = &self.units[&unit];
+                    let has = match kind {
+                        RepairKind::Trucks => u.trucks_broken.light + u.trucks_broken.medium + u.trucks_broken.heavy > 0,
+                        RepairKind::Tanks => u.weapons_broken.iter().any(|g| g.count > 0),
+                        RepairKind::Recce => u.toe_broken > 0 && self.is_recce_unit(unit),
+                        RepairKind::Facility => true,
+                    };
+                    if !has {
+                        return Err(CommandError::NothingToRepair);
+                    }
+                    if self.field_repair_blocked_by_weather(unit) {
+                        return Err(CommandError::RepairBlockedByWeather);
+                    }
+                }
                 // §22.23: one repair die per Repair Phase — a failed roll may not be re-tried.
                 if !self.field_repairs_this_stage.insert((unit, kind)) {
                     return Err(CommandError::AlreadyRepairedThisPhase);
@@ -2269,16 +2514,22 @@ impl GameState {
             }
             Command::ReadySquadron { squadron, count } => {
                 self.require_maintenance_phase()?;
-                self.refuel_squadron(squadron, count)
-                    .map(CommandOutcome::SquadronReadied)
-                    .ok_or(CommandError::NoSuchSquadron)
+                match self.refuel_squadron(squadron, count) {
+                    // A no-op is refused with its reason (capacity, refit first, or no fuel).
+                    Some(0) => Err(self.ready_blocker(squadron).unwrap_or(CommandError::NoReadyPlanes)),
+                    Some(n) => Ok(CommandOutcome::SquadronReadied(n)),
+                    None => Err(CommandError::NoSuchSquadron),
+                }
             }
             Command::ArmSquadron { squadron, count } => {
                 self.require_maintenance_phase()?;
                 if self.sgsus.contains_key(&squadron) {
-                    self.arm_squadron(squadron, count)
-                        .map(CommandOutcome::SquadronArmed)
-                        .ok_or(CommandError::InsufficientAmmo)
+                    match self.arm_squadron(squadron, count) {
+                        // §38.4: only ready planes can be armed; nothing to arm is refused.
+                        Some(0) => Err(CommandError::NoReadyPlanes),
+                        Some(n) => Ok(CommandOutcome::SquadronArmed(n)),
+                        None => Err(CommandError::InsufficientAmmo),
+                    }
                 } else {
                     Err(CommandError::NoSuchSquadron)
                 }
@@ -2320,6 +2571,26 @@ impl GameState {
             Command::ReconHex { squadron, target, planes } => {
                 let die = self.rng.d6() as u32; // §42.27 recon die, rolled inside the boundary
                 self.cmd_recon_hex(squadron, target, planes, die)
+            }
+            Command::DesignateScramble { squadron, planes } => {
+                self.require_phase(Phase::LandSupportAir)?;
+                let s = self.sgsus.get(&squadron).ok_or(CommandError::NoSuchSquadron)?;
+                if s.nationality.side() != self.active_player {
+                    return Err(CommandError::WrongPhase);
+                }
+                if s.in_transit() {
+                    return Err(CommandError::SquadronInTransit);
+                }
+                // §40.31: only scramble-capable planes, and only ready ones may take off (§40.33).
+                let ready = s.ready_planes();
+                if planes == 0 || planes > ready {
+                    return Err(CommandError::NoReadyPlanes);
+                }
+                if !self.squadron_can_scramble(squadron) {
+                    return Err(CommandError::WrongAircraftForMission);
+                }
+                self.scramble_orders.insert(squadron, planes);
+                Ok(CommandOutcome::ScrambleAssigned(planes))
             }
             Command::DesignateCap { squadron, center, cap_type, planes } => {
                 self.cmd_designate_cap(squadron, center, cap_type, planes)
@@ -3661,12 +3932,34 @@ impl GameState {
         if light + medium + heavy == 0 {
             return Err(CommandError::InsufficientTrucks);
         }
+        // §49.14: the detached trucks take their share of the unit's tank fuel (the unit's fuel pool
+        // includes its first-line trucks' tanks, pro rata by consumption rate), up to the new convoy's
+        // tank capacity.
+        let rate_before = self.unit_fuel_rate_total(from_unit);
+        let detached_rate = self.reference.truck_chart.as_ref().map_or(0, |ch| {
+            light * ch.light.fuel_consumption_factor + medium * ch.medium.fuel_consumption_factor + heavy * ch.heavy.fuel_consumption_factor
+        });
+        let unit_fuel = self.unit(from_unit).map_or(0, |u| u.fuel);
+        let share = if rate_before > 0 { (unit_fuel as u64 * detached_rate as u64 / rate_before as u64) as u32 } else { 0 };
+        let cap = self.convoy_tank_capacity(&TruckConvoy {
+            side,
+            hex,
+            trucks: crate::state::unit::TruckPoints { light, medium, heavy },
+            trucks_broken: Default::default(),
+            cargo: Default::default(),
+            tank_fuel: 0,
+            cpa_used: 0,
+            breakdown_points: 0,
+            breakdown_checked_col: -1,
+        });
+        let tank_fuel = share.min(cap);
         // Detach the trucks and carry over the unit's loaded truck cargo into the convoy.
         let cargo = {
             let um = self.unit_mut(from_unit).unwrap();
             um.trucks.light -= light;
             um.trucks.medium -= medium;
             um.trucks.heavy -= heavy;
+            um.fuel -= tank_fuel;
             std::mem::take(&mut um.truck_cargo)
         };
         self.truck_convoys.push(TruckConvoy {
@@ -3674,6 +3967,7 @@ impl GameState {
             hex,
             trucks: crate::state::unit::TruckPoints { light, medium, heavy },
             cargo,
+            tank_fuel,
             cpa_used: 0,
             trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
@@ -3843,9 +4137,10 @@ impl GameState {
         if used + cost > cpa {
             return Err(CommandError::TruckConvoyCpaExhausted); // §8.98: may not exceed CPA
         }
-        // §49.13/§49.18: each Truck Point burns Fuel at rate 1 per 5 CP (or fraction) of the
-        // phase's movement — charged as the move crosses each 5-CP mark — from the fuel it carries
-        // first, then a friendly dump in the hex it moves from (§49.16).
+        // §49.13: each Truck Point burns Fuel at rate 1 per 5 CP (or fraction) of the phase's
+        // movement — charged as the move crosses each 5-CP mark — from its own tanks (§49.14/§49.15)
+        // first, then any friendly source in the hex it moves from (§49.16), then the Fuel it is
+        // carrying as cargo (§49.18).
         let groups = |tenths: u32| tenths.div_ceil(50);
         let fuel = trucks * (groups(used + cost) - groups(used));
         // §52.42: each Truck Point needs 1 Water Point (2 in hot weather, §29.35) in a stage it moves:
@@ -3857,13 +4152,15 @@ impl GameState {
             Some(crate::state::game::WaterKind::Unlimited | crate::state::game::WaterKind::Village | crate::state::game::WaterKind::Bir)
         ) && !self.depleted_wells.contains(&from)
             && !self.poisoned_wells.contains(&from);
-        let (cargo_fuel, cargo_water) = {
+        let (tank_fuel, cargo_fuel, cargo_water) = {
             let c = &self.truck_convoys[convoy];
-            (c.cargo.fuel, c.cargo.water)
+            (c.tank_fuel, c.cargo.fuel, c.cargo.water)
         };
-        let fuel_from_cargo = cargo_fuel.min(fuel);
-        let fuel_from_dump = fuel - fuel_from_cargo;
-        if self.available_commodity_at(from, side, crate::state::game::Commodity::Fuel) < fuel_from_dump {
+        let fuel_from_tank = tank_fuel.min(fuel);
+        let dump_fuel = self.available_commodity_at(from, side, crate::state::game::Commodity::Fuel);
+        let fuel_from_dump = (fuel - fuel_from_tank).min(dump_fuel);
+        let fuel_from_cargo = fuel - fuel_from_tank - fuel_from_dump;
+        if fuel_from_cargo > cargo_fuel {
             return Err(CommandError::InsufficientFuel);
         }
         let (water_from_cargo, water_from_dump) = if well {
@@ -3878,6 +4175,7 @@ impl GameState {
         self.consume_commodity_at(from, side, crate::state::game::Commodity::Fuel, fuel_from_dump);
         self.consume_commodity_at(from, side, crate::state::game::Commodity::Water, water_from_dump);
         let c = self.truck_convoys.get_mut(convoy).unwrap();
+        c.tank_fuel -= fuel_from_tank;
         c.cargo.fuel -= fuel_from_cargo;
         c.cargo.water -= water_from_cargo;
         c.cpa_used += cost;
@@ -3985,14 +4283,17 @@ impl GameState {
         // convoy burns the Fuel it is transporting first, then draws the shortfall from a co-located
         // Friendly Supply Dump (§49.15; a self-moving pool has no tank, so it draws entirely from the dump).
         let fuel_cost = truck_points * (((cost + 49) / 50) as u32);
-        let from_convoy = carrier.map_or(0, |i| self.truck_convoys[i].cargo.fuel).min(fuel_cost);
-        let from_dump = fuel_cost - from_convoy;
-        if self.available_commodity_at(from, side, Commodity::Fuel) < from_dump {
+        // (As a convoy's own move: its tanks first, then a source in the hex, then its Fuel cargo.)
+        let from_tank = carrier.map_or(0, |i| self.truck_convoys[i].tank_fuel).min(fuel_cost);
+        let from_dump = (fuel_cost - from_tank).min(self.available_commodity_at(from, side, Commodity::Fuel));
+        let from_convoy = fuel_cost - from_tank - from_dump;
+        if from_convoy > carrier.map_or(0, |i| self.truck_convoys[i].cargo.fuel) {
             return Err(CommandError::InsufficientFuel);
         }
         // Commit: draw the Fuel, advance the carrying convoy (if any) with the pool, and move the pool.
         self.consume_commodity_at(from, side, Commodity::Fuel, from_dump);
         if let Some(i) = carrier {
+            self.truck_convoys[i].tank_fuel -= from_tank;
             self.truck_convoys[i].cargo.fuel -= from_convoy;
             self.truck_convoys[i].cpa_used += cost as u32;
             self.truck_convoys[i].hex = to;
@@ -5574,10 +5875,10 @@ impl GameState {
     /// assault — so barrage checks the −26 gate on its own.)
     fn require_can_attack(&self, attackers: &[UnitId]) -> Result<(), CommandError> {
         for &a in attackers {
+            if self.is_pinned(a) {
+                return Err(CommandError::Pinned);
+            }
             if let Some(u) = self.unit(a) {
-                if u.status.pinned {
-                    return Err(CommandError::Pinned);
-                }
                 if u.cohesion <= -26 {
                     return Err(CommandError::Disorganized);
                 }
@@ -5639,9 +5940,13 @@ impl GameState {
         }
         self.require_units_exist(attackers)?;
         self.require_no_noncombat_hq(attackers)?;
-        // §6.26: a Disorganized (≤ −26) unit may not attack. (Pinned units *may* barrage, §12.44.)
+        // §6.26: a Disorganized (≤ −26) unit may not attack. (Barrage-Pinned units *may* barrage,
+        // §12.44; air-Pinned ones may not, §41.91.4/§41.92.)
         if attackers.iter().any(|&a| self.unit(a).is_some_and(|u| u.cohesion <= -26)) {
             return Err(CommandError::Disorganized);
+        }
+        if attackers.iter().any(|&a| self.unit(a).is_some_and(|u| u.status.air_pinned)) {
+            return Err(CommandError::Pinned);
         }
         let side = self.attackers_side(attackers)?;
         // §12.31: artillery barrages an *adjacent* occupied hex.
@@ -6351,6 +6656,9 @@ impl GameState {
         if u.status.engaged {
             return Err(CommandError::CannotReact); // §8.53d
         }
+        if self.is_pinned(unit) {
+            return Err(CommandError::Pinned); // §12.44 / §41.92: no voluntary move
+        }
         if self.hex_in_zoc_of(start, enemy) {
             return Err(CommandError::CannotReact); // §8.53c
         }
@@ -6506,7 +6814,7 @@ impl GameState {
         let (side, start, pinned, cohesion, engaged) = {
             let u = self.unit(unit).ok_or(CommandError::UnitNotFound)?;
             let start = u.hex().ok_or(CommandError::UnitNotOnMap)?;
-            (u.nationality.side(), start, u.status.pinned, u.cohesion, u.status.engaged)
+            (u.nationality.side(), start, self.is_pinned(unit), u.cohesion, u.status.engaged)
         };
         let enemy = side.opponent();
         // §13.1: only a non-Phasing, non-Pinned unit whose Cohesion is better than −26 may retreat.
@@ -7226,9 +7534,10 @@ impl GameState {
             return Err(CommandError::MustStopInZoc);
         }
         // §12.44 Pinned / §6.26 Disorganized (cohesion ≤ −26): may not voluntarily move.
+        let (hard_pin, air_pin) = self.pin_state(unit);
         {
             let u = self.unit(unit).expect("checked");
-            if u.status.pinned {
+            if hard_pin {
                 return Err(CommandError::Pinned);
             }
             if u.cohesion <= -26 {
@@ -7341,7 +7650,7 @@ impl GameState {
                 // unpinned engineer / engineer-capable HQ, not just the engineer itself.
                 let eng = is_engineer(self, unit)
                     || self.units_in_hex(from).iter().any(|&o| {
-                        o != unit && is_engineer(self, o) && self.unit(o).is_some_and(|u| !u.status.pinned)
+                        o != unit && is_engineer(self, o) && !self.is_pinned(o)
                     });
                 cp = Fixed(cp.0 + if eng { 40 } else { cpa * 10 });
                 entered_enemy_dummy = mf.dummy;
@@ -7468,6 +7777,14 @@ impl GameState {
                         return Err(CommandError::CpaCeilingExceeded);
                     }
                 }
+            }
+        }
+        // §41.91: an air-Pinned unit (own portion) may use only ½ its CPA, and may neither enter
+        // nor leave an enemy ZOC.
+        if air_pin {
+            let already = self.unit(unit).map(|u| u.cp_expended.0).unwrap_or(0);
+            if from_zoc || to_zoc || already + cp.0 > (cpa / 2) * 10 {
+                return Err(CommandError::Pinned);
             }
         }
         // §18.23.1/§18.24.1: a unit released from Reserve this stage may not voluntarily exceed its

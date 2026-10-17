@@ -24,7 +24,7 @@ fn usage() -> ! {
          \x20                 [--max-cost-usd X] [--resume <commands.jsonl>] [--player-cmd '<tmpl>']\n\
          \x20                 [--external] [--no-auto-pass] [--window-timeout SECS] [--port P]\n\
          \x20                 [--no-pregame] [--pregame-timeout SECS] [--pregame-model M]\n\
-         \x20                 [--pregame-budget-usd X] [--coaching]\n\
+         \x20                 [--pregame-budget-usd X|none] [--coaching]\n\
          \x20      cna-harness --replay <game.commands.jsonl>"
     );
     std::process::exit(2)
@@ -47,14 +47,15 @@ fn main() -> anyhow::Result<()> {
             "--routine-model" => o.routine_model = Some(val()),
             "--max-cost-usd" => o.max_cost_usd = Some(val().parse()?),
             "--resume" => o.resume = Some(val().into()),
-            "--budget-usd" => o.budget_usd = Some(val()),
+            // "none" removes the cap (and its mention in the prompt) entirely.
+            "--budget-usd" => o.budget_usd = Some(val()).filter(|v| v != "none"),
             "--player-cmd" => o.player_cmd = Some(val()),
             "--external" => o.external = true,
             "--no-auto-pass" => o.auto_pass = false,
             "--no-pregame" => o.pregame = false,
             "--pregame-timeout" => o.pregame_timeout = Duration::from_secs(val().parse()?),
             "--pregame-model" => o.pregame_model = Some(val()),
-            "--pregame-budget-usd" => o.pregame_budget_usd = Some(val()),
+            "--pregame-budget-usd" => o.pregame_budget_usd = Some(val()).filter(|v| v != "none"),
             "--coaching" => o.coaching = true,
             "--window-timeout" => o.window_timeout = Duration::from_secs(val().parse()?),
             "--port" => o.port = val().parse()?,

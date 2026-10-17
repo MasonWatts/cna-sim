@@ -492,7 +492,7 @@ impl McpAgent {
                                 .units
                                 .values()
                                 .filter(|u| u.nationality.side() == side && u.hex().is_some_and(|h| h.is_adjacent(target)))
-                                .filter(|u| game.is_combat_unit(u.id) && !u.status.pinned && u.cohesion > -26)
+                                .filter(|u| game.is_combat_unit(u.id) && !game.is_pinned(u.id) && u.cohesion > -26)
                                 .map(|u| u.id)
                                 .collect();
                             v.sort();
@@ -635,7 +635,7 @@ impl McpAgent {
                                 let errs: Vec<_> = modes.iter().filter_map(|&m| game.move_step_error(unit, n, m)).collect();
                                 if let Some(e) = errs.first() {
                                     let mut b = json!({"hex": observe::hex_json(n), "error": format!("{e:?}")});
-                                    if let Some(why) = observe::explain_error(game, Some(unit), Some(n), e) {
+                                    if let Some(why) = observe::explain_rejection(game, &Command::MoveStep { unit, to: n, mode: modes[0] }, e) {
                                         b["why"] = json!(why);
                                     }
                                     blocked.push(b);

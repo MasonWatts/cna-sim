@@ -610,6 +610,11 @@ pub struct TruckConvoy {
     pub trucks_broken: crate::state::unit::TruckPoints,
     #[serde(default)]
     pub cargo: Commodities,
+    /// §49.14: Fuel in the trucks' own tanks — separate from the Fuel carried as `cargo`. Capacity is
+    /// CPA × ⅕ × consumption rate per Truck Point (`GameState::convoy_tank_capacity`): one stage of
+    /// full-CPA driving.
+    #[serde(default)]
+    pub tank_fuel: u32,
     /// Movement expended this Truck Convoy Phase, tenths of a CP (§8.98 CPA cap).
     #[serde(default)]
     pub cpa_used: u32,
@@ -837,22 +842,31 @@ const PRE_TURN_SEQUENCE: [(Phase, StageActor); 6] = [
 
 /// Stage VII — Strategic Air Recovery, run once per Game-Turn after the Operations Stages
 /// (§33.0 VII): return strategic-mission planes to base, then ready them.
-const POST_TURN_SEQUENCE: [(Phase, StageActor); 2] = [
+const POST_TURN_SEQUENCE: [(Phase, StageActor); 3] = [
     (Phase::StrategicAirReturn, StageActor::Initiative),
-    (Phase::AircraftMaintenance, StageActor::Initiative),
+    // §33.0 IV.F.7: "Both Players may attempt to ready all planes" — a step each.
+    (Phase::AircraftMaintenance, StageActor::PlayerA),
+    (Phase::AircraftMaintenance, StageActor::PlayerB),
 ];
 
 /// The ordered steps within one Operations Stage (§33.0 IV): shared setup by the Initiative
-/// player (Weather → Naval Convoy Arrival → Organization → Commonwealth Fleet → Land Support Air),
+/// player (Weather → Naval Convoy Arrival), Organization for each player, then Commonwealth Fleet
+/// and Land Support Air,
 /// then the per-player phases G–M for Player A, then for Player B. The §IV.A "declare A or B"
 /// choice is applied via `declare_initiative_order`; the Commonwealth Fleet and Rail phases are
 /// Commonwealth-only in effect (§33.0 IV.E/IV.K).
-const STAGE_SEQUENCE: [(Phase, StageActor); 17] = [
+const STAGE_SEQUENCE: [(Phase, StageActor); 19] = [
     (Phase::Weather, StageActor::Initiative),
     (Phase::NavalConvoyArrival, StageActor::Initiative),
-    (Phase::Organization, StageActor::Initiative),
+    // §33.0 IV.C: the Organization Phase (reorganization, construction, training, supply
+    // distribution) is a joint phase — *both* players organize, so each gets a step (A, then B).
+    (Phase::Organization, StageActor::PlayerA),
+    (Phase::Organization, StageActor::PlayerB),
     (Phase::CommonwealthFleet, StageActor::Commonwealth),
-    (Phase::LandSupportAir, StageActor::Initiative),
+    // §33.0 IV.F / §40.33: both players assign air missions (in secret); they resolve together
+    // when the second player's step ends (`resolve_air_missions`).
+    (Phase::LandSupportAir, StageActor::PlayerA),
+    (Phase::LandSupportAir, StageActor::PlayerB),
     (Phase::ReserveDesignation, StageActor::PlayerA),
     (Phase::MovementAndCombat, StageActor::PlayerA),
     (Phase::TruckConvoy, StageActor::PlayerA),
@@ -892,6 +906,31 @@ impl SystemLogEntry {
             label: label.into(),
             rule_refs: refs.iter().map(|s| s.to_string()).collect(),
         }
+    }
+}
+
+/// One resolved air mission's result, as its owner learns it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AirResult {
+    pub side: Side,
+    pub game_turn: u32,
+    pub stage: u8,
+    pub text: String,
+}
+
+/// Holder for the scratch state used to validate queued air missions; a clone is always empty.
+#[derive(Default)]
+pub struct ShadowSlot(pub(crate) Option<Box<GameState>>);
+
+impl Clone for ShadowSlot {
+    fn clone(&self) -> Self {
+        ShadowSlot(None)
+    }
+}
+
+impl std::fmt::Debug for ShadowSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.0.is_some() { "ShadowSlot(Some)" } else { "ShadowSlot(None)" })
     }
 }
 
@@ -1127,9 +1166,42 @@ pub struct GameState {
     /// §30.15/§30.18: ships already given their station this Operations Stage (one assignment each).
     #[serde(default)]
     pub ships_assigned_this_stage: std::collections::HashSet<usize>,
+    /// §33.0 IV.F / §40.33: the Land Support Air Phase is simultaneous — while open, each player's
+    /// air missions are validated and queued (secret), then all resolve together once both have
+    /// assigned (`resolve_air_missions`). Set when the phase is entered through the sequence of
+    /// play; a phase set by hand (unit tests) resolves missions immediately.
+    #[serde(default)]
+    pub air_assignment_open: bool,
+    /// The queued missions of the open Land Support Air Phase, in assignment order: (side, mission).
+    #[serde(default)]
+    pub pending_air_missions: Vec<(Side, crate::state::command::Command)>,
+    /// §40.31: fighters assigned a Scramble mission this stage (squadron → planes). Only these may
+    /// scramble against enemy missions while the phase resolves. Cleared each stage.
+    #[serde(default)]
+    pub scramble_orders: HashMap<crate::state::air::SquadronId, u32>,
+    /// True while the queued Land Support Air missions resolve (so missions apply, and scramble
+    /// needs an order).
+    #[serde(default)]
+    pub resolving_air: bool,
+    /// Results of resolved air missions, newest last (bounded) — what each side learns of its own
+    /// air operations (§39).
+    #[serde(default)]
+    pub air_results: Vec<AirResult>,
+    /// The acting side's own queued missions applied to a scratch copy, so a later assignment can't
+    /// re-use planes already committed. Never cloned or serialized.
+    #[serde(skip)]
+    pub(crate) air_shadow: ShadowSlot,
+    /// A throwaway copy (a `dry_run` clone): queued air missions validate in place.
+    #[serde(skip)]
+    pub(crate) scratch: bool,
     /// §22.23: free truck convoys (by index) that have rolled their repair die this Repair Phase.
     #[serde(default)]
     pub convoy_repairs_this_stage: std::collections::HashSet<usize>,
+    /// §52.13: free convoys (by index) and units (first-line trucks) that drew well water this stage.
+    #[serde(default)]
+    pub convoy_water_draws_this_stage: std::collections::HashSet<usize>,
+    #[serde(default)]
+    pub unit_water_draws_this_stage: std::collections::HashSet<UnitId>,
     /// §14.22: hexes already targeted by Anti-Armor fire this Combat Segment (once-per-segment).
     /// Reset each stage.
     #[serde(default)]
@@ -1419,7 +1491,16 @@ impl GameState {
             field_repairs_this_stage: std::collections::HashSet::new(),
             ships_repaired_this_stage: std::collections::HashSet::new(),
             ships_assigned_this_stage: std::collections::HashSet::new(),
+            air_assignment_open: false,
+            pending_air_missions: Vec::new(),
+            scramble_orders: HashMap::new(),
+            resolving_air: false,
+            air_results: Vec::new(),
+            air_shadow: ShadowSlot::default(),
+            scratch: false,
             convoy_repairs_this_stage: std::collections::HashSet::new(),
+            convoy_water_draws_this_stage: std::collections::HashSet::new(),
+            unit_water_draws_this_stage: std::collections::HashSet::new(),
             anti_armor_hexes_this_stage: std::collections::HashSet::new(),
             ports_transferred_this_stage: std::collections::HashSet::new(),
             dummy_tanks: Vec::new(),
@@ -1677,6 +1758,14 @@ impl GameState {
         }
         let groups = ((cp_tenths + 49) / 50) as u32; // ⌈CP / 5⌉, with 5 CP = 50 tenths
         total_rate * groups
+    }
+
+    /// §49.14: a free convoy's tank capacity — Σ working Truck Points × each type's fuel capacity
+    /// rating (CPA × ⅕ × rate: 8 per Light, 6 per Medium/Heavy). Zero without the truck chart.
+    pub fn convoy_tank_capacity(&self, c: &TruckConvoy) -> u32 {
+        let Some(chart) = self.reference.truck_chart.as_ref() else { return 0 };
+        let t = &c.trucks;
+        t.light * chart.light.fuel_capacity + t.medium * chart.medium.fuel_capacity + t.heavy * chart.heavy.fuel_capacity
     }
 
     /// Fill a unit's tanks to its Fuel capacity (§49.14). No-op for fuel-less units.
@@ -2142,6 +2231,51 @@ impl GameState {
             water: t.light * chart.light.cargo_water
                 + t.medium * chart.medium.cargo_water
                 + t.heavy * chart.heavy.cargo_water,
+        }
+    }
+
+    /// §53.24/§54.2: room left for commodity `c` on trucks with capacities `caps` already carrying
+    /// `cargo` — a Truck Point carries one commodity, so per-commodity shares must sum to ≤ 1.
+    pub fn cargo_room(caps: &Commodities, cargo: &Commodities, c: Commodity) -> u32 {
+        let other_frac: f64 = [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water]
+            .into_iter()
+            .filter(|&x| x != c)
+            .map(|x| {
+                let cx = caps.get(x);
+                if cx == 0 { 0.0 } else { cargo.get(x) as f64 / cx as f64 }
+            })
+            .sum();
+        let room_by_packing = ((caps.get(c) as f64) * (1.0 - other_frac).max(0.0)).floor() as u32;
+        caps.get(c).min(room_by_packing).saturating_sub(cargo.get(c))
+    }
+
+    /// §52.13: draw up to `room` Water Points from the well in `hex` for `side`'s trucks. A Major
+    /// City or oasis well (and a pipeline / Commonwealth railroad hex, §52.23) gives as much as the
+    /// trucks can carry; a village or bir gives a §52.7 die-roll amount and may deplete. Depleted or
+    /// poisoned wells give nothing (and reveal themselves, §52.14).
+    pub fn draw_well_water(&mut self, hex: HexCoord, side: Side, room: u32) -> Result<u32, crate::state::command::CommandError> {
+        use crate::state::command::CommandError;
+        let kind = self.hex_water_source_for(hex, side).ok_or(CommandError::NoWellHere)?;
+        match kind {
+            WaterKind::Unlimited => Ok(room),
+            WaterKind::Village | WaterKind::Bir => {
+                let bad = self.depleted_wells.contains(&hex) || self.poisoned_wells.contains(&hex);
+                if bad {
+                    if self.well_known_by.get(&hex) != Some(&side) {
+                        self.revealed_wells.insert(hex);
+                    }
+                    return Err(if self.poisoned_wells.contains(&hex) { CommandError::WellPoisoned } else { CommandError::WellDepleted });
+                }
+                let source = if kind == WaterKind::Village { WaterSource::Town } else { WaterSource::Bir };
+                let Some(table) = self.reference.water_table.clone() else { return Ok(room) };
+                let die = self.rng.d6() as u32;
+                let (points, check) = table.draw(source, die);
+                if check && self.rng.d6() == 1 {
+                    self.depleted_wells.insert(hex);
+                    self.well_known_by.insert(hex, side);
+                }
+                Ok(points.min(room))
+            }
         }
     }
 
@@ -3175,7 +3309,7 @@ impl GameState {
             .map(|u| u.id)
             .filter(|&id| self.is_combat_unit(id))
             .filter(|&id| {
-                let pinned = self.units.get(&id).is_some_and(|u| u.status.pinned);
+                let pinned = self.is_pinned(id);
                 // §10.32: units that cannot make an offensive Close Assault (Artillery/AT/AA/support)
                 // or that are Pinned are exempt.
                 !pinned && self.close_assault_raw(&[id], true) > 0
@@ -6266,7 +6400,11 @@ impl GameState {
                     c.fuel, c.ammo, c.stores
                 )
             };
-            self.system_log.push(SystemLogEntry::new(None, "Convoy Arrival", msg, &["§56.16"]));
+            // A convoy still waiting on a full port lands nothing this stage — no news.
+            let nothing = !cancelled && c.fuel + c.ammo + c.stores == 0 && self.convoys.len() == before;
+            if !nothing {
+                self.system_log.push(SystemLogEntry::new(None, "Convoy Arrival", msg, &["§56.16"]));
+            }
             if self.convoys.len() == before {
                 i += 1; // partially landed — it stays in the list
             }
@@ -6512,6 +6650,16 @@ impl GameState {
                 u.water = u.water.max(water);
                 u.stores = u.stores.max(stores);
             }
+        }
+        // Free (second/third-line) truck convoys likewise start with full tanks (§49.14: each Truck
+        // Point's fuel capacity — one stage of full-CPA driving) and `turns` Game-Turns of water for
+        // their own Truck Points (§52.42, at the hot-weather rate), carried as cargo.
+        for i in 0..self.truck_convoys.len() {
+            let cap = self.convoy_tank_capacity(&self.truck_convoys[i]);
+            let c = &mut self.truck_convoys[i];
+            let water = 2 * 3 * turns * (c.trucks.light + c.trucks.medium + c.trucks.heavy);
+            c.tank_fuel = c.tank_fuel.max(cap);
+            c.cargo.water = c.cargo.water.max(water);
         }
     }
 
@@ -7875,10 +8023,27 @@ impl GameState {
     /// plane's Fuel Consumption Rating (from its aircraft chart) from Fuel at the base, capped by
     /// the ready capacity (§37.24) and available Fuel. Returns the number newly readied, or `None`
     /// if the squadron is unknown or off-map.
+    /// Why `ReadySquadron` would ready nothing: at its §35.23 ready capacity, no refitted-but-unready
+    /// plane (§38.3 — refit first), or no fuel at the base (§38.2). `None` if it would ready some.
+    pub fn ready_blocker(&self, squadron: SquadronId) -> Option<crate::state::command::CommandError> {
+        use crate::state::command::CommandError as E;
+        let s = self.sgsus.get(&squadron)?;
+        if s.ready_planes() >= s.capacity(self.game_turn).ready {
+            return Some(E::SquadronAtReadyCapacity);
+        }
+        if s.planes.iter().all(|g| g.refitted <= g.ready) {
+            return Some(E::PlanesNeedRefit);
+        }
+        Some(E::InsufficientFuel)
+    }
+
     pub fn refuel_squadron(&mut self, squadron: SquadronId, want: u32) -> Option<u32> {
+        // §36.5a/§47.11: off-map facilities (Canal boxes, Med bases) have unlimited maintenance
+        // supply; on the map the fuel comes from the base hex's dumps.
         let (nationality, hex) = {
             let s = self.sgsus.get(&squadron)?;
-            (s.nationality, s.location?)
+            let off_map = s.off_map_box.is_some() || s.med_base.is_some();
+            (s.nationality, if off_map { None } else { Some(s.location?) })
         };
         let side = nationality.side();
         let (cap, current_ready) = {
@@ -7905,14 +8070,14 @@ impl GameState {
             let by_budget = candidates.min(budget);
             // fuel_per == 0 means "no fuel cost", so the budget is the only cap — not a checked_div.
             #[allow(clippy::manual_checked_ops)]
-            let n = if fuel_per == 0 {
-                by_budget
-            } else {
-                by_budget.min(self.available_commodity_at(hex, side, Commodity::Fuel) / fuel_per)
+            let n = match hex {
+                _ if fuel_per == 0 => by_budget,
+                None => by_budget, // off-map: unlimited
+                Some(h) => by_budget.min(self.available_commodity_at(h, side, Commodity::Fuel) / fuel_per),
             };
             if n > 0 {
-                if fuel_per > 0 {
-                    self.consume_commodity_at(hex, side, Commodity::Fuel, n * fuel_per);
+                if let (Some(h), true) = (hex, fuel_per > 0) {
+                    self.consume_commodity_at(h, side, Commodity::Fuel, n * fuel_per);
                 }
                 if let Some(sgsu) = self.sgsus.get_mut(&squadron) {
                     sgsu.planes[i].ready += n;
@@ -7930,7 +8095,8 @@ impl GameState {
     pub fn arm_squadron(&mut self, squadron: SquadronId, want: u32) -> Option<u32> {
         let (side, hex) = {
             let s = self.sgsus.get(&squadron)?;
-            (s.nationality.side(), s.location?)
+            let off_map = s.off_map_box.is_some() || s.med_base.is_some();
+            (s.nationality.side(), if off_map { None } else { Some(s.location?) })
         };
         // Only pay/act if there is at least one ready-but-unarmed plane to arm.
         let armable = {
@@ -7940,8 +8106,10 @@ impl GameState {
         if armable == 0 {
             return Some(0);
         }
-        if !self.consume_commodity_at(hex, side, Commodity::Ammo, crate::rules::air::SQUADRON_TACAIR_AMMO) {
-            return None;
+        if let Some(h) = hex {
+            if !self.consume_commodity_at(h, side, Commodity::Ammo, crate::rules::air::SQUADRON_TACAIR_AMMO) {
+                return None;
+            }
         }
         Some(self.sgsus.get_mut(&squadron)?.arm_up_to(want))
     }
@@ -7978,12 +8146,32 @@ impl GameState {
             if !has_dump {
                 continue; // presumed supplied (no modeled dump at this base)
             }
-            let fuel = self.consume_commodity_at(hex, side, Commodity::Fuel, Sgsu::FUEL_UPKEEP_PER_STAGE);
-            let water = self.consume_commodity_at(hex, side, Commodity::Water, Sgsu::WATER_UPKEEP_PER_STAGE);
-            let stores = !stage_one
-                || self.consume_commodity_at(hex, side, Commodity::Stores, Sgsu::STORES_UPKEEP_PER_TURN);
+            // §52.1: a well in the base hex (a major city or oasis is unlimited; a village/bir that
+            // isn't depleted or poisoned) supplies the SGSU's water, as it does for any unit;
+            // otherwise the base dump must hold it. Check everything first, then pay — an SGSU short
+            // of one item doesn't burn the others for nothing.
+            let well = match self.hex_water_source_for(hex, side) {
+                Some(WaterKind::Unlimited) => true,
+                Some(WaterKind::Village) | Some(WaterKind::Bir) => {
+                    !self.depleted_wells.contains(&hex) && !self.poisoned_wells.contains(&hex)
+                }
+                _ => false,
+            };
+            let have = |g: &Self, c: Commodity, n: u32| g.available_commodity_at(hex, side, c) >= n;
+            let ok = have(self, Commodity::Fuel, Sgsu::FUEL_UPKEEP_PER_STAGE)
+                && (well || have(self, Commodity::Water, Sgsu::WATER_UPKEEP_PER_STAGE))
+                && (!stage_one || have(self, Commodity::Stores, Sgsu::STORES_UPKEEP_PER_TURN));
+            if ok {
+                self.consume_commodity_at(hex, side, Commodity::Fuel, Sgsu::FUEL_UPKEEP_PER_STAGE);
+                if !well {
+                    self.consume_commodity_at(hex, side, Commodity::Water, Sgsu::WATER_UPKEEP_PER_STAGE);
+                }
+                if stage_one {
+                    self.consume_commodity_at(hex, side, Commodity::Stores, Sgsu::STORES_UPKEEP_PER_TURN);
+                }
+            }
             if let Some(s) = self.sgsus.get_mut(&id) {
-                s.supplied = fuel && water && stores;
+                s.supplied = ok;
             }
         }
     }
@@ -8268,6 +8456,19 @@ impl GameState {
         }
     }
 
+    /// §40.31: whether `squadron` has any ready, scramble-capable planes (so a Scramble mission may
+    /// be assigned to it this Land Support Air Phase).
+    pub fn squadron_can_scramble(&self, squadron: SquadronId) -> bool {
+        let Some(s) = self.sgsus.get(&squadron) else { return false };
+        let chart = self.reference.aircraft_charts.get(&s.nationality);
+        s.planes.iter().any(|g| {
+            g.ready > 0
+                && chart.and_then(|c| c.get(&g.aircraft_type)).is_some_and(|ac| {
+                    crate::rules::air::can_scramble(&ac.missions, false) || crate::rules::air::can_scramble(&ac.missions, true)
+                })
+        })
+    }
+
     /// §40.3: attempt a defensive scramble against a mission over `target` by planes of
     /// §40.33: whether `hex` holds `side` fighters, for the scramble clear-path rule — a
     /// scramble-capable SGSU of `side` based there with ready planes, or a `side` Combat Air Patrol
@@ -8335,8 +8536,17 @@ impl GameState {
         // First eligible enemy fighter squadron: within scramble range, with a ready scramble-capable
         // type, and a §40.33 clear path to the target (avoiding hexes holding the bombers' fighters).
         let mut chosen: Option<(SquadronId, u32)> = None;
-        for s in self.sgsus.values() {
+        // §40.31: only squadrons the defender gave a Scramble order this phase may scramble. (A
+        // phase driven outside the sequence of play — unit tests — has no orders and keeps the old
+        // behaviour: any eligible squadron may scramble.)
+        let orders_given = !self.scramble_orders.is_empty();
+        let mut candidates: Vec<&crate::state::air::Sgsu> = self.sgsus.values().collect();
+        candidates.sort_by_key(|s| s.id.0);
+        for s in candidates {
             if s.nationality.side() != enemy {
+                continue;
+            }
+            if orders_given && !self.scramble_orders.contains_key(&s.id) {
                 continue;
             }
             let Some(base) = s.location else { continue };
@@ -8429,7 +8639,7 @@ impl GameState {
                         continue; // a tank/gun needs two of the pin count (§41.31)
                     }
                     if let Some(u) = self.unit_mut(id) {
-                        u.status.pinned = true;
+                        u.status.air_pinned = true;
                     }
                     budget -= cost;
                 }
@@ -9751,6 +9961,54 @@ impl GameState {
         self.units.values().any(|u| u.attached_parent == Some(id))
     }
 
+    /// The pin state of a counter and every unit riding it (a formation moves as one), as
+    /// `(hard, air_own)`. `hard`: may not move or fight voluntarily — a §12.44 barrage Pin, or a
+    /// §41.92 air Pin during the enemy's portion of the stage. `air_own`: a §41.91 air Pin during
+    /// the unit's own portion — ½ CPA, may not enter or leave an enemy ZOC, no voluntary combat.
+    pub fn pin_state(&self, id: UnitId) -> (bool, bool) {
+        let rides_on = |mut u: UnitId| {
+            for _ in 0..8 {
+                if u == id {
+                    return true;
+                }
+                match self.units.get(&u).and_then(|x| x.attached_parent) {
+                    Some(p) => u = p,
+                    None => return false,
+                }
+            }
+            false
+        };
+        let (mut hard, mut air_own) = (false, false);
+        for u in self.units.values().filter(|u| rides_on(u.id)) {
+            hard |= u.status.pinned;
+            if u.status.air_pinned {
+                if u.nationality.side() == self.active_player {
+                    air_own = true;
+                } else {
+                    hard = true;
+                }
+            }
+        }
+        (hard, air_own)
+    }
+
+    /// Whether `id` (or a unit riding it) is under any Pin (§12.44 / §41.9) — barred from voluntary
+    /// combat either way.
+    pub fn is_pinned(&self, id: UnitId) -> bool {
+        let (hard, air) = self.pin_state(id);
+        hard || air
+    }
+
+    /// §41.91/§41.92/§15.81: end-of-Operations-Stage marker cleanup — every Pin lifts and Engaged
+    /// markers are removed (In-Contact is recomputed from position by `refresh_contact_status`).
+    fn clear_stage_markers(&mut self) {
+        for u in self.units.values_mut() {
+            u.status.pinned = false;
+            u.status.air_pinned = false;
+            u.status.engaged = false;
+        }
+    }
+
     /// §19.4: the number of **non-assigned** units currently attached to `parent` (units attached to
     /// it but assigned elsewhere or independent) — these are the ones the §19.5 Maximum Attachment
     /// limit governs (assigned units attach freely to their own parent).
@@ -10209,9 +10467,11 @@ impl GameState {
         if self.stage_step + 1 < STAGE_SEQUENCE.len() {
             self.enter_stage_step(self.stage_step + 1);
         } else if self.operations_stage < 3 {
+            self.clear_stage_markers();
             self.operations_stage += 1;
             self.begin_operations_stage();
         } else {
+            self.clear_stage_markers();
             self.enter_post_turn(0);
         }
     }
@@ -10318,6 +10578,8 @@ impl GameState {
         self.ships_repaired_this_stage.clear();
         self.ships_assigned_this_stage.clear();
         self.convoy_repairs_this_stage.clear();
+        self.convoy_water_draws_this_stage.clear();
+        self.unit_water_draws_this_stage.clear();
         self.anti_armor_hexes_this_stage.clear();
         self.ports_transferred_this_stage.clear(); // §30.52 one naval troop transfer per port per stage
         self.recon_revealed.clear(); // §42.27 recon reveals are a per-stage snapshot
@@ -10553,6 +10815,22 @@ impl GameState {
             // §53.31: then strand any prohibited vehicle left in a Salt Marsh off a road/track (e.g.
             // an artillery unit forced there by a §10.36 mandated retreat).
             self.strand_salt_marsh_vehicles();
+            // §12.44: barrage Pins are removed at the end of the Combat Segment.
+            for u in self.units.values_mut() {
+                u.status.pinned = false;
+            }
+        }
+        // §41.91: an air Pin on a Player-A unit lapses as soon as the stage switches to Player B.
+        if actor == StageActor::PlayerB && phase == Phase::ReserveDesignation {
+            let a = self.player_a;
+            for u in self.units.values_mut().filter(|u| u.nationality.side() == a) {
+                u.status.air_pinned = false;
+            }
+        }
+        // §33.0 IV.F: leaving the Land Support Air Phase, every queued mission resolves at once.
+        if prev_phase == Phase::LandSupportAir && phase != Phase::LandSupportAir {
+            self.resolve_air_missions();
+            self.scramble_orders.clear();
         }
         self.phase = phase;
         self.active_player = match actor {
@@ -10562,6 +10840,8 @@ impl GameState {
             StageActor::Axis => Side::Axis,
             StageActor::Commonwealth => Side::Commonwealth,
         };
+        // Missions assigned from here on are queued until the phase closes (§40.33 secrecy).
+        self.air_assignment_open = phase == Phase::LandSupportAir;
         // §29.1: the Initiative player rolls weather at the Weather phase.
         if phase == Phase::Weather {
             self.determine_weather();
@@ -10943,8 +11223,9 @@ mod tests {
         let last_patrol = phases.iter().rposition(|&p| p == Phase::Patrol).unwrap();
         assert!(idx(Phase::StrategicAirReturn).unwrap() > last_patrol);
         assert!(idx(Phase::AircraftMaintenance).unwrap() > last_patrol);
-        // Three Operations Stages -> Land Support Air appears three times.
-        assert_eq!(phases.iter().filter(|&&p| p == Phase::LandSupportAir).count(), 3);
+        // Three Operations Stages × a step per player (§33.0 IV.F: both players assign air
+        // missions, then they resolve together) -> Land Support Air appears six times.
+        assert_eq!(phases.iter().filter(|&&p| p == Phase::LandSupportAir).count(), 6);
     }
 
     #[test]

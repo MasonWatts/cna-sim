@@ -792,3 +792,44 @@ mod malta_tests {
         assert_eq!(luqa.levels, 6);
     }
 }
+
+/// A short label for an air mission command, for the §39 mission results a player is shown.
+pub fn mission_label(cmd: &crate::state::command::Command) -> String {
+    use crate::state::command::Command as C;
+    match cmd {
+        C::DesignateCap { squadron, center, cap_type, planes } => {
+            format!("{planes} fighters of squadron {} on {cap_type:?} CAP over {:?}", squadron.0, (center.col, center.row))
+        }
+        C::ReconHex { squadron, target, planes } => {
+            format!("{planes} planes of squadron {} on reconnaissance over {:?}", squadron.0, (target.col, target.row))
+        }
+        C::Strafe { squadron, target, strafe_target, planes } => {
+            format!("{planes} planes of squadron {} strafing {strafe_target:?} at {:?}", squadron.0, (target.col, target.row))
+        }
+        C::FlyBombingMissionAt { squadron, target, mission, planes, night, .. } => format!(
+            "{planes} bombers of squadron {} on a {}{mission:?} mission against {:?}",
+            squadron.0,
+            if *night { "night " } else { "" },
+            (target.col, target.row)
+        ),
+        C::FlyBombingMissionAtBox { squadron, box_name, mission, planes, .. } => {
+            format!("{planes} bombers of squadron {} on a {mission:?} mission against {box_name}", squadron.0)
+        }
+        C::FlyBombingMission { squadron, planes, .. } => format!("{planes} bombers of squadron {} bombing", squadron.0),
+        C::FlySquadronMission { squadron, count } => format!("{count} planes of squadron {} flying a mission", squadron.0),
+        C::AirdropSupplies { squadron, target, commodity, amount, .. } => {
+            format!("squadron {} airdropping {amount} {commodity:?} into {:?}", squadron.0, (target.col, target.row))
+        }
+        C::AirdropUnit { squadron, unit, target, .. } => {
+            format!("squadron {} airdropping unit {} into {:?}", squadron.0, unit.0, (target.col, target.row))
+        }
+        C::TransportUnit { squadron, unit, target, .. } => {
+            format!("squadron {} airlifting unit {} to {:?}", squadron.0, unit.0, (target.col, target.row))
+        }
+        C::BombShip { squadron, planes, ship_index, .. } => format!("{planes} bombers of squadron {} attacking ship {ship_index}", squadron.0),
+        C::BombMaltaBase { squadron, planes, base_index, .. } => {
+            format!("{planes} bombers of squadron {} bombing Malta base {base_index}", squadron.0)
+        }
+        other => format!("{other:?}"),
+    }
+}

@@ -14,7 +14,7 @@ use crate::state::command::{Command, CommandError, CommandOutcome};
 use crate::state::game::{GameState, Phase};
 use crate::state::view::EvalWeights;
 
-/// The eight phases in which agents may act (the Sequence-of-Play decision points).
+/// The phases in which agents may act (the Sequence-of-Play decision points).
 pub fn is_decision_phase(phase: Phase) -> bool {
     matches!(
         phase,
@@ -26,6 +26,7 @@ pub fn is_decision_phase(phase: Phase) -> bool {
             | Phase::CommonwealthFleet
             | Phase::NavalConvoyArrival
             | Phase::NavalConvoySchedule
+            | Phase::AircraftMaintenance
     )
 }
 
@@ -243,7 +244,7 @@ impl LookaheadAgent {
 }
 impl Agent for LookaheadAgent {
     fn choose(&mut self, game: &GameState, side: Side) -> Option<Command> {
-        if !matches!(game.phase, Phase::MovementAndCombat | Phase::Organization | Phase::LandSupportAir | Phase::TruckConvoy | Phase::Repair | Phase::CommonwealthFleet | Phase::NavalConvoyArrival | Phase::NavalConvoySchedule) {
+        if !matches!(game.phase, Phase::MovementAndCombat | Phase::Organization | Phase::LandSupportAir | Phase::TruckConvoy | Phase::Repair | Phase::CommonwealthFleet | Phase::NavalConvoyArrival | Phase::NavalConvoySchedule | Phase::AircraftMaintenance) {
             return None;
         }
         let cmds = game.legal_commands(side);
@@ -330,7 +331,7 @@ impl RolloutAgent {
 }
 impl Agent for RolloutAgent {
     fn choose(&mut self, game: &GameState, side: Side) -> Option<Command> {
-        if !matches!(game.phase, Phase::MovementAndCombat | Phase::Organization | Phase::LandSupportAir | Phase::TruckConvoy | Phase::Repair | Phase::CommonwealthFleet | Phase::NavalConvoyArrival | Phase::NavalConvoySchedule) {
+        if !matches!(game.phase, Phase::MovementAndCombat | Phase::Organization | Phase::LandSupportAir | Phase::TruckConvoy | Phase::Repair | Phase::CommonwealthFleet | Phase::NavalConvoyArrival | Phase::NavalConvoySchedule | Phase::AircraftMaintenance) {
             return None;
         }
         let cmds = game.legal_commands(side);
@@ -432,7 +433,7 @@ impl MctsAgent {
 
 impl Agent for MctsAgent {
     fn choose(&mut self, game: &GameState, side: Side) -> Option<Command> {
-        if !matches!(game.phase, Phase::MovementAndCombat | Phase::Organization | Phase::LandSupportAir | Phase::TruckConvoy | Phase::Repair | Phase::CommonwealthFleet | Phase::NavalConvoyArrival | Phase::NavalConvoySchedule) {
+        if !matches!(game.phase, Phase::MovementAndCombat | Phase::Organization | Phase::LandSupportAir | Phase::TruckConvoy | Phase::Repair | Phase::CommonwealthFleet | Phase::NavalConvoyArrival | Phase::NavalConvoySchedule | Phase::AircraftMaintenance) {
             return None;
         }
         let root_edges = Self::edges(game, side, 0, self.max_actions);
@@ -615,7 +616,7 @@ impl CrossPhaseMctsAgent {
 
 impl Agent for CrossPhaseMctsAgent {
     fn choose(&mut self, game: &GameState, side: Side) -> Option<Command> {
-        if !matches!(game.phase, Phase::MovementAndCombat | Phase::Organization | Phase::LandSupportAir | Phase::TruckConvoy | Phase::Repair | Phase::CommonwealthFleet | Phase::NavalConvoyArrival | Phase::NavalConvoySchedule) {
+        if !matches!(game.phase, Phase::MovementAndCombat | Phase::Organization | Phase::LandSupportAir | Phase::TruckConvoy | Phase::Repair | Phase::CommonwealthFleet | Phase::NavalConvoyArrival | Phase::NavalConvoySchedule | Phase::AircraftMaintenance) {
             return None;
         }
         let root = side;
@@ -772,11 +773,18 @@ pub fn self_play(
 ) -> u32 {
     let mut applied = 0u32;
     let mut guard = 0u64;
+    let mut checked_stage = None;
     while game.game_turn <= max_turns {
         // Stop early on a §64.71/§64.72 automatic campaign win (no-op for scenarios without campaign
-        // victory conditions loaded, where `campaign_auto_winner` is always `None`).
-        if game.campaign_auto_winner().is_some() {
-            break;
+        // victory conditions loaded, where `campaign_auto_winner` is always `None`). §64.72 is judged
+        // per Operations Stage, and the check traces every Axis unit's supply line, so it runs once
+        // per stage rather than once per phase.
+        let stage = (game.game_turn, game.operations_stage);
+        if checked_stage != Some(stage) {
+            checked_stage = Some(stage);
+            if game.campaign_auto_winner().is_some() {
+                break;
+            }
         }
         if is_decision_phase(game.phase) {
             let side = game.active_player;

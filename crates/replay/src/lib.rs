@@ -309,7 +309,11 @@ pub struct TruckConvoyView {
     pub heavy: u32,
     /// Total broken-down Truck Points (§21) awaiting §22.13 field repair.
     pub broken: u32,
+    /// Fuel carried as cargo (deliverable).
     pub fuel: u32,
+    /// §49.14: Fuel in the trucks' own tanks, and the tank capacity.
+    pub tank_fuel: u32,
+    pub tank_capacity: u32,
     pub ammo: u32,
     pub stores: u32,
     pub water: u32,
@@ -942,7 +946,7 @@ fn off_map_views(g: &GameState) -> OffMapView {
     OffMapView { nodes }
 }
 
-/// The eight phases in which agents act (mirrors `agent::self_play`).
+/// The phases in which agents act (mirrors `agent::self_play`).
 fn is_decision_phase(p: Phase) -> bool {
     matches!(
         p,
@@ -954,6 +958,7 @@ fn is_decision_phase(p: Phase) -> bool {
             | Phase::CommonwealthFleet
             | Phase::NavalConvoyArrival
             | Phase::NavalConvoySchedule
+            | Phase::AircraftMaintenance
     )
 }
 
@@ -1114,6 +1119,14 @@ pub fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) 
         },
         Command::SiphonFuel { donor, receiver, amount } => format!("Siphoned {amount} fuel from {} to {}.", un_bare(g, *donor), un_bare(g, *receiver)),
         Command::LoadTrucks { unit, commodity, amount } => format!("Loaded {amount} {commodity:?} onto {}'s trucks.", un_name(g, *unit)),
+        Command::TrucksDrawWater { unit } => match outcome {
+            CommandOutcome::WaterDrawn(n) => format!("{}'s trucks drew {n} Water at the well.", un_name(g, *unit)),
+            _ => format!("{}'s trucks drew water at the well.", un_name(g, *unit)),
+        },
+        Command::ConvoyDrawWater { .. } => match outcome {
+            CommandOutcome::WaterDrawn(n) => format!("A truck convoy drew {n} Water at the well."),
+            _ => "A truck convoy drew water at the well.".into(),
+        },
         Command::UnloadTrucks { unit, commodity, amount } => format!("Unloaded {amount} {commodity:?} from {}'s trucks into the hex.", un_name(g, *unit)),
         Command::AssignTrucks { unit, light, medium, heavy } => format!("Assigned trucks ({light}L/{medium}M/{heavy}H) to {}.", un_name(g, *unit)),
         Command::ReleaseTrucks { unit, light, medium, heavy } => format!("Released trucks ({light}L/{medium}M/{heavy}H) from {} to the pool.", un_name(g, *unit)),
@@ -1127,6 +1140,10 @@ pub fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) 
         Command::MoveTruckConvoy { to, .. } => format!("Moved a free truck convoy to {}.", hx_str(*to)),
         Command::LoadConvoy { commodity, amount, .. } => format!("Loaded {amount} {commodity:?} from a dump onto a truck convoy.", ),
         Command::UnloadConvoy { commodity, amount, .. } => format!("Off-loaded {amount} {commodity:?} from a truck convoy into a dump.", ),
+        Command::RefuelConvoy { .. } => match outcome {
+            CommandOutcome::ConvoyRefueled(n) => format!("Refuelled a truck convoy's tanks (+{n} Fuel)."),
+            _ => "Refuelled a truck convoy's tanks.".into(),
+        },
         Command::RepairConvoyTrucks { .. } => match outcome {
             CommandOutcome::Repaired(n) => format!("Repaired a convoy's broken-down trucks — {n} recovered."),
             _ => "Repaired a convoy's broken-down trucks.".into(),
@@ -1259,6 +1276,7 @@ pub fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) 
         Command::DetermineMaltaAvailability { level } => format!("Determined Malta raid availability at level {level}."),
         // ---- Air: missions ----
         Command::DesignateCap { squadron, center, cap_type, planes } => format!("Flew {planes} fighters of squadron {} on a {cap_type:?} Combat Air Patrol over {}.", sq_name(g, *squadron), hx_str(*center)),
+        Command::DesignateScramble { squadron, planes } => format!("Put {planes} fighters of squadron {} on standby to scramble (§40.31).", sq_name(g, *squadron)),
         Command::ReconHex { squadron, target, planes } => format!("Flew {planes} planes of squadron {} on reconnaissance over {}.", sq_name(g, *squadron), hx_str(*target)),
         Command::Strafe { squadron, target, strafe_target, planes } => format!("Strafed the {strafe_target:?} in {} with {planes} planes of squadron {}.", hx_str(*target), sq_name(g, *squadron)),
         Command::FlyBombingMission { squadron, planes, .. } => format!("Flew a bombing mission: {planes} bombers of squadron {}.", sq_name(g, *squadron)),
@@ -1405,6 +1423,7 @@ fn activity_hex(g: &GameState, cmd: &Command) -> Option<HexCoord> {
         Command::AntiArmor { target_hex, .. } => Some(*target_hex),
         Command::DeclineDefense { hex } => Some(*hex),
         Command::DesignateCap { center, .. } => Some(*center),
+        Command::DesignateScramble { squadron, .. } => g.sgsus.get(squadron).and_then(|s| s.location),
         // Explicit-hex actions (construction, wells, dumps, captures).
         Command::ConstructSupplyDump { hex, .. }
         | Command::RepairCapturedEquipment { hex, .. }
@@ -1433,6 +1452,7 @@ fn activity_hex(g: &GameState, cmd: &Command) -> Option<HexCoord> {
         | Command::RefuelUnit { unit }
         | Command::RearmUnit { unit }
         | Command::LoadTrucks { unit, .. }
+        | Command::TrucksDrawWater { unit }
         | Command::UnloadTrucks { unit, .. }
         | Command::AssignTrucks { unit, .. }
         | Command::ReleaseTrucks { unit, .. }
@@ -1466,7 +1486,9 @@ fn activity_hex(g: &GameState, cmd: &Command) -> Option<HexCoord> {
         Command::LoadReplacement { convoy, .. }
         | Command::LoadConvoy { convoy, .. }
         | Command::UnloadConvoy { convoy, .. }
-        | Command::RepairConvoyTrucks { convoy } => ch(*convoy),
+        | Command::RepairConvoyTrucks { convoy }
+        | Command::RefuelConvoy { convoy }
+        | Command::ConvoyDrawWater { convoy } => ch(*convoy),
         Command::AssignShip { ship_index, .. }
         | Command::RepairShip { ship_index }
         | Command::BombShip { ship_index, .. }
@@ -1647,6 +1669,8 @@ fn truck_convoy_views(g: &GameState) -> Vec<TruckConvoyView> {
             heavy: c.trucks.heavy,
             broken: c.trucks_broken.light + c.trucks_broken.medium + c.trucks_broken.heavy,
             fuel: c.cargo.fuel,
+            tank_fuel: c.tank_fuel,
+            tank_capacity: g.convoy_tank_capacity(c),
             ammo: c.cargo.ammo,
             stores: c.cargo.stores,
             water: c.cargo.water,
@@ -1978,10 +2002,16 @@ pub fn record_game(
     let mut events = vec![delta_frame(&game, 0, "-", "start".into(), String::new(), Vec::new(), &mut prev, &mut prev_weather, &mut prev_replacements, &mut prev_dumps, &mut prev_convoys, &mut prev_raiders, &mut prev_rommel, &mut prev_overlays, &mut prev_hexsides, &mut prev_air, &mut prev_naval, &mut prev_off_map, &mut prev_prisoners, &mut prev_captured, &mut prev_dummy, &mut prev_broken)];
     let mut step = 0u32;
     let mut guard = 0u64;
+    let mut checked_stage = None;
     while game.game_turn <= max_turns {
-        // Stop early on a §64.71/§64.72 automatic campaign win (None for non-campaign scenarios).
-        if game.campaign_auto_winner().is_some() {
-            break;
+        // Stop early on a §64.71/§64.72 automatic campaign win (None for non-campaign scenarios) —
+        // checked once per Operations Stage (the supply-line trace is costly; see `self_play`).
+        let stage = (game.game_turn, game.operations_stage);
+        if checked_stage != Some(stage) {
+            checked_stage = Some(stage);
+            if game.campaign_auto_winner().is_some() {
+                break;
+            }
         }
         if is_decision_phase(game.phase) {
             let side = game.active_player;
@@ -2147,9 +2177,14 @@ pub fn record_game_streaming_ext(
     let mut guard = 0u64;
     let mut last_turn = game.game_turn;
     on_turn(game.game_turn, step);
+    let mut checked_stage = None;
     while game.game_turn <= max_turns {
-        if game.campaign_auto_winner().is_some() {
-            break;
+        let stage = (game.game_turn, game.operations_stage);
+        if checked_stage != Some(stage) {
+            checked_stage = Some(stage);
+            if game.campaign_auto_winner().is_some() {
+                break;
+            }
         }
         if is_decision_phase(game.phase) {
             let side = game.active_player;
@@ -2276,7 +2311,7 @@ pub fn record_rp_demo(seed: u64) -> GameRecord {
         side: Side::Commonwealth,
         hex: HexCoord::new(0, 1),
         trucks: TruckPoints { light: 0, medium: 5, heavy: 0 },
-        cargo: Commodities { fuel: 0, ammo: 0, stores: 0, water: 0 },
+        cargo: Commodities { fuel: 0, ammo: 0, stores: 0, water: 0 }, tank_fuel: 0,
         cpa_used: 0,
         trucks_broken: TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
     });

@@ -4949,6 +4949,187 @@ mod tests {
     }
 
     #[test]
+    fn air_phase_is_simultaneous_for_both_players_33_iv_f() {
+        // §33.0 IV.F / §40.33: both players assign air missions in secret (a step each), and every
+        // mission resolves together when the phase closes. §33.0 IV.F.7: both also get the
+        // post-turn Aircraft Maintenance phase.
+        use crate::reference::squadron::SquadronClass;
+        use crate::reference::units::Side;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::Phase;
+        use crate::reference::aircraft::{AircraftClass, CapType};
+        let mut g = build_campaign_game();
+        // One fighter squadron a side, based at their own airfields with ready planes.
+        let mut sides = Vec::new();
+        for (id, nat, hex) in [(900u32, Nationality::Commonwealth, "D3714"), (901, Nationality::Italian, "C4807")] {
+            let at = crate::state::map::HexId::parse(hex).unwrap().to_hex_coord();
+            let mut s = Sgsu::new(SquadronId(id), nat, SquadronClass::Fighter, "t", 25, Some(at));
+            let ty = if nat == Nationality::Commonwealth { "Hurricane Mk.I" } else { "C.R.42 Falco" };
+            s.add_planes(ty, AircraftClass::Fighter, 6, 1);
+            for gr in s.planes.iter_mut() {
+                gr.ready = gr.count;
+                gr.refitted = gr.count;
+            }
+            sides.push((SquadronId(id), nat.side(), at));
+            g.sgsus.insert(SquadronId(id), s);
+        }
+        // Advance to the Land Support Air phase through the sequence of play.
+        for _ in 0..200 {
+            if g.phase == Phase::LandSupportAir {
+                break;
+            }
+            g.advance_phase();
+        }
+        assert_eq!(g.phase, Phase::LandSupportAir);
+        assert!(g.air_assignment_open, "assignment is open while the phase runs");
+        // Each side assigns a CAP over its own base: accepted but queued, not yet flown.
+        let mut assigned = 0;
+        for &(sq, side, at) in &sides {
+            let cmd = Command::DesignateCap { squadron: sq, center: at, cap_type: CapType::Offensive, planes: 3 };
+            assert_eq!(g.apply_as(side, cmd), Ok(CommandOutcome::AirMissionAssigned), "{side:?} squadron {}", sq.0);
+            assigned += 1;
+        }
+        assert_eq!(assigned, 2, "both sides could assign in the same phase");
+        // A squadron readied after the side's first assignment can still be assigned (the scratch
+        // copy is rebuilt), and the first side's copy doesn't leak into the second's.
+        let (sq, side, at) = sides[0];
+        for gr in g.sgsus.get_mut(&sq).unwrap().planes.iter_mut() {
+            gr.ready = 0;
+            gr.refitted = 6;
+        }
+        assert!(g.apply_as(side, Command::ReadySquadron { squadron: sq, count: 6 }).is_ok());
+        assert_eq!(
+            g.apply_as(side, Command::DesignateCap { squadron: sq, center: at, cap_type: CapType::Offensive, planes: 3 }),
+            Ok(CommandOutcome::AirMissionAssigned),
+            "planes readied after the first assignment are usable"
+        );
+        g.pending_air_missions.pop();
+        assert_eq!(g.pending_air_missions.len(), 2);
+        assert!(g.cap_patrols.is_empty(), "nothing has flown yet");
+        // Leaving the phase resolves everything; each side sees its own results.
+        while g.phase == Phase::LandSupportAir {
+            g.advance_phase();
+        }
+        assert!(g.pending_air_missions.is_empty());
+        assert_eq!(g.cap_patrols.len(), 2, "both patrols flew: {:?}", g.cap_patrols);
+        for &(_, side, _) in &sides {
+            assert!(g.air_results.iter().any(|r| r.side == side && r.text.contains("CAP")), "{:?}", g.air_results);
+        }
+        // Both players get an Aircraft Maintenance step after the turn's stages.
+        let mut maint_sides = std::collections::BTreeSet::new();
+        for _ in 0..400 {
+            if g.phase == Phase::AircraftMaintenance {
+                maint_sides.insert(format!("{:?}", g.active_player));
+            }
+            g.advance_phase();
+            if maint_sides.len() == 2 {
+                break;
+            }
+        }
+        assert_eq!(maint_sides.len(), 2, "{maint_sides:?}");
+    }
+
+    #[test]
+    fn sgsu_upkeep_water_from_a_well_and_no_op_readying_refused_35_14() {
+        // §35.14 upkeep: a squadron based in a city with an unlimited well (Tobruk) takes its water
+        // there — it was marked unsupplied (so could never refit) because only dumps were checked.
+        // And readying that would ready nothing is refused with the reason, not "readied 0".
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::Phase;
+        use crate::reference::aircraft::AircraftClass;
+        let mut g = build_campaign_game();
+        let tobruk = crate::state::map::HexId::parse("C4807").unwrap().to_hex_coord();
+        assert!(g.supply_dumps.iter().any(|d| d.location == crate::state::unit::UnitLocation::OnMap(tobruk) && d.supply.water == 0), "Tobruk's dump holds no water");
+        let mut s = Sgsu::new(SquadronId(900), Nationality::Italian, SquadronClass::Fighter, "t", 20, Some(tobruk));
+        s.add_planes("C.R.42 Falco", AircraftClass::Fighter, 6, 1);
+        g.sgsus.insert(SquadronId(900), s);
+        g.consume_sgsu_upkeep();
+        assert!(g.sgsus[&SquadronId(900)].supplied, "the city well supplies its water");
+        // Unrefitted planes can't be readied: refused with PlanesNeedRefit.
+        for gr in g.sgsus.get_mut(&SquadronId(900)).unwrap().planes.iter_mut() {
+            gr.refitted = 0;
+            gr.ready = 0;
+        }
+        g.phase = Phase::LandSupportAir;
+        g.active_player = crate::reference::units::Side::Axis;
+        assert_eq!(g.apply(Command::ReadySquadron { squadron: SquadronId(900), count: 6 }), Err(CommandError::PlanesNeedRefit));
+        assert!(!g.legal_commands(crate::reference::units::Side::Axis).iter().any(|c| matches!(c, Command::ReadySquadron { squadron, .. } if *squadron == SquadronId(900))));
+    }
+
+    #[test]
+    fn only_squadrons_ordered_to_scramble_may_scramble_40_31() {
+        use crate::reference::squadron::SquadronClass;
+        use crate::state::air::{Sgsu, SquadronId};
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::Phase;
+        use crate::reference::aircraft::AircraftClass;
+        let mut g = build_campaign_game();
+        let at = crate::state::map::HexId::parse("D3714").unwrap().to_hex_coord();
+        let mut s = Sgsu::new(SquadronId(900), Nationality::Commonwealth, SquadronClass::Fighter, "t", 25, Some(at));
+        s.add_planes("Hurricane Mk.I", AircraftClass::Fighter, 6, 1);
+        for gr in s.planes.iter_mut() {
+            gr.ready = gr.count;
+        }
+        g.sgsus.insert(SquadronId(900), s);
+        g.phase = Phase::LandSupportAir;
+        g.active_player = crate::reference::units::Side::Commonwealth;
+        assert!(g.squadron_can_scramble(SquadronId(900)));
+        assert!(g.legal_commands(crate::reference::units::Side::Commonwealth).contains(&Command::DesignateScramble { squadron: SquadronId(900), planes: 6 }));
+        assert_eq!(g.apply(Command::DesignateScramble { squadron: SquadronId(900), planes: 6 }), Ok(CommandOutcome::ScrambleAssigned(6)));
+        assert_eq!(g.scramble_orders.get(&SquadronId(900)), Some(&6));
+        // More than the ready planes is refused; a wrong phase too.
+        assert_eq!(g.apply(Command::DesignateScramble { squadron: SquadronId(900), planes: 99 }), Err(CommandError::NoReadyPlanes));
+        g.phase = Phase::Organization;
+        assert_eq!(g.apply(Command::DesignateScramble { squadron: SquadronId(900), planes: 6 }), Err(CommandError::WrongPhase));
+    }
+
+    #[test]
+    fn both_players_get_an_organization_phase_each_stage_33_iv_c() {
+        // §33.0 IV.C: Organization is a joint phase. It used to go to the Initiative player only,
+        // so in a 10-turn LLM run the Axis got 9 Organization windows to the Commonwealth's 21.
+        use crate::reference::units::Side;
+        use crate::state::game::Phase;
+        let mut g = build_campaign_game();
+        let mut org_stage = None;
+        let mut org_sides = std::collections::BTreeSet::new();
+        for _ in 0..500 {
+            let here = (g.game_turn, g.operations_stage);
+            if g.phase == Phase::Organization {
+                org_stage.get_or_insert(here);
+                if org_stage == Some(here) {
+                    org_sides.insert(format!("{:?}", g.active_player));
+                }
+            }
+            if org_stage.is_some_and(|s| s != here) {
+                break; // the first stage with an Organization phase is complete
+            }
+            g.advance_phase();
+        }
+        assert!(org_sides.contains(&format!("{:?}", Side::Axis)) && org_sides.contains(&format!("{:?}", Side::Commonwealth)), "{org_sides:?}");
+    }
+
+    #[test]
+    fn attached_units_are_offered_detach_and_resupply_19_43() {
+        // Attached battalions ride their formation's counter (no hex of their own); the
+        // Organization listing must still offer to detach them (§19.43) — a 2026-10 LLM run lost
+        // the Catanzaro division to thirst because detach was never listed.
+        use crate::reference::units::Side;
+        use crate::state::command::Command;
+        use crate::state::game::Phase;
+        let mut g = build_campaign_game();
+        g.phase = Phase::Organization;
+        g.active_player = Side::Axis;
+        let bn = g.units.values().find(|u| u.name == "I/141 Infantry Bn").unwrap().id;
+        assert!(g.units[&bn].attached_parent.is_some() && g.units[&bn].hex().is_none());
+        let legal = g.legal_commands(Side::Axis);
+        assert!(legal.contains(&Command::DetachUnit { unit: bn }), "detach offered for an attached battalion");
+        assert!(g.dry_run(&Command::DetachUnit { unit: bn }).is_ok());
+    }
+
+    #[test]
     fn players_may_only_command_their_own_forces() {
         // A Commonwealth player once moved the Axis 64th Catanzaro HQ with a free-form MoveStep.
         // `apply_as` (what agents and the recorder use) rejects commands that act with another
@@ -5433,7 +5614,7 @@ mod tests {
             hex: HexCoord::new(2, 1),
             trucks: TruckPoints { light: 5, medium: 0, heavy: 0 },
             // §49.18/§52.42: a moving convoy burns the fuel and water it carries.
-            cargo: crate::state::game::Commodities { fuel: 50, ammo: 0, stores: 0, water: 50 },
+            cargo: crate::state::game::Commodities { fuel: 50, ammo: 0, stores: 0, water: 50 }, tank_fuel: 0,
             cpa_used: 0,
             trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
@@ -6983,7 +7164,7 @@ mod tests {
         // §53.14: a free convoy loads from a co-located dump and unloads back into one.
         g.truck_convoys.push(TruckConvoy {
             side: Side::Commonwealth, hex, trucks: TruckPoints { light: 0, medium: 3, heavy: 0 },
-            cargo: Commodities { fuel: 0, ammo: 0, stores: 0, water: 0 }, cpa_used: 0,
+            cargo: Commodities { fuel: 0, ammo: 0, stores: 0, water: 0 }, tank_fuel: 0, cpa_used: 0,
             trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
         g.phase = Phase::TruckConvoy;
@@ -7013,7 +7194,7 @@ mod tests {
         let convoy = |medium, broken| TruckConvoy {
             side: Side::Commonwealth, hex, trucks: TruckPoints { light: 0, medium, heavy: 0 },
             trucks_broken: TruckPoints { light: 0, medium: broken, heavy: 0 },
-            cargo: empty(), cpa_used: 0, breakdown_points: 0, breakdown_checked_col: -1,
+            cargo: empty(), tank_fuel: 0, cpa_used: 0, breakdown_points: 0, breakdown_checked_col: -1,
         };
 
         // §29.35: hot weather doubles a unit's water requirement.
@@ -7035,6 +7216,10 @@ mod tests {
         g.rng.force([1]);
         assert_eq!(g.apply(Command::RepairConvoyTrucks { convoy: 0 }), Ok(CommandOutcome::Repaired(2)));
         assert_eq!((g.truck_convoys[0].trucks.medium, g.truck_convoys[0].trucks_broken.medium), (3, 0));
+        // A convoy with nothing broken is neither offered a repair nor allowed one (no wasted die).
+        g.convoy_repairs_this_stage.clear();
+        assert_eq!(g.apply(Command::RepairConvoyTrucks { convoy: 0 }), Err(crate::state::command::CommandError::NothingToRepair));
+        assert!(!g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::RepairConvoyTrucks { convoy: 0 })));
 
         // §53.25: supplies a convoy off-loads this phase can't be re-loaded by another convoy the same
         // phase. §24.9: and because an off-load only drops *loose* supplies (not a constructed dump),
@@ -7080,7 +7265,7 @@ mod tests {
         // A co-located Medium truck convoy with enough §54.2 lift (5 × 1.0 = 5 ≥ 4 SP).
         g.truck_convoys.push(TruckConvoy {
             side: Side::Commonwealth, hex: from, trucks: TruckPoints { light: 0, medium: 5, heavy: 0 },
-            cargo: Commodities { fuel: 0, ammo: 0, stores: 0, water: 0 }, cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
+            cargo: Commodities { fuel: 0, ammo: 0, stores: 0, water: 0 }, tank_fuel: 0, cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
 
         // §20.45: still refused with no Supply Dump — the hauling trucks have no Fuel.
@@ -7145,7 +7330,7 @@ mod tests {
         });
         g.truck_convoys.push(TruckConvoy {
             side: Side::Commonwealth, hex, trucks: TruckPoints { light: 0, medium: 5, heavy: 0 },
-            cargo: Commodities::default(), cpa_used: 0, trucks_broken: TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
+            cargo: Commodities::default(), tank_fuel: 0, cpa_used: 0, trucks_broken: TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
 
         // §24.9: a convoy may not load loose supplies…
@@ -7244,7 +7429,7 @@ mod tests {
         // Truck Convoy Phase: a convoy + a co-located Infantry pool assigned to the unit.
         g.truck_convoys.push(TruckConvoy {
             side: Side::Commonwealth, hex, trucks: TruckPoints { light: 0, medium: 5, heavy: 0 },
-            cargo: Commodities::default(), cpa_used: 0, trucks_broken: TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
+            cargo: Commodities::default(), tank_fuel: 0, cpa_used: 0, trucks_broken: TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
         let pool = g.add_replacement_points(ReplacementClass::Infantry, 3, Side::Commonwealth, Some(UnitLocation::OnMap(hex)), Some(u));
         g.phase = Phase::TruckConvoy;
@@ -7323,7 +7508,7 @@ mod tests {
         g.units.clear(); // remove the guard so the convoy raid isn't blocked by combat units
         g.truck_convoys.push(TruckConvoy {
             side: Side::Axis, hex, trucks: TruckPoints { light: 0, medium: 4, heavy: 0 },
-            cargo: Commodities::default(), cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
+            cargo: Commodities::default(), tank_fuel: 0, cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
         let ci = g.truck_convoys.len() - 1;
         g.rng.force([1]);
@@ -7339,7 +7524,7 @@ mod tests {
         g.truck_convoys.push(TruckConvoy {
             side: Side::Axis, hex, trucks: TruckPoints { light: 0, medium: 1, heavy: 0 },
             // non-empty cargo ⇒ not the §27.58 "all trucks carry RP" auto-elimination case.
-            cargo: Commodities { fuel: 5, ammo: 0, stores: 0, water: 0 },
+            cargo: Commodities { fuel: 5, ammo: 0, stores: 0, water: 0 }, tank_fuel: 0,
             cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
         let cj = g.truck_convoys.len() - 1;
@@ -7492,12 +7677,12 @@ mod tests {
         let near = g.map.neighbors(a).find(|&h| g.map.terrain(h).is_some()).unwrap();
         g.truck_convoys.push(TruckConvoy {
             side: Side::Axis, hex: near, trucks: TruckPoints { light: 0, medium: 3, heavy: 0 },
-            cargo: Commodities::default(), cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
+            cargo: Commodities::default(), tank_fuel: 0, cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
         g.truck_convoys.push(TruckConvoy {
             side: Side::Axis, hex: HexId::parse("E3613").unwrap().to_hex_coord(),
             trucks: TruckPoints { light: 0, medium: 3, heavy: 0 },
-            cargo: Commodities::default(), cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
+            cargo: Commodities::default(), tank_fuel: 0, cpa_used: 0, trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
 
         // The Truck Convoy Phase is the Axis (convoy owner's) phase; the CW raider reacts.
@@ -8685,6 +8870,20 @@ mod tests {
         g.replacement_points[pi].training_remaining = 0;
         assert_eq!(g.apply(Command::AbsorbReplacement { index: pi, unit: full }), Err(CommandError::UnitAtFullStrength));
         assert_eq!(g.replacement_points[pi].count, 3);
+
+        // An enemy pool sharing a hex with a friendly understrength unit is never offered (it is
+        // the other side's — `apply_as` refuses it as NotYourUnit).
+        use crate::reference::units::Side;
+        let cw = g.units.values().find(|u| u.nationality.side() == Side::Commonwealth && u.hex().is_some() && u.attached_parent.is_none() && matches!(u.composition, crate::state::unit::Composition::Organic { current_toe } if current_toe > 1)).unwrap().id;
+        if let crate::state::unit::Composition::Organic { current_toe } = &mut g.unit_mut(cw).unwrap().composition {
+            *current_toe -= 1;
+        }
+        let cw_at = g.units[&cw].hex().unwrap();
+        let axis_pool = g.add_replacement_points(crate::state::game::ReplacementClass::Infantry, 3, Side::Axis, Some(crate::state::unit::UnitLocation::OnMap(cw_at)), None);
+        g.replacement_points[axis_pool].training_remaining = 0;
+        g.active_player = Side::Commonwealth;
+        assert!(!g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::AbsorbReplacement { index, .. } if *index == axis_pool)));
+        assert_eq!(g.apply_as(Side::Commonwealth, Command::AbsorbReplacement { index: axis_pool, unit: cw }), Err(CommandError::NotYourUnit));
     }
 
     #[test]
@@ -10529,12 +10728,11 @@ mod tests {
         assert_eq!(g.apply(res), Ok(CommandOutcome::ReserveDesignated));
         assert_eq!(g.unit(u).unwrap().reserve, ReserveStatus::ReserveI);
 
-        // Repair — Repair Phase (no broken vehicles -> 0 repaired, but the command path runs).
+        // Repair — Repair Phase (no broken vehicles -> refused before any die is rolled).
         while g.phase != Phase::Repair {
             g.advance_phase();
         }
-        g.rng.force([1u8]); // §22 field-repair die (now rolled inside apply)
-        assert_eq!(g.apply(Command::Repair { unit: u, kind: RepairKind::Trucks }), Ok(CommandOutcome::Repaired(0)));
+        assert_eq!(g.apply(Command::Repair { unit: u, kind: RepairKind::Trucks }), Err(CommandError::NothingToRepair));
 
         // RefitSquadron is now also allowed in the Strategic Air Recovery / Aircraft Maintenance
         // phase (§33.0 VII.B). No dump at the base -> lenient supply -> §38.36 InsufficientStores.
@@ -11110,7 +11308,7 @@ mod tests {
             side: Side::Commonwealth,
             hex: target,
             trucks: crate::state::unit::TruckPoints { light: 0, medium: 20, heavy: 0 },
-            cargo: Commodities { fuel: 100, ammo: 0, stores: 0, water: 0 },
+            cargo: Commodities { fuel: 100, ammo: 0, stores: 0, water: 0 }, tank_fuel: 0,
             cpa_used: 0,
             trucks_broken: crate::state::unit::TruckPoints { light: 0, medium: 0, heavy: 0 }, breakdown_points: 0, breakdown_checked_col: -1,
         });
@@ -11498,7 +11696,7 @@ mod tests {
         };
         match g.apply(bomb(BombingMission::Personnel)) {
             Ok(CommandOutcome::BombingMission(o)) => {
-                assert_eq!(g.unit(cw).unwrap().status.pinned, o.result > 0);
+                assert_eq!(g.unit(cw).unwrap().status.air_pinned, o.result > 0, "§41.9 air pin");
             }
             other => panic!("unexpected: {other:?}"),
         }
@@ -11687,6 +11885,76 @@ mod tests {
         assert!(g.apply(Command::MoveStep { unit: mover, to: HexCoord::new(2, 0), mode: MoveMode::NonMotorized }).is_ok());
         assert!(g.unit(axis).unwrap().status.surrendered, "§6.26 adjacency auto-surrender");
         assert_eq!(g.unit(axis).unwrap().total_toe(), 0);
+    }
+
+    #[test]
+    fn pins_lift_on_schedule_and_air_pins_allow_half_cpa_12_44_41_9() {
+        use crate::reference::aircraft::BombingMission;
+        use crate::reference::terrain::HexTerrain;
+        use crate::reference::units::Side;
+        use crate::rules::movement::MoveMode;
+        use crate::state::command::{Command, CommandError};
+        use crate::state::game::{GameState, Phase};
+        use crate::state::map::HexCoord;
+        use crate::state::unit::{Composition, UnitLocation};
+
+        let mut refs = ReferenceData::new();
+        refs.load_terrain(TERRAIN_RON).unwrap();
+        refs.load_unit_characteristics(Nationality::Commonwealth, include_str!("../../../data/reference/unit-characteristics/commonwealth.ron")).unwrap();
+        refs.load_unit_characteristics(Nationality::Italian, include_str!("../../../data/reference/unit-characteristics/italian.ron")).unwrap();
+        let mut g = GameState::new(refs, 1);
+        for c in 0..8 {
+            g.map.set_hex(HexCoord::new(c, 0), HexTerrain::Clear);
+        }
+        let u = g.spawn_unit(Nationality::Commonwealth, "h", "inf", Composition::Organic { current_toe: 4 });
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(0, 0)));
+        let mv = Command::MoveStep { unit: u, to: HexCoord::new(1, 0), mode: MoveMode::NonMotorized };
+        let ca = Command::CloseAssault { attackers: vec![u], target: HexCoord::new(1, 0) };
+
+        // §41.31: an anti-personnel bombing result pins the unit — an *air* Pin (§41.9).
+        g.apply_land_bombing_effect(BombingMission::Personnel, HexCoord::new(0, 0), Side::Axis, 1);
+        assert!(g.unit(u).unwrap().status.air_pinned && !g.unit(u).unwrap().status.pinned);
+        // §41.91 own portion: it may still move, up to half its CPA, but not attack.
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        assert_eq!(g.pin_state(u), (false, true));
+        assert!(g.dry_run(&mv).is_ok(), "an air-pinned unit may move in its own portion");
+        assert_eq!(g.dry_run(&ca), Err(CommandError::Pinned));
+        let half = g.effective_cpa(u).unwrap() / 2;
+        g.unit_mut(u).unwrap().cp_expended.0 = half * 10;
+        assert_eq!(g.dry_run(&mv), Err(CommandError::Pinned), "no more than ½ CPA");
+        g.unit_mut(u).unwrap().cp_expended.0 = 0;
+        // ... and may not enter an enemy ZOC.
+        let axis = g.spawn_unit(Nationality::Italian, "p", "enemy", Composition::Organic { current_toe: 5 });
+        g.unit_mut(axis).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(2, 0)));
+        g.unit_mut(axis).unwrap().org_size = crate::state::unit::OrgSize::StandardBrigade; // exerts a ZOC (§10.11)
+        assert_eq!(g.dry_run(&mv), Err(CommandError::Pinned), "may not enter an enemy ZOC");
+        g.unit_mut(axis).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(7, 0)));
+        // §41.92 enemy portion: no voluntary movement at all.
+        g.active_player = Side::Axis;
+        assert_eq!(g.pin_state(u), (true, false));
+
+        // Run the stage: a §12.44 barrage Pin set during a Movement & Combat portion lifts when that
+        // portion ends; the air Pin and an Engaged marker (§15.81) last until the stage ends.
+        g.begin_operations_stage();
+        let stage = g.operations_stage;
+        while g.phase != Phase::MovementAndCombat {
+            g.advance_phase();
+        }
+        g.unit_mut(axis).unwrap().status.pinned = true;
+        g.unit_mut(axis).unwrap().status.engaged = true;
+        g.advance_phase();
+        assert!(!g.unit(axis).unwrap().status.pinned, "§12.44 barrage pin ends with the Combat Segment");
+        assert!(g.unit(axis).unwrap().status.engaged);
+        let cw_is_b = g.player_a != Side::Commonwealth;
+        if cw_is_b {
+            assert!(g.unit(u).unwrap().status.air_pinned, "Player B's air pin lasts the whole stage");
+        }
+        while g.operations_stage == stage {
+            g.advance_phase();
+        }
+        assert!(!g.unit(u).unwrap().status.air_pinned, "§41.92 unpinned at the end of the stage");
+        assert!(!g.unit(axis).unwrap().status.engaged, "§15.81 Engaged removed at the end of the stage");
     }
 
     #[test]
@@ -14467,6 +14735,12 @@ mod tests {
         let convoy_tp = |side: Side| -> u32 { g.truck_convoys.iter().filter(|c| c.side == side).map(|c| c.trucks.light + c.trucks.medium + c.trucks.heavy).sum() };
         assert_eq!(convoy_tp(Side::Axis), 25 + 140 + 40 + 30 + 100 + 25 + 10 + 50);
         assert_eq!(convoy_tp(Side::Commonwealth), 50 + 30 + 60 + 55);
+        // Starting issue for free convoys: full tanks (§49.14 fuel capacity per Truck Point: light 8,
+        // medium/heavy 6) and one Game-Turn of hot-weather water for their own Truck Points (§52.42).
+        let nofilia = g.truck_convoys.iter().find(|c| crate::state::map::HexId::parse("A2703").map(|h| h.to_hex_coord()) == Some(c.hex)).unwrap();
+        assert_eq!(nofilia.tank_fuel, 25 * 8 + 140 * 6 + 40 * 6, "tanks, not cargo (§49.14)");
+        assert_eq!(nofilia.cargo.fuel, 0);
+        assert_eq!(nofilia.cargo.water, 2 * 3 * (25 + 140 + 40));
         // The Truck Convoy phase now offers hauling: load at a dump, move the convoy.
         for side in [Side::Commonwealth, Side::Axis] {
             g.phase = Phase::TruckConvoy;
@@ -14478,6 +14752,128 @@ mod tests {
             let legal = g.legal_commands(side);
             assert!(legal.iter().any(|c| matches!(c, Command::FormTruckConvoy { .. } | Command::LoadTrucks { .. })), "{side:?} first-line trucks usable");
         }
+    }
+
+    #[test]
+    fn convoys_drive_on_their_own_tanks_49_14() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{Commodity, Phase};
+        let mut g = build_campaign_game();
+        g.phase = Phase::TruckConvoy;
+        g.active_player = Side::Axis;
+        let i = g.truck_convoys.iter().position(|c| c.side == Side::Axis && c.trucks.medium > 0).unwrap();
+        let cap = g.convoy_tank_capacity(&g.truck_convoys[i]);
+        assert!(cap > 0 && g.truck_convoys[i].tank_fuel == cap, "starts with full tanks");
+        // Unloading cargo never touches the tanks.
+        g.truck_convoys[i].cargo.fuel = 100;
+        let at = g.truck_convoys[i].hex;
+        for d in g.supply_dumps.iter_mut().filter(|d| d.location.hex() == Some(at)) {
+            d.supply.fuel = 0;
+        }
+        let _ = g.apply(Command::UnloadConvoy { convoy: i, commodity: Commodity::Fuel, amount: 100 });
+        assert_eq!(g.truck_convoys[i].tank_fuel, cap, "unload empties cargo only");
+        // A step burns the tanks first; cargo is left for delivery.
+        g.truck_convoys[i].cargo.fuel = 50;
+        let to = g.map.neighbors(at).find(|&n| g.dry_run(&Command::MoveTruckConvoy { convoy: i, to: n }).is_ok()).expect("a legal step");
+        let dump_before = g.available_commodity_at(at, Side::Axis, Commodity::Fuel);
+        assert!(matches!(g.apply(Command::MoveTruckConvoy { convoy: i, to }), Ok(CommandOutcome::TruckConvoyMoved { .. })));
+        assert!(g.truck_convoys[i].tank_fuel < cap);
+        assert_eq!(g.truck_convoys[i].cargo.fuel, 50, "cargo untouched while the tanks hold fuel");
+        assert_eq!(g.available_commodity_at(at, Side::Axis, Commodity::Fuel), dump_before);
+        // Dry tanks: §49.18 the cargo may be burned; with neither, the convoy is stuck.
+        g.truck_convoys[i].tank_fuel = 0;
+        g.truck_convoys[i].cpa_used = 0;
+        let here = g.truck_convoys[i].hex;
+        let back = g.map.neighbors(here).find(|&n| g.dry_run(&Command::MoveTruckConvoy { convoy: i, to: n }).is_ok());
+        if let Some(n) = back {
+            if g.available_commodity_at(here, Side::Axis, Commodity::Fuel) == 0 {
+                assert!(g.apply(Command::MoveTruckConvoy { convoy: i, to: n }).is_ok());
+                assert!(g.truck_convoys[i].cargo.fuel < 50, "burned its cargo");
+            }
+        }
+        let i_hex = g.truck_convoys[i].hex;
+        for d in g.supply_dumps.iter_mut().filter(|d| d.location.hex() == Some(i_hex)) {
+            d.supply.fuel = 0;
+        }
+        g.truck_convoys[i].cargo.fuel = 0;
+        g.truck_convoys[i].cpa_used = 0;
+        let n = g.map.neighbors(i_hex).next().unwrap();
+        assert!(matches!(g.dry_run(&Command::MoveTruckConvoy { convoy: i, to: n }), Err(CommandError::InsufficientFuel) | Err(CommandError::TruckConvoyTerrainProhibited) | Err(CommandError::TruckConvoyEnemyZoc)));
+        assert_eq!(g.apply(Command::RefuelConvoy { convoy: i }), Err(CommandError::InsufficientFuel), "no source to refuel from");
+        // RefuelConvoy fills the tanks from cargo (§49.18) — and is refused once full.
+        g.truck_convoys[i].cargo.fuel = 2 * cap;
+        assert_eq!(g.apply(Command::RefuelConvoy { convoy: i }), Ok(CommandOutcome::ConvoyRefueled(cap)));
+        assert_eq!((g.truck_convoys[i].tank_fuel, g.truck_convoys[i].cargo.fuel), (cap, cap));
+        assert_eq!(g.apply(Command::RefuelConvoy { convoy: i }), Err(CommandError::ConvoyTankFull));
+        assert!(!g.legal_commands(Side::Axis).contains(&Command::RefuelConvoy { convoy: i }));
+    }
+
+    #[test]
+    fn trucks_draw_water_at_wells_52_13() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{Phase, WaterKind};
+        let mut g = build_campaign_game();
+        g.phase = Phase::TruckConvoy;
+        g.active_player = Side::Axis;
+        let i = g.truck_convoys.iter().position(|c| c.side == Side::Axis && c.trucks.medium > 0).unwrap();
+        let mut all: Vec<crate::state::map::HexCoord> = g.map.coords().collect();
+        all.sort_by_key(|h| (h.col, h.row));
+        let find = |g: &crate::state::game::GameState, k: WaterKind| {
+            all.iter().copied().find(|&h| g.hex_water_source_for(h, Side::Axis) == Some(k) && !g.depleted_wells.contains(&h) && !g.poisoned_wells.contains(&h)).unwrap()
+        };
+        let city = find(&g, WaterKind::Unlimited);
+        let village = find(&g, WaterKind::Village);
+        let dry = all.iter().copied().find(|&h| g.hex_water_source_for(h, Side::Axis).is_none()).unwrap();
+        // No well: refused.
+        g.truck_convoys[i].hex = dry;
+        assert_eq!(g.apply(Command::ConvoyDrawWater { convoy: i }), Err(CommandError::NoWellHere));
+        // Major city / oasis: as much as the trucks can carry, for 1 CP; once per stage.
+        g.truck_convoys[i].hex = city;
+        g.truck_convoys[i].cargo = Default::default();
+        let caps = g.convoy_cargo_capacity(&g.truck_convoys[i]);
+        assert_eq!(g.apply(Command::ConvoyDrawWater { convoy: i }), Ok(CommandOutcome::WaterDrawn(caps.water)));
+        assert_eq!(g.truck_convoys[i].cargo.water, caps.water);
+        assert_eq!(g.truck_convoys[i].cpa_used, 10, "§52.13: 1 CP");
+        g.truck_convoys[i].cargo.water = 0;
+        assert_eq!(g.apply(Command::ConvoyDrawWater { convoy: i }), Err(CommandError::AlreadyDrewWater));
+        // Village well: a §52.7 die-roll draw, never more than the room.
+        g.convoy_water_draws_this_stage.clear();
+        g.truck_convoys[i].hex = village;
+        match g.apply(Command::ConvoyDrawWater { convoy: i }) {
+            Ok(CommandOutcome::WaterDrawn(n)) => assert!(n <= caps.water && g.truck_convoys[i].cargo.water == n),
+            other => panic!("{other:?}"),
+        }
+        // A depleted well gives nothing.
+        g.convoy_water_draws_this_stage.clear();
+        g.depleted_wells.insert(village);
+        assert_eq!(g.apply(Command::ConvoyDrawWater { convoy: i }), Err(CommandError::WellDepleted));
+        // A unit's first-line trucks draw too (Organization phase), and the action is offered.
+        g.phase = Phase::Organization;
+        let u = g.units.values().find(|u| u.nationality.side() == Side::Axis && u.trucks.medium > 0 && u.attached_parent.is_none() && u.hex().is_some()).unwrap().id;
+        g.unit_mut(u).unwrap().location = Some(crate::state::unit::UnitLocation::OnMap(city));
+        g.unit_mut(u).unwrap().truck_cargo = Default::default();
+        assert!(g.legal_commands(Side::Axis).contains(&Command::TrucksDrawWater { unit: u }));
+        assert!(matches!(g.apply(Command::TrucksDrawWater { unit: u }), Ok(CommandOutcome::WaterDrawn(n)) if n > 0));
+    }
+
+    #[test]
+    fn convoy_formed_from_a_unit_takes_its_trucks_share_of_fuel_49_14() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::Phase;
+        let mut g = build_campaign_game();
+        g.phase = Phase::Organization;
+        g.active_player = Side::Axis;
+        let hq = g.units.values().find(|u| u.name == "62nd Marmarica Div HQ").unwrap().id;
+        let before = g.units[&hq].fuel;
+        let rate = g.unit_fuel_rate_total(hq);
+        let Ok(CommandOutcome::TruckConvoyFormed { convoy }) = g.apply(Command::FormTruckConvoy { from_unit: hq, light: 0, medium: 10, heavy: 0 }) else { panic!("formed") };
+        let share = before * 10 / rate;
+        let cap = g.convoy_tank_capacity(&g.truck_convoys[convoy]);
+        assert_eq!(g.truck_convoys[convoy].tank_fuel, share.min(cap));
+        assert_eq!(g.units[&hq].fuel, before - share.min(cap), "fuel moves with the trucks, not created");
     }
 
     #[test]

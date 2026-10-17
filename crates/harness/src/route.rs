@@ -24,7 +24,9 @@ fn cost(game: &GameState, from: HexCoord, to: HexCoord, mode: MoveMode) -> Optio
 }
 
 /// The neighbours of `from` that start a route to `to` in `mode`, best first, each with the total
-/// route cost in tenths of a CP. Empty if `to` is unreachable (or `from == to`).
+/// route cost in tenths of a CP. Empty if `to` is unreachable (or `from == to`). Only steps that
+/// leave strictly less route to go are returned, so following any of them — the best, or a
+/// fallback when the best is refused — always makes progress and can never shuttle back and forth.
 pub fn first_steps(game: &GameState, from: HexCoord, to: HexCoord, mode: MoveMode) -> Vec<(HexCoord, i32)> {
     if from == to || game.map.hex(to).is_none() {
         return Vec::new();
@@ -62,10 +64,14 @@ pub fn first_steps(game: &GameState, from: HexCoord, to: HexCoord, mode: MoveMod
             }
         }
     }
+    let Some(&remaining) = dist.get(&from) else { return Vec::new() };
     let mut out: Vec<(HexCoord, i32)> = game
         .map
         .neighbors(from)
-        .filter_map(|n| Some((n, cost(game, from, n, mode)? + *dist.get(&n)?)))
+        .filter_map(|n| {
+            let left = *dist.get(&n)?;
+            (left < remaining).then_some((n, cost(game, from, n, mode)? + left))
+        })
         .collect();
     out.sort_by_key(|&(n, c)| (c, n.distance(to), n.col, n.row));
     out
@@ -102,6 +108,19 @@ mod tests {
             at = first_steps(&g, at, to, MoveMode::Motorized)[0].0;
         }
         assert_eq!(at, to, "the route arrives");
+        // Every offered step — fallbacks included — leaves less route to go, so a mover whose best
+        // step is refused can't shuttle between two hexes (the GT7 7th Armoured 36-step ping-pong).
+        let mut at = from;
+        for _ in 0..200 {
+            if at == to {
+                break;
+            }
+            let steps = first_steps(&g, at, to, MoveMode::Motorized);
+            let back = steps.iter().any(|&(n, _)| first_steps(&g, n, to, MoveMode::Motorized).iter().any(|&(m, _)| m == at));
+            assert!(!back, "no offered step can lead straight back to {at:?}");
+            at = steps.last().unwrap().0; // always take the worst fallback
+        }
+        assert_eq!(at, to, "even the worst fallback steps arrive");
         // A direct-line greedy step from Alexandria would hit prohibited terrain somewhere.
         let greedy_stalls = {
             let mut at = from;

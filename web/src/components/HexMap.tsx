@@ -692,7 +692,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
             return `• ${t.k.kind === "Lrdg" ? "LRDG" : "Sonderkommando"} desert raider (§27) — ${t.k.side}, fuel ${t.k.fuel}, ammo ${t.k.ammo}${t.k.revealed ? "" : " — concealed"}`;
           if (t.kind === "convoy") {
             const cargo = [t.c.fuel ? `F${t.c.fuel}` : "", t.c.ammo ? `A${t.c.ammo}` : "", t.c.stores ? `S${t.c.stores}` : "", t.c.water ? `W${t.c.water}` : ""].filter(Boolean).join(" ") || "empty";
-            return `• Truck Convoy — ${t.c.light + t.c.medium + t.c.heavy} TP (L${t.c.light} M${t.c.medium} H${t.c.heavy})${t.c.broken ? `, ${t.c.broken} broken 🔧` : ""}; cargo ${cargo}${t.c.carries_replacements ? "; hauling RP" : ""}`;
+            return `• Truck Convoy — ${t.c.light + t.c.medium + t.c.heavy} TP (L${t.c.light} M${t.c.medium} H${t.c.heavy})${t.c.broken ? `, ${t.c.broken} broken 🔧` : ""}; tanks ${t.c.tank_fuel}/${t.c.tank_capacity}; cargo ${cargo}${t.c.carries_replacements ? "; hauling RP" : ""}`;
           }
           if (t.kind === "rp") {
             const st = t.r.training_remaining > 0 ? `training ${t.r.training_remaining} stage(s) 🎓` : "trained";
@@ -818,6 +818,7 @@ export const HexMap = memo(function HexMap({ map, units, weather, replacements, 
               state: [
                 { label: "Trucks", value: `${c.light + c.medium + c.heavy} TP (L${c.light} M${c.medium} H${c.heavy})` },
                 { label: "Broken", value: c.broken > 0 ? `${c.broken} 🔧` : "none" },
+                { label: "Tanks", value: `${c.tank_fuel} / ${c.tank_capacity} fuel` },
                 { label: "Cargo", value: cargo },
                 { label: "Replacements", value: c.carries_replacements ? "hauling RP" : "none" },
               ],

@@ -32,10 +32,27 @@ the COMMONWEALTH wins automatically from Game-Turn 35 if no Axis combat unit can
 fed from Tobruk or Tripoli. Otherwise victory points: occupation at game end (Axis/CW VP) — Tobruk 200/100, Mersa Matruh \
 100/10, Bardia 100/50, Benghazi 75/100, Sidi Barrani 50/10, Derna 25/50, Sollum 25/10, Siwa 20/10, Giarabub 15/10, Jalo \
 10/20 — counted only for a combat unit (≥1 TOE) holding a week of Stores and Water plus Fuel/Ammo to fire three times and \
-move 20 CP; plus unused Replacement Points. You are the {s:?}."),
+move 20 CP; plus unused Replacement Points. You are the {s:?}.\n\n{stance}", stance = campaign_stance(s)),
         _ => "Scenario: a small skirmish on open ground — a test engagement. Destroy or rout the enemy force while keeping \
 your own units intact and cohesive. There are no geographic objectives.".into(),
     }
+}
+
+/// Campaign-game guidance against a frozen front: the objectives are only won by acting on them.
+fn campaign_stance(side: Side) -> String {
+    let task = match side {
+        Side::Axis => "Your task is to advance into Egypt: take and hold Sidi Barrani, Mersa Matruh and ultimately Alexandria \
+and Cairo, while keeping the Tobruk/Tripoli supply line the Commonwealth automatic win (from Game-Turn 35) depends on cutting.",
+        Side::Commonwealth => "Your task is to throw the Axis out of Cyrenaica: take and hold Bardia, Tobruk, Derna and Benghazi, \
+and destroy or cut off the Axis forward supply — from Game-Turn 35 you win outright if no Axis combat unit can trace a supply line.",
+    };
+    format!(
+        "Standing orders: a static front decides nothing — the campaign is won only by taking and holding the objectives \
+above, and the side that sits still concedes them. {task} Every stage, decide what each formation should be doing to move \
+toward an objective: build and stock forward dumps, bring fuel, water and ammunition up, then attack or counter-attack \
+where you can win. Holding or resting is a legitimate choice only as part of that plan, for a stated reason and a stated \
+time — not as the default."
+    )
 }
 
 /// The fixed system prompt for a side. Deliberately lean: the role, how decision windows and memory
@@ -47,7 +64,9 @@ pub fn system_prompt(side: Side, coaching: bool) -> String {
         "You are the {side:?} theatre commander in SPI's *The Campaign for North Africa* (1979), played on the CNA-Sim \
 rules engine. You make the decisions for your side; the engine enforces every rule and rolls every die. The \
 rulebook is the authority on how the game works — read it with rules_toc / read_rules / search_rules whenever you \
-need to. How to play well is up to you.\n\
+need to, and always before a logistics move you have not made before (forming, loading, driving or unloading a convoy; \
+building a dump; bringing units onto the map) or when an action is refused for a reason you don't fully understand. \
+How to play well is up to you.\n\
 \n\
 # How play works\n\
 - Each Game-Turn is one week, split into three Operations Stages, each with a sequence of phases for each side.\n\
@@ -64,6 +83,9 @@ dumps may be dummies.\n\
 - Supply is drawn only from sources in a unit's own hex: onboard water (refilled at a well/oasis/major city in the \
 hex), stores from a friendly dump in the hex, RefuelUnit/RearmUnit from a dump or the unit's own trucks in the hex.\n\
 - Each own unit in get_observation (detail) lists `blockers`: the rule currently preventing it from acting.\n\
+- Free truck convoys (get_overview `truck_convoys`) keep their own tank fuel apart from their cargo (§49.14): a convoy \
+drives on its tanks, then fuel in its hex, then its fuel cargo; RefuelConvoy refills the tanks. Water for trucks is drawn at \
+wells with ConvoyDrawWater / TrucksDrawWater (§52.13), not only from dumps.\n\
 - The engine applies all automatic rules itself (e.g. forced retreats, attrition, surrender) at the right moment.\n\
 \n\
 # Tools (server `cna`)\n\
@@ -79,6 +101,10 @@ Act: submit_plan — items {{\"id\": n}} | {{\"command\": <engine JSON>}} | {{\"
 end_phase (optional \"rationale\": what you decided this window, including doing nothing, and why). Rationales are recorded \
 for the game's commentary and shown back to you in your journal.\n\
 Memory: write_doctrine / write_notes / read_notes / get_journal.\n\
+Air: your planes start unassigned and cannot fly. In the Organization phase DeploySgsu (a squadron ground unit) at an air \
+facility and AssignSquadronPlanes into it; then ready/arm it and fly missions (CAP, scramble, recon, bombing, strafing, \
+airdrop) in the Land Support Air phase — both sides assign simultaneously and all missions resolve together. \
+get_overview shows your squadrons, unassigned planes, spare SGSU counters and air facilities.\n\
 Hexes appear as a rulebook label (e.g. A2109) and a [col,row] coordinate; commands use the coordinate.\n\
 \n\
 # Memory\n\
@@ -116,8 +142,12 @@ are refused (submit_plan is disabled). {budget_note}\n\
 # Objectives\n{obj}\n\
 \n\
 # Your task\n\
-1. Study the rulebook as deeply as you judge useful (rules_toc, read_rules, search_rules): the sequence of play, how \
-your forces move, fight and are supplied, and the victory conditions. Note anything that will shape your play.\n\
+1. Study the rulebook (rules_toc, read_rules, search_rules): the sequence of play, how your forces move, fight and \
+are supplied, and the victory conditions. Logistics decides this game, so read these chapters in full before writing \
+your doctrine: 49 Fuel, 50 Ammunition, 51 Stores, 52 Water, 53 Trucks and Transport, 54 Supply Co-ordination, \
+24.9 Supply Dumps, and 8.8 Off-Map Movement (Axis). Record in your doctrine the exact rules that govern how your trucks \
+and convoys are fuelled and watered, where supplies may be loaded and drawn, and how units entering the map are \
+supplied. Note anything else that will shape your play.\n\
 2. Study the initial situation (get_overview, then get_observation / list_legal_actions where useful).\n\
 3. Write your DOCTRINE with write_doctrine: (a) your assessment of the mechanics that matter most and how to use or \
 avoid them, (b) your campaign strategy, (c) your plan for the opening turns by formation/sector, (d) your logistics \

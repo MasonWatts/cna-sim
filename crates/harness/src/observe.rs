@@ -178,7 +178,12 @@ pub fn unit_blockers(game: &GameState, id: UnitId, legal_now: Option<usize>) -> 
     let Some(u) = game.units.get(&id) else { return Vec::new() };
     let mut b = Vec::new();
     if u.status.pinned {
-        b.push("Pinned — may not move, fire anti-armor or close-assault this stage (§12.44).".to_string());
+        b.push("Pinned by barrage — may not move, fire anti-armor or close-assault this Combat Segment (§12.44).".to_string());
+    }
+    if u.status.air_pinned {
+        b.push("Pinned by air bombing until the end of this Operations Stage (§41.9) — in your own portion: half CPA, may not \
+                enter or leave an enemy ZOC, no barrage/assault; in the enemy's portion: no voluntary move or combat."
+            .to_string());
     }
     if u.cohesion <= -26 {
         b.push("Disorganized (cohesion ≤ −26) — may not move or attack (§6.26).".into());
@@ -222,7 +227,14 @@ pub fn explain_rejection(game: &GameState, cmd: &Command, err: &CommandError) ->
     if let (Command::NavalTransferTroops { unit, to_port }, CommandError::PortTransferUnavailable) = (cmd, err) {
         return Some(explain_port_transfer(game, *unit, to_port));
     }
-    if let Command::MoveTruckConvoy { convoy, .. } = cmd {
+    // A counter that carries attached units (a formation HQ, a brigade) moves as one: name the
+    // members that are actually short, and the way out (detach them, or supply them).
+    if let (Command::MoveStep { unit, .. } | Command::FormationMove { formation: unit, .. }, CommandError::InsufficientFuel | CommandError::NoWater) = (cmd, err) {
+        if let Some(why) = explain_formation_block(game, *unit, err) {
+            return Some(why);
+        }
+    }
+    if let Command::MoveTruckConvoy { convoy, .. } | Command::RefuelConvoy { convoy } | Command::ConvoyDrawWater { convoy } = cmd {
         if let Some(why) = explain_convoy_move(game, *convoy, err) {
             return Some(why);
         }
@@ -268,6 +280,44 @@ fn explain_port_transfer(game: &GameState, unit: UnitId, to_port: &str) -> Strin
     )
 }
 
+/// For a counter with attached units refused for fuel or water: which members are short, and how
+/// to get the rest moving (§19.43 detach, §49.16 / §52 supply in the hex). `None` for a lone unit.
+fn explain_formation_block(game: &GameState, root: UnitId, err: &CommandError) -> Option<String> {
+    let members = game.formation_members(root);
+    if members.len() <= 1 {
+        return None;
+    }
+    let name = |id: UnitId| game.units.get(&id).map(|u| u.name.clone()).unwrap_or_default();
+    let short: Vec<String> = members
+        .iter()
+        .copied()
+        .filter(|&id| {
+            let Some(u) = game.units.get(&id) else { return false };
+            match err {
+                CommandError::NoWater => u.stages_without_water > 0 && is_vehicle_unit(game, id),
+                _ => game.unit_fuel_capacity(id) > 0 && u.fuel == 0,
+            }
+        })
+        .map(name)
+        .collect();
+    let what = if matches!(err, CommandError::NoWater) { "without water (vehicles may not move, §52.51)" } else { "out of fuel (§49.13)" };
+    let list = if short.is_empty() {
+        "the formation's combined fuel in tanks and in this hex's dumps doesn't cover the move".to_string()
+    } else {
+        let n = short.len();
+        let shown: Vec<String> = short.into_iter().take(6).collect();
+        format!("{n} member(s) {what}: {}{}", shown.join(", "), if n > 6 { ", …" } else { "" })
+    };
+    Some(format!(
+        "{} moves as one counter with its {} attached unit(s), so every member must be able to move. {list}. \
+         Options: DetachUnit those members in the Organization phase (§19.43) and move the rest — detached leg infantry can \
+         walk (NonMotorized) without fuel; or supply them in this hex first (RefuelUnit from a dump, water from a well/dump, \
+         or truck fuel/water in with a convoy).",
+        name(root),
+        members.len() - 1
+    ))
+}
+
 /// Why a free truck convoy can't make a step (§8.98, §10.29, §49.18, §52.42).
 fn explain_convoy_move(game: &GameState, convoy: usize, err: &CommandError) -> Option<String> {
     use CommandError as E;
@@ -283,10 +333,14 @@ fn explain_convoy_move(game: &GameState, convoy: usize, err: &CommandError) -> O
             c.cpa_used / 10, game.truck_convoy_cpa(c) / 10
         ),
         E::InsufficientFuel => format!(
-            "Its {tp} Truck Points burn {tp} Fuel per 5 CP moved (§49.13/§49.18); it carries {} Fuel and the dumps at {at} hold {}. \
-             LoadConvoy fuel first (Truck Convoy phase), or move it where fuel is.",
-            c.cargo.fuel, game.available_commodity_at(c.hex, c.side, cna_engine::state::game::Commodity::Fuel)
+            "Its {tp} Truck Points burn {tp} Fuel per 5 CP moved (§49.13), paid from its own tanks ({} of {}), then a fuel source in \
+             its hex (dumps at {at} hold {}), then its Fuel cargo ({}) (§49.16/§49.18). RefuelConvoy fills the tanks where fuel is; \
+             keep enough in the tanks for the return trip.",
+            c.tank_fuel, game.convoy_tank_capacity(c),
+            game.available_commodity_at(c.hex, c.side, cna_engine::state::game::Commodity::Fuel), c.cargo.fuel
         ),
+        E::ConvoyTankFull => format!("The convoy's tanks are already full ({} Fuel, §49.14).", c.tank_fuel),
+        E::NoCargoRoom => "The convoy's trucks have no room left for Water (§54.2: one commodity per Truck Point) — unload something first.".into(),
         E::NoWater => format!(
             "Its {tp} Truck Points need {tp} Water (double when hot) for a stage they move (§52.42) and vehicles without water may not move \
              (§52.51). It carries {} Water; {at} has no well and its dumps hold {}. Load water at a dump or start from a well.",
@@ -355,13 +409,29 @@ pub fn explain_error(game: &GameState, unit: Option<UnitId>, dest: Option<HexCoo
         E::SgsuCpaExhausted => "The SGSU lacks the Capability Points left this stage (CPA 25 for Commonwealth SGSUs; off-map legs cost the \
                                 §36.53 distance as CP). Continue next stage."
             .into(),
+        E::PlanesNeedRefit => "No plane is refitted-but-unready: RefitSquadron first (§38.3; flying uses up a refit, §37.15). An SGSU \
+                               that is unsupplied (no fuel/water/stores at its base, §35.14) can't refit."
+            .into(),
+        E::NothingToRepair => "Nothing of that kind is broken down there — a field repair needs broken-down trucks/tanks/recce to fix (§22).".into(),
+        E::RepairBlockedByWeather => "No field repairs in a Rainstorm or Sandstorm hex (§22.13d); try again next Repair Phase.".into(),
+        E::SquadronAtReadyCapacity => "The squadron already keeps as many planes ready as it can (§35.23 ready capacity); the rest stay in reserve.".into(),
+        E::NoWellHere => "There is no well in that hex (§52.11): water is drawn only at a major city, village, bir, oasis or water pipeline \
+                          (Commonwealth: also any railroad hex). Move the trucks to one first.".into(),
+        E::WellDepleted => "That well is depleted (§52.14) until a rainstorm replenishes it (§52.15). Try another well.".into(),
+        E::WellPoisoned => "That well is poisoned (§52.16); a unit may try to sweeten it (SweetenWell, §52.17).".into(),
+        E::AlreadyDrewWater => "These trucks already drew water this Operations Stage (one draw per stage).".into(),
+        E::NoCargoRoom => "No room on the trucks for more Water (§54.2: one commodity per Truck Point) — unload something first.".into(),
         E::NotYourUnit => "That unit / squadron / convoy / raider / pool belongs to the other side — you may only command your own forces.".into(),
         E::SgsuAlreadyRebased => "A squadron changes base (enters, leaves or switches an off-map field) at most once per Operations Stage.".into(),
         E::SgsuNotAtEntryHex => "Off-map air facilities are entered and left through their §36.53 entry hex (E1833 Fayid/Deversoir/Kabrit, \
                                  E3433 Abu Seier/Ismailia, E4033 Port Said, E0127 Ethiopia): drive the SGSU there first (MoveSgsu)."
             .into(),
         E::MustStopInZoc => "The unit entered an enemy Zone of Control this stage and must stop (§8.14).".into(),
-        E::Pinned => "Pinned — may not move this stage (§12.44).".into(),
+        E::Pinned => "Pinned. A barrage Pin (§12.44) stops movement and anti-armor/close assault until the end of that Combat \
+                      Segment. An air-bombing Pin (§41.9) lasts until the end of the Operations Stage: in your own portion the \
+                      unit (or formation) may use only half its CPA, may not enter or leave an enemy ZOC, and may not barrage or \
+                      assault; in the enemy's portion it may not move or fight voluntarily."
+            .into(),
         E::Disorganized => "Disorganized (cohesion ≤ −26) — may not move voluntarily (§6.26).".into(),
         E::InReserve => "In Reserve — release it first (§18.2).".into(),
         E::HalfRation => "On half rations — may not exceed its CPA or enter an enemy ZOC (§51.23).".into(),
@@ -384,6 +454,7 @@ fn own_unit_compact(game: &GameState, id: UnitId, legal_now: Option<usize>) -> O
         (game.unit_is_motorized(id) && u.fuel == 0 && game.unit_fuel_capacity(id) > 0, "NO_FUEL"),
         (matches!(u.composition, cna_engine::state::unit::Composition::Weapons { .. }) && u.ammo == 0, "NO_AMMO"),
         (u.status.pinned, "PINNED"),
+        (u.status.air_pinned, "AIR_PINNED"),
         (u.cohesion <= -26, "DISORGANIZED"),
         (u.status.in_contact, "IN_CONTACT"),
         (u.status.engaged, "ENGAGED"),
@@ -420,6 +491,41 @@ fn formation_root(game: &GameState, id: UnitId) -> UnitId {
 
 /// Theatre-level summary for large scenarios: own stacks, formations, supply problems, enemy
 /// contacts by hex, and own dumps — a few KB instead of the full unit list.
+/// The side's free truck convoys (§53): trucks, tanks vs cargo fuel (§49.14 — tank fuel moves the
+/// convoy; cargo fuel is for delivery but may also be burned, §49.18), cargo and CP used, flagging any
+/// that cannot move from where they are.
+fn convoy_overview(game: &GameState, side: Side) -> Value {
+    use cna_engine::state::game::Commodity;
+    let list: Vec<Value> = game
+        .truck_convoys
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.side == side)
+        .map(|(i, c)| {
+            let tp = c.trucks.light + c.trucks.medium + c.trucks.heavy;
+            let here = game.available_commodity_at(c.hex, side, Commodity::Fuel);
+            let stranded = tp > 0 && c.tank_fuel == 0 && c.cargo.fuel == 0 && here == 0;
+            let mut v = json!({
+                "convoy": i, "at": hex_json(c.hex),
+                "trucks": {"light": c.trucks.light, "medium": c.trucks.medium, "heavy": c.trucks.heavy,
+                           "broken_down": c.trucks_broken.light + c.trucks_broken.medium + c.trucks_broken.heavy},
+                "tank_fuel": c.tank_fuel, "tank_capacity": game.convoy_tank_capacity(c),
+                "cargo": {"fuel": c.cargo.fuel, "ammo": c.cargo.ammo, "stores": c.cargo.stores, "water": c.cargo.water},
+                "cp_used": c.cpa_used / 10, "cpa": game.truck_convoy_cpa(c) / 10,
+            });
+            if stranded {
+                v["stranded"] = json!("no fuel in its tanks, its cargo or its hex — fuel must be brought to it");
+            }
+            v
+        })
+        .collect();
+    json!({"count": list.len(), "convoys": list,
+           "note": "A convoy moves on its own tanks (one stage of full-CPA driving), then fuel at a source in its hex, then its fuel cargo. \
+                    RefuelConvoy (Organization / Truck Convoy phase) fills the tanks from a dump or its cargo; unloading cargo never empties the tanks. \
+                    Trucks need Water each stage they move: ConvoyDrawWater / TrucksDrawWater fill them at a well (major city, oasis, pipeline, \
+                    CW railroad: as much as they carry; village/bir: a die roll)."})
+}
+
 pub fn overview(game: &GameState, side: Side) -> Value {
     use std::collections::BTreeMap;
     let views = game.observe_units(side);
@@ -439,6 +545,7 @@ pub fn overview(game: &GameState, side: Side) -> Value {
         if matches!(u.composition, cna_engine::state::unit::Composition::Weapons { .. }) && u.ammo == 0 { push("out_of_ammo"); }
         if u.cohesion <= -26 { push("disorganized"); }
         if u.status.pinned { push("pinned"); }
+        if u.status.air_pinned { push("air_pinned"); }
         if u.turns_without_stores > 0 { push("short_of_stores"); }
     }
     let problems: BTreeMap<&str, Value> = problems
@@ -523,8 +630,85 @@ pub fn overview(game: &GameState, side: Side) -> Value {
         "formations": form_list,
         "enemy_contacts": {"units_visible": enemy_total, "by_hex": enemy_list},
         "own_dumps": {"count": dumps_total, "largest": dumps},
+        "truck_convoys": convoy_overview(game, side),
+        "air": air_overview(game, side),
         "note": "Lists are capped (contact stacks and largest first). Drill down with get_observation (near / units / detail) and list_legal_actions (unit / kind).",
     })
+}
+
+/// The side's air force (§34–§41), compactly: squadrons on the board, the unassigned plane pool,
+/// spare SGSU counters, and its air facilities with free capacity. Planes only fly from a deployed
+/// SGSU, so this is what a player needs to get an air force into the air.
+fn air_overview(game: &GameState, side: Side) -> Value {
+    use std::collections::BTreeMap;
+    let mut squadrons: Vec<Value> = game
+        .sgsus
+        .values()
+        .filter(|s| s.nationality.side() == side)
+        .map(|s| {
+            json!({
+                "squadron": s.id.0, "designation": s.designation, "class": format!("{:?}", s.class),
+                "nationality": format!("{:?}", s.nationality),
+                "at": s.location.map(hex_json).or_else(|| s.off_map_box.as_ref().map(|b| json!({"off_map": b}))),
+                "planes": s.plane_count(), "ready": s.ready_planes(), "armed": s.armed_planes(), "refitted": s.refitted_planes(),
+                "in_transit": s.in_transit(),
+            })
+        })
+        .collect();
+    squadrons.sort_by_key(|v| v["squadron"].as_u64().unwrap_or(0));
+    // Unassigned planes by type, and spare SGSU counters, for this side's nationalities.
+    let mut pool: BTreeMap<String, u32> = BTreeMap::new();
+    let mut spare_sgsu = 0;
+    for (nat, types) in &game.plane_pool {
+        if nat.side() != side {
+            continue;
+        }
+        for (ty, &n) in types {
+            if n > 0 {
+                *pool.entry(ty.clone()).or_default() += n;
+            }
+        }
+    }
+    for (nat, &n) in &game.available_sgsu {
+        if nat.side() == side {
+            spare_sgsu += n;
+        }
+    }
+    // Air facilities are map/scenario features (no fog): list the usable ones. Whether a given one
+    // can actually take a squadron is settled by DeploySgsu's own validation.
+    let facilities: Vec<Value> = game
+        .air_facilities
+        .iter()
+        .filter(|f| f.capacity_level > 0)
+        .map(|f| {
+            let based = game.sgsus.values().filter(|s| s.location == Some(f.hex)).count() as u32;
+            json!({"hex": hex_json(f.hex), "kind": format!("{:?}", f.kind), "capacity": f.capacity_level,
+                "squadrons_based": based, "free_capacity": f.capacity_level.saturating_sub(based)})
+        })
+        .collect();
+    let pool_total: u32 = pool.values().sum();
+    let mut v = json!({
+        "squadrons": squadrons,
+        "unassigned_planes": {"total": pool_total, "by_type": pool},
+        "spare_sgsu_counters": spare_sgsu,
+        "air_facilities": facilities,
+        "your_recent_missions": game
+            .air_results
+            .iter()
+            .filter(|r| r.side == side)
+            .rev()
+            .take(12)
+            .map(|r| json!({"game_turn": r.game_turn, "stage": r.stage, "result": r.text}))
+            .collect::<Vec<_>>(),
+    });
+    if pool_total > 0 && game.sgsus.values().filter(|s| s.nationality.side() == side).all(|s| s.plane_count() == 0) {
+        v["note"] = json!(format!(
+            "Your {pool_total} planes are unassigned and cannot fly. In the Organization phase: DeploySgsu (a squadron ground \
+             unit) at an air facility, then AssignSquadronPlanes to put planes in it; then ready/arm it and fly missions in the \
+             Land Support Air phase (§34.8/§35.1/§38)."
+        ));
+    }
+    v
 }
 
 /// Full detail for one of the viewer's own units.
@@ -555,6 +739,7 @@ fn own_unit_json(game: &GameState, id: UnitId, legal_now: Option<usize>) -> Opti
         "motorized": game.unit_is_motorized(id),
         "reserve": format!("{:?}", u.reserve),
         "pinned": u.status.pinned,
+        "air_pinned": u.status.air_pinned,
         "in_contact": u.status.in_contact,
         "engaged": u.status.engaged,
         "legal_actions_now": legal_now,
@@ -747,6 +932,7 @@ mod tests {
         // The Mersa Matruh convoy, emptied of cargo, moving off its dump after the dump is emptied.
         let i = g.truck_convoys.iter().position(|c| c.side == Side::Commonwealth && hex_label(c.hex) == "D3714").unwrap();
         g.truck_convoys[i].cargo = Default::default();
+        g.truck_convoys[i].tank_fuel = 0;
         let at = g.truck_convoys[i].hex;
         for d in g.supply_dumps.iter_mut().filter(|d| d.location == UnitLocation::OnMap(at)) {
             d.supply.fuel = 0;
@@ -756,9 +942,26 @@ mod tests {
         let err = g.clone().apply(cmd.clone()).unwrap_err();
         assert_eq!(err, CommandError::InsufficientFuel);
         let why = explain_rejection(&g, &cmd, &err).unwrap();
-        assert!(why.contains("burn") && why.contains("§49.18") && why.contains("LoadConvoy"), "{why}");
+        assert!(why.contains("burn") && why.contains("§49.18") && why.contains("RefuelConvoy"), "{why}");
         let why = explain_rejection(&g, &cmd, &CommandError::TruckConvoyCpaExhausted).unwrap();
         assert!(why.contains("§8.98"), "{why}");
+    }
+
+    #[test]
+    fn formation_fuel_block_names_the_short_members() {
+        use cna_engine::rules::movement::MoveMode;
+        let (mut g, _) = cna_replay::scenarios::build("campaign", 1);
+        let hq = g.units.values().find(|u| u.name == "64th Catanzaro Div HQ").unwrap().id;
+        let members = g.formation_members(hq);
+        assert!(members.len() > 1);
+        // Empty one attached gun unit's tanks.
+        let gun = members.iter().copied().find(|&m| m != hq && g.unit_fuel_capacity(m) > 0).expect("a fuel-burning member");
+        g.units.get_mut(&gun).unwrap().fuel = 0;
+        let to = g.map.neighbors(g.effective_hex(hq).unwrap()).next().unwrap();
+        let cmd = Command::FormationMove { formation: hq, to, mode: MoveMode::Motorized };
+        let why = explain_rejection(&g, &cmd, &CommandError::InsufficientFuel).unwrap();
+        let gun_name = g.units[&gun].name.clone();
+        assert!(why.contains(&gun_name) && why.contains("DetachUnit") && why.contains("§19.43"), "{why}");
     }
 
     #[test]

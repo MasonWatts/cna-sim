@@ -386,10 +386,11 @@ impl GameState {
     /// extensions — the framework is here; each adds its own enumerator.
     pub fn legal_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
         use crate::state::game::Phase;
-        match self.phase {
+        let mut out = match self.phase {
             Phase::MovementAndCombat => self.legal_movement_combat_commands(side),
             Phase::Organization => self.legal_organization_commands(side),
             Phase::LandSupportAir => self.legal_air_commands(side),
+            Phase::AircraftMaintenance => self.legal_air_maintenance_commands(side),
             Phase::TruckConvoy => self.legal_convoy_commands(side),
             Phase::Repair => self.legal_repair_commands(side),
             Phase::CommonwealthFleet => self.legal_fleet_commands(side),
@@ -397,7 +398,12 @@ impl GameState {
             Phase::NavalConvoySchedule => self.legal_convoy_planning_commands(side),
             Phase::ConvoyResolution => self.legal_convoy_resolution_commands(side),
             _ => Vec::new(),
-        }
+        };
+        // The enumerators validate with `dry_run` (rules only); drop anything `apply_as` would refuse
+        // for using the other side's forces — e.g. absorbing an enemy replacement pool co-located
+        // with a friendly unit.
+        out.retain(|c| self.issuer_owns(c, side));
+        out
     }
 
     /// §40.24/§44: Commonwealth Malta-based convoy interdiction (Convoy Resolution Phase). For each
@@ -720,6 +726,43 @@ impl GameState {
             .filter_map(|u| Some((u.id, u.hex()?)))
             .collect();
         let mut out = Vec::new();
+        // §49.14/§49.16: free convoys may fill their tanks in the Organization phase too.
+        for i in 0..self.truck_convoys.len() {
+            if self.truck_convoys[i].side == side {
+                for cmd in [Command::RefuelConvoy { convoy: i }, Command::ConvoyDrawWater { convoy: i }] {
+                    if self.dry_run(&cmd).is_ok() {
+                        out.push(cmd);
+                    }
+                }
+            }
+        }
+        // Attached units (riding a formation's counter, so with no hex of their own): detach
+        // (§19.43 — always permitted in this phase) and refuel/rearm in the formation's hex. These
+        // were missing, so a formation frozen by one out-of-fuel member could never shed it.
+        let mut riders: Vec<UnitId> = self
+            .units
+            .values()
+            .filter(|u| u.nationality.side() == side && u.attached_parent.is_some() && self.effective_hex(u.id).is_some())
+            .map(|u| u.id)
+            .collect();
+        riders.sort();
+        for unit in riders {
+            out.push(Command::DetachUnit { unit });
+            let u = &self.units[&unit];
+            if u.fuel < self.unit_fuel_capacity(unit) {
+                let cmd = Command::RefuelUnit { unit };
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            }
+            let ammo_cap = self.reference.ammo_rates.map_or(0, |r| r.barrage * u.total_toe());
+            if u.ammo < ammo_cap {
+                let cmd = Command::RearmUnit { unit };
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            }
+        }
         // §27.13: a raider (Commonwealth LRDG / Axis DSA) is formed from a Recce/AC unit.
         let raider_kind = match side {
             Side::Commonwealth => crate::state::game::RaiderKind::Lrdg,
@@ -742,7 +785,6 @@ impl GameState {
                 }
             }
             for cmd in [
-                Command::DetachUnit { unit },
                 Command::FormRaider { kind: raider_kind, from_unit: unit },
                 Command::RefitDeacons { unit }, // §4.44a b: dry_run gates to the eligible 102nd
             ] {
@@ -891,6 +933,11 @@ impl GameState {
             // §53.14/§24.9: load a commodity onto the unit's first-line trucks from a co-located dump, or
             // off-load one into the hex. Probe the max with a huge amount; emit the moved quantity if > 0.
             if self.unit(unit).map(|u| u.trucks.light + u.trucks.medium + u.trucks.heavy > 0).unwrap_or(false) {
+                // §52.13: fill the trucks with water at a well in the hex.
+                let draw = Command::TrucksDrawWater { unit };
+                if self.dry_run(&draw).is_ok() {
+                    out.push(draw);
+                }
                 for cm in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
                     if let Ok(CommandOutcome::TrucksLoaded(n)) = self.dry_run(&Command::LoadTrucks { unit, commodity: cm, amount: u32::MAX }) {
                         if n > 0 {
@@ -1081,6 +1128,13 @@ impl GameState {
         ];
 
         let mut out = Vec::new();
+        for &(squadron, planes) in &squadrons {
+            // §40.31: stand fighters by to scramble against enemy missions this phase.
+            let cmd = Command::DesignateScramble { squadron, planes };
+            if self.dry_run(&cmd).is_ok() {
+                out.push(cmd);
+            }
+        }
         for (squadron, planes) in squadrons {
             for &center in &own_hexes {
                 let cmd = Command::DesignateCap { squadron, center, cap_type: CapType::Offensive, planes };
@@ -1116,11 +1170,19 @@ impl GameState {
                 }
             }
         }
-        // Air maintenance (§38): ready (refuel), arm, and refit each own squadron so its assigned
-        // planes become flyable. Only offered when there is actually work left to do — otherwise the
-        // command stays legal and an agent re-issues it every call, burning the per-phase action cap
-        // (the maintenance spam). Counts are the shortfall; `dry_run` gates supply/eligibility.
-        // Visited in id order for determinism.
+        out.extend(self.legal_air_maintenance_commands(side));
+        out
+    }
+
+    /// §33.0 IV.F.7 / §38: Aircraft-Maintenance actions (also offered inside the Land Support Air
+    /// Phase) — ready (refuel), arm and refit each own squadron so its planes become flyable.
+    fn legal_air_maintenance_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
+        use crate::state::command::Command;
+        let mut out = Vec::new();
+        // Only offered when there is actually work left to do — otherwise the command stays legal
+        // and an agent re-issues it every call, burning the per-phase action cap (the maintenance
+        // spam). Counts are the shortfall; `dry_run` gates supply/eligibility. Id order for
+        // determinism.
         let mut own_sgsus: Vec<crate::state::air::SquadronId> = self
             .sgsus
             .iter()
@@ -1208,6 +1270,12 @@ impl GameState {
         for (i, c) in self.truck_convoys.iter().enumerate() {
             if c.side != side {
                 continue;
+            }
+            // §49.14/§49.16: top up the trucks' own tanks from fuel in the hex or the convoy's cargo.
+            for cmd in [Command::RefuelConvoy { convoy: i }, Command::ConvoyDrawWater { convoy: i }] {
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
             }
             for to in self.map.neighbors(c.hex) {
                 let cmd = Command::MoveTruckConvoy { convoy: i, to };
@@ -1323,7 +1391,8 @@ impl GameState {
         let own: Vec<UnitId> = self
             .units
             .values()
-            .filter(|u| u.nationality.side() == side && u.hex().is_some())
+            // Attached units (riding a formation counter) repair too — not only top-level counters.
+            .filter(|u| u.nationality.side() == side && self.effective_hex(u.id).is_some())
             .map(|u| u.id)
             .collect();
         for unit in own {

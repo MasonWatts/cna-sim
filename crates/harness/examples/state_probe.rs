@@ -6,6 +6,13 @@ use cna_harness::log;
 
 fn summary(tag: &str, g: &GameState) {
     for side in [Side::Commonwealth, Side::Axis] {
+        let sq: Vec<_> = g.sgsus.values().filter(|s| s.nationality.side() == side).collect();
+        let planes: u32 = sq.iter().map(|s| s.plane_count()).sum();
+        let pool: u32 = g.plane_pool.iter().filter(|(n, _)| n.side() == side).flat_map(|(_, m)| m.values()).sum();
+        println!("{tag} {side:?} air: {} SGSUs on board ({} with planes, {planes} planes); {pool} planes in the unassigned pool",
+            sq.len(), sq.iter().filter(|s| s.plane_count() > 0).count());
+    }
+    for side in [Side::Commonwealth, Side::Axis] {
         let (mut l, mut m, mut h, mut n) = (0, 0, 0, 0);
         for u in g.units.values().filter(|u| u.nationality.side() == side) {
             let t = &u.trucks;

@@ -770,7 +770,7 @@ impl GameState {
                 hex,
                 trucks: crate::state::unit::TruckPoints { light: c.light, medium: c.medium, heavy: c.heavy },
                 trucks_broken: Default::default(),
-                cargo: Default::default(),
+                cargo: Default::default(), tank_fuel: 0,
                 cpa_used: 0,
                 breakdown_points: 0,
                 breakdown_checked_col: 0,

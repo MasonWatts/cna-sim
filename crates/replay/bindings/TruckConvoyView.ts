@@ -13,7 +13,15 @@ id: number, hex: [number, number], side: string, light: number, medium: number, 
 /**
  * Total broken-down Truck Points (§21) awaiting §22.13 field repair.
  */
-broken: number, fuel: number, ammo: number, stores: number, water: number, 
+broken: number, 
+/**
+ * Fuel carried as cargo (deliverable).
+ */
+fuel: number, 
+/**
+ * §49.14: Fuel in the trucks' own tanks, and the tank capacity.
+ */
+tank_fuel: number, tank_capacity: number, ammo: number, stores: number, water: number, 
 /**
  * §20.44/§27.57: whether the convoy is hauling a Replacement-Point pool.
  */

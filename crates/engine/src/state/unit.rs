@@ -103,7 +103,13 @@ pub enum ReserveStatus {
 /// state, not placed map objects).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct UnitStatus {
+    /// §12.44 barrage Pin: no move / anti-armor / close assault for the rest of the Combat Segment.
     pub pinned: bool,
+    /// §41.9 air-bombardment Pin (§41.31): ½ CPA, no entering/leaving an enemy ZOC and no voluntary
+    /// combat in the unit's own portion of the stage; no voluntary move or combat in the enemy's
+    /// portion; lifted at the end of the Operations Stage (`GameState::pin_state`).
+    #[serde(default)]
+    pub air_pinned: bool,
     pub engaged: bool,
     pub in_contact: bool,
     pub in_training: bool,
