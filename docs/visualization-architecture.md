@@ -131,7 +131,8 @@ the WASM-replay stepping stone (a command log is the eventual end state).
 - **Scenarios:** the `record` bin takes `record <out.jsonl> [turns] [scenario]` — scenario is
   `skirmish` (synthetic), `scenario1` (§60 Italian Offensive on the real five-section map + historical
   OB, 7,011 hexes / 80 units), or `campaign` (§64, the default demo). The committed web asset
-  (`web/public/game.jsonl.gz`) is a gzipped 5-turn campaign run.
+  (`web/public/game.jsonl.gz`) is the full 111-turn Claude-vs-Claude campaign (run 22, ~9.5 MB gzipped,
+  ~490 MB inflated in the browser — the first load is slow).
 - **Rules citations are done.** `Command::rule_refs()` is exhaustive and the recorder emits them per
   event; the viewer's Relevant Rules panel is always populated. The friendly `summary` deliberately
   carries no `§` so it doesn't duplicate that panel.
