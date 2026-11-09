@@ -959,6 +959,7 @@ fn is_decision_phase(p: Phase) -> bool {
             | Phase::NavalConvoyArrival
             | Phase::NavalConvoySchedule
             | Phase::AircraftMaintenance
+            | Phase::CommonwealthRail
     )
 }
 
@@ -1123,6 +1124,8 @@ pub fn describe_command(g: &GameState, cmd: &Command, outcome: &CommandOutcome) 
             CommandOutcome::WaterDrawn(n) => format!("{}'s trucks drew {n} Water at the well.", un_name(g, *unit)),
             _ => format!("{}'s trucks drew water at the well.", un_name(g, *unit)),
         },
+        Command::SplitConvoy { light, medium, heavy, .. } => format!("Split {light}L/{medium}M/{heavy}H Truck Points off a convoy as a new convoy."),
+        Command::MergeConvoy { .. } => "Merged two truck convoys in the same hex.".into(),
         Command::ConvoyDrawWater { .. } => match outcome {
             CommandOutcome::WaterDrawn(n) => format!("A truck convoy drew {n} Water at the well."),
             _ => "A truck convoy drew water at the well.".into(),
@@ -1488,7 +1491,9 @@ fn activity_hex(g: &GameState, cmd: &Command) -> Option<HexCoord> {
         | Command::UnloadConvoy { convoy, .. }
         | Command::RepairConvoyTrucks { convoy }
         | Command::RefuelConvoy { convoy }
-        | Command::ConvoyDrawWater { convoy } => ch(*convoy),
+        | Command::ConvoyDrawWater { convoy }
+        | Command::SplitConvoy { convoy, .. }
+        | Command::MergeConvoy { into: convoy, .. } => ch(*convoy),
         Command::AssignShip { ship_index, .. }
         | Command::RepairShip { ship_index }
         | Command::BombShip { ship_index, .. }
@@ -1593,8 +1598,16 @@ fn unit_views(g: &GameState) -> Vec<UnitView> {
         .units
         .values()
         // §19.62: a combat-eliminated (0-TOE) non-HQ unit is removed from play and can never be
-        // rebuilt — omit it so the viewer drops it. A 0-TOE HQ stays as its formation's cadre.
-        .filter(|u| u.total_toe() > 0 || u.is_hq || u.is_tds)
+        // rebuilt — omit it so the viewer drops it. A 0-TOE HQ stays as its formation's cadre, and a
+        // unit whose only remaining TOE is broken down is not eliminated ("not breakdown") — its
+        // vehicles can still be field-repaired, so it stays on the map.
+        .filter(|u| {
+            u.total_toe() > 0
+                || u.is_hq
+                || u.is_tds
+                || u.toe_broken > 0
+                || u.weapons_broken.iter().any(|g| g.count > 0)
+        })
         .map(|u| unit_view(g, u))
         .collect();
     v.sort_by_key(|u| u.id);

@@ -325,6 +325,11 @@ pub struct Unit {
     // Dynamic state (path-dependent primitives).
     pub cohesion: i32,
     pub cp_expended: Fixed,
+    /// §49.13: Capability Points (tenths) spent on *movement* this Operations Stage — fuel is burned
+    /// per five CP or fraction of the stage's movement, so each step only pays for the 5-CP
+    /// blocks it newly enters. Reset each stage.
+    #[serde(default)]
+    pub move_cp_tenths: i32,
     /// §11.2/§11.24: Capability Points already charged to this unit **for combat** this Operations
     /// Stage, so repeated combats respect the per-segment cap (5 phasing / 3 non-phasing). Part of
     /// `cp_expended`; reset each stage.
@@ -474,6 +479,7 @@ impl Unit {
             cairo_dwell: 0,
             cohesion: 0,
             cp_expended: Fixed(0),
+            move_cp_tenths: 0,
             combat_cp: Fixed(0),
             moved_into_zoc: false,
             reserve_moved_this_stage: false,

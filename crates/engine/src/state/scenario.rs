@@ -773,7 +773,7 @@ impl GameState {
                 cargo: Default::default(), tank_fuel: 0,
                 cpa_used: 0,
                 breakdown_points: 0,
-                breakdown_checked_col: 0,
+                breakdown_checked_col: -1, // none checked yet this stage
             });
         }
         if let Some(turns) = data.starting_supply_turns.filter(|&t| t > 0) {

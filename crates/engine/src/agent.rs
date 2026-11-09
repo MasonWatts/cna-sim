@@ -27,6 +27,7 @@ pub fn is_decision_phase(phase: Phase) -> bool {
             | Phase::NavalConvoyArrival
             | Phase::NavalConvoySchedule
             | Phase::AircraftMaintenance
+            | Phase::CommonwealthRail
     )
 }
 

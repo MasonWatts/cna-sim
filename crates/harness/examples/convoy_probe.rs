@@ -13,7 +13,9 @@ impl Probe {
         println!("window {} active {:?}", g.decision_window_key(), g.active_player);
         for (i, c) in g.truck_convoys.iter().enumerate().filter(|(_, c)| c.side == self.side) {
             let errs: Vec<String> = g.map.neighbors(c.hex).map(|n| format!("{:?}", g.dry_run(&Command::MoveTruckConvoy { convoy: i, to: n }).map(|_| "ok"))).collect();
-            println!("convoy {i} at {:?} trucks {:?} broken {:?} cargo {:?} cpa_used {} -> {:?}", c.hex, c.trucks, c.trucks_broken, c.cargo, c.cpa_used, errs);
+            println!("convoy {i} at {:?} trucks {:?} broken {:?} cargo {:?} cap {:?} cpa_used {} -> {:?}", c.hex, c.trucks, c.trucks_broken, c.cargo, g.convoy_cargo_capacity(c), c.cpa_used, errs);
+            let dumps: Vec<String> = g.supply_dumps.iter().filter(|d| d.location.hex() == Some(c.hex)).map(|d| format!("{:?} constructed={} dummy={} {:?}", d.side, d.constructed, d.dummy, d.supply)).collect();
+            println!("   dumps here: {dumps:?}; leapfrog-locked {:?}", g.leapfrog_locked.get(&c.hex));
         }
         std::process::exit(0)
     }

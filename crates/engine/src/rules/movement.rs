@@ -166,6 +166,62 @@ pub fn step_cost_with(
     }
 }
 
+/// §21.21/§8.37: the Breakdown Points a vehicle garners for the step `from`→`to`, following the
+/// same route choice as `step_cost`: along a Road, the flat Road value (½ BP — note 6: it negates
+/// the hex's and hexsides' values); along a Track, half the hex and hexside values except a
+/// down-escarpment (note 8; §8.41: a wadi on a track is 4, not 8); otherwise the hex value plus each
+/// crossed hexside feature's value (§21.23 example: Rough 8 + Ridge 2). `road_as_track` applies the
+/// rainstorm rule (§21.37c/§29.56); `offroad` the §9.33 move-around (no route benefit).
+pub fn step_breakdown(
+    refs: &ReferenceData,
+    map: &crate::state::map::Map,
+    from: crate::state::map::HexCoord,
+    to: crate::state::map::HexCoord,
+    road_as_track: bool,
+    offroad: bool,
+) -> Fixed {
+    use crate::reference::terrain::HexsideTerrain;
+    use crate::state::map::HexsideKind;
+    let hex = map.terrain(to).and_then(|t| refs.terrain.get(&t)).map_or(0, |p| p.breakdown.0.max(0));
+    let sides = map.hexsides_on(from, to);
+    let mut road = !offroad && sides.iter().any(|h| h.kind == HexsideKind::Road);
+    let mut track = !offroad && sides.iter().any(|h| matches!(h.kind, HexsideKind::Track | HexsideKind::UnfinishedRoad));
+    if road_as_track && road {
+        road = false;
+        track = true;
+    }
+    if road {
+        return refs.hexsides.get(&HexsideTerrain::Road).map_or(Fixed(5), |p| p.breakdown);
+    }
+    let mut features = 0;
+    let mut down_escarp = 0;
+    for h in sides {
+        if matches!(
+            h.kind,
+            HexsideKind::Road
+                | HexsideKind::Track
+                | HexsideKind::UnfinishedRoad
+                | HexsideKind::Railroad
+                | HexsideKind::UnfinishedRailroad
+                | HexsideKind::DestroyedRailroad
+        ) {
+            continue;
+        }
+        let key = h.resolve(from, to);
+        let bp = refs.hexsides.get(&key).map_or(0, |p| p.breakdown.0.max(0));
+        if key == HexsideTerrain::DownEscarpment {
+            down_escarp += bp;
+        } else {
+            features += bp;
+        }
+    }
+    if track {
+        Fixed((hex + features) / 2 + down_escarp)
+    } else {
+        Fixed(hex + features + down_escarp)
+    }
+}
+
 /// §9.29/§9.33: the Road/Track Stacking Limit — road-space points a road/track hex can hold.
 pub const ROAD_TRACK_STACK_LIMIT: u32 = 5;
 

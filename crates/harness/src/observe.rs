@@ -40,6 +40,43 @@ pub fn date_label(game: &GameState) -> String {
 }
 
 /// Where the game is and whose turn it is.
+/// §20.8 Mandatory Withdrawals the side faces within `horizon` Game-Turns (deadline first): the unit
+/// must be in Cairo or Alexandria at ≥75% of its maximum TOE by the end of its deadline Operations
+/// Stage, or it is eliminated (and never returns). The player knows this schedule from the OB.
+pub fn upcoming_withdrawals(game: &GameState, side: Side, horizon: u32) -> Vec<Value> {
+    let depots: Vec<HexCoord> = cna_engine::state::game::CAIRO_HEXES
+        .iter()
+        .chain(cna_engine::state::game::ALEXANDRIA_HEXES.iter())
+        .filter_map(|h| cna_engine::state::map::HexId::parse(h).map(|x| x.to_hex_coord()))
+        .collect();
+    let mut v: Vec<_> = game
+        .units
+        .values()
+        .filter(|u| u.nationality.side() == side && !u.status.withdrawn && game.effective_hex(u.id).is_some())
+        .filter_map(|u| {
+            let (gt, st) = u.mandatory_withdrawal?;
+            (gt <= game.game_turn + horizon).then_some((gt, st, u))
+        })
+        .collect();
+    v.sort_by_key(|(gt, st, u)| (*gt, *st, u.id.0));
+    v.into_iter()
+        .map(|(gt, st, u)| {
+            let hex = game.effective_hex(u.id);
+            let max: u32 = game.unit_max_toe(u.id).unwrap_or(0);
+            json!({
+                "id": u.id.0,
+                "name": u.name,
+                "deadline": format!("GT{gt} stage {st}"),
+                "hex": hex.map(hex_json),
+                "distance_to_nearest_depot": hex.and_then(|h| depots.iter().map(|d| d.distance(h)).min()),
+                "at_depot": hex.is_some_and(|h| depots.contains(&h)),
+                "toe": u.total_toe(),
+                "toe_needed": (3 * max).div_ceil(4),
+            })
+        })
+        .collect()
+}
+
 pub fn status(game: &GameState, side: Side, in_window: bool) -> Value {
     json!({
         "you_are": format!("{side:?}"),
@@ -137,7 +174,12 @@ pub fn observation(game: &GameState, side: Side, f: &ObserveFilter) -> Value {
                 json!({
                     "friendly": d.friendly,
                     "location": location_json(&d.location),
-                    "contents": d.contents.map(|c| json!({"fuel": c.fuel, "ammo": c.ammo, "stores": c.stores, "water": c.water})),
+                    // §57: a base's nominal contents are meaningless — it supplies any amount.
+                    "contents": if d.unlimited == Some(true) {
+                        Some(json!("unlimited (Cairo/Alexandria base, §57): any amount of fuel, ammo, stores and water"))
+                    } else {
+                        d.contents.map(|c| json!({"fuel": c.fuel, "ammo": c.ammo, "stores": c.stores, "water": c.water}))
+                    },
                     "dummy": d.dummy,
                 })
             })
@@ -234,6 +276,37 @@ pub fn explain_rejection(game: &GameState, cmd: &Command, err: &CommandError) ->
             return Some(why);
         }
     }
+    // A Pin refusal on a multi-unit attack: name the attackers that are pinned (and how), since the
+    // target hex having just been barraged is not what the error is about.
+    if let (Command::CloseAssault { attackers, .. } | Command::Barrage { attackers, .. }, CommandError::Pinned) = (cmd, err) {
+        let pinned: Vec<String> = attackers
+            .iter()
+            .filter(|a| game.is_pinned(**a))
+            .filter_map(|a| game.units.get(a).map(|u| format!("{} ({})", u.name, if u.status.air_pinned { "air-bombing Pin, §41.92" } else { "barrage Pin, §12.44" })))
+            .collect();
+        if !pinned.is_empty() {
+            return Some(format!(
+                "Your own attacker(s) are Pinned and may not take part: {}. Resubmit without them (a Pin on the *target* never \
+                 blocks your attack). An air-bombing Pin lasts until the end of this Operations Stage.",
+                pinned.join(", ")
+            ));
+        }
+    }
+    if let (Command::Barrage { attackers, .. } | Command::BarrageFacility { barragers: attackers, .. }, CommandError::NoBarrageRating) = (cmd, err) {
+        let none: Vec<String> = attackers
+            .iter()
+            .filter_map(|a| game.units.get(a))
+            .filter(|u| u.raw_strength(&game.reference, cna_engine::state::unit::RatingKind::Barrage) <= 0)
+            .map(|u| format!("{} (id {})", u.name, u.id.0))
+            .collect();
+        if !none.is_empty() {
+            return Some(format!(
+                "These attackers have no Barrage Rating (or no TOE left to fire) and may not barrage (§12.0): {}. Resubmit with \
+                 only the artillery — anti-tank, tank and infantry units can't barrage; use them for Anti-Armor or Close Assault.",
+                none.join(", ")
+            ));
+        }
+    }
     if let Command::MoveTruckConvoy { convoy, .. } | Command::RefuelConvoy { convoy } | Command::ConvoyDrawWater { convoy } = cmd {
         if let Some(why) = explain_convoy_move(game, *convoy, err) {
             return Some(why);
@@ -244,8 +317,22 @@ pub fn explain_rejection(game: &GameState, cmd: &Command, err: &CommandError) ->
             return Some(why);
         }
     }
+    // A one-hex step aimed at a non-adjacent hex: list the actual neighbours (column parity makes
+    // hand-plotted offset steps easy to get wrong) and point at the routing plan item.
+    if let (Command::MoveStep { unit, to, .. } | Command::FormationMove { formation: unit, to, .. }, CommandError::NotAdjacent) = (cmd, err) {
+        if let Some(from) = game.effective_hex(*unit) {
+            let ns: Vec<String> = game.map.neighbors(from).map(|n| format!("[{},{}]", n.col, n.row)).collect();
+            return Some(format!(
+                "[{},{}] is not adjacent to the unit's hex [{},{}]; its neighbours are {}. A MoveStep/FormationMove takes one \
+                 adjacent hex, and a plan stops at the first failing step — for a longer move use the move_to {{unit, hex}} plan item \
+                 (for an HQ carrying attached units it moves the whole formation), which routes hex by hex.",
+                to.col, to.row, from.col, from.row, ns.join(", ")
+            ));
+        }
+    }
     let (unit, dest) = match cmd {
         Command::MoveStep { unit, to, .. } => (Some(*unit), Some(*to)),
+        Command::FormationMove { formation, to, .. } => (Some(*formation), Some(*to)),
         Command::NavalTransferTroops { unit, to_port } => (Some(*unit), game.port_hex(to_port)),
         _ => (None, None),
     };
@@ -260,14 +347,25 @@ fn explain_port_transfer(game: &GameState, unit: UnitId, to_port: &str) -> Strin
         .flatten()
         .filter(|p| game.ports_transferred_this_stage.contains(*p))
         .collect();
-    if !used.is_empty() {
+    let route = origin.clone().map(|o| (o, to_port.to_string()));
+    let loaded = route.as_ref().and_then(|r| game.port_transfer_load.get(r)).copied();
+    if !used.is_empty() && loaded.is_none() {
         return format!(
-            "{} already made its one troop transfer this Operations Stage (§30.52: one transfer per port per stage, at either \
-             end). Ship one unit per port per stage — try another pair of ports, or wait for the next stage.",
+            "{} already made its one troop transfer this Operations Stage, on another route (§30.52: one transfer per port per \
+             stage, at either end). More units may join that same transfer (same origin and destination) up to the port \
+             capacity; otherwise try another pair of ports, or wait for the next stage.",
             used.join(" and ")
         );
     }
     let sp = game.effective_stacking_points(unit);
+    if let Some(l) = loaded {
+        let dest_in = game.ports.get(to_port).and_then(|p| p.stacking_in).unwrap_or(0);
+        let out = origin.as_ref().and_then(|o| game.ports.get(o)).and_then(|p| p.stacking_out).unwrap_or(0);
+        return format!(
+            "This stage's transfer to {to_port} already carries {l} Stacking Points; this unit's {sp} more would exceed the Port \
+             Personnel Capacity (§30.54: {to_port} takes in {dest_in}, the origin sends out {out}). Ship it next stage."
+        );
+    }
     let dest_in = game.ports.get(to_port).and_then(|p| p.stacking_in).unwrap_or(0);
     if dest_in == 0 {
         return format!("{to_port} is a minor port and cannot land troops (§55.11). Pick a major port.");
@@ -356,7 +454,8 @@ fn explain_convoy(game: &GameState, lane: u8, arrival_gt: u32, err: &CommandErro
     let dest = game.reference.shipping_lanes.as_ref().and_then(|c| c.lane(lane)).map(|l| l.destination.clone());
     Some(match err {
         E::ConvoyWrongDestination => format!(
-            "Lane {lane} runs only to {} (§56.11/§56.12 — the lane fixes the destination). Use that port, or the lane that serves yours.",
+            "Lane {lane} runs only to {} (§56.11/§56.12 — the lane fixes the destination). Only the ports in get_overview \
+             axis_shipping.lanes take naval convoys; smaller ports (e.g. Bardia, Derna, Sollum) are reached by truck or coastal shipping.",
             dest.unwrap_or_else(|| "its own port".into())
         ),
         E::ConvoyBadArrival => format!(
@@ -405,6 +504,13 @@ pub fn explain_error(game: &GameState, unit: Option<UnitId>, dest: Option<HexCoo
                        from a well, oasis, major city or water pipeline/railroad hex, or by truck."
             .into(),
         E::ZocToZoc => "May not move directly from one enemy Zone of Control hex into another (§10).".into(),
+        E::RailMoveFailed => "Rail move refused (§8.72–8.75 / §54.3): the line must be finished and clear of enemy ZOC/units from start to \
+                             destination; a unit must start on a rail hex having spent no CP this stage, ≤ 2 Stacking Points, with room \
+                             at the destination; the Commonwealth may rail only ONE stack or shipment per direction per stage (§8.74/§54.32); \
+                             supplies need a friendly dump at the start hex (water is never railed, §54.33).".into(),
+        E::NotAdjacent => "MoveStep / FormationMove / Barrage-range orders take ONE adjacent hex per command (or the target must be adjacent). \
+                           For a longer move use the move_to {unit, hex} plan item (it routes hex by hex), or move_stack. \
+                           MergeConvoy needs both convoys in the SAME hex — a convoy already merged away is an empty husk; re-observe before merging again.".into(),
         E::SgsuCannotMove => "An SGSU moves one adjacent hex per MoveSgsu, in the Truck Convoy phase, never into an enemy-occupied hex (§35.12).".into(),
         E::SgsuCpaExhausted => "The SGSU lacks the Capability Points left this stage (CPA 25 for Commonwealth SGSUs; off-map legs cost the \
                                 §36.53 distance as CP). Continue next stage."
@@ -420,6 +526,13 @@ pub fn explain_error(game: &GameState, unit: Option<UnitId>, dest: Option<HexCoo
         E::WellDepleted => "That well is depleted (§52.14) until a rainstorm replenishes it (§52.15). Try another well.".into(),
         E::WellPoisoned => "That well is poisoned (§52.16); a unit may try to sweeten it (SweetenWell, §52.17).".into(),
         E::AlreadyDrewWater => "These trucks already drew water this Operations Stage (one draw per stage).".into(),
+        E::DumpConstructionIllegal => "ConstructSupplyDump (§24.9): the builder must be in that hex, a real dump needs a unit with at \
+                                        least 1 TOE Strength Point, a hex holds one dump designation per side (no dummy where you \
+                                        already have a dump or loose supplies), and an existing constructed dump needs no rebuilding \
+                                        unless loose supplies lie there to fold in.".into(),
+        E::NoConstructedDump => "Convoys load only from a constructed Supply Dump (§24.9); supplies merely dropped in a hex are loose and \
+                                 cannot be loaded by trucks in convoy. Build a dump there (ConstructSupplyDump: a co-located unit, 3 CP and \
+                                 20 Stores) or load at an existing dump/base.".into(),
         E::NoCargoRoom => "No room on the trucks for more Water (§54.2: one commodity per Truck Point) — unload something first.".into(),
         E::NotYourUnit => "That unit / squadron / convoy / raider / pool belongs to the other side — you may only command your own forces.".into(),
         E::SgsuAlreadyRebased => "A squadron changes base (enters, leaves or switches an off-map field) at most once per Operations Stage.".into(),
@@ -433,6 +546,9 @@ pub fn explain_error(game: &GameState, unit: Option<UnitId>, dest: Option<HexCoo
                       assault; in the enemy's portion it may not move or fight voluntarily."
             .into(),
         E::Disorganized => "Disorganized (cohesion ≤ −26) — may not move voluntarily (§6.26).".into(),
+        E::NoBarrageRating => "Only units with a Barrage Rating may Barrage (§12.0) — artillery, and the few HQ/combat units \
+                               that carry guns with one. Tanks, anti-tank guns and infantry have none: drop them from the \
+                               attackers (the legal list offers the eligible group). A unit at 0 TOE cannot fire either.".into(),
         E::InReserve => "In Reserve — release it first (§18.2).".into(),
         E::HalfRation => "On half rations — may not exceed its CPA or enter an enemy ZOC (§51.23).".into(),
         E::NoPasta => "Missed its Pasta Point — may not exceed its CPA (§52.6).".into(),
@@ -491,6 +607,64 @@ fn formation_root(game: &GameState, id: UnitId) -> UnitId {
 
 /// Theatre-level summary for large scenarios: own stacks, formations, supply problems, enemy
 /// contacts by hex, and own dumps — a few KB instead of the full unit list.
+/// §56.21/§55.3 (Axis): the rolled Shipping Tonnage allowance for the plannable Game-Turns against
+/// what is already booked, and each port's landing capacity — so convoy plans use the allowance.
+fn axis_shipping(game: &GameState, side: Side) -> Value {
+    if side != Side::Axis {
+        return Value::Null;
+    }
+    let turns: Vec<Value> = [game.game_turn + 1, game.game_turn + 2]
+        .iter()
+        .map(|&gt| {
+            json!({"arrival_gt": gt,
+                   "allowance_tons": game.axis_shipping_rolled.get(&gt).copied().map_or(json!("not yet rolled"), |t| json!(t)),
+                   "booked_tons": game.axis_shipping_committed(gt)})
+        })
+        .collect();
+    let mut ports: Vec<(String, Value)> = game
+        .ports
+        .iter()
+        .map(|(name, p)| (name.clone(), json!({"port": name, "efficiency": p.efficiency, "max_efficiency": p.max_efficiency,
+                                               "can_land_tons_this_turn": p.available_tonnage()})))
+        .collect();
+    ports.sort_by(|a, b| a.0.cmp(&b.0));
+    // §56.11/§56.18: each lane fixes its destination port — only these ports take naval convoys.
+    let lanes: Vec<Value> = game
+        .reference
+        .shipping_lanes
+        .as_ref()
+        .map(|c| c.lanes.iter().map(|l| json!({"lane": l.nr, "to": l.destination})).collect())
+        .unwrap_or_default();
+    json!({"turns": turns, "lanes": lanes, "ports": ports.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
+           "note": "Each Game-Turn the Axis may ship up to its rolled allowance (§56.21) — usually thousands of tons. The PlanConvoy \
+                    entries in list_legal_actions are only small templates: submit your own PlanConvoy command with the tonnages you \
+                    want (fuel_tons/ammo_tons/stores_tons), within the allowance and what each port can land in a Game-Turn \
+                    (can_land_tons_this_turn)."})
+}
+
+/// §10.31–§10.36: in this side's Movement & Combat phase, the combat units that will be forced to
+/// fall back three hexes (or surrender, if they can't) when the phase ends, unless the listed enemy
+/// hex is Close-Assaulted or Holding-Off Barraged first (or they leave the ZOC).
+fn zoc_obligations(game: &GameState, side: Side) -> Value {
+    use cna_engine::state::game::Phase;
+    if game.phase != Phase::MovementAndCombat || game.active_player != side {
+        return json!({"note": "Checked in your Movement & Combat phase (§10.31): units ending it in an enemy ZOC must assault or barrage that hex."});
+    }
+    let list: Vec<Value> = game
+        .holding_off_obligations(side)
+        .into_iter()
+        .take(25)
+        .map(|(u, h)| {
+            json!({"unit": u.0, "name": game.units.get(&u).map(|x| x.name.clone()),
+                   "at": game.effective_hex(u).map(hex_json), "unattacked_enemy_hex": hex_json(h)})
+        })
+        .collect();
+    json!({"count": list.len(), "units": list,
+           "note": "If this phase ends with these units still in that enemy ZOC and the hex neither Close-Assaulted nor Barraged \
+                    this stage (by any unit), each must fall back three hexes with +3 Disorganization — and SURRENDERS if no \
+                    ZOC-free path exists (§10.31–10.36). Assault, barrage (Holding Off, §10.34), or move them out first."})
+}
+
 /// The side's free truck convoys (§53): trucks, tanks vs cargo fuel (§49.14 — tank fuel moves the
 /// convoy; cargo fuel is for delivery but may also be burned, §49.18), cargo and CP used, flagging any
 /// that cannot move from where they are.
@@ -500,11 +674,18 @@ fn convoy_overview(game: &GameState, side: Side) -> Value {
         .truck_convoys
         .iter()
         .enumerate()
-        .filter(|(_, c)| c.side == side)
+        .filter(|(_, c)| c.side == side && c.trucks.light + c.trucks.medium + c.trucks.heavy + c.trucks_broken.light + c.trucks_broken.medium + c.trucks_broken.heavy > 0)
         .map(|(i, c)| {
             let tp = c.trucks.light + c.trucks.medium + c.trucks.heavy;
             let here = game.available_commodity_at(c.hex, side, Commodity::Fuel);
             let stranded = tp > 0 && c.tank_fuel == 0 && c.cargo.fuel == 0 && here == 0;
+            // §52.42/§52.51: trucks need 1 Water per Truck Point (2 when hot) in a stage they move,
+            // from a well in the hex, their cargo or a dump there — with none, they cannot move.
+            let hot = game.weather_at(c.hex) == cna_engine::state::game::Weather::Hot;
+            let water_need = tp * if hot { 2 } else { 1 };
+            let well = game.hex_water_source_for(c.hex, side).is_some();
+            let water_here = game.available_commodity_at(c.hex, side, Commodity::Water);
+            let dry = tp > 0 && !well && c.cargo.water < water_need && water_here.saturating_add(c.cargo.water) < water_need;
             let mut v = json!({
                 "convoy": i, "at": hex_json(c.hex),
                 "trucks": {"light": c.trucks.light, "medium": c.trucks.medium, "heavy": c.trucks.heavy,
@@ -513,8 +694,11 @@ fn convoy_overview(game: &GameState, side: Side) -> Value {
                 "cargo": {"fuel": c.cargo.fuel, "ammo": c.cargo.ammo, "stores": c.cargo.stores, "water": c.cargo.water},
                 "cp_used": c.cpa_used / 10, "cpa": game.truck_convoy_cpa(c) / 10,
             });
+            v["water_per_stage_moving"] = json!(water_need);
             if stranded {
                 v["stranded"] = json!("no fuel in its tanks, its cargo or its hex — fuel must be brought to it");
+            } else if dry {
+                v["stranded"] = json!("not enough water for its own trucks here (no well) — it cannot move until water is brought to it");
             }
             v
         })
@@ -523,7 +707,11 @@ fn convoy_overview(game: &GameState, side: Side) -> Value {
            "note": "A convoy moves on its own tanks (one stage of full-CPA driving), then fuel at a source in its hex, then its fuel cargo. \
                     RefuelConvoy (Organization / Truck Convoy phase) fills the tanks from a dump or its cargo; unloading cargo never empties the tanks. \
                     Trucks need Water each stage they move: ConvoyDrawWater / TrucksDrawWater fill them at a well (major city, oasis, pipeline, \
-                    CW railroad: as much as they carry; village/bir: a die roll)."})
+                    CW railroad: as much as they carry; village/bir: a die roll). Always keep enough water ON the convoy for its own \
+                    trucks (water_per_stage_moving, every stage it moves) to get back to a well — a convoy that unloads all its water \
+                    away from a well is stuck. A convoy too big to move on what it has can SplitConvoy {convoy, light, medium, heavy} \
+                    (the new convoy's tanks are filled FIRST from the convoy's tank fuel — §49.17 siphoning, 3 CP — and it takes a pro-rata share of cargo) and send the part it can fuel/water for help; \
+                    MergeConvoy {from, into} rejoins convoys in the same hex."})
 }
 
 pub fn overview(game: &GameState, side: Side) -> Value {
@@ -615,10 +803,22 @@ pub fn overview(game: &GameState, side: Side) -> Value {
         .filter(|d| d.friendly && d.dummy != Some(true))
         .filter_map(|d| {
             let c = d.contents?;
+            if d.unlimited == Some(true) {
+                // §57: listed first — these bases supply any amount of everything.
+                return Some(json!({"at": location_json(&d.location), "unlimited": true,
+                    "fuel": "unlimited", "ammo": "unlimited", "stores": "unlimited", "water": "unlimited"}));
+            }
             Some(json!({"at": location_json(&d.location), "fuel": c.fuel, "ammo": c.ammo, "stores": c.stores, "water": c.water}))
         })
         .collect();
-    dumps.sort_by_key(|v| std::cmp::Reverse(["fuel", "ammo", "stores", "water"].iter().map(|k| v[*k].as_u64().unwrap_or(0)).sum::<u64>()));
+    let total = |v: &Value| -> u64 {
+        if v["unlimited"] == json!(true) {
+            u64::MAX
+        } else {
+            ["fuel", "ammo", "stores", "water"].iter().map(|k| v[*k].as_u64().unwrap_or(0)).sum::<u64>()
+        }
+    };
+    dumps.sort_by_key(|v| std::cmp::Reverse(total(v)));
     let dumps_total = dumps.len();
     dumps.truncate(30);
     let total_toe: u32 = own.iter().map(|i| game.units[i].total_toe()).sum();
@@ -631,6 +831,8 @@ pub fn overview(game: &GameState, side: Side) -> Value {
         "enemy_contacts": {"units_visible": enemy_total, "by_hex": enemy_list},
         "own_dumps": {"count": dumps_total, "largest": dumps},
         "truck_convoys": convoy_overview(game, side),
+        "zoc_obligations": zoc_obligations(game, side),
+        "axis_shipping": axis_shipping(game, side),
         "air": air_overview(game, side),
         "note": "Lists are capped (contact stacks and largest first). Drill down with get_observation (near / units / detail) and list_legal_actions (unit / kind).",
     })
@@ -725,6 +927,8 @@ fn own_unit_json(game: &GameState, id: UnitId, legal_now: Option<usize>) -> Opti
         "is_hq": u.is_hq,
         "hex": hex.map(hex_json),
         "attached_to": u.attached_parent.map(|p| p.0),
+        "mandatory_withdrawal": u.mandatory_withdrawal.map(|(g, s)| format!(
+            "GT{g} stage {s}: be in Cairo/Alexandria at >=75% max TOE by then, or it is eliminated (§20.8)")),
         "toe_strength": u.total_toe(),
         "cohesion": u.cohesion,
         "cpa": game.effective_cpa(id),
@@ -921,6 +1125,20 @@ mod tests {
         let cmd = Command::NavalTransferTroops { unit: nz, to_port: "Tobruk".into() };
         let why = explain_rejection(&g, &cmd, &CommandError::PortTransferUnavailable).unwrap();
         assert!(why.contains("Alexandria already made its one troop transfer") && why.contains("§30.52"), "{why}");
+    }
+
+    #[test]
+    fn bases_show_as_unlimited_and_zoc_obligations_are_listed() {
+        use cna_engine::state::game::Phase;
+        let (mut g, _) = cna_replay::scenarios::build("campaign", 1);
+        let ov = overview(&g, Side::Commonwealth);
+        let first = &ov["own_dumps"]["largest"][0];
+        assert_eq!(first["unlimited"], json!(true), "Cairo/Alexandria listed first, as unlimited: {first}");
+        assert_eq!(first["fuel"], json!("unlimited"));
+        g.phase = Phase::MovementAndCombat;
+        g.active_player = Side::Commonwealth;
+        let ov = overview(&g, Side::Commonwealth);
+        assert!(ov["zoc_obligations"]["count"].is_u64(), "{}", ov["zoc_obligations"]);
     }
 
     #[test]

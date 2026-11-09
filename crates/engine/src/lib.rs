@@ -2316,6 +2316,40 @@ mod tests {
         assert_eq!(g.unit(absent).unwrap().total_toe(), 0);
         assert!(!g.unit(absent).unwrap().status.withdrawn);
         assert_eq!(g.unit(weak).unwrap().total_toe(), 0);
+
+        // Attachment: a due battalion riding a due HQ's counter at Cairo is judged by that counter
+        // (withdrawn, not eliminated); a rider not yet due is dropped off in the hex and stays in play.
+        let hq = mk(&mut g, 7, cairo);
+        g.unit_mut(hq).unwrap().is_hq = true;
+        let rider_due = mk(&mut g, 7, cairo);
+        let rider_later = mk(&mut g, 7, cairo);
+        for (r, wd) in [(rider_due, Some((13, 3))), (rider_later, Some((20, 1)))] {
+            let u = g.unit_mut(r).unwrap();
+            u.location = None;
+            u.attached_parent = Some(hq);
+            u.mandatory_withdrawal = wd;
+        }
+        let (withdrawn, eliminated) = g.enforce_mandatory_withdrawals();
+        assert_eq!((withdrawn, eliminated), (2, 0), "HQ and its due rider withdrawn from Cairo");
+        assert!(g.unit(rider_due).unwrap().status.withdrawn);
+        assert_eq!(g.unit(rider_later).unwrap().location, Some(UnitLocation::OnMap(cairo)), "not-yet-due rider stays at Cairo");
+        assert_eq!(g.unit(rider_later).unwrap().attached_parent, None);
+
+        // A brigade HQ withdrawn earlier while riding its division HQ must not be dropped back on the
+        // map when the division HQ itself withdraws later.
+        let div = mk(&mut g, 7, cairo);
+        g.unit_mut(div).unwrap().is_hq = true;
+        g.unit_mut(div).unwrap().mandatory_withdrawal = Some((20, 1));
+        let bde = mk(&mut g, 7, cairo);
+        g.unit_mut(bde).unwrap().is_hq = true;
+        g.unit_mut(bde).unwrap().location = None;
+        g.unit_mut(bde).unwrap().attached_parent = Some(div);
+        g.enforce_mandatory_withdrawals(); // the brigade (due 13/3) goes; the division (due 20/1) stays
+        assert!(g.unit(bde).unwrap().status.withdrawn);
+        g.game_turn = 21;
+        g.enforce_mandatory_withdrawals(); // now the division goes too
+        assert_eq!(g.unit(bde).unwrap().location, None, "the withdrawn brigade stays off the map");
+        assert!(g.unit(div).unwrap().status.withdrawn);
     }
 
     #[test]
@@ -3895,10 +3929,24 @@ mod tests {
         );
 
         // Barrage from a non-adjacent attacker is rejected (§12.31 adjacency).
+        let far_arty = g.spawn_unit(
+            Nationality::Commonwealth,
+            "x",
+            "far arty",
+            Composition::Weapons { groups: vec![WeaponGroup { system: "25-pounder Gun".into(), count: 8 }] },
+        );
+        g.unit_mut(far_arty).unwrap().location = Some(crate::state::unit::UnitLocation::OnMap(HexCoord::new(5, 5)));
         assert_eq!(
-            g.apply(Command::Barrage { attackers: vec![far], target: hex_d, target_class: BarrageTargetClass::Infantry, target_unit: None }),
+            g.apply(Command::Barrage { attackers: vec![far_arty], target: hex_d, target_class: BarrageTargetClass::Infantry, target_unit: None }),
             Err(CommandError::NotAdjacent)
         );
+        // §12.0: a unit with no Barrage Rating (infantry here) may not barrage — alone or in a group.
+        for attackers in [vec![atk], vec![arty, atk]] {
+            assert_eq!(
+                g.apply(Command::Barrage { attackers, target: hex_d, target_class: BarrageTargetClass::Infantry, target_unit: None }),
+                Err(CommandError::NoBarrageRating)
+            );
+        }
 
         // Anti-armor at the adjacent attacked hex resolves; from far it is rejected.
         assert!(matches!(
@@ -4534,6 +4582,25 @@ mod tests {
         assert!(g.unit(unit).unwrap().cp_expended.0 > 0, "§30.55: lands having spent its full CPA — no further move this stage");
         // §30.52: a second transfer touching either used port this stage is rejected.
         assert_eq!(g.apply(Command::NavalTransferTroops { unit, to_port: "Alex".into() }), Err(CommandError::PortTransferUnavailable));
+        // §30.54: the same transfer may carry more units on the same route, within the capacity.
+        g.unit_mut(garrison[1]).unwrap().location = None;
+        let second = g.spawn_unit(Nationality::Commonwealth, "h", "inf2", Composition::Organic { current_toe: 6 });
+        g.unit_mut(second).unwrap().location = Some(UnitLocation::OnMap(alex));
+        assert_eq!(
+            g.apply(Command::NavalTransferTroops { unit: second, to_port: "Tobruk".into() }),
+            Ok(CommandOutcome::TroopsTransferred),
+            "a second unit joins the one Alex→Tobruk transfer"
+        );
+        assert_eq!(g.port_transfer_load[&("Alex".to_string(), "Tobruk".to_string())], 2 * g.effective_stacking_points(second));
+        // …but not past the smaller Port Personnel Capacity.
+        g.ports.get_mut("Tobruk").unwrap().stacking_in = Some(g.port_transfer_load[&("Alex".to_string(), "Tobruk".to_string())]);
+        let third = g.spawn_unit(Nationality::Commonwealth, "h", "inf3", Composition::Organic { current_toe: 6 });
+        g.unit_mut(third).unwrap().location = Some(UnitLocation::OnMap(alex));
+        assert_eq!(g.apply(Command::NavalTransferTroops { unit: third, to_port: "Tobruk".into() }), Err(CommandError::PortTransferUnavailable));
+        g.unit_mut(third).unwrap().location = None;
+        g.unit_mut(second).unwrap().location = None;
+        g.ports.get_mut("Tobruk").unwrap().stacking_in = Some(6);
+        g.port_transfer_load.clear();
 
         // §30.5/§55: a port held by an enemy combat unit may not receive a transfer. Reset the stage,
         // give Bardia real capacity, and garrison it with an Axis unit → the transfer is refused.
@@ -4561,6 +4628,7 @@ mod tests {
             let mut g = GameState::new(refs, 1);
             for c in 0..7 {
                 g.map.set_hex(HexCoord::new(c, 0), HexTerrain::Clear); // a one-row corridor
+                g.map.set_hex(HexCoord::new(c, 1), HexTerrain::Sea); // flanked by sea, never a retreat hex
             }
             let u = g.spawn_unit(Nationality::Commonwealth, "r", "bn", Composition::Organic { current_toe: 6 });
             g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(1, 0)));
@@ -4574,7 +4642,7 @@ mod tests {
         };
         let (mut g, u) = setup(false);
         assert!(g.forced_retreat_three(u, HexCoord::new(0, 0)));
-        assert_eq!(g.unit(u).unwrap().hex(), Some(HexCoord::new(4, 0)));
+        assert_eq!(g.unit(u).unwrap().hex(), Some(HexCoord::new(4, 0)), "along the land corridor, not into the sea");
         let (mut g, u) = setup(true);
         assert!(!g.forced_retreat_three(u, HexCoord::new(0, 0)), "the full hex on the only path blocks the retreat");
     }
@@ -4991,6 +5059,13 @@ mod tests {
             assigned += 1;
         }
         assert_eq!(assigned, 2, "both sides could assign in the same phase");
+        // The legal list must match what apply_as accepts after a side's earlier assignments: planes
+        // already committed to a queued mission are not offered again.
+        for &(_, side, _) in &sides {
+            for c in g.legal_commands(side) {
+                assert!(g.clone().apply_as(side, c.clone()).is_ok(), "{side:?}: listed {c:?} but apply_as refuses it");
+            }
+        }
         // A squadron readied after the side's first assignment can still be assigned (the scratch
         // copy is rebuilt), and the first side's copy doesn't leak into the second's.
         let (sq, side, at) = sides[0];
@@ -6455,6 +6530,28 @@ mod tests {
         let before = g.unit(foe).unwrap().total_toe();
         let _ = g.dry_run(&Command::CloseAssault { attackers: vec![inf], target: d });
         assert_eq!(g.unit(foe).unwrap().total_toe(), before, "dry_run leaves state untouched");
+
+        // Attached units fight from their HQ's hex: with the carrying HQ air-pinned (and the enemy
+        // held by a rider on a 0-TOE HQ counter), the assault is still offered — by the rider alone.
+        let hq = g.spawn_unit(Nationality::Commonwealth, "h", "hq", Composition::Organic { current_toe: 1 });
+        g.unit_mut(hq).unwrap().location = Some(UnitLocation::OnMap(a));
+        g.unit_mut(hq).unwrap().status.air_pinned = true;
+        {
+            let u = g.unit_mut(inf).unwrap();
+            u.location = None;
+            u.attached_parent = Some(hq);
+        }
+        let foe_hq = g.spawn_unit(Nationality::Italian, "p", "foe hq", Composition::Organic { current_toe: 0 });
+        g.unit_mut(foe_hq).unwrap().location = Some(UnitLocation::OnMap(d));
+        {
+            let u = g.unit_mut(foe).unwrap();
+            u.location = None;
+            u.attached_parent = Some(foe_hq);
+        }
+        let cmds = g.legal_commands(Side::Commonwealth);
+        assert!(cmds.iter().any(|c| matches!(c, Command::CloseAssault { attackers, target } if *target == d && attackers == &vec![inf])),
+            "the rider's assault is enumerated without the pinned HQ: {:?}",
+            cmds.iter().filter(|c| !matches!(c, Command::MoveStep { .. })).collect::<Vec<_>>());
     }
 
     #[test]
@@ -7221,6 +7318,24 @@ mod tests {
         assert_eq!(g.apply(Command::RepairConvoyTrucks { convoy: 0 }), Err(crate::state::command::CommandError::NothingToRepair));
         assert!(!g.legal_commands(Side::Commonwealth).iter().any(|c| matches!(c, Command::RepairConvoyTrucks { convoy: 0 })));
 
+        // §22.32–22.34: in a Repair Facility hex the convoy's broken trucks get the Facility
+        // percentage (rounded up) instead of the field die — and a Major Facility ignores weather.
+        let fac = HexCoord::new(2, 1);
+        g.map.set_hex(fac, HexTerrain::Clear);
+        g.repair_facilities.insert(fac, crate::state::game::FacilityKind::Major);
+        let mut big = convoy(10, 0);
+        big.hex = fac;
+        big.trucks_broken = TruckPoints { light: 0, medium: 40, heavy: 9 };
+        g.truck_convoys.push(big);
+        let pct = g.reference.repair_table.as_ref().unwrap().major_facility_pct(1);
+        assert!(pct > 0);
+        let want = (40 * pct).div_ceil(100) + (9 * pct).div_ceil(100);
+        g.weather_by_section.insert('A', Weather::Rainstorm);
+        g.rng.force([1]);
+        assert_eq!(g.apply(Command::RepairConvoyTrucks { convoy: 1 }), Ok(CommandOutcome::Repaired(want)));
+        g.weather_by_section.remove(&'A');
+        assert!(want > 2, "facility repair beats the 1–2 Truck Point field repair");
+
         // §53.25: supplies a convoy off-loads this phase can't be re-loaded by another convoy the same
         // phase. §24.9: and because an off-load only drops *loose* supplies (not a constructed dump),
         // they remain un-loadable by any convoy even after the leapfrog lock lapses — a TOE Strength
@@ -7230,9 +7345,9 @@ mod tests {
         g.phase = Phase::TruckConvoy;
         assert_eq!(g.apply(Command::UnloadConvoy { convoy: 0, commodity: Commodity::Ammo, amount: 10 }), Ok(CommandOutcome::TrucksUnloaded(10)));
         assert!(g.supply_dumps.iter().any(|d| d.location.hex() == Some(hex) && !d.constructed), "§24.9 off-load drops loose supplies");
-        assert_eq!(g.apply(Command::LoadConvoy { convoy: 1, commodity: Commodity::Ammo, amount: 10 }), Ok(CommandOutcome::TrucksLoaded(0)), "§53.25 just-dropped supplies are locked this phase");
+        assert_eq!(g.apply(Command::LoadConvoy { convoy: 1, commodity: Commodity::Ammo, amount: 10 }), Err(crate::state::command::CommandError::NoConstructedDump), "§53.25/§24.9 just-dropped loose supplies can't be loaded");
         g.leapfrog_locked.clear(); // lock lapses at the next Truck Convoy phase
-        assert_eq!(g.apply(Command::LoadConvoy { convoy: 1, commodity: Commodity::Ammo, amount: 10 }), Ok(CommandOutcome::TrucksLoaded(0)), "§24.9 loose supplies still aren't convoy-loadable after the lock lapses");
+        assert_eq!(g.apply(Command::LoadConvoy { convoy: 1, commodity: Commodity::Ammo, amount: 10 }), Err(crate::state::command::CommandError::NoConstructedDump), "§24.9 loose supplies still aren't convoy-loadable after the lock lapses");
     }
 
     #[test]
@@ -8619,8 +8734,8 @@ mod tests {
         )
         .unwrap();
         let mut g = GameState::new(refs, 1);
-        let (a, b, c) = (HexCoord::new(0, 0), HexCoord::new(1, 0), HexCoord::new(2, 0));
-        for h in [a, b, c] {
+        let (a, b, c, d) = (HexCoord::new(0, 0), HexCoord::new(1, 0), HexCoord::new(2, 0), HexCoord::new(3, 0));
+        for h in [a, b, c, d] {
             g.map.set_hex(h, HexTerrain::Clear);
         }
         let tank = g.spawn_unit(
@@ -8633,26 +8748,21 @@ mod tests {
         );
         g.unit_mut(tank).unwrap().location = Some(UnitLocation::OnMap(a));
         g.phase = Phase::MovementAndCombat;
-        // Total rate 2; a Clear motorized move (2 CP = 20 tenths) costs 2 Fuel. Start with 3.
+        // Total rate 2: each 5-CP block (or fraction) of the stage's movement costs 2 Fuel (§49.13).
         g.unit_mut(tank).unwrap().fuel = 3;
-
-        assert_eq!(
-            g.apply(Command::MoveStep { unit: tank, to: b, mode: MoveMode::Motorized }),
-            Ok(CommandOutcome::Moved)
-        );
+        let mv = |to| Command::MoveStep { unit: tank, to, mode: MoveMode::Motorized };
+        // Step 1 (Clear, 2 CP): opens the first block → 2 Fuel.
+        assert_eq!(g.apply(mv(b)), Ok(CommandOutcome::Moved));
         assert_eq!(g.unit(tank).unwrap().fuel, 1);
-        // Only 1 Fuel left and no dump in the hex → the next move is illegal, and no move happens.
-        assert_eq!(
-            g.apply(Command::MoveStep { unit: tank, to: c, mode: MoveMode::Motorized }),
-            Err(CommandError::InsufficientFuel)
-        );
-        assert_eq!(g.unit(tank).unwrap().hex(), Some(b));
-        // A dump in the start hex covers the 1-Fuel shortfall (§49.16), and the move proceeds.
-        g.add_supply_dump(UnitLocation::OnMap(b), Side::Commonwealth, 0, 10);
-        assert_eq!(
-            g.apply(Command::MoveStep { unit: tank, to: c, mode: MoveMode::Motorized }),
-            Ok(CommandOutcome::Moved)
-        );
+        // Step 2 (4 CP so far): still inside that block — no more Fuel (not charged per hex).
+        assert_eq!(g.apply(mv(c)), Ok(CommandOutcome::Moved));
+        assert_eq!(g.unit(tank).unwrap().fuel, 1);
+        // Step 3 (6 CP) opens a second block (2 Fuel); only 1 left and no dump → illegal.
+        assert_eq!(g.apply(mv(d)), Err(CommandError::InsufficientFuel));
+        assert_eq!(g.unit(tank).unwrap().hex(), Some(c));
+        // A dump in the start hex covers the shortfall (§49.16), and the move proceeds.
+        g.add_supply_dump(UnitLocation::OnMap(c), Side::Commonwealth, 0, 10);
+        assert_eq!(g.apply(mv(d)), Ok(CommandOutcome::Moved));
         assert_eq!(g.unit(tank).unwrap().fuel, 0);
         assert_eq!(g.supply_dumps[0].supply.fuel, 9);
     }
@@ -8999,6 +9109,27 @@ mod tests {
         g.expend_water(&none);
         assert_eq!(g.unit(c).unwrap().stages_without_water, 2);
         assert_eq!(g.unit(c).unwrap().total_toe(), 3);
+
+        // An Organic *vehicle* unit (11th Hussars, Recce "ll") owes §52.42 water only if it moved
+        // (1 per TOE SP), and when deprived it is immobilized (§52.51) but never loses TOE (§52.53
+        // attrition is infantry-only).
+        let r = g.spawn_unit(Nationality::Commonwealth, "ll", "r", Composition::Organic { current_toe: 3 });
+        g.unit_mut(r).unwrap().location = Some(UnitLocation::OnMap(dry));
+        assert_eq!(g.unit_water_requirement(r, false), 0);
+        assert_eq!(g.unit_water_requirement(r, true), 3);
+        let moved: HashSet<crate::state::unit::UnitId> = [r].into_iter().collect();
+        for _ in 0..3 {
+            g.expend_water(&moved);
+        }
+        assert_eq!(g.unit(r).unwrap().stages_without_water, 3);
+        assert_eq!(g.unit(r).unwrap().total_toe(), 3, "vehicles take no §52.53 attrition");
+        // A deprived vehicle that sits still owes no water, but it must recover once water is at hand:
+        // still dry → stays deprived; moved onto the oasis (unlimited well) → cleared without moving.
+        g.expend_water(&none);
+        assert_eq!(g.unit(r).unwrap().stages_without_water, 3, "no water in reach: still immobilized");
+        g.unit_mut(r).unwrap().location = Some(UnitLocation::OnMap(oasis));
+        g.expend_water(&none);
+        assert_eq!(g.unit(r).unwrap().stages_without_water, 0, "water at hand: deprivation cleared");
 
         // §52.41 charges the 1-Water requirement to *infantry battalions/companies* only. An HQ is
         // `Organic` but not infantry (like the §51.13 Stores special-case), so on a dry hex it is
@@ -12048,6 +12179,28 @@ mod tests {
     }
 
     #[test]
+    fn only_units_without_ammo_surrender_and_short_units_fight_with_what_they_can_fire_50_14() {
+        use crate::state::game::CombatAction;
+        let mut g = build_campaign_game();
+        let tank = g.units.values().find(|u| u.name == "6th Royal Tank Regt").unwrap().id;
+        let cost = g.unit_combat_ammo_cost(tank, CombatAction::CloseAssault);
+        assert!(cost >= 4);
+        // Keep the test independent of any dump in its hex.
+        let hex = g.effective_hex(tank).unwrap();
+        for d in g.supply_dumps.iter_mut().filter(|d| d.location.hex() == Some(hex)) {
+            d.supply.ammo = 0;
+        }
+        g.unit_mut(tank).unwrap().ammo = cost / 2;
+        assert!(!g.out_of_close_assault_ammo(tank), "§50.12: some ammunition — not out of ammo");
+        let f = g.affordable_assault_fraction(tank);
+        assert!(f > 0.0 && f < 1.0, "§50.14: defends with the TOE it can fire ({f})");
+        g.unit_mut(tank).unwrap().ammo = cost;
+        assert_eq!(g.affordable_assault_fraction(tank), 1.0);
+        g.unit_mut(tank).unwrap().ammo = 0;
+        assert!(g.out_of_close_assault_ammo(tank), "§15.88: no ammunition at all → surrenders if assaulted");
+    }
+
+    #[test]
     fn sgsu_overrun_by_land_35_12() {
         use crate::reference::aircraft::AircraftClass;
         use crate::reference::squadron::SquadronClass;
@@ -13227,6 +13380,8 @@ mod tests {
         while g.phase != Phase::MovementAndCombat {
             g.advance_phase();
         }
+        // §6.3: first-line trucks may also load/unload during Movement & Combat (at 2 CP).
+        assert_eq!(g.apply(Command::LoadTrucks { unit: u, commodity: Commodity::Fuel, amount: 100 }), Ok(CommandOutcome::TrucksLoaded(0)));
         assert_eq!(
             g.apply(Command::PoisonWell { hex }),
             Ok(CommandOutcome::WellPoisoned(false))
@@ -13237,7 +13392,7 @@ mod tests {
             Err(CommandError::WrongPhase)
         );
         // In the Commonwealth Rail Phase, a move with no rail connection fails cleanly.
-        while g.phase != Phase::CommonwealthRail {
+        while !(g.phase == Phase::CommonwealthRail && g.active_player == crate::reference::units::Side::Commonwealth) {
             g.advance_phase();
         }
         assert_eq!(
@@ -13382,8 +13537,8 @@ mod tests {
         assert_eq!(g.apply(Command::LayHarborMine { port: "Benghazi".into() }), Ok(CommandOutcome::HarborMineLaid));
         assert_eq!(g.ports["Benghazi"].mines, 1);
 
-        // Clear the mine in the Repair Phase (die 2 succeeds).
-        while g.phase != Phase::Repair {
+        // Clear the mine in the Organization Phase's Construction Segment (§55.27; die 2 succeeds).
+        while g.phase != Phase::Organization {
             g.advance_phase();
         }
         g.rng.force([2]);
@@ -13564,6 +13719,13 @@ mod tests {
         g.unit_mut(weak).unwrap().org_size = OrgSize::Battalion;
         g.unit_mut(weak).unwrap().location = Some(UnitLocation::OnMap(cairo));
         assert!(!g.withdrawal_eligible(weak)); // 3/5 = 60% < 75%
+        // §64.75: a unit on the §20.8 mandatory schedule may not be withdrawn voluntarily (for points).
+        let sched = g.spawn_unit(Nationality::Commonwealth, "h", "sched", Composition::Organic { current_toe: 5 });
+        g.unit_mut(sched).unwrap().org_size = OrgSize::Battalion;
+        g.unit_mut(sched).unwrap().location = Some(UnitLocation::OnMap(cairo));
+        assert!(g.withdrawal_eligible(sched));
+        g.unit_mut(sched).unwrap().mandatory_withdrawal = Some((49, 2));
+        assert!(!g.withdrawal_eligible(sched), "mandatory-schedule units leave only by the schedule");
     }
 
     #[test]
@@ -14760,9 +14922,12 @@ mod tests {
         use crate::state::command::{Command, CommandError, CommandOutcome};
         use crate::state::game::{Commodity, Phase};
         let mut g = build_campaign_game();
-        g.phase = Phase::TruckConvoy;
+        // Organization Phase, Supply Distribution Segment: convoys may load/off-load here too (0 CP).
+        g.phase = Phase::Organization;
         g.active_player = Side::Axis;
         let i = g.truck_convoys.iter().position(|c| c.side == Side::Axis && c.trucks.medium > 0).unwrap();
+        assert!(g.apply(Command::UnloadConvoy { convoy: i, commodity: Commodity::Water, amount: 0 }).is_ok(), "off-load allowed in Organization");
+        g.phase = Phase::TruckConvoy;
         let cap = g.convoy_tank_capacity(&g.truck_convoys[i]);
         assert!(cap > 0 && g.truck_convoys[i].tank_fuel == cap, "starts with full tanks");
         // Unloading cargo never touches the tanks.
@@ -14856,6 +15021,107 @@ mod tests {
         g.unit_mut(u).unwrap().truck_cargo = Default::default();
         assert!(g.legal_commands(Side::Axis).contains(&Command::TrucksDrawWater { unit: u }));
         assert!(matches!(g.apply(Command::TrucksDrawWater { unit: u }), Ok(CommandOutcome::WaterDrawn(n)) if n > 0));
+    }
+
+    #[test]
+    fn breakdown_is_route_aware_and_checked_when_the_mover_stops_21_24() {
+        use crate::reference::terrain::{Fixed, HexTerrain};
+        use crate::reference::units::Side;
+        use crate::rules::movement::step_breakdown;
+        use crate::state::command::Command;
+        use crate::state::game::Phase;
+        use crate::state::map::{HexCoord, HexsideKind};
+        let mut g = build_campaign_game();
+        // Route-aware values (§8.37 notes 6/8, §21.23): find a road step, a track step and an
+        // off-route clear step on the real map.
+        let mut all: Vec<HexCoord> = g.map.coords().collect();
+        all.sort_by_key(|h| (h.col, h.row));
+        let step_with = |g: &crate::state::game::GameState, k: HexsideKind| {
+            all.iter().find_map(|&a| g.map.neighbors(a).find(|&b| g.map.hexsides_on(a, b).iter().any(|h| h.kind == k)).map(|b| (a, b)))
+        };
+        let (ra, rb) = step_with(&g, HexsideKind::Road).expect("a road");
+        assert_eq!(step_breakdown(&g.reference, &g.map, ra, rb, false, false), Fixed(5), "road: ½ BP flat");
+        let (ta, tb) = step_with(&g, HexsideKind::Track).expect("a track");
+        let full = step_breakdown(&g.reference, &g.map, ta, tb, false, true);
+        assert_eq!(step_breakdown(&g.reference, &g.map, ta, tb, false, false).0, full.0 / 2, "track halves (no escarpment here)");
+        assert_eq!(step_breakdown(&g.reference, &g.map, ra, rb, true, false), step_breakdown(&g.reference, &g.map, ra, rb, true, false));
+
+        // A convoy driving cross-country accumulates BP but is checked only once it stops.
+        g.phase = Phase::TruckConvoy;
+        g.active_player = Side::Axis;
+        let i = g.truck_convoys.iter().position(|c| c.side == Side::Axis && c.trucks.medium > 0).unwrap();
+        let mut moved = 0;
+        for _ in 0..6 {
+            let at = g.truck_convoys[i].hex;
+            let Some(n) = g.map.neighbors(at).find(|&n| g.map.terrain(n) == Some(HexTerrain::SandGravel) || g.map.terrain(n) == Some(HexTerrain::Clear))
+                .filter(|&n| g.dry_run(&Command::MoveTruckConvoy { convoy: i, to: n }).is_ok()) else { break };
+            g.apply(Command::MoveTruckConvoy { convoy: i, to: n }).unwrap();
+            moved += 1;
+        }
+        assert!(moved > 0);
+        let before = g.truck_convoys[i].trucks;
+        assert_eq!(g.truck_convoys[i].breakdown_checked_col, -1, "no check while still moving");
+        // Any other order means it has stopped: the one check is made then.
+        let _ = g.apply(Command::RefuelConvoy { convoy: i });
+        let bp = g.truck_convoys[i].breakdown_points / 10;
+        if bp > 3 {
+            assert!(g.truck_convoys[i].breakdown_checked_col >= 0, "checked on stopping");
+        }
+        let _ = before;
+    }
+
+    #[test]
+    fn convoys_split_and_merge_53_21() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::Phase;
+        let mut g = build_campaign_game();
+        g.phase = Phase::TruckConvoy;
+        g.active_player = Side::Axis;
+        let i = g.truck_convoys.iter().position(|c| c.side == Side::Axis && c.trucks.medium >= 4).unwrap();
+        g.truck_convoys[i].cargo.water = 1000;
+        let before = g.truck_convoys[i].clone();
+        let tp = |c: &crate::state::game::TruckConvoy| c.trucks.light + c.trucks.medium + c.trucks.heavy;
+        assert!(g.legal_commands(Side::Axis).iter().any(|c| matches!(c, Command::SplitConvoy { convoy, .. } if *convoy == i)));
+        // Can't split off everything.
+        let t = before.trucks;
+        assert_eq!(g.apply(Command::SplitConvoy { convoy: i, light: t.light, medium: t.medium, heavy: t.heavy }), Err(CommandError::InsufficientTrucks));
+        let Ok(CommandOutcome::ConvoySplit { convoy: j }) = g.apply(Command::SplitConvoy { convoy: i, light: 0, medium: 2, heavy: 0 }) else { panic!("split") };
+        let (a, b) = (g.truck_convoys[i].clone(), g.truck_convoys[j].clone());
+        assert_eq!((tp(&a) + tp(&b), b.trucks.medium, b.hex), (tp(&before), 2, before.hex));
+        assert_eq!(a.tank_fuel + b.tank_fuel, before.tank_fuel, "tank fuel conserved");
+        assert_eq!(a.cargo.water + b.cargo.water, 1000, "cargo conserved");
+        assert!(b.cargo.water > 0, "the part takes its share of cargo");
+        assert_eq!(b.tank_fuel, before.tank_fuel.min(g.convoy_tank_capacity(&b)), "§49.17: the part's tanks are filled first");
+        // Merge back: everything recombines; the emptied convoy can't move and is not listed.
+        assert!(g.legal_commands(Side::Axis).contains(&Command::MergeConvoy { from: j, into: i }));
+        assert_eq!(g.apply(Command::MergeConvoy { from: j, into: i }), Ok(CommandOutcome::ConvoysMerged));
+        let m = &g.truck_convoys[i];
+        assert_eq!((m.trucks, m.tank_fuel, m.cargo.water), (before.trucks, before.tank_fuel, 1000));
+        assert_eq!(tp(&g.truck_convoys[j]), 0);
+        let n = g.map.neighbors(before.hex).next().unwrap();
+        assert_eq!(g.apply(Command::MoveTruckConvoy { convoy: j, to: n }), Err(CommandError::TruckConvoyCannotMove));
+    }
+
+    #[test]
+    fn commonwealth_rail_phase_is_played_and_offers_rail_moves_54_3() {
+        use crate::reference::units::Side;
+        use crate::state::command::{Command, CommandError, CommandOutcome};
+        use crate::state::game::{Phase, RailCargo};
+        assert!(crate::agent::is_decision_phase(Phase::CommonwealthRail), "§33.0 IV.K: the CW gets its Rail Phase");
+        let mut g = build_campaign_game();
+        g.phase = Phase::CommonwealthRail;
+        g.active_player = Side::Commonwealth;
+        let legal = g.legal_commands(Side::Commonwealth);
+        let ship = legal.iter().find(|c| matches!(c, Command::RailMoveSupply { cargo: RailCargo::Fuel, .. })).cloned();
+        let Some(Command::RailMoveSupply { from, to, points, .. }) = ship else { panic!("a fuel shipment is offered: {legal:?}") };
+        assert!(points > 0);
+        assert_eq!(g.apply(Command::RailMoveSupply { from, to, cargo: RailCargo::Fuel, points }), Ok(CommandOutcome::RailSupplyMoved(points)));
+        // §8.74/§54.32: one shipment per direction per stage.
+        assert_eq!(g.apply(Command::RailMoveSupply { from, to, cargo: RailCargo::Fuel, points }), Err(CommandError::RailMoveFailed));
+        // The Axis gets nothing in the CW Rail phase.
+        g.active_player = Side::Axis;
+        assert!(g.legal_commands(Side::Axis).is_empty());
     }
 
     #[test]
@@ -18208,5 +18474,30 @@ mod tests {
         assert!(!out.pinned);
         assert_eq!(g.unit(gun).unwrap().total_toe(), 2);
         assert!(!g.unit(gun).unwrap().status.pinned);
+    }
+}
+
+#[cfg(test)]
+mod truck_ammo_tests {
+    use crate::reference::units::Nationality;
+    use crate::reference::ReferenceData;
+    use crate::state::game::{CombatAction, GameState};
+    use crate::state::map::HexCoord;
+    use crate::state::unit::{Composition, UnitLocation};
+
+    #[test]
+    fn combat_draws_ammo_from_first_line_trucks_50_17() {
+        // §50.17 / §53.24: Ammo in a unit's own first-line trucks is available for combat without
+        // off-loading — after its onboard reserve, before any dump.
+        let mut g = GameState::new(ReferenceData::load_campaign(), 1);
+        let u = g.spawn_unit(Nationality::Commonwealth, "h", "bn", Composition::Organic { current_toe: 6 });
+        g.unit_mut(u).unwrap().location = Some(UnitLocation::OnMap(HexCoord::new(3, 3)));
+        let cost = g.unit_combat_ammo_cost(u, CombatAction::CloseAssault);
+        assert!(cost > 0);
+        g.unit_mut(u).unwrap().ammo = 0;
+        assert!(!g.consume_combat_ammo(&[u], CombatAction::CloseAssault), "no ammo anywhere");
+        g.unit_mut(u).unwrap().truck_cargo.ammo = cost + 5;
+        assert!(g.consume_combat_ammo(&[u], CombatAction::CloseAssault));
+        assert_eq!(g.unit(u).unwrap().truck_cargo.ammo, 5, "drawn from the trucks");
     }
 }

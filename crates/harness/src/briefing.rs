@@ -85,7 +85,20 @@ hex), stores from a friendly dump in the hex, RefuelUnit/RearmUnit from a dump o
 - Each own unit in get_observation (detail) lists `blockers`: the rule currently preventing it from acting.\n\
 - Free truck convoys (get_overview `truck_convoys`) keep their own tank fuel apart from their cargo (§49.14): a convoy \
 drives on its tanks, then fuel in its hex, then its fuel cargo; RefuelConvoy refills the tanks. Water for trucks is drawn at \
-wells with ConvoyDrawWater / TrucksDrawWater (§52.13), not only from dumps.\n\
+wells with ConvoyDrawWater / TrucksDrawWater (§52.13), not only from dumps. There is no DrawWater command for units: \
+each stage a unit drinks automatically from a well, its own trucks or a friendly dump in its hex.\n\
+- Loading/off-loading (§6.3, Supply Distribution Segment): free convoys load/off-load in the Organization phase (0 CP) or the \
+Truck Convoy phase; a unit's own trucks in the Organization phase (0 CP) or during Movement & Combat (2 CP).\n\
+- Broken-down trucks: RepairConvoyTrucks in the field fixes only 1–2 Truck Points per die (§22.23), but in a Repair \
+Facility hex (Tobruk, Alexandria, Cairo, Tripoli, or a Temporary Facility) it repairs a percentage of every broken truck \
+type (§22.34) — send convoys with many broken trucks back to a facility.\n\
+- Rail (§8.7 / §54.3): the Commonwealth has its own Rail phase each stage — one unit stack (≤ 2 SP) or one supply shipment \
+(up to 1500 Stores, 375 Ammo or 12,000 Fuel) per direction along the line (Alexandria–Mersa Matruh and beyond as built). \
+The Axis rails in its Truck Convoy phase against its activated Rolling Stock (§54.4).\n\
+- Holding Off (§10.31–10.36): when your Movement & Combat phase ends, every combat unit of yours in an enemy ZOC must \
+have had that enemy hex Close-Assaulted or Barraged this stage; otherwise it is forced back three hexes (+3 \
+Disorganization) and SURRENDERS if it cannot get clear. get_overview `zoc_obligations` lists the units at risk — check it \
+before end_phase in that phase, and don't move into an enemy ZOC you don't intend to attack.\n\
 - The engine applies all automatic rules itself (e.g. forced retreats, attrition, surrender) at the right moment.\n\
 \n\
 # Tools (server `cna`)\n\
@@ -115,6 +128,19 @@ intelligence, supply plans, lessons. Update it before end_phase each window.\n\
 \n\
 Your final message in a window should be one short line; it is not read by the opponent."
     );
+    if side == Side::Axis {
+        // Axis-only: the off-map entry is a waterless road hex.
+        p.push_str(
+            "\n\n# Axis note: entering the map from Tripolitania\n\
+Units leaving the Tripoli/Tunisia boxes are placed on the road at A2802 [2,28] and the hexes after it (§8.85). There is no \
+well there or nearby, and infantry lose TOE from the second stage without water (§52.53). In the boxes your units have \
+unlimited water and supplies (§8.87/§8.88), so keep them there until water is waiting at the entry (a dump, or trucks \
+carrying it), or move them on by truck straight to a watered hex.\n\
+Shipping: each Game-Turn the Axis may ship up to its rolled Shipping Tonnage allowance (§56.21), typically thousands of tons; \
+get_overview `axis_shipping` shows it, what is booked and what each port can land. The PlanConvoy entries offered as legal \
+actions are only small templates — plan your own tonnages.",
+        );
+    }
     if coaching {
         p.push_str(COACHING);
     }
@@ -180,6 +206,26 @@ Your window is OPEN.\n\n# Objectives\n{obj}\n\n",
     } else {
         p.push_str(&memory.doctrine);
         p.push('\n');
+    }
+    let wd = observe::upcoming_withdrawals(game, side, 6);
+    if !wd.is_empty() {
+        p.push_str("\n# Scheduled withdrawals (§20.8) in the next 6 Game-Turns\n");
+        p.push_str("Each unit must be IN Cairo (E1830 area) or Alexandria (E3613/E3714) at >=75% of its maximum TOE by the end \
+of its deadline stage, or it is ELIMINATED instead of withdrawn (and loses any scheduled return). Start moving them back in time \
+(rail/road), and keep them supplied so they meet the TOE threshold.\n");
+        for w in &wd {
+            p.push_str(&format!(
+                "- {} (id {}): deadline {}, at {}, {} hexes from a depot, TOE {}/{} needed{}\n",
+                w["name"].as_str().unwrap_or(""),
+                w["id"],
+                w["deadline"].as_str().unwrap_or(""),
+                w["hex"]["label"].as_str().unwrap_or("?"),
+                w["distance_to_nearest_depot"],
+                w["toe"],
+                w["toe_needed"],
+                if w["at_depot"].as_bool() == Some(true) { " — already at a depot" } else { "" }
+            ));
+        }
     }
     p.push_str("\n# Journal (written by the harness; most recent last)\n");
     p.push_str(&memory.journal_digest(4));

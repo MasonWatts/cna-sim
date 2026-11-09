@@ -929,7 +929,15 @@ impl GameState {
             .copied()
             .filter(|&id| !self.units.get(&id).map(|u| u.retreated_before_assault).unwrap_or(false))
             .collect();
-        let d_raw_troops = self.close_assault_raw(&def_strength_ids, false);
+        // §50.14: a defender short of close-assault Ammo fights with only the TOE it can pay for.
+        let d_raw_troops: i32 = def_strength_ids
+            .iter()
+            .filter_map(|&id| {
+                let u = self.units.get(&id)?;
+                let raw = u.raw_strength(&self.reference, RatingKind::CloseAssaultDef);
+                Some((raw as f64 * self.affordable_assault_fraction(id)).floor() as i32)
+            })
+            .sum();
         // §52.51/52: units deprived of water defend at half their raw strength.
         let d_deprived_raw: i32 = def_strength_ids
             .iter()
@@ -1276,7 +1284,7 @@ impl GameState {
     /// tank-type (AFV) unit has no Fuel. Returns +2 in that case, else 0.
     pub(crate) fn close_assault_fuel_shift(&self, defenders: &[UnitId]) -> i32 {
         let no_fuel_tank = defenders.iter().any(|&d| {
-            self.unit_is_afv(d) && self.effective_hex(d).is_some_and(|h| !self.move_fuel_available(d, h, 1))
+            self.unit_is_afv(d) && self.effective_hex(d).is_some_and(|h| !self.has_move_fuel(d, h))
         });
         if no_fuel_tank { 2 } else { 0 }
     }

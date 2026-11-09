@@ -73,6 +73,8 @@ pub struct DumpView {
     pub contents: Option<Commodities>,
     /// Dummy flag — `Some` only for a friendly dump (an enemy cannot tell).
     pub dummy: Option<bool>,
+    /// §57: a Cairo/Alexandria base that supplies any amount — `Some` only for a friendly dump.
+    pub unlimited: Option<bool>,
 }
 
 /// What a viewing side knows about a desert raider: its own raiders always; enemy raiders only once
@@ -135,6 +137,7 @@ impl GameState {
                     friendly,
                     contents: friendly.then_some(d.supply),
                     dummy: friendly.then_some(d.dummy),
+                    unlimited: friendly.then_some(d.unlimited),
                 }
             })
             .collect()
@@ -384,14 +387,137 @@ impl GameState {
     /// (refuel, rearm, attach, detach). Every candidate is validated via `dry_run`, so the result
     /// holds only commands `apply` accepts. Other phases (air, convoy, repair, …) are future
     /// extensions — the framework is here; each adds its own enumerator.
+    /// §8.72–8.75 / §54.3–54.4: rail options for `side` — each eligible stack on a rail hex railed to
+    /// every reachable rail hex holding a friendly dump or friendly units (plus the farthest-west and
+    /// farthest-east reachable rail hexes), and each dump on the line shipping a full load of each
+    /// commodity to every other such hex. Engine-validated by dry run.
+    fn legal_rail_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
+        use crate::state::command::Command;
+        use crate::state::game::RailCargo;
+        let mut out = Vec::new();
+        let mut rail: Vec<HexCoord> = self.map.coords().filter(|&h| self.hex_is_railroad(h)).collect();
+        rail.sort_by_key(|h| (h.col, h.row));
+        if rail.is_empty() {
+            return out;
+        }
+        let dumps: Vec<HexCoord> = rail
+            .iter()
+            .copied()
+            .filter(|&h| self.supply_dumps.iter().any(|d| d.side == side && !d.dummy && d.location.hex() == Some(h)))
+            .collect();
+        let own_at = |h: HexCoord| self.units.values().any(|u| u.nationality.side() == side && u.hex() == Some(h));
+        // Interesting destinations reachable from `from`: dump / friendly hexes, plus the line's ends.
+        let mut memo: std::collections::HashMap<HexCoord, Vec<HexCoord>> = std::collections::HashMap::new();
+        let mut targets = |from: HexCoord| -> Vec<HexCoord> {
+            if let Some(t) = memo.get(&from) {
+                return t.clone();
+            }
+            let set = self.rail_reachable_set(from, side);
+            let reach: Vec<HexCoord> = rail.iter().copied().filter(|&h| h != from && set.contains(&h)).collect();
+            let mut t: Vec<HexCoord> = reach.iter().copied().filter(|&h| dumps.contains(&h) || own_at(h)).collect();
+            if let Some(w) = reach.iter().min_by_key(|h| (h.col, h.row)) {
+                t.push(*w);
+            }
+            if let Some(e) = reach.iter().max_by_key(|h| (h.col, h.row)) {
+                t.push(*e);
+            }
+            t.sort_by_key(|h| (h.col, h.row));
+            t.dedup();
+            memo.insert(from, t.clone());
+            t
+        };
+        // Units.
+        let mut movers: Vec<(UnitId, HexCoord)> = self
+            .units
+            .values()
+            .filter(|u| u.nationality.side() == side && u.attached_parent.is_none() && u.cp_expended.0 == 0)
+            .filter_map(|u| Some((u.id, u.hex()?)))
+            .filter(|&(_, h)| self.hex_is_railroad(h))
+            .collect();
+        movers.sort_by_key(|(id, _)| id.0);
+        for (unit, from) in movers {
+            for to in targets(from) {
+                if self.rail_move_ok_ex(unit, to, false) {
+                    out.push(Command::RailMove { unit, to });
+                }
+            }
+        }
+        // Supplies.
+        for &from in &dumps {
+            for to in targets(from) {
+                for cargo in [RailCargo::Fuel, RailCargo::Ammo, RailCargo::Stores] {
+                    let n = self.rail_supply_points(side, from, to, cargo);
+                    if n > 0 {
+                        out.push(Command::RailMoveSupply { from, to, cargo, points: n });
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// §53.21: representative split / merge options for free convoy `i` — split off half its
+    /// trucks (by type), and merge into each other same-side convoy in its hex. Any split size may be
+    /// submitted as a command; these are the offered defaults.
+    fn convoy_split_merge_options(&self, i: usize) -> Vec<crate::state::command::Command> {
+        use crate::state::command::Command;
+        let mut out = Vec::new();
+        let Some(c) = self.truck_convoys.get(i) else { return out };
+        let t = c.trucks;
+        if t.light + t.medium + t.heavy >= 2 {
+            let (l, m, h) = (t.light / 2, t.medium / 2, t.heavy / 2);
+            let half = if l + m + h == 0 { (t.light.min(1), if t.light == 0 { t.medium.min(1) } else { 0 }, 0) } else { (l, m, h) };
+            let cmd = Command::SplitConvoy { convoy: i, light: half.0, medium: half.1, heavy: half.2 };
+            if self.dry_run(&cmd).is_ok() {
+                out.push(cmd);
+            }
+        }
+        for (j, d) in self.truck_convoys.iter().enumerate() {
+            if j != i && d.side == c.side && d.hex == c.hex && d.trucks.light + d.trucks.medium + d.trucks.heavy > 0 {
+                let cmd = Command::MergeConvoy { from: i, into: j };
+                if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                }
+            }
+        }
+        out
+    }
+
     pub fn legal_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
         use crate::state::game::Phase;
         let mut out = match self.phase {
             Phase::MovementAndCombat => self.legal_movement_combat_commands(side),
             Phase::Organization => self.legal_organization_commands(side),
+            // §33.0 IV.F: while missions are being assigned in secret, `apply_as` validates each new
+            // one against this side's earlier assignments (the same planes can't be committed twice),
+            // so enumerate against that same view: the state plus this side's queued missions.
+            Phase::LandSupportAir
+                if self.air_assignment_open
+                    && !self.resolving_air
+                    && self.pending_air_missions.iter().any(|(s, _)| *s == side) =>
+            {
+                let mut g = self.clone();
+                g.air_assignment_open = false;
+                g.scratch = true;
+                g.active_player = side;
+                let own: Vec<_> = self.pending_air_missions.iter().filter(|(s, _)| *s == side).map(|(_, c)| c.clone()).collect();
+                for c in own {
+                    let _ = g.apply(c);
+                }
+                g.legal_air_commands(side)
+            }
             Phase::LandSupportAir => self.legal_air_commands(side),
             Phase::AircraftMaintenance => self.legal_air_maintenance_commands(side),
-            Phase::TruckConvoy => self.legal_convoy_commands(side),
+            Phase::TruckConvoy => {
+                // §54.43: the Axis rails in its Truck Convoy Phase.
+                let mut v = self.legal_convoy_commands(side);
+                if side == Side::Axis {
+                    v.extend(self.legal_rail_commands(side));
+                }
+                v
+            }
+            // §33.0 IV.K / §8.7 / §54.3: the Commonwealth's own Rail Phase.
+            Phase::CommonwealthRail if side == Side::Commonwealth => self.legal_rail_commands(side),
             Phase::Repair => self.legal_repair_commands(side),
             Phase::CommonwealthFleet => self.legal_fleet_commands(side),
             Phase::NavalConvoyArrival => self.legal_naval_convoy_commands(side),
@@ -440,6 +566,29 @@ impl GameState {
         out
     }
 
+    /// `cmd` (a CloseAssault / AntiArmor / Barrage) restricted to the attackers that could make it
+    /// alone, if that subset is non-empty and the narrowed attack is legal.
+    fn without_ineligible_attackers(&self, cmd: &crate::state::command::Command) -> Option<crate::state::command::Command> {
+        use crate::state::command::Command;
+        let with = |a: Vec<UnitId>| match cmd {
+            Command::CloseAssault { target, .. } => Command::CloseAssault { attackers: a, target: *target },
+            Command::AntiArmor { target_hex, withheld, .. } => Command::AntiArmor { attackers: a, target_hex: *target_hex, withheld: withheld.clone() },
+            Command::Barrage { target, target_class, target_unit, .. } =>
+                Command::Barrage { attackers: a, target: *target, target_class: *target_class, target_unit: *target_unit },
+            other => other.clone(),
+        };
+        let attackers = match cmd {
+            Command::CloseAssault { attackers, .. } | Command::AntiArmor { attackers, .. } | Command::Barrage { attackers, .. } => attackers,
+            _ => return None,
+        };
+        let ok: Vec<UnitId> = attackers.iter().copied().filter(|&a| self.dry_run(&with(vec![a])).is_ok()).collect();
+        if ok.is_empty() || ok.len() == attackers.len() {
+            return None;
+        }
+        let narrowed = with(ok);
+        self.dry_run(&narrowed).is_ok().then_some(narrowed)
+    }
+
     /// Movement & Combat actions: single-hex moves plus, for each enemy-occupied hex adjacent to a
     /// friendly combat unit, a close assault, anti-armor fire, and a barrage per target class.
     fn legal_movement_combat_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
@@ -452,7 +601,8 @@ impl GameState {
             .units
             .values()
             .filter(|u| u.nationality.side() == side && u.total_toe() > 0)
-            .filter_map(|u| Some((u.id, u.hex()?)))
+            // Attached units fight individually from their HQ's hex (they carry no hex of their own).
+            .filter_map(|u| Some((u.id, self.effective_hex(u.id)?)))
             .collect();
         // Deterministic attacker ordering (HashMap iteration is randomized per process).
         friendly.sort_by_key(|(id, _)| id.0);
@@ -460,7 +610,7 @@ impl GameState {
             .units
             .values()
             .filter(|u| u.nationality.side() == enemy && u.total_toe() > 0)
-            .filter_map(|u| u.hex())
+            .filter_map(|u| self.effective_hex(u.id))
             .collect();
         enemy_hexes.sort_by_key(|h| (h.col, h.row));
         enemy_hexes.dedup();
@@ -492,6 +642,10 @@ impl GameState {
             }
             for cmd in candidates {
                 if self.dry_run(&cmd).is_ok() {
+                    out.push(cmd);
+                } else if let Some(cmd) = self.without_ineligible_attackers(&cmd) {
+                    // One Pinned / non-combat HQ / dry attacker vetoes the whole group: offer the
+                    // attack by the units that may take part.
                     out.push(cmd);
                 }
             }
@@ -716,7 +870,8 @@ impl GameState {
     /// where a unit actually needs and can draw fuel). The supply term in `heuristic_value` gives
     /// value-based agents a reason to use these (refuelling clears an out-of-supply penalty).
     fn legal_organization_commands(&self, side: Side) -> Vec<crate::state::command::Command> {
-        use crate::state::command::Command;
+        use crate::state::command::{Command, CommandOutcome};
+        use crate::state::game::Commodity;
 
         // Own on-map units, grouped by hex for the co-located attach pairs.
         let own: Vec<(UnitId, HexCoord)> = self
@@ -732,6 +887,22 @@ impl GameState {
                 for cmd in [Command::RefuelConvoy { convoy: i }, Command::ConvoyDrawWater { convoy: i }] {
                     if self.dry_run(&cmd).is_ok() {
                         out.push(cmd);
+                    }
+                }
+                for cmd in self.convoy_split_merge_options(i) {
+                    out.push(cmd);
+                }
+                // Supply Distribution Segment: convoys load/off-load here for 0 CP (§6.3 chart).
+                for cm in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
+                    if let Ok(CommandOutcome::TrucksLoaded(n)) = self.dry_run(&Command::LoadConvoy { convoy: i, commodity: cm, amount: u32::MAX }) {
+                        if n > 0 {
+                            out.push(Command::LoadConvoy { convoy: i, commodity: cm, amount: n });
+                        }
+                    }
+                    if let Ok(CommandOutcome::TrucksUnloaded(n)) = self.dry_run(&Command::UnloadConvoy { convoy: i, commodity: cm, amount: u32::MAX }) {
+                        if n > 0 {
+                            out.push(Command::UnloadConvoy { convoy: i, commodity: cm, amount: n });
+                        }
                     }
                 }
             }
@@ -1277,6 +1448,9 @@ impl GameState {
                     out.push(cmd);
                 }
             }
+            for cmd in self.convoy_split_merge_options(i) {
+                out.push(cmd);
+            }
             for to in self.map.neighbors(c.hex) {
                 let cmd = Command::MoveTruckConvoy { convoy: i, to };
                 if self.dry_run(&cmd).is_ok() {
@@ -1517,7 +1691,9 @@ impl GameState {
             .units
             .values()
             .filter(|u| u.nationality.side() == side && u.total_toe() > 0)
-            .filter_map(|u| u.hex())
+            // Attached units carry no hex of their own: a hex held by riders on a 0-TOE HQ counter
+            // is still occupied.
+            .filter_map(|u| self.effective_hex(u.id))
             .collect();
         hexes.sort_by_key(|h| (h.col, h.row));
         hexes.dedup();

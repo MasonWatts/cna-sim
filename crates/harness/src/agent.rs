@@ -88,9 +88,50 @@ fn parse_item(v: &Value) -> Result<PlanItem, String> {
         return Ok(PlanItem::Id(id as usize));
     }
     if let Some(c) = v.get("command") {
+        // Models often write the bombing-mission name "Personnel" as a barrage/strafe target class;
+        // the barrage class for troops is Infantry (§12.2).
+        let mut c = c.clone();
+        for kind in ["Barrage", "OffShoreBombard"] {
+            if let Some(tc) = c.get_mut(kind).and_then(|b| b.get_mut("target_class")) {
+                if tc.as_str() == Some("Personnel") {
+                    *tc = Value::String("Infantry".into());
+                }
+            }
+        }
+        // …and write the bombing mission "SupplyDump" as plain "Supply".
+        for kind in ["FlyBombingMission", "FlyBombingMissionAt", "FlyBombingMissionAtBox"] {
+            if let Some(m) = c.get_mut(kind).and_then(|b| b.get_mut("mission")) {
+                if m.as_str() == Some("Supply") {
+                    *m = Value::String("SupplyDump".into());
+                }
+            }
+        }
         return serde_json::from_value::<Command>(c.clone())
             .map(PlanItem::Command)
-            .map_err(|e| format!("malformed command JSON: {e}"));
+            .map_err(|e| {
+                let kind = c.as_object().and_then(|o| o.keys().next().cloned()).unwrap_or_default();
+                let mut msg = format!("malformed command JSON: {e}");
+                if !kind.is_empty() {
+                    msg.push_str(&format!(
+                        " — resubmit with ALL fields, copying the shape of a legal `{kind}` entry from get_legal_actions"
+                    ));
+                }
+                let template = match kind.as_str() {
+                    "Barrage" => Some(r#"{"Barrage": {"attackers": [ids], "target": {"col": c, "row": r}, "target_class": "Infantry"|"Armor"|"Gun"|"Truck"}}"#),
+                    "CloseAssault" => Some(r#"{"CloseAssault": {"attackers": [ids], "target": {"col": c, "row": r}}}"#),
+                    "LoadConvoy" | "UnloadConvoy" => Some(r#"{"LoadConvoy"|"UnloadConvoy": {"convoy": i, "commodity": "Fuel"|"Ammo"|"Stores"|"Water", "amount": n}}"#),
+                    "UnloadTrucks" => Some(r#"{"UnloadTrucks": {"unit": id, "commodity": "Fuel"|"Ammo"|"Stores"|"Water", "amount": n}}"#),
+                    "MoveTruckConvoy" => Some(r#"{"MoveTruckConvoy": {"convoy": i, "to": {"col": c, "row": r}}}"#),
+                    _ => None,
+                };
+                if let Some(t) = template {
+                    msg.push_str(&format!(". Full shape: {t}"));
+                }
+                if e.to_string().contains("`Personnel`") {
+                    msg.push_str(" (a barrage/strafe target_class is Infantry | Armor | Gun | Truck; Personnel is a bombing-mission type)");
+                }
+                msg
+            });
     }
     if let Some(m) = v.get("move_to") {
         let unit = m.get("unit").and_then(|x| x.as_u64()).ok_or("move_to needs `unit` (id)")? as u32;
@@ -615,12 +656,24 @@ impl McpAgent {
                         .iter()
                         .flat_map(|&m| crate::route::first_steps(game, at, hex, m).into_iter().map(move |(n, _)| (n, m)))
                         .collect();
-                    let best = candidates.iter().copied().find(|&(n, m)| game.can_move_step(unit, n, m));
+                    // A counter carrying attached units moves as a formation (§6.15: CPA of the slowest
+                    // member), so route it with FormationMove steps.
+                    let formation = game.units.values().any(|u| u.attached_parent == Some(unit));
+                    let step = |n: HexCoord, m: MoveMode| {
+                        if formation {
+                            Command::FormationMove { formation: unit, to: n, mode: m }
+                        } else {
+                            Command::MoveStep { unit, to: n, mode: m }
+                        }
+                    };
+                    let best = candidates.iter().copied().find(|&(n, m)| {
+                        if formation { game.dry_run(&step(n, m)).is_ok() } else { game.can_move_step(unit, n, m) }
+                    });
                     match best {
                         Some((n, m)) => {
                             let next = PlanItem::MoveTo { unit, hex, mode, steps: steps + 1 };
                             w.current = Some((next, label));
-                            return Some(Command::MoveStep { unit, to: n, mode: m });
+                            return Some(step(n, m));
                         }
                         None => {
                             // Report the engine's actual reason for each route's first step.

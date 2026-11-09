@@ -596,6 +596,13 @@ pub struct PendingReplacement {
     pub tonnage: u32,
 }
 
+/// Who is mid-move with a deferred §21.24 breakdown check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BreakdownMover {
+    Unit(UnitId),
+    Convoy(usize),
+}
+
 /// A free (unattached) Truck-Point convoy on the map (§8.98/§8.99): Truck Points not attached to a
 /// unit, hauling supply `cargo`, that move in the Truck Convoy Phase (§53) respecting their CPA
 /// (§8.98) and the §10.29 ZOC restriction. Detached from a unit's first-line trucks (§8.97). This is
@@ -850,18 +857,20 @@ const POST_TURN_SEQUENCE: [(Phase, StageActor); 3] = [
 ];
 
 /// The ordered steps within one Operations Stage (§33.0 IV): shared setup by the Initiative
-/// player (Weather → Naval Convoy Arrival), Organization for each player, then Commonwealth Fleet
+/// player (Weather), Organization for each player, Naval Convoy Arrival, then Commonwealth Fleet
 /// and Land Support Air,
 /// then the per-player phases G–M for Player A, then for Player B. The §IV.A "declare A or B"
 /// choice is applied via `declare_initiative_order`; the Commonwealth Fleet and Rail phases are
 /// Commonwealth-only in effect (§33.0 IV.E/IV.K).
 const STAGE_SEQUENCE: [(Phase, StageActor); 19] = [
     (Phase::Weather, StageActor::Initiative),
-    (Phase::NavalConvoyArrival, StageActor::Initiative),
     // §33.0 IV.C: the Organization Phase (reorganization, construction, training, supply
     // distribution) is a joint phase — *both* players organize, so each gets a step (A, then B).
     (Phase::Organization, StageActor::PlayerA),
     (Phase::Organization, StageActor::PlayerB),
+    // §33.0 IV.D: the Naval Convoy Arrival Phase follows Organization, so what arrives can't be
+    // attached, loaded or absorbed until the next stage's Organization Phase.
+    (Phase::NavalConvoyArrival, StageActor::Initiative),
     (Phase::CommonwealthFleet, StageActor::Commonwealth),
     // §33.0 IV.F / §40.33: both players assign air missions (in secret); they resolve together
     // when the second player's step ends (`resolve_air_missions`).
@@ -1197,6 +1206,9 @@ pub struct GameState {
     /// §22.23: free truck convoys (by index) that have rolled their repair die this Repair Phase.
     #[serde(default)]
     pub convoy_repairs_this_stage: std::collections::HashSet<usize>,
+    /// §21.24: the unit or convoy currently moving, whose breakdown check waits until it stops.
+    #[serde(default)]
+    pub pending_breakdown: Option<BreakdownMover>,
     /// §52.13: free convoys (by index) and units (first-line trucks) that drew well water this stage.
     #[serde(default)]
     pub convoy_water_draws_this_stage: std::collections::HashSet<usize>,
@@ -1210,6 +1222,11 @@ pub struct GameState {
     /// transfer this Operations Stage — one transfer per port per stage. Reset each stage.
     #[serde(default)]
     pub ports_transferred_this_stage: std::collections::HashSet<String>,
+    /// §30.52/§30.54: the transfer each used port made this stage — (origin, destination) → Stacking
+    /// Points shipped so far. One transfer may carry "a unit or units" up to the smaller Port
+    /// Personnel Capacity, so further units may join it on the same route. Reset each stage.
+    #[serde(default)]
+    pub port_transfer_load: std::collections::HashMap<(String, String), u32>,
     /// §16.4: Dummy Tank Formations in play (≤3 per side, ≤1 per hex). No real counter — a bluff
     /// worth nothing in combat that may be disclosed as a real tank battalion during reconnaissance
     /// (§16.45) and is eliminated by close assault / armorless anti-armor (§16.46).
@@ -1500,9 +1517,11 @@ impl GameState {
             scratch: false,
             convoy_repairs_this_stage: std::collections::HashSet::new(),
             convoy_water_draws_this_stage: std::collections::HashSet::new(),
+            pending_breakdown: None,
             unit_water_draws_this_stage: std::collections::HashSet::new(),
             anti_armor_hexes_this_stage: std::collections::HashSet::new(),
             ports_transferred_this_stage: std::collections::HashSet::new(),
+            port_transfer_load: std::collections::HashMap::new(),
             dummy_tanks: Vec::new(),
             prisoner_groups: Vec::new(),
             captured_equipment: Vec::new(),
@@ -1768,6 +1787,38 @@ impl GameState {
         t.light * chart.light.fuel_capacity + t.medium * chart.medium.fuel_capacity + t.heavy * chart.heavy.fuel_capacity
     }
 
+    /// §49.13: the Fuel a step of `cp_tenths` costs `id`, given the movement it has already made this
+    /// stage — total fuel rate × the number of *new* 5-CP blocks (or fractions) the step enters, so
+    /// a stage's movement costs rate × ⌈total CP / 5⌉ however many steps it is split into.
+    pub fn unit_step_fuel_cost(&self, id: UnitId, cp_tenths: i32) -> u32 {
+        if cp_tenths <= 0 {
+            return 0;
+        }
+        let rate = self.unit_fuel_rate_total(id);
+        if rate == 0 {
+            return 0;
+        }
+        let before = self.units.get(&id).map_or(0, |u| u.move_cp_tenths.max(0));
+        let blocks = |t: i32| ((t + 49) / 50) as u32;
+        rate * (blocks(before + cp_tenths) - blocks(before))
+    }
+
+    /// Whether `unit` (and its riders) could burn any Fuel at all from its tanks, truck cargo or a
+    /// start-hex dump — the "has fuel" test (e.g. §15.36: an AFV without fuel can't assault).
+    pub fn has_move_fuel(&self, unit: UnitId, from: HexCoord) -> bool {
+        let Some(side) = self.unit(unit).map(|u| u.nationality.side()) else { return true };
+        let dump: u32 = self
+            .supply_dumps
+            .iter()
+            .filter(|d| d.side == side && !d.dummy && d.location.hex() == Some(from))
+            .map(|d| d.supply.fuel)
+            .sum();
+        self.formation_members(unit).into_iter().all(|m| {
+            let need = self.unit_move_fuel_cost(m, 1);
+            need == 0 || self.unit(m).is_some_and(|u| u.fuel + u.truck_cargo.fuel >= need) || dump >= need
+        })
+    }
+
     /// Fill a unit's tanks to its Fuel capacity (§49.14). No-op for fuel-less units.
     pub fn refuel_to_capacity(&mut self, id: UnitId) {
         let cap = self.unit_fuel_capacity(id);
@@ -1904,17 +1955,34 @@ impl GameState {
         {
             return false;
         }
+        // §50.12/§15.88: only a unit *without* ammunition surrenders when assaulted — one that can
+        // pay for some of its TOE fights with those (§50.14; see `affordable_assault_fraction`).
         let cost = self.unit_combat_ammo_cost(id, CombatAction::CloseAssault);
-        cost > 0 && self.unit_ammo_available(id) < cost
+        cost > 0 && self.unit_ammo_available(id) == 0
     }
 
-    /// Ammo available to a firing unit: its onboard reserve plus friendly non-dummy Supply
-    /// Dumps in its hex (§50.15).
+    /// §50.14: the share (0–1) of a defender's TOE whose close-assault Ammo it can pay for — a
+    /// partly-supplied unit defends with only the TOE Strength Points it can fire.
+    pub(crate) fn affordable_assault_fraction(&self, id: UnitId) -> f64 {
+        if self.is_gun_unit(id) {
+            return 1.0;
+        }
+        let cost = self.unit_combat_ammo_cost(id, CombatAction::CloseAssault);
+        if cost == 0 {
+            return 1.0;
+        }
+        (self.unit_ammo_available(id) as f64 / cost as f64).min(1.0)
+    }
+
+    /// Ammo available to a firing unit: its onboard reserve, the Ammo its own first-line trucks
+    /// carry (§50 general rule / §50.17: "available for use when in first line trucks"), plus
+    /// friendly non-dummy Supply Dumps in its hex (§50.15).
     fn unit_ammo_available(&self, id: UnitId) -> u32 {
         let Some(u) = self.units.get(&id) else {
             return 0;
         };
-        let dumps: u32 = match u.hex() {
+        // Attached units ride their formation's counter: the dumps in *that* hex serve them.
+        let dumps: u32 = match self.effective_hex(id) {
             Some(h) => self
                 .supply_dumps
                 .iter()
@@ -1923,7 +1991,7 @@ impl GameState {
                 .sum(),
             None => 0,
         };
-        u.ammo + dumps
+        u.ammo + u.truck_cargo.ammo + dumps
     }
 
     /// Expend combat Ammo for `units` performing `action` (§50.14): each draws its cost from its
@@ -1951,10 +2019,18 @@ impl GameState {
                 x.ammo -= from_onboard;
             }
             let mut short = cost - from_onboard;
+            // §50.17/§53.24: then the Ammo in its own first-line trucks (no unloading needed).
+            if short > 0 {
+                if let Some(x) = self.unit_mut(u) {
+                    let take = short.min(x.truck_cargo.ammo);
+                    x.truck_cargo.ammo -= take;
+                    short -= take;
+                }
+            }
             if short > 0 {
                 let (hex, side) = {
                     let x = self.units.get(&u).expect("checked");
-                    (x.hex(), x.nationality.side())
+                    (self.effective_hex(u), x.nationality.side())
                 };
                 if let Some(h) = hex {
                     for d in self.supply_dumps.iter_mut().filter(|d| {
@@ -2021,7 +2097,7 @@ impl GameState {
             if owed > 0 {
                 let (hex, side) = {
                     let u = self.units.get(&id).expect("checked");
-                    (u.hex(), u.nationality.side())
+                    (self.effective_hex(id), u.nationality.side())
                 };
                 if let Some(h) = hex {
                     for d in self.supply_dumps.iter_mut().filter(|d| {
@@ -2081,22 +2157,38 @@ impl GameState {
             // §52.41: the flat 1 Water Point applies to an *infantry battalion or company* (regardless
             // of movement). HQs and Engineers are also `Organic` but are neither, so they owe no
             // §52.41 water (they are likewise special-cased for Stores in `unit_stores_requirement`,
-            // §51.13). A non-infantry Organic unit is thus never "deprived" (never takes §52.53 attrition),
-            // but its §52.42 Truck-Point water is still owed if it moved.
+            // §51.13); their §52.42 Truck-Point water is still owed if they moved. An Organic
+            // *vehicle* unit (Recce, Tank, Artillery, … Bn-Equivalent) owes §52.42 water instead:
+            // 1 per TOE SP, only if it used CPA.
             Composition::Organic { .. } => {
-                let ut = self
-                    .reference
-                    .unit_characteristics
-                    .get(&u.nationality)
-                    .and_then(|m| m.get(&u.id_code))
-                    .map(|uc| uc.unit_type.as_str())
-                    .unwrap_or("");
-                let base = if ut.contains("Headquarters") || ut.contains("Engineer") { 0 } else { 1 };
-                base + truck_water
+                let ut = self.unit_type_str(u);
+                if ut.contains("Headquarters") || ut.contains("Engineer") || ut.contains("Construction") {
+                    truck_water
+                } else if self.organic_is_infantry(u) {
+                    1 + truck_water
+                } else {
+                    (if acted { u.total_toe() } else { 0 }) + truck_water
+                }
             }
             // §52.42: 1 per Vehicle TOE SP (if moved) + 1 per attached Truck Point (if moved).
             Composition::Weapons { .. } => (if acted { u.total_toe() } else { 0 }) + truck_water,
         }
+    }
+
+    fn unit_type_str(&self, u: &Unit) -> &str {
+        self.reference
+            .unit_characteristics
+            .get(&u.nationality)
+            .and_then(|m| m.get(&u.id_code))
+            .map(|uc| uc.unit_type.as_str())
+            .unwrap_or("")
+    }
+
+    /// Whether an Organic unit is infantry for §52.41/§52.53 (an "Infantry … -Equivalent" type,
+    /// or one with no characteristics entry). Organic vehicle units (Recce, Tank, …) are not.
+    fn organic_is_infantry(&self, u: &Unit) -> bool {
+        let ut = self.unit_type_str(u);
+        ut.is_empty() || ut.contains("Infantry")
     }
 
     /// Whether a unit is currently deprived of Water (§52.5) — it went unsupplied on its last
@@ -2610,14 +2702,48 @@ impl GameState {
         repaired
     }
 
-    /// §22.13: field-repair a free truck convoy's broken-down Truck Points (roll 1 = one Heavy or two
-    /// Light/Medium; roll 2 = one Light/Medium; else none). Blocked in a Rainstorm/Sandstorm hex (§22.13d).
+    /// Whether weather blocks repairs for a convoy in `hex` (§22.13d: no repairs in a Rainstorm or
+    /// Sandstorm hex — Major Facilities exempt).
+    pub(crate) fn convoy_repair_blocked_by_weather(&self, hex: HexCoord) -> bool {
+        self.repair_facilities.get(&hex) != Some(&FacilityKind::Major)
+            && (self.sandstorm_at(hex) || self.weather_at(hex) == Weather::Rainstorm)
+    }
+
+    /// Repair a free truck convoy's broken-down Truck Points. In a Repair Facility hex (§22.32–22.34)
+    /// the die gives the Facility percentage of each truck type repaired (rounded up), as for units in
+    /// `facility_repair`; elsewhere it is a §22.23 field repair (roll 1 = one Heavy or two
+    /// Light/Medium; roll 2 = one Light/Medium; else none). Weather per `convoy_repair_blocked_by_weather`.
     pub fn repair_convoy_trucks(&mut self, convoy: usize, roll: u8) -> u32 {
         let Some(hex) = self.truck_convoys.get(convoy).map(|c| c.hex) else {
             return 0;
         };
-        if self.sandstorm_at(hex) || self.weather_at(hex) == Weather::Rainstorm {
+        if self.convoy_repair_blocked_by_weather(hex) {
             return 0;
+        }
+        if let Some(kind) = self.repair_facilities.get(&hex).copied() {
+            let Some(table) = self.reference.repair_table.clone() else {
+                return 0;
+            };
+            let pct = match kind {
+                FacilityKind::Temporary => table.temp_facility_pct(roll as u32),
+                FacilityKind::Major => table.major_facility_pct(roll as u32),
+            };
+            let ceil_pct = |n: u32| (n * pct).div_ceil(100).min(n);
+            let Some(cv) = self.truck_convoys.get_mut(convoy) else {
+                return 0;
+            };
+            let mut total = 0;
+            for (broken, active) in [
+                (&mut cv.trucks_broken.light, &mut cv.trucks.light),
+                (&mut cv.trucks_broken.medium, &mut cv.trucks.medium),
+                (&mut cv.trucks_broken.heavy, &mut cv.trucks.heavy),
+            ] {
+                let r = ceil_pct(*broken);
+                *broken -= r;
+                *active += r;
+                total += r;
+            }
+            return total;
         }
         let Some(cv) = self.truck_convoys.get_mut(convoy) else {
             return 0;
@@ -3017,8 +3143,27 @@ impl GameState {
             .map(|(&id, _)| id)
             .collect();
         let (mut withdrawn, mut eliminated) = (0, 0);
+        let due_set: std::collections::HashSet<UnitId> = due.iter().copied().collect();
+        // An attached unit rides its formation's counter, so judge it by that counter's hex — taken
+        // before any removal, so a formation withdrawn first doesn't strand its riders.
+        let hexes: std::collections::HashMap<UnitId, Option<HexCoord>> = due.iter().map(|&id| (id, self.effective_hex(id))).collect();
         for id in due {
-            let at_depot = self.units.get(&id).and_then(|u| u.hex()).is_some_and(|h| depots.contains(&h));
+            let here = hexes[&id];
+            let at_depot = here.is_some_and(|h| depots.contains(&h));
+            // Units riding this counter that are *not* themselves due stay in play: drop them off in
+            // the hex rather than letting them vanish with it.
+            let riders: Vec<UnitId> = self
+                .units
+                .values()
+                .filter(|u| u.attached_parent == Some(id) && !due_set.contains(&u.id) && !u.status.withdrawn)
+                .map(|u| u.id)
+                .collect();
+            for r in riders {
+                if let Some(u) = self.units.get_mut(&r) {
+                    u.attached_parent = None;
+                    u.location = here.map(UnitLocation::OnMap);
+                }
+            }
             // §20.82/§20.85: must be at ≥75% of maximum TOE (4× current ≥ 3× max).
             let strong_enough = match self.unit_max_toe(id) {
                 Some(max) if max > 0 => self.units.get(&id).map(|u| u.total_toe() * 4 >= max * 3).unwrap_or(false),
@@ -3029,6 +3174,7 @@ impl GameState {
                 if let Some(u) = self.units.get_mut(&id) {
                     u.status.withdrawn = true;
                     u.location = None;
+                    u.attached_parent = None; // off the map in its own right, not riding anything
                     u.mandatory_withdrawal = None;
                 }
                 withdrawn += 1;
@@ -3299,6 +3445,35 @@ impl GameState {
     /// Close-Assault strength — or Pinned) and still sits in an *un-attacked* enemy ZOC must, per
     /// §10.36, retreat three hexes away (all CP, +3 Disorganization Points), never through an enemy
     /// ZOC; if it cannot, it Surrenders. `phasing` is the side whose combat segment just ended.
+    /// §10.31–§10.36: `side`'s combat units that, if the Movement & Combat phase ended now, would
+    /// owe a Close Assault or Holding-Off Barrage — each with an enemy ZOC hex nobody has attacked
+    /// this stage. (Read-only; `enforce_holding_off` acts on the same list.)
+    pub fn holding_off_obligations(&self, side: Side) -> Vec<(UnitId, HexCoord)> {
+        let enemy = side.opponent();
+        let mut out: Vec<(UnitId, HexCoord)> = Vec::new();
+        let mut ids: Vec<UnitId> = self
+            .units
+            .values()
+            .filter(|u| u.nationality.side() == side && u.hex().is_some())
+            .map(|u| u.id)
+            .filter(|&id| self.is_combat_unit(id))
+            .filter(|&id| !self.is_pinned(id) && self.close_assault_raw(&[id], true) > 0)
+            .collect();
+        ids.sort_by_key(|id| id.0);
+        for id in ids {
+            let Some(uh) = self.units.get(&id).and_then(|u| u.hex()) else { continue };
+            if let Some(adj) = uh.neighbors().into_iter().find(|&adj| {
+                self.hex_projects_zoc(adj) == Some(enemy)
+                    && self.zoc_hexes(adj).contains(&uh)
+                    && !self.close_assaulted_hexes_this_stage.contains(&adj)
+                    && !self.barraged_hexes_this_stage.contains(&adj)
+            }) {
+                out.push((id, adj));
+            }
+        }
+        out
+    }
+
     pub(crate) fn enforce_holding_off(&mut self, phasing: Side) {
         let enemy = phasing.opponent();
         // Phasing combat units in an enemy ZOC, not §10.32-exempt.
@@ -3338,12 +3513,15 @@ impl GameState {
         let Some(side) = self.units.get(&unit).map(|u| u.nationality.side()) else { return false };
         let enemy = side.opponent();
         let Some(mut cur) = self.units.get(&unit).and_then(|u| u.hex()) else { return false };
+        let mode = if self.unit_is_motorized(unit) { MoveMode::Motorized } else { MoveMode::NonMotorized };
         for _ in 0..3 {
             let next = cur
                 .neighbors()
                 .into_iter()
                 .filter(|&n| {
                     self.map.hex(n).is_some()
+                        // Never into Sea / prohibited terrain or across a closed hexside (as `cmd_retreat`).
+                        && matches!(self.move_step_cost(cur, n, mode), Some(MoveCost::Cost(_)))
                         && n.distance(away_from) > cur.distance(away_from)
                         && !self.hex_in_zoc_of(n, enemy)
                         && !self.units_in_hex(n).into_iter().any(|o| {
@@ -3801,6 +3979,7 @@ impl GameState {
             }
             u.anti_tank_augment = None;
             u.location = None;
+            u.attached_parent = None;
             u.mandatory_withdrawal = None;
         }
     }
@@ -4666,42 +4845,39 @@ impl GameState {
     /// §8.72/8.73: whether `to` is reachable from `from` along contiguous **built** Railroad
     /// hexsides without passing through a hex in an enemy ZOC or occupied by an enemy unit.
     pub fn rail_reachable(&self, from: HexCoord, to: HexCoord, side: Side) -> bool {
-        if from == to {
-            return true;
-        }
+        from == to || self.rail_reachable_set(from, side).contains(&to)
+    }
+
+    /// Every rail hex `side` can rail to from `from` along finished track without entering an enemy
+    /// ZOC or enemy-occupied hex (§8.73) — one search, for enumerating destinations.
+    pub fn rail_reachable_set(&self, from: HexCoord, side: Side) -> std::collections::HashSet<HexCoord> {
         let enemy = side.opponent();
+        let enemy_hexes: std::collections::HashSet<HexCoord> = self
+            .units
+            .values()
+            .filter(|u| u.nationality.side() == enemy)
+            .filter_map(|u| self.effective_hex(u.id))
+            .collect();
         let mut seen = std::collections::HashSet::new();
+        let mut reached = std::collections::HashSet::new();
         let mut stack = vec![from];
         while let Some(h) = stack.pop() {
             if !seen.insert(h) {
                 continue;
             }
             for n in self.map.neighbors(h) {
-                if !self
-                    .map
-                    .hexsides_on(h, n)
-                    .iter()
-                    .any(|hs| hs.kind == HexsideKind::Railroad)
+                if seen.contains(&n)
+                    || !self.map.hexsides_on(h, n).iter().any(|hs| hs.kind == HexsideKind::Railroad)
+                    || enemy_hexes.contains(&n)
+                    || self.hex_in_zoc_of(n, enemy)
                 {
                     continue;
                 }
-                // §8.73: never enter an enemy ZOC or enemy-occupied hex while railing.
-                let enemy_occupied = self
-                    .units
-                    .values()
-                    .any(|u| self.effective_hex(u.id) == Some(n) && u.nationality.side() == enemy);
-                if self.hex_in_zoc_of(n, enemy) || enemy_occupied {
-                    continue;
-                }
-                if n == to {
-                    return true;
-                }
-                if !seen.contains(&n) {
-                    stack.push(n);
-                }
+                reached.insert(n);
+                stack.push(n);
             }
         }
-        false
+        reached
     }
 
     /// §8.72–8.75 / §54.4: Rail Movement. Move `unit` any distance along the finished rail line to
@@ -4712,6 +4888,93 @@ impl GameState {
     /// hold five contiguous controlled rail hexes (§54.41), `from` must be Axis-controlled, and it
     /// spends 900 tons of activated Rolling Stock per Stacking Point (§54.44) from its one-direction
     /// per-stage haulage budget (§54.43/46). Returns whether the unit was railed.
+    /// Read-only: whether `rail_move(unit, to)` would succeed (the legal-action enumerator's fast
+    /// path — same conditions, no mutation, no clone).
+    pub fn rail_move_ok(&self, unit: UnitId, to: HexCoord) -> bool {
+        self.rail_move_ok_ex(unit, to, true)
+    }
+
+    /// `rail_move_ok`, optionally skipping the line search when the caller already knows `to` is
+    /// reachable (`rail_reachable_set`).
+    pub fn rail_move_ok_ex(&self, unit: UnitId, to: HexCoord, check_reach: bool) -> bool {
+        if self.rail_maintenance_this_stage {
+            return false;
+        }
+        let Some(u) = self.units.get(&unit) else { return false };
+        let side = u.nationality.side();
+        let Some(from) = u.hex() else { return false };
+        if u.cp_expended.0 != 0 || !self.hex_is_railroad(from) || !self.hex_is_railroad(to) || from == to {
+            return false;
+        }
+        if self.hex_in_zoc_of(from, side.opponent()) || self.effective_stacking_points(unit) > 2 || !self.stacking_room_for(unit, to) {
+            return false;
+        }
+        let west = to.col < from.col;
+        let ok = match side {
+            Side::Commonwealth => !((west && self.rail_west_used) || (!west && self.rail_east_used)) && !self.west_of_marble_arch(to),
+            Side::Axis => {
+                let tons = 900 * self.effective_stacking_points(unit);
+                self.axis_controls_rail(from)
+                    && self.axis_rolling_stock_tons > 0
+                    && self.axis_rail_contiguous_max() >= 5
+                    && self.axis_rail_dir.is_none_or(|d| d == west)
+                    && self.axis_rail_tons_used + tons <= self.axis_rolling_stock_tons
+            }
+        };
+        ok && (!check_reach || self.rail_reachable(from, to, side))
+    }
+
+    /// Read-only: the points `rail_move_supply_for(side, from, to, cargo, u32::MAX)` would deliver,
+    /// assuming `to` is reachable along the line (the caller checked with `rail_reachable_set`).
+    pub fn rail_supply_points(&self, side: Side, from: HexCoord, to: HexCoord, cargo: RailCargo) -> u32 {
+        if self.rail_maintenance_this_stage || from == to || !self.hex_is_railroad(from) || !self.hex_is_railroad(to) {
+            return 0;
+        }
+        let west = to.col < from.col;
+        let cap = match side {
+            Side::Commonwealth => {
+                if (west && self.rail_west_used) || (!west && self.rail_east_used) {
+                    return 0;
+                }
+                match cargo {
+                    RailCargo::Stores => 1500,
+                    RailCargo::Ammo => 375,
+                    RailCargo::Fuel => 12000,
+                }
+            }
+            Side::Axis => {
+                if !self.axis_controls_rail(from) || self.axis_rail_contiguous_max() < 5 || self.axis_rolling_stock_tons == 0 {
+                    return 0;
+                }
+                if self.axis_rail_dir.is_some_and(|d| d != west) {
+                    return 0;
+                }
+                let remaining = self.axis_rolling_stock_tons.saturating_sub(self.axis_rail_tons_used);
+                match cargo {
+                    RailCargo::Stores => remaining,
+                    RailCargo::Ammo => remaining / 4,
+                    RailCargo::Fuel => remaining * 8,
+                }
+            }
+        };
+        let at = crate::state::unit::UnitLocation::OnMap(from);
+        let unlimited = self.supply_dumps.iter().any(|d| d.unlimited && !d.dummy && d.location == at && d.side == side);
+        let avail: u32 = if unlimited {
+            u32::MAX
+        } else {
+            self.supply_dumps
+                .iter()
+                .filter(|d| !d.dummy && d.location == at && d.side == side)
+                .map(|d| match cargo {
+                    RailCargo::Fuel => d.supply.fuel,
+                    RailCargo::Ammo => d.supply.ammo,
+                    RailCargo::Stores => d.supply.stores,
+                })
+                .sum()
+        };
+        cap.min(avail)
+    }
+
     pub fn rail_move(&mut self, unit: UnitId, to: HexCoord) -> bool {
         if self.rail_maintenance_this_stage {
             return false; // §54.34
@@ -4838,12 +5101,17 @@ impl GameState {
             RailCargo::Ammo => s.ammo,
             RailCargo::Stores => s.stores,
         };
-        let avail: u32 = self
-            .supply_dumps
-            .iter()
-            .filter(|d| !d.dummy && d.location == target_from && d.side == side)
-            .map(|d| get(&d.supply))
-            .sum();
+        // §57: a Cairo/Alexandria base supplies any amount (its nominal contents don't run down).
+        let unlimited = self.supply_dumps.iter().any(|d| d.unlimited && !d.dummy && d.location == target_from && d.side == side);
+        let avail: u32 = if unlimited {
+            u32::MAX
+        } else {
+            self.supply_dumps
+                .iter()
+                .filter(|d| !d.dummy && d.location == target_from && d.side == side)
+                .map(|d| get(&d.supply))
+                .sum()
+        };
         let moved = points.min(cap).min(avail);
         if moved == 0 {
             return 0;
@@ -4858,11 +5126,14 @@ impl GameState {
             self.axis_rail_tons_used += tons;
             self.axis_rail_dir = Some(west);
         }
-        // Draw from the source dumps.
-        let mut owed = moved;
+        // Draw from the source dumps (an unlimited base is not drawn down).
+        let mut owed = if unlimited { 0 } else { moved };
         for d in self.supply_dumps.iter_mut().filter(|d| {
             !d.dummy && d.location == target_from && d.side == side
         }) {
+            if owed == 0 {
+                break;
+            }
             let field = match cargo {
                 RailCargo::Fuel => &mut d.supply.fuel,
                 RailCargo::Ammo => &mut d.supply.ammo,
@@ -6669,6 +6940,29 @@ impl GameState {
     /// A unit that cannot is deprived: an infantry (Organic) unit loses 1 TOE per consecutive
     /// stage after the first without water (§52.53). `acted` = units that used CPA this stage
     /// (vehicles need water only if they moved, §52.42). Off-map units draw from the boxes.
+    /// Whether `need` Water Points are available to unit `id` without drawing them (§52.4/§52.45):
+    /// onboard plus its own trucks' water, plus a friendly dump in its hex; or a usable well there
+    /// (an unlimited Major City/Oasis source, or a Village/Bir not known depleted or poisoned).
+    /// Off-map units are always watered (§52.11).
+    pub fn water_on_hand_for(&self, id: UnitId, need: u32) -> bool {
+        let Some(u) = self.units.get(&id) else { return false };
+        let Some(h) = self.effective_hex(id) else {
+            return matches!(self.root_location(id), Some(UnitLocation::OffMap { .. }));
+        };
+        let side = u.nationality.side();
+        let own = u.water + u.truck_cargo.water;
+        if own + self.available_commodity_at(h, side, Commodity::Water) >= need {
+            return true;
+        }
+        match self.hex_water_source_for(h, side) {
+            Some(WaterKind::Unlimited) => true,
+            Some(WaterKind::Village) | Some(WaterKind::Bir) => {
+                !self.depleted_wells.contains(&h) && !self.poisoned_wells.contains(&h)
+            }
+            _ => false,
+        }
+    }
+
     pub fn expend_water(&mut self, acted: &std::collections::HashSet<UnitId>) {
         if self.reference.water_table.is_none() {
             return; // water consumption applies only when the §52.7 table is in play
@@ -6677,6 +6971,18 @@ impl GameState {
         for id in ids {
             let req = self.unit_water_requirement(id, acted.contains(&id));
             if req == 0 {
+                // §52.42/§52.51: a vehicle owes water only for a stage it moved, so a water-deprived
+                // vehicle that sat still owes none — but it must be able to recover once water reaches
+                // it, or it would stay immobilized forever. Clear the deprivation if the water it would
+                // need to move is now on hand (onboard, own trucks, a friendly dump or a usable well in
+                // its hex); it pays only when it actually moves.
+                if self.units.get(&id).is_some_and(|u| u.stages_without_water > 0)
+                    && self.water_on_hand_for(id, self.unit_water_requirement(id, true))
+                {
+                    if let Some(u) = self.unit_mut(id) {
+                        u.stages_without_water = 0;
+                    }
+                }
                 continue;
             }
             // Where the unit physically is: its own counter or the formation counter it rides
@@ -6781,7 +7087,11 @@ impl GameState {
                     u.stages_without_water += 1;
                     u.stages_without_water
                 };
-                if s > 1 {
+                // §52.53: only infantry lose TOE; vehicles are merely immobilized (§52.51).
+                let infantry = self.units.get(&id).is_some_and(|u| {
+                    matches!(u.composition, Composition::Organic { .. }) && self.organic_is_infantry(u)
+                });
+                if s > 1 && infantry {
                     if let Some(u) = self.unit_mut(id) {
                         if let Composition::Organic { current_toe } = &mut u.composition {
                             *current_toe = current_toe.saturating_sub(1);
@@ -6984,7 +7294,7 @@ impl GameState {
         let mut dump_demand: u32 = 0;
         let mut any_user = false;
         for m in self.formation_members(unit) {
-            let cost = self.unit_move_fuel_cost(m, cp_tenths);
+            let cost = self.unit_step_fuel_cost(m, cp_tenths);
             if cost == 0 {
                 continue;
             }
@@ -7019,7 +7329,7 @@ impl GameState {
         let mut draws: Vec<(UnitId, u32, u32)> = Vec::new(); // (member, from_tank, from_cargo)
         let mut dump_demand: u32 = 0;
         for m in self.formation_members(unit) {
-            let cost = self.unit_move_fuel_cost(m, cp_tenths);
+            let cost = self.unit_step_fuel_cost(m, cp_tenths);
             if cost == 0 {
                 continue;
             }
@@ -7033,7 +7343,8 @@ impl GameState {
             draws.push((m, tank, cargo_use));
         }
         if dump_demand == 0 && draws.is_empty() {
-            return true; // no fuel users
+            self.note_move_cp(unit, cp_tenths);
+            return true; // no fuel due for this step (or no fuel users)
         }
         let dump_fuel: u32 = self
             .supply_dumps
@@ -7064,7 +7375,18 @@ impl GameState {
                 remaining -= take;
             }
         }
+        self.note_move_cp(unit, cp_tenths);
         true
+    }
+
+    /// §49.13: record a paid step's movement CP for the mover and its riders (the basis of the next
+    /// step's fuel blocks).
+    fn note_move_cp(&mut self, unit: UnitId, cp_tenths: i32) {
+        for m in self.formation_members(unit) {
+            if let Some(u) = self.unit_mut(m) {
+                u.move_cp_tenths += cp_tenths.max(0);
+            }
+        }
     }
 
     /// Roll weather for the coming Operations Stage (§29.1): the Initiative player rolls two
@@ -7772,6 +8094,11 @@ impl GameState {
             return false;
         }
         if self.withdrawn.contains_key(&id) {
+            return false;
+        }
+        // §64.75: voluntary withdrawals are "other than those Withdrawn via the Reinforcement Track" —
+        // a unit on the §20.8 mandatory schedule (or due back from it) leaves only by that schedule.
+        if u.mandatory_withdrawal.is_some() || u.status.withdrawn || u.return_at.is_some() {
             return false;
         }
         if self.withdrawal_lockout.get(&id).is_some_and(|&t| self.game_turn < t) {
@@ -9833,7 +10160,7 @@ impl GameState {
 
     /// A unit's maximum TOE Strength Points (§4.46 chart): the Organic `max_toe`, or for a
     /// weapon-holder the sum of its assignment limits.
-    pub(crate) fn unit_max_toe(&self, id: UnitId) -> Option<u32> {
+    pub fn unit_max_toe(&self, id: UnitId) -> Option<u32> {
         let u = self.units.get(&id)?;
         let uc = self
             .reference
@@ -10418,6 +10745,8 @@ impl GameState {
     }
 
     pub fn advance_phase(&mut self) {
+        // §21.24: a phase ending stops whatever was moving.
+        self.settle_pending_breakdown();
         // Stage VII — Strategic Air Recovery (after the three Operations Stages).
         if let Some(i) = self.post_turn_step {
             if i + 1 < POST_TURN_SEQUENCE.len() {
@@ -10582,6 +10911,7 @@ impl GameState {
         self.unit_water_draws_this_stage.clear();
         self.anti_armor_hexes_this_stage.clear();
         self.ports_transferred_this_stage.clear(); // §30.52 one naval troop transfer per port per stage
+        self.port_transfer_load.clear();
         self.recon_revealed.clear(); // §42.27 recon reveals are a per-stage snapshot
         // §8.62: In-Contact status is derived from enemy ZOCs at the start of the Movement Segment;
         // §8.67 clears any Engagement no longer held by an adjacent opposing combat unit.
@@ -10669,6 +10999,7 @@ impl GameState {
                 u.tds_repair_locked = u.cp_expended.0 > 250;
             }
             u.cp_expended = Fixed(0);
+            u.move_cp_tenths = 0;
             u.combat_cp = Fixed(0);
             u.moved_into_zoc = false;
             u.reserve_moved_this_stage = false;

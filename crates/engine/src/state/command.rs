@@ -413,6 +413,14 @@ pub enum Command {
     /// §52.13: a free convoy in a hex with a well draws Water into its trucks (1 CP in the Truck
     /// Convoy Phase; also Organization). Once per stage.
     ConvoyDrawWater { convoy: usize },
+    /// §53.21: detach `light`/`medium`/`heavy` working Truck Points of a free convoy as a new convoy
+    /// in the same hex (Organization / Truck Convoy Phase). The new convoy's tanks are filled first
+    /// from the convoy's tank fuel (§49.17 siphoning, 3 CP each in the Truck Convoy Phase); cargo is
+    /// shared pro rata; broken-down trucks stay with the original.
+    SplitConvoy { convoy: usize, light: u32, medium: u32, heavy: u32 },
+    /// §53.21: join free convoy `from` into `into` (same side, same hex): trucks, tanks and cargo
+    /// combine; `from` is left empty.
+    MergeConvoy { from: usize, into: usize },
     /// §52.13: a unit's first-line trucks draw Water at a well in its hex (Organization, or Movement
     /// & Combat for 1 CP). Once per stage.
     TrucksDrawWater { unit: UnitId },
@@ -785,6 +793,7 @@ impl Command {
             Command::RepairConvoyTrucks { .. } => &["§22.13"],
             Command::RefuelConvoy { .. } => &["§49.14", "§49.16", "§49.18"],
             Command::ConvoyDrawWater { .. } | Command::TrucksDrawWater { .. } => &["§52.13", "§52.7"],
+            Command::SplitConvoy { .. } | Command::MergeConvoy { .. } => &["§53.21"],
             Command::MoveReplacement { .. } => &["§20.46", "§20.42"],
             Command::LoadReplacement { .. } | Command::UnloadReplacement { .. } => &["§20.44"],
             Command::AbsorbReplacement { .. } => &["§20"],
@@ -1088,6 +1097,9 @@ pub enum CommandOutcome {
     ConvoyRefueled(u32),
     /// ConvoyDrawWater / TrucksDrawWater: Water Points drawn into the trucks.
     WaterDrawn(u32),
+    /// SplitConvoy: the index of the new convoy.
+    ConvoySplit { convoy: usize },
+    ConvoysMerged,
     /// §50.17: a land unit rearmed to a one-fire reserve (new Ammo level).
     UnitRearmed(u32),
     /// §33.0 IV.A: the Initiative order was declared for the Operations Stage.
@@ -1288,6 +1300,8 @@ pub enum CommandError {
     Pinned,
     /// §6.26: a unit with a Cohesion Level of −26 or worse may not move, attack, or defend.
     Disorganized,
+    /// §12.0: only a unit with a Barrage Rating (and TOE to fire it) may Barrage.
+    NoBarrageRating,
     /// §15.23/§14.22: a hex may not be close-assaulted / anti-armor-fired more than once per Combat
     /// Segment.
     HexAlreadyInCombat,
@@ -1471,6 +1485,9 @@ pub enum CommandError {
     NoCargoRoom,
     /// One well draw per convoy / unit per Operations Stage.
     AlreadyDrewWater,
+    /// §24.9: a convoy may load only from a *constructed* Supply Dump; the hex holds only loose supplies
+    /// (or none of that commodity).
+    NoConstructedDump,
     /// §22.13d: no field repairs in a Rainstorm or Sandstorm hex.
     RepairBlockedByWeather,
     /// §8.17: a non-motorized unit (base CPA ≤ 10) may not voluntarily expend more than 150% of its
@@ -1711,7 +1728,9 @@ impl GameState {
             | C::UnloadConvoy { convoy, .. }
             | C::RepairConvoyTrucks { convoy }
             | C::RefuelConvoy { convoy }
-            | C::ConvoyDrawWater { convoy } => convoy_ok(convoy),
+            | C::ConvoyDrawWater { convoy }
+            | C::SplitConvoy { convoy, .. } => convoy_ok(convoy),
+            C::MergeConvoy { from, into } => convoy_ok(from) && convoy_ok(into),
             C::TrucksDrawWater { unit } => unit_ok(unit),
             C::LoadReplacement { convoy, pool } => convoy_ok(convoy) && pool_ok(pool),
             C::MoveReplacement { index: pool, .. } | C::UnloadReplacement { pool } => pool_ok(pool),
@@ -1731,7 +1750,41 @@ impl GameState {
         }
     }
 
+    /// §21.21: route-aware Breakdown Points for a land step, with the §21.37c/§29.56 rainstorm rule
+    /// (roads count as tracks in a stormed destination section).
+    pub(crate) fn step_breakdown_points(&self, from: HexCoord, to: HexCoord, offroad: bool) -> crate::reference::terrain::Fixed {
+        let storm = self.weather_at(to) == crate::state::game::Weather::Rainstorm;
+        crate::rules::movement::step_breakdown(&self.reference, &self.map, from, to, storm, offroad)
+    }
+
+    /// §21.24/§21.26: the unit or convoy that was moving has stopped — make its breakdown check
+    /// (only if it reached a higher column than already checked this stage).
+    pub fn settle_pending_breakdown(&mut self) {
+        use crate::state::game::BreakdownMover;
+        match self.pending_breakdown.take() {
+            Some(BreakdownMover::Unit(u)) => {
+                for m in self.formation_members(u) {
+                    self.resolve_breakdown(m);
+                }
+            }
+            Some(BreakdownMover::Convoy(i)) => self.resolve_convoy_breakdown(i),
+            None => {}
+        }
+    }
+
     pub fn apply(&mut self, command: Command) -> Result<CommandOutcome, CommandError> {
+        // §21.24: anything other than moving the same mover on means it has stopped moving.
+        if let Some(m) = self.pending_breakdown {
+            use crate::state::game::BreakdownMover;
+            let continues = match (&command, m) {
+                (Command::MoveStep { unit, .. } | Command::FormationMove { formation: unit, .. }, BreakdownMover::Unit(u)) => *unit == u,
+                (Command::MoveTruckConvoy { convoy, .. }, BreakdownMover::Convoy(c)) => *convoy == c,
+                _ => false,
+            };
+            if !continues {
+                self.settle_pending_breakdown();
+            }
+        }
         match command {
             Command::MoveStep { unit, to, mode } => self.move_step(unit, to, mode),
             Command::MoveRommel { to } => self.cmd_move_rommel(to, false),
@@ -1874,31 +1927,43 @@ impl GameState {
                 self.cmd_refit_squadron(squadron, wrong_squadron)
             }
             Command::LoadTrucks { unit, commodity, amount } => {
-                self.require_phase(Phase::Organization)?;
+                // §6.3 CP chart / Logistics-Game Supply Distribution Segment: trucks load/unload for
+                // 0 CP in the Organization Phase, or for 2 CP during the unit's Movement & Combat.
+                let in_move = self.trucks_load_phase()?;
                 self.require_units_exist(&[unit])?;
-                // §6.3/§53.24: loading/off-loading during the Organization Phase costs 0 CP (the
-                // Supply-Distribution free-load exception); a CP cost applies only in other phases.
-                Ok(CommandOutcome::TrucksLoaded(self.load_trucks(unit, commodity, amount)))
+                let n = self.load_trucks(unit, commodity, amount);
+                if in_move && n > 0 {
+                    self.charge_truck_handling(unit);
+                }
+                Ok(CommandOutcome::TrucksLoaded(n))
             }
             Command::UnloadTrucks { unit, commodity, amount } => {
-                self.require_phase(Phase::Organization)?;
+                let in_move = self.trucks_load_phase()?;
                 self.require_units_exist(&[unit])?;
-                Ok(CommandOutcome::TrucksUnloaded(self.unload_trucks(unit, commodity, amount)))
+                let n = self.unload_trucks(unit, commodity, amount);
+                if in_move && n > 0 {
+                    self.charge_truck_handling(unit);
+                }
+                Ok(CommandOutcome::TrucksUnloaded(n))
             }
             Command::LoadConvoy { convoy, commodity, amount } => {
-                self.require_phase(Phase::TruckConvoy)?;
-                let side = self.truck_convoys.get(convoy).map(|c| c.side).ok_or(CommandError::TruckConvoyCannotMove)?;
-                if self.active_player != side {
-                    return Err(CommandError::WrongPhase);
+                self.convoy_load_phase(convoy)?;
+                let loaded = self.load_convoy(convoy, commodity, amount);
+                // Say why nothing loaded instead of reporting a silent success (§24.9).
+                if loaded == 0 && amount > 0 {
+                    let c = &self.truck_convoys[convoy];
+                    let (hex, side) = (c.hex, c.side);
+                    let constructed = self.supply_dumps.iter().any(|d| {
+                        d.side == side && !d.dummy && d.constructed && d.location.hex() == Some(hex) && (d.unlimited || d.supply.get(commodity) > 0)
+                    });
+                    if !constructed {
+                        return Err(CommandError::NoConstructedDump);
+                    }
                 }
-                Ok(CommandOutcome::TrucksLoaded(self.load_convoy(convoy, commodity, amount)))
+                Ok(CommandOutcome::TrucksLoaded(loaded))
             }
             Command::UnloadConvoy { convoy, commodity, amount } => {
-                self.require_phase(Phase::TruckConvoy)?;
-                let side = self.truck_convoys.get(convoy).map(|c| c.side).ok_or(CommandError::TruckConvoyCannotMove)?;
-                if self.active_player != side {
-                    return Err(CommandError::WrongPhase);
-                }
+                self.convoy_load_phase(convoy)?;
                 Ok(CommandOutcome::TrucksUnloaded(self.unload_convoy(convoy, commodity, amount)))
             }
             Command::RefuelConvoy { convoy } => {
@@ -1925,6 +1990,8 @@ impl GameState {
                 c.tank_fuel += from_dump + from_cargo;
                 Ok(CommandOutcome::ConvoyRefueled(from_dump + from_cargo))
             }
+            Command::SplitConvoy { convoy, light, medium, heavy } => self.cmd_split_convoy(convoy, light, medium, heavy),
+            Command::MergeConvoy { from, into } => self.cmd_merge_convoy(from, into),
             Command::ConvoyDrawWater { convoy } => {
                 if !matches!(self.phase, Phase::Organization | Phase::TruckConvoy) {
                     return Err(CommandError::WrongPhase);
@@ -1999,10 +2066,10 @@ impl GameState {
                 if cv.trucks_broken.light + cv.trucks_broken.medium + cv.trucks_broken.heavy == 0 {
                     return Err(CommandError::NothingToRepair);
                 }
-                if self.sandstorm_at(cv.hex) || self.weather_at(cv.hex) == crate::state::game::Weather::Rainstorm {
+                if self.convoy_repair_blocked_by_weather(cv.hex) {
                     return Err(CommandError::RepairBlockedByWeather);
                 }
-                // §22.23: one repair die per Repair Phase for the convoy's broken-down trucks.
+                // §22.23/§22.34: one repair die per Repair Phase for the convoy's broken-down trucks.
                 if !self.convoy_repairs_this_stage.insert(convoy) {
                     return Err(CommandError::AlreadyRepairedThisPhase);
                 }
@@ -2100,6 +2167,10 @@ impl GameState {
                     Some(Side::Axis) => self.require_phase(Phase::TruckConvoy)?,
                     None => return Err(CommandError::UnitNotFound),
                 }
+                // …and only in that side's own step of the phase.
+                if self.unit(unit).map(|u| u.nationality.side()) != Some(self.active_player) {
+                    return Err(CommandError::WrongPhase);
+                }
                 // §8.19: the Commonwealth may not rail west of Marble Arch either (for any reason).
                 if self.unit(unit).map(|u| u.nationality.side()) == Some(Side::Commonwealth)
                     && self.west_of_marble_arch(to)
@@ -2118,7 +2189,14 @@ impl GameState {
                     Phase::TruckConvoy => Side::Axis,
                     _ => return Err(CommandError::WrongPhase),
                 };
-                Ok(CommandOutcome::RailSupplyMoved(self.rail_move_supply_for(side, from, to, cargo, points)))
+                // Only in that side's own step (§33.0 IV.K; §54.43).
+                if self.active_player != side {
+                    return Err(CommandError::WrongPhase);
+                }
+                match self.rail_move_supply_for(side, from, to, cargo, points) {
+                    0 => Err(CommandError::RailMoveFailed), // nothing could be moved (refused, not a no-op)
+                    n => Ok(CommandOutcome::RailSupplyMoved(n)),
+                }
             }
             Command::ImportRollingStock { hex } => {
                 self.require_phase(Phase::Organization)?;
@@ -2169,7 +2247,18 @@ impl GameState {
                     return Err(CommandError::UnitAtFullStrength);
                 }
                 match self.absorb_replacement(index, unit) {
-                    Some(points) if points > 0 => Ok(CommandOutcome::ReplacementAbsorbed(points)),
+                    Some(points) if points > 0 => {
+                        // §19.68/§20.48, §6.3 chart: 1 CP per 2 Replacement TOE points absorbed, to the
+                        // absorbing unit (and its parent formation, if it rides one).
+                        let cp = crate::reference::terrain::Fixed((points.div_ceil(2) * 10) as i32);
+                        let parent = self.units.get(&unit).and_then(|u| u.attached_parent);
+                        for id in [Some(unit), parent].into_iter().flatten() {
+                            if let Some(u) = self.unit_mut(id) {
+                                u.cp_expended = crate::reference::terrain::Fixed(u.cp_expended.0 + cp.0);
+                            }
+                        }
+                        Ok(CommandOutcome::ReplacementAbsorbed(points))
+                    }
                     _ => Err(CommandError::ReplacementFailed),
                 }
             }
@@ -2185,7 +2274,8 @@ impl GameState {
                 }
             }
             Command::SiphonFuel { donor, receiver, amount } => {
-                self.require_phase(Phase::Organization)?;
+                // §49.17: "Siphoning may occur in any Movement segment."
+                self.require_phase(Phase::MovementAndCombat)?;
                 self.require_units_exist(&[donor, receiver])?;
                 Ok(CommandOutcome::FuelSiphoned(self.siphon_fuel(donor, receiver, amount)))
             }
@@ -2487,7 +2577,11 @@ impl GameState {
                 Ok(CommandOutcome::BombingMission(outcome))
             }
             Command::RefuelUnit { unit } => {
-                self.require_phase(Phase::Organization)?;
+                // §49.14 erratum / §49.16: a unit may always gas up, at no CP, from a source in its
+                // hex — in the Organization Phase or while it moves.
+                if !matches!(self.phase, Phase::Organization | Phase::MovementAndCombat) {
+                    return Err(CommandError::WrongPhase);
+                }
                 self.require_units_exist(&[unit])?;
                 // §49.15/§49.16: fuel must be present in the unit's hex (own truck cargo or a
                 // friendly dump/base); a unit with room but nothing to draw cannot refuel.
@@ -2498,7 +2592,10 @@ impl GameState {
                 Ok(CommandOutcome::UnitRefueled(self.unit(unit).map_or(0, |u| u.fuel)))
             }
             Command::RearmUnit { unit } => {
-                self.require_phase(Phase::Organization)?;
+                // §50 general rule: units may always use ammo present in the hex.
+                if !matches!(self.phase, Phase::Organization | Phase::MovementAndCombat) {
+                    return Err(CommandError::WrongPhase);
+                }
                 self.require_units_exist(&[unit])?;
                 // §50.15: ammunition must be present in the unit's hex.
                 let (drawn, room) = self.rearm_from_hex(unit);
@@ -2635,6 +2732,40 @@ impl GameState {
         }
     }
 
+    /// §6.3 CP chart / Logistics-Game Organization Phase step 6 (Supply Distribution): a free truck
+    /// convoy loads or off-loads in its Organization Phase (0 CP) as well as in the Truck Convoy
+    /// Phase. (The chart's 2-CP charge for handling outside the Organization Phase is not yet taken
+    /// from the convoy's allowance — the allowance also drives its §49.13 fuel blocks.)
+    fn convoy_load_phase(&self, convoy: usize) -> Result<(), CommandError> {
+        if !matches!(self.phase, Phase::Organization | Phase::TruckConvoy) {
+            return Err(CommandError::WrongPhase);
+        }
+        let c = self.truck_convoys.get(convoy).ok_or(CommandError::TruckConvoyCannotMove)?;
+        if self.active_player != c.side {
+            return Err(CommandError::WrongPhase);
+        }
+        Ok(())
+    }
+
+    /// §6.3: a unit's first-line trucks load/unload in the Organization Phase (0 CP) or during its
+    /// Movement & Combat Phase (2 CP). Returns whether this is the (CP-charged) movement phase.
+    fn trucks_load_phase(&self) -> Result<bool, CommandError> {
+        match self.phase {
+            Phase::Organization => Ok(false),
+            Phase::MovementAndCombat => Ok(true),
+            _ => Err(CommandError::WrongPhase),
+        }
+    }
+
+    /// §6.3: charge the 2 CP for handling supplies on a unit's trucks outside the Organization Phase
+    /// (to the counter that moves — the unit, or the formation it rides).
+    fn charge_truck_handling(&mut self, unit: UnitId) {
+        let root = self.units.get(&unit).and_then(|u| u.attached_parent).unwrap_or(unit);
+        if let Some(u) = self.unit_mut(root) {
+            u.cp_expended = crate::reference::terrain::Fixed(u.cp_expended.0 + 20);
+        }
+    }
+
     /// Gate a command to a specific Sequence-of-Play phase.
     fn require_phase(&self, phase: Phase) -> Result<(), CommandError> {
         if self.phase == phase {
@@ -2703,7 +2834,8 @@ impl GameState {
     /// sea (§30.5). Both ports must be operable; the destination must be able to receive men (a
     /// major port, `stacking_in > 0`) and the origin to ship them out, with the unit's Stacking
     /// Points fitting within each port's personnel capacity (§30.52/§55.11/§55.13); and neither port
-    /// may already have made its one transfer this Operations Stage (§30.52). (§30.53 supply-shipment
+    /// may already have made a transfer on another route this Operations Stage (§30.52); one transfer may
+    /// carry several units up to the smaller capacity (§30.54). (§30.53 supply-shipment
     /// interaction is deferred.)
     fn cmd_naval_transfer_troops(&mut self, unit: UnitId, to_port: &str) -> Result<CommandOutcome, CommandError> {
         self.require_phase(Phase::TruckConvoy)?;
@@ -2722,10 +2854,16 @@ impl GameState {
             return Err(CommandError::PortCannotTransfer);
         }
         // §30.52: one transfer per port per Operations Stage (either end) — independent of the unit,
-        // so it is checked before the unit-specific gates below.
-        if self.ports_transferred_this_stage.contains(&origin) || self.ports_transferred_this_stage.contains(to_port) {
+        // so it is checked before the unit-specific gates below. §30.54: that one transfer may carry
+        // several units, so a port already used is fine for more units on the *same* route.
+        let route = (origin.clone(), to_port.to_string());
+        let already = self.port_transfer_load.get(&route).copied();
+        if already.is_none()
+            && (self.ports_transferred_this_stage.contains(&origin) || self.ports_transferred_this_stage.contains(to_port))
+        {
             return Err(CommandError::PortTransferUnavailable);
         }
+        let already = already.unwrap_or(0);
         // §30.55: the unit must have started the stage in the port and spent no Capability Points
         // before the Truck Convoy Segment.
         if self.unit(unit).is_none_or(|u| u.cp_expended.0 != 0) {
@@ -2755,8 +2893,9 @@ impl GameState {
             return Err(CommandError::PortCannotTransfer);
         }
         let sp = self.effective_stacking_points(unit);
-        // §55.11: a minor port (stacking_in 0) can't receive men; §30.52/§55.13 capacity must fit.
-        if dest_in == 0 || dest_in < sp || origin_out < sp {
+        // §55.11: a minor port (stacking_in 0) can't receive men; §30.54/§55.13 the whole transfer's
+        // Stacking Points must fit the smaller capacity.
+        if dest_in == 0 || dest_in < already + sp || origin_out < already + sp {
             return Err(CommandError::PortTransferUnavailable);
         }
         // §9.31: the landed unit may not leave the port hex over its §8.37 Stacking Limit.
@@ -2780,6 +2919,7 @@ impl GameState {
         }
         self.ports_transferred_this_stage.insert(origin);
         self.ports_transferred_this_stage.insert(to_port.to_string());
+        *self.port_transfer_load.entry(route).or_insert(0) += sp;
         Ok(CommandOutcome::TroopsTransferred)
     }
 
@@ -3914,6 +4054,112 @@ impl GameState {
 
     /// §8.97/§8.98 FormTruckConvoy: detach first-line Truck Points (and their loaded cargo) from a
     /// unit into a new free truck convoy in the unit's hex (Organization Phase).
+    fn cmd_split_convoy(&mut self, convoy: usize, light: u32, medium: u32, heavy: u32) -> Result<CommandOutcome, CommandError> {
+        use crate::state::game::{Commodity, TruckConvoy};
+        if !matches!(self.phase, Phase::Organization | Phase::TruckConvoy) {
+            return Err(CommandError::WrongPhase);
+        }
+        let c = self.truck_convoys.get(convoy).ok_or(CommandError::TruckConvoyCannotMove)?;
+        if self.active_player != c.side {
+            return Err(CommandError::WrongPhase);
+        }
+        let t = c.trucks;
+        let total = t.light + t.medium + t.heavy;
+        let take = light + medium + heavy;
+        if take == 0 || take >= total || light > t.light || medium > t.medium || heavy > t.heavy {
+            return Err(CommandError::InsufficientTrucks); // must leave at least one Truck Point behind
+        }
+        let mut part = TruckConvoy {
+            side: c.side,
+            hex: c.hex,
+            trucks: crate::state::unit::TruckPoints { light, medium, heavy },
+            trucks_broken: Default::default(),
+            cargo: Default::default(),
+            tank_fuel: 0,
+            cpa_used: c.cpa_used,
+            breakdown_points: c.breakdown_points,
+            breakdown_checked_col: c.breakdown_checked_col,
+        };
+        // §49.17 "siphon gas": the detached trucks' tanks are filled first from the convoy's tanks (so a
+        // short convoy can send a fully-fuelled part for help); cargo is shared pro rata by capacity.
+        let part_tank = self.convoy_tank_capacity(&part);
+        part.tank_fuel = c.tank_fuel.min(part_tank);
+        let siphoned = {
+            let whole_tank = self.convoy_tank_capacity(c);
+            let pro_rata = if whole_tank > 0 { (c.tank_fuel as u64 * part_tank as u64 / whole_tank as u64) as u32 } else { 0 };
+            part.tank_fuel > pro_rata
+        };
+        let whole_caps = self.convoy_cargo_capacity(c);
+        let part_caps = self.convoy_cargo_capacity(&part);
+        for cm in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
+            let (w, p) = (whole_caps.get(cm), part_caps.get(cm));
+            let share = if w > 0 { (c.cargo.get(cm) as u64 * p as u64 / w as u64) as u32 } else { 0 };
+            *part.cargo.get_mut(cm) = share;
+        }
+        let orig = &mut self.truck_convoys[convoy];
+        orig.trucks.light -= light;
+        orig.trucks.medium -= medium;
+        orig.trucks.heavy -= heavy;
+        orig.tank_fuel -= part.tank_fuel;
+        for cm in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
+            *orig.cargo.get_mut(cm) -= part.cargo.get(cm);
+        }
+        // §49.17: siphoning costs both 3 CP (only meaningful in the Truck Convoy Phase's CPA).
+        if siphoned && self.phase == Phase::TruckConvoy {
+            self.truck_convoys[convoy].cpa_used += 30;
+            part.cpa_used += 30;
+        }
+        self.truck_convoys.push(part);
+        Ok(CommandOutcome::ConvoySplit { convoy: self.truck_convoys.len() - 1 })
+    }
+
+    fn cmd_merge_convoy(&mut self, from: usize, into: usize) -> Result<CommandOutcome, CommandError> {
+        use crate::state::game::Commodity;
+        if !matches!(self.phase, Phase::Organization | Phase::TruckConvoy) {
+            return Err(CommandError::WrongPhase);
+        }
+        if from == into {
+            return Err(CommandError::TruckConvoyCannotMove);
+        }
+        let (a, b) = match (self.truck_convoys.get(from), self.truck_convoys.get(into)) {
+            (Some(a), Some(b)) => (a.clone(), b),
+            _ => return Err(CommandError::TruckConvoyCannotMove),
+        };
+        if a.side != b.side || self.active_player != a.side {
+            return Err(CommandError::WrongPhase);
+        }
+        if a.hex != b.hex {
+            return Err(CommandError::NotAdjacent); // must share a hex
+        }
+        if a.trucks.light + a.trucks.medium + a.trucks.heavy + a.trucks_broken.light + a.trucks_broken.medium + a.trucks_broken.heavy == 0 {
+            return Err(CommandError::InsufficientTrucks);
+        }
+        let dst = &mut self.truck_convoys[into];
+        dst.trucks.light += a.trucks.light;
+        dst.trucks.medium += a.trucks.medium;
+        dst.trucks.heavy += a.trucks.heavy;
+        dst.trucks_broken.light += a.trucks_broken.light;
+        dst.trucks_broken.medium += a.trucks_broken.medium;
+        dst.trucks_broken.heavy += a.trucks_broken.heavy;
+        dst.tank_fuel += a.tank_fuel;
+        for cm in [Commodity::Fuel, Commodity::Ammo, Commodity::Stores, Commodity::Water] {
+            *dst.cargo.get_mut(cm) += a.cargo.get(cm);
+        }
+        // The combined convoy has moved as far as either part (§8.98) and carries the higher BP.
+        dst.cpa_used = dst.cpa_used.max(a.cpa_used);
+        dst.breakdown_points = dst.breakdown_points.max(a.breakdown_points);
+        dst.breakdown_checked_col = dst.breakdown_checked_col.max(a.breakdown_checked_col);
+        let src = &mut self.truck_convoys[from];
+        src.trucks = Default::default();
+        src.trucks_broken = Default::default();
+        src.cargo = Default::default();
+        src.tank_fuel = 0;
+        for p in self.replacement_points.iter_mut().filter(|p| p.carried_by == Some(from)) {
+            p.carried_by = Some(into);
+        }
+        Ok(CommandOutcome::ConvoysMerged)
+    }
+
     fn cmd_form_truck_convoy(
         &mut self,
         from_unit: UnitId,
@@ -4113,6 +4359,9 @@ impl GameState {
         if self.active_player != side {
             return Err(CommandError::WrongPhase);
         }
+        if c.trucks.light + c.trucks.medium + c.trucks.heavy == 0 {
+            return Err(CommandError::TruckConvoyCannotMove); // an emptied (merged/destroyed) convoy
+        }
         if !self.map.neighbors(from).any(|n| n == to) {
             return Err(CommandError::TruckConvoyCannotMove);
         }
@@ -4181,16 +4430,11 @@ impl GameState {
         c.cpa_used += cost;
         c.hex = to;
         let cpa_used = c.cpa_used;
-        // §21.21/24 + §53.22: the entered hex's Breakdown Points accrue to the convoy; a breakdown
-        // check (truck BAR 2L) then loses a proportion of its Truck Points.
-        let hex_bp = self
-            .map
-            .terrain(to)
-            .and_then(|t| self.reference.terrain.get(&t))
-            .map(|p| p.breakdown.0)
-            .unwrap_or(0);
-        self.truck_convoys[convoy].breakdown_points += hex_bp.max(0) as u32;
-        self.resolve_convoy_breakdown(convoy);
+        // §21.21/23 + §53.22: the step's (route-aware) Breakdown Points accrue to the convoy; the
+        // §21.24 check (truck BAR 2L) comes when it stops (`settle_pending_breakdown`).
+        let bp = self.step_breakdown_points(from, to, false);
+        self.truck_convoys[convoy].breakdown_points += bp.0.max(0) as u32;
+        self.pending_breakdown = Some(crate::state::game::BreakdownMover::Convoy(convoy));
         Ok(CommandOutcome::TruckConvoyMoved { hex: to, cpa_used })
     }
 
@@ -4310,7 +4554,10 @@ impl GameState {
     /// still honor for display). The binding drives movement (§20.46) and §27.58 raid effects.
     fn cmd_load_replacement(&mut self, convoy: usize, pool: usize) -> Result<CommandOutcome, CommandError> {
         use crate::state::game::ReplacementClass;
-        self.require_phase(Phase::TruckConvoy)?;
+        // §6.3 chart: men load/unload on trucks in the Organization Phase (0 CP) or the Convoy Phase.
+        if !matches!(self.phase, Phase::Organization | Phase::TruckConvoy) {
+            return Err(CommandError::WrongPhase);
+        }
         let p = self.replacement_points.get(pool).ok_or(CommandError::ReplacementFailed)?;
         let c = self.truck_convoys.get(convoy).ok_or(CommandError::ReplacementFailed)?;
         if self.active_player != p.side || p.side != c.side {
@@ -4330,7 +4577,9 @@ impl GameState {
     /// §20.44 UnloadReplacement: drop a pool from its carrying convoy, clearing the binding so it
     /// becomes a standalone (stranded) counter again.
     fn cmd_unload_replacement(&mut self, pool: usize) -> Result<CommandOutcome, CommandError> {
-        self.require_phase(Phase::TruckConvoy)?;
+        if !matches!(self.phase, Phase::Organization | Phase::TruckConvoy) {
+            return Err(CommandError::WrongPhase);
+        }
         let p = self.replacement_points.get_mut(pool).ok_or(CommandError::ReplacementFailed)?;
         if self.active_player != p.side {
             return Err(CommandError::WrongPhase);
@@ -4351,8 +4600,9 @@ impl GameState {
         if self.active_player != side {
             return Err(CommandError::WrongPhase);
         }
-        // Must be co-located with the target hex; a real dump additionally needs a TOE Strength Point.
-        if u.hex() != Some(hex) || (!dummy && u.total_toe() == 0) {
+        // Must be co-located with the target hex (a unit riding a formation's counter is in that
+        // counter's hex); a real dump additionally needs a TOE Strength Point.
+        if self.effective_hex(unit) != Some(hex) || (!dummy && u.total_toe() == 0) {
             return Err(CommandError::DumpConstructionIllegal);
         }
         // §24.9: the hex is *designated* a supply dump (dummy or not) — one designation per side.
@@ -5741,9 +5991,10 @@ impl GameState {
         Ok(CommandOutcome::HarborMineLaid)
     }
 
-    /// §55.27 RemoveHarborMine: gated to the Repair Phase.
+    /// §55.27 RemoveHarborMine: "Mine removal is done in the Construction Stage" — the Construction
+    /// Segment of the Organization Phase.
     fn cmd_remove_harbor_mine(&mut self, port: &str, die: u32) -> Result<CommandOutcome, CommandError> {
-        self.require_phase(Phase::Repair)?;
+        self.require_phase(Phase::Organization)?;
         let p = self.ports.get_mut(port).ok_or(CommandError::NoSuchPort)?;
         Ok(CommandOutcome::HarborMineRemoved(p.remove_mine(die)))
     }
@@ -5927,6 +6178,20 @@ impl GameState {
     /// *specific* known target unit (`target_unit`) — allowed only when that unit is a valid target
     /// of `target_class` in the hex and known to the firer (In-Contact/Engaged, the "previous
     /// combat" path; the Patrol-knowledge path is not persisted, §8.11).
+    /// §12.0: "Any combat or HQ unit with a Barrage Rating … may Barrage" — every firing unit must
+    /// have Raw Barrage strength (a rating, and TOE to fire it); tanks, anti-tank guns and infantry
+    /// have none, and may not join a barrage (nor use one to discharge Holding Off, §10.34).
+    fn require_barrage_rating(&self, attackers: &[UnitId]) -> Result<(), CommandError> {
+        use crate::state::unit::RatingKind;
+        if attackers
+            .iter()
+            .any(|&a| self.unit(a).is_some_and(|u| u.raw_strength(&self.reference, RatingKind::Barrage) <= 0))
+        {
+            return Err(CommandError::NoBarrageRating);
+        }
+        Ok(())
+    }
+
     fn cmd_barrage(
         &mut self,
         attackers: &[UnitId],
@@ -5940,6 +6205,7 @@ impl GameState {
         }
         self.require_units_exist(attackers)?;
         self.require_no_noncombat_hq(attackers)?;
+        self.require_barrage_rating(attackers)?;
         // §6.26: a Disorganized (≤ −26) unit may not attack. (Barrage-Pinned units *may* barrage,
         // §12.44; air-Pinned ones may not, §41.91.4/§41.92.)
         if attackers.iter().any(|&a| self.unit(a).is_some_and(|u| u.cohesion <= -26)) {
@@ -6010,6 +6276,7 @@ impl GameState {
         }
         self.require_units_exist(barragers)?;
         self.require_no_noncombat_hq(barragers)?;
+        self.require_barrage_rating(barragers)?;
         // §6.26: a Disorganized unit may not attack (Pinned units may still barrage, §12.44).
         if barragers.iter().any(|&a| self.unit(a).is_some_and(|u| u.cohesion <= -26)) {
             return Err(CommandError::Disorganized);
@@ -6197,7 +6464,7 @@ impl GameState {
         // §49.4 (Addenda): a fuel-using unit (infantry-in-trucks / mechanized / tank-AC-recce) with
         // no Fuel available may not make an offensive Close Assault. Foot infantry (no fuel cost) is
         // unaffected — `move_fuel_available` reports true for non-fuel-users.
-        if attackers.iter().any(|&a| self.effective_hex(a).is_some_and(|ah| !self.move_fuel_available(a, ah, 1))) {
+        if attackers.iter().any(|&a| self.effective_hex(a).is_some_and(|ah| !self.has_move_fuel(a, ah))) {
             return Err(CommandError::InsufficientFuel);
         }
         let side = self.attackers_side(attackers)?;
@@ -6881,19 +7148,19 @@ impl GameState {
         self.unit_mut(unit).expect("checked").location = Some(crate::state::unit::UnitLocation::OnMap(dest));
         let cpa = self.effective_cpa(unit).unwrap_or(0);
         self.expend_cp_against(unit, total, cpa);
+        // §21.22/23: the whole retreat path's (route-aware) Breakdown Points, then one §21.24 check
+        // when it stops.
+        let mut prev = start;
+        let mut bp = 0;
         for &h in path {
-            let bp = self
-                .map
-                .terrain(h)
-                .and_then(|t| self.reference.terrain.get(&t))
-                .map(|p| p.breakdown.0)
-                .unwrap_or(0);
-            for m in self.formation_members(unit) {
-                if let Some(mu) = self.unit_mut(m) {
-                    mu.breakdown_points += bp;
-                }
-                self.resolve_breakdown(m);
+            bp += self.step_breakdown_points(prev, h, false).0;
+            prev = h;
+        }
+        for m in self.formation_members(unit) {
+            if let Some(mu) = self.unit_mut(m) {
+                mu.breakdown_points += bp;
             }
+            self.resolve_breakdown(m);
         }
         if self.hex_in_zoc_of(dest, enemy) {
             self.unit_mut(unit).expect("checked").moved_into_zoc = true;
@@ -7583,6 +7850,7 @@ impl GameState {
         // Total step cost = hex entry + hexside crossing (also validates on-map dest).
         let cost = self.move_step_cost(from, to, mode)
             .ok_or(CommandError::DestinationOffMap)?;
+        let mut offroad = false;
         let mut cp = match cost {
             MoveCost::Cost(f) => f,
             MoveCost::Prohibited | MoveCost::EntireCpa => {
@@ -7616,7 +7884,10 @@ impl GameState {
                     .sum();
                 if occupied + self.effective_stacking_points(unit) > crate::rules::movement::ROAD_TRACK_STACK_LIMIT {
                     match crate::rules::movement::step_cost_offroad(&self.reference, &self.map, from, to, mode) {
-                        Some(MoveCost::Cost(f)) => cp = f, // move around at full terrain cost
+                        Some(MoveCost::Cost(f)) => {
+                            cp = f; // move around at full terrain cost
+                            offroad = true;
+                        }
                         _ => return Err(CommandError::ProhibitedTerrain), // can't go around
                     }
                 }
@@ -7802,7 +8073,7 @@ impl GameState {
         if !self.move_fuel_available(unit, from, cp.0) {
             return Err(CommandError::InsufficientFuel);
         }
-        Ok(MoveStepPlan { cp, to_zoc, entered_enemy_dummy, mine_casualty_check })
+        Ok(MoveStepPlan { cp, to_zoc, entered_enemy_dummy, mine_casualty_check, offroad })
     }
 
     /// Whether `unit` may legally step to adjacent `to` in `mode` in the current state — the action
@@ -7829,13 +8100,14 @@ impl GameState {
         mode: MoveMode,
         cpa: i32,
     ) -> Result<CommandOutcome, CommandError> {
-        let MoveStepPlan { cp, to_zoc, entered_enemy_dummy, mine_casualty_check } =
+        let MoveStepPlan { cp, to_zoc, entered_enemy_dummy, mine_casualty_check, offroad } =
             self.plan_move_step(unit, to, mode, cpa)?;
         let from = self
             .unit(unit)
             .expect("validated by plan_move_step")
             .hex()
             .expect("validated by plan_move_step");
+        let step_bp = self.step_breakdown_points(from, to, offroad);
         // §49.13/49.16: pay the move's Fuel (availability already verified by plan_move_step).
         let paid = self.consume_move_fuel(unit, from, cp.0);
         debug_assert!(paid, "plan_move_step verified fuel availability");
@@ -7861,20 +8133,15 @@ impl GameState {
             let die = self.rng.d6();
             self.resolve_mine_casualty(unit, die);
         }
-        // §21.21/24: accumulate the entered hex's Breakdown Points for the mover and its riders,
-        // then check for breakdown on ceasing movement (no-op unless the §21.38 table is loaded).
-        let hex_bp = self
-            .map
-            .terrain(to)
-            .and_then(|t| self.reference.terrain.get(&t))
-            .map(|p| p.breakdown.0)
-            .unwrap_or(0);
+        // §21.21/23: accumulate the step's Breakdown Points (route-aware) for the mover and its
+        // riders. §21.24/26: the check happens when the unit *stops* — when its side does anything
+        // other than move it on, or the phase ends (`settle_pending_breakdown`) — not per hex.
         for m in self.formation_members(unit) {
             if let Some(u) = self.unit_mut(m) {
-                u.breakdown_points += hex_bp;
+                u.breakdown_points += step_bp.0;
             }
-            self.resolve_breakdown(m);
         }
+        self.pending_breakdown = Some(crate::state::game::BreakdownMover::Unit(unit));
         // §8.14: having entered an enemy ZOC, the unit must stop for the rest of the stage.
         if to_zoc {
             self.unit_mut(unit).expect("checked").moved_into_zoc = true;
@@ -7992,4 +8259,6 @@ struct MoveStepPlan {
     entered_enemy_dummy: bool,
     /// A non-engineer vehicle entered an enemy minefield (§26.25: roll a mine casualty).
     mine_casualty_check: bool,
+    /// §9.33: the step "moves around" a full road/track hex — no route benefit (CP or breakdown).
+    offroad: bool,
 }
