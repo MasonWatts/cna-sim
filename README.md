@@ -107,3 +107,14 @@ cargo run -p cna-harness -- --replay /tmp/game.commands.jsonl
 
 The `.jsonl` output is the normal viewer event log; per-window model transcripts land in
 `<out>.transcript/`. See [`docs/llm-player-harness.md`](docs/llm-player-harness.md).
+
+## License & disclaimer
+
+The original code in this repository (engine, harness, viewer, tools) is licensed under the
+[MIT License](LICENSE).
+
+This is an unofficial, non-commercial fan project and is **not affiliated with, endorsed by, or
+sponsored by** Simulations Publications, Inc. (SPI) or any successor rights holder. *The Campaign
+for North Africa: The Desert War 1940–43* is their original 1979 design; `docs/source-materials/`
+reproduces excerpts of that rulebook for research/provenance purposes (documenting how the engine's
+reference data was sourced and verified) and is not covered by the MIT license above.
